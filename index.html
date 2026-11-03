@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizMaster - Nền Tảng Trắc Nghiệm Trực Tuyến Hiện Đại</title>
+    <title>Ôn Tập Lịch Sử 11 - Giữa Kì 1 | QuizMaster</title>
     <!-- Google Fonts: Inter & Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,9 +60,9 @@
                 </div>
                 <div>
                     <h1 class="font-heading font-extrabold text-lg tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
-                        QuizMaster
+                        Lịch Sử 11
                     </h1>
-                    <p class="text-[11px] text-slate-400 font-medium">Hệ Thống Trắc Nghiệm Thông Minh</p>
+                    <p class="text-[11px] text-slate-400 font-medium">Ôn Tập Đề Cương Giữa Kì 1</p>
                 </div>
             </div>
 
@@ -90,27 +90,27 @@
                 <div class="text-center mb-8">
                     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-4">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Đang sẵn sàng thách thức kiến thức của bạn
+                        Đề Cương Ôn Thi Giữa Kì 1 (Trọn bộ 65 câu)
                     </div>
-                    <h2 class="font-heading text-2xl sm:text-3xl font-bold text-white mb-2">Thử Thách Trắc Nghiệm</h2>
-                    <p class="text-slate-400 text-sm leading-relaxed">Kiểm tra vốn hiểu biết, vượt qua thời gian đếm ngược và ghi tên mình lên bảng vàng vinh danh!</p>
+                    <h2 class="font-heading text-2xl sm:text-3xl font-bold text-white mb-2">Lịch Sử 11 - Thi Trắc Nghiệm</h2>
+                    <p class="text-slate-400 text-sm leading-relaxed">Bài 1: Cách mạng tư sản (31 câu) & Bài 2: Sự xác lập và phát triển của CNTB (34 câu). Tự động chấm điểm và xếp hạng!</p>
                 </div>
 
                 <!-- Form thông tin người tham gia -->
                 <div class="space-y-5">
                     <div>
                         <label for="player-name-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                            Họ và Tên / Biệt danh của bạn <span class="text-rose-400">*</span>
+                            Họ và Tên học sinh <span class="text-rose-400">*</span>
                         </label>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
                                 <i class="fa-regular fa-user"></i>
                             </span>
-                            <input type="text" id="player-name-input" maxlength="30" placeholder="Ví dụ: Nguyễn Văn A hoặc Anh Khôi" 
+                            <input type="text" id="player-name-input" maxlength="30" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
                                 class="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
                         </div>
                         <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1">
-                            <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập tên của bạn để bắt đầu.
+                            <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
                         </p>
                     </div>
 
@@ -120,14 +120,14 @@
                             Thời gian làm bài
                         </label>
                         <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="app.setDuration(180)" class="time-select-btn py-2.5 rounded-xl border border-slate-700 bg-slate-900/50 text-xs font-semibold hover:border-indigo-500 transition text-slate-300 active" data-time="180">
-                                3 Phút (Thử thách)
+                            <button type="button" onclick="app.setDuration(900)" class="time-select-btn py-2.5 rounded-xl border border-slate-700 bg-slate-900/50 text-xs font-semibold hover:border-indigo-500 transition text-slate-300" data-time="900">
+                                15 Phút
                             </button>
-                            <button type="button" onclick="app.setDuration(300)" class="time-select-btn py-2.5 rounded-xl border border-slate-700 bg-slate-900/50 text-xs font-semibold hover:border-indigo-500 transition text-slate-300" data-time="300">
-                                5 Phút (Chuẩn)
+                            <button type="button" onclick="app.setDuration(1800)" class="time-select-btn py-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-xs font-semibold hover:border-indigo-500 transition text-indigo-300 active" data-time="1800">
+                                30 Phút (Chuẩn)
                             </button>
-                            <button type="button" onclick="app.setDuration(600)" class="time-select-btn py-2.5 rounded-xl border border-slate-700 bg-slate-900/50 text-xs font-semibold hover:border-indigo-500 transition text-slate-300" data-time="600">
-                                10 Phút (Thư thả)
+                            <button type="button" onclick="app.setDuration(2700)" class="time-select-btn py-2.5 rounded-xl border border-slate-700 bg-slate-900/50 text-xs font-semibold hover:border-indigo-500 transition text-slate-300" data-time="2700">
+                                45 Phút (Đầy đủ)
                             </button>
                         </div>
                     </div>

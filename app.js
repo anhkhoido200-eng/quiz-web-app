@@ -7,7 +7,7 @@ class QuizApp {
     constructor() {
         // Trạng thái người chơi và cài đặt
         this.playerName = "";
-        this.quizDurationSeconds = 180; // Mặc định 3 phút
+        this.quizDurationSeconds = 1800; // Mặc định 30 phút (cho 65 câu)
         this.timerInterval = null;
         this.timeLeftSeconds = 0;
         this.timeSpentSeconds = 0;

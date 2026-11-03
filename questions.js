@@ -1,159 +1,89 @@
 /**
- * questions.js - Ngân hàng câu hỏi trắc nghiệm trực tuyến
- * Mỗi câu hỏi gồm:
- * - id: Mã câu hỏi duy nhất
- * - category: Danh mục / Chủ đề
- * - question: Nội dung câu hỏi
- * - options: Mảng các đáp án
- * - correct: Chỉ số đáp án đúng (0, 1, 2, 3) hoặc mảng chỉ số nếu là câu hỏi chọn nhiều đáp án
- * - isMultiple: true nếu chọn nhiều đáp án, false nếu chọn 1 đáp án duy nhất
- * - explanation: Giải thích chi tiết sau khi xem lại bài
+ * questions.js - Đề cương ôn tập trắc nghiệm Lịch Sử 11 - Giữa Kì 1
+ * Trọn bộ 65 câu hỏi trắc nghiệm chuẩn kiến thức theo phân phối chương trình:
+ * - Bài 1: Một số vấn đề chung về cách mạng tư sản (31 câu)
+ * - Bài 2: Sự xác lập và phát triển của chủ nghĩa tư bản (34 câu)
  */
 
-const QUIZ_QUESTIONS = [
-    {
-        id: 1,
-        category: "Công nghệ Web",
-        question: "Trong lập trình Web hiện đại, phương thức nào dưới đây thường được sử dụng để gửi dữ liệu nhạy cảm hoặc tạo tài nguyên mới lên máy chủ?",
-        options: [
-            "GET",
-            "POST",
-            "HEAD",
-            "OPTIONS"
-        ],
-        correct: 1, // POST
-        isMultiple: false,
-        explanation: "Phương thức POST thường được sử dụng để gửi dữ liệu lên server nhằm tạo mới bản ghi hoặc truyền dữ liệu nhạy cảm trong phần thân (Request Body) thay vì hiển thị trên URL như GET."
-    },
-    {
-        id: 2,
-        category: "Khoa học máy tính",
-        question: "Cấu trúc dữ liệu nào hoạt động theo nguyên lý 'Vào trước - Ra trước' (FIFO - First In, First Out)?",
-        options: [
-            "Ngăn xếp (Stack)",
-            "Hàng đợi (Queue)",
-            "Cây nhị phân (Binary Tree)",
-            "Đồ thị (Graph)"
-        ],
-        correct: 1, // Queue
-        isMultiple: false,
-        explanation: "Hàng đợi (Queue) hoạt động theo nguyên tắc FIFO (First In First Out), phần tử nào được thêm vào trước sẽ được lấy ra xử lý trước."
-    },
-    {
-        id: 3,
-        category: "Kiến thức Đám Mây",
-        question: "Đâu là những tính năng cốt lõi do nền tảng Supabase cung cấp? (Chọn câu đúng nhất)",
-        options: [
-            "Cơ sở dữ liệu quan hệ PostgreSQL với Realtime Subscription",
-            "Hệ thống Authentication quản lý người dùng",
-            "Lưu trữ tệp tin (Storage) và Edge Functions",
-            "Tất cả các tính năng trên"
-        ],
-        correct: 3, // All of the above
-        isMultiple: false,
-        explanation: "Supabase là nền tảng BaaS (Backend-as-a-Service) mã nguồn mở hàng đầu, cung cấp đầy đủ PostgreSQL, Realtime, Auth, Storage và Edge Functions."
-    },
-    {
-        id: 4,
-        category: "Khoa học & Đời sống",
-        question: "Hành tinh nào trong Hệ Mặt Trời được mệnh danh là 'Hành tinh Đỏ' do bề mặt chứa nhiều oxit sắt?",
-        options: [
-            "Sao Thủy (Mercury)",
-            "Sao Kim (Venus)",
-            "Sao Hỏa (Mars)",
-            "Sao Mộc (Jupiter)"
-        ],
-        correct: 2, // Mars
-        isMultiple: false,
-        explanation: "Sao Hỏa (Mars) có màu đỏ cam đặc trưng do bề mặt của nó chứa lượng lớn oxit sắt (rỉ sét), vì thế thường được gọi là Hành tinh Đỏ."
-    },
-    {
-        id: 5,
-        category: "An toàn thông tin",
-        question: "Giao thức bảo mật HTTPS sử dụng chuẩn mã hóa nào để bảo vệ dữ liệu truyền tải giữa trình duyệt và máy chủ?",
-        options: [
-            "SSL/TLS",
-            "MD5",
-            "FTP",
-            "DNSSEC"
-        ],
-        correct: 0, // SSL/TLS
-        isMultiple: false,
-        explanation: "HTTPS (Hypertext Transfer Protocol Secure) sử dụng giao thức bảo mật Transport Layer Security (TLS) hoặc phiên bản tiền nhiệm của nó là Secure Sockets Layer (SSL) để mã hóa toàn bộ dữ liệu."
-    },
-    {
-        id: 6,
-        category: "Trí tuệ nhân tạo (AI)",
-        question: "Khái niệm 'LLM' trong lĩnh vực trí tuệ nhân tạo hiện đại là viết tắt của thuật ngữ nào?",
-        options: [
-            "Linear Logic Model",
-            "Large Language Model",
-            "Logical Learning Method",
-            "Localized Language Machine"
-        ],
-        correct: 1, // Large Language Model
-        isMultiple: false,
-        explanation: "LLM là viết tắt của 'Large Language Model' (Mô hình ngôn ngữ lớn), nền tảng tạo nên các hệ thống AI tạo sinh như Gemini, GPT-4, v.v."
-    },
-    {
-        id: 7,
-        category: "Địa lý & Văn hóa",
-        question: "Đỉnh núi nào được công nhận là đỉnh núi cao nhất trên Trái Đất so với mực nước biển?",
-        options: [
-            "K2 (Godwin-Austen)",
-            "Kangchenjunga",
-            "Everest (Chomolungma)",
-            "Phan Xi Păng"
-        ],
-        correct: 2, // Everest
-        isMultiple: false,
-        explanation: "Đỉnh Everest nằm trên dãy Himalaya ở biên giới giữa Nepal và Tây Tạng (Trung Quốc), cao 8.848,86 mét so với mực nước biển."
-    },
-    {
-        id: 8,
-        category: "Lập trình JavaScript",
-        question: "Trong JavaScript (ES6+), từ khóa nào dùng để khai báo một biến có phạm vi khối (block-scoped) và giá trị KHÔNG thể gán lại?",
-        options: [
-            "var",
-            "let",
-            "const",
-            "static"
-        ],
-        correct: 2, // const
-        isMultiple: false,
-        explanation: "Từ khóa 'const' dùng để khai báo một hằng số có phạm vi trong block `{}` và không cho phép gán lại định danh sau khi đã khởi tạo."
-    },
-    {
-        id: 9,
-        category: "Công nghệ Web",
-        question: "Thuộc tính nào trong CSS3 được dùng để tạo bố cục lưới hai chiều linh hoạt (gồm hàng và cột)?",
-        options: [
-            "display: flex",
-            "display: grid",
-            "display: inline-block",
-            "display: table"
-        ],
-        correct: 1, // display: grid
-        isMultiple: false,
-        explanation: "CSS Grid (`display: grid`) là hệ thống bố cục lưới 2 chiều (hàng và cột), trong khi Flexbox thường tối ưu cho bố cục 1 chiều (theo hàng hoặc theo cột)."
-    },
-    {
-        id: 10,
-        category: "Khoa học môi trường",
-        question: "Khí nào chiếm tỉ lệ phần trăm thể tích lớn nhất trong bầu khí quyển của Trái Đất?",
-        options: [
-            "Khí Oxy (Oxygen ~21%)",
-            "Khí Nitơ (Nitrogen ~78%)",
-            "Khí Cacbonic (Carbon Dioxide ~0.04%)",
-            "Khí Argon (~0.93%)"
-        ],
-        correct: 1, // Nitrogen ~78%
-        isMultiple: false,
-        explanation: "Khí Nitơ (N2) chiếm khoảng 78% thể tích bầu khí quyển Trái Đất, tiếp theo là Oxy (khoảng 21%), Argon và các khí khác."
-    }
+const rawQuestions = [
+    { id: 1, lesson: "b1", qNum: "Câu 1", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân.", "xóa bỏ tình trạng phong kiến cát cứ."], answer: 3, explanation: "Xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường dân tộc là một trong những nhiệm vụ dân tộc hàng đầu của cách mạng tư sản." },
+    { id: 2, lesson: "b1", qNum: "Câu 2", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["hình thành thị trường dân tộc thống nhất.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Hình thành thị trường dân tộc thống nhất là nhiệm vụ dân tộc quan trọng nhằm mở đường cho kinh tế tư bản phát triển." },
+    { id: 3, lesson: "b1", qNum: "Câu 3", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["xóa bỏ chế độ phong kiến chuyên chế.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Xóa bỏ chế độ phong kiến chuyên chế, xác lập nền dân chủ tư sản là nhiệm vụ dân chủ của cách mạng tư sản." },
+    { id: 4, lesson: "b1", qNum: "Câu 4", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["xác lập sự thống trị của chủ nghĩa thực dân.", "đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xóa bỏ phong kiến, xác lập nền dân chủ tư sản."], answer: 3, explanation: "Nhiệm vụ dân chủ là xóa bỏ chế độ phong kiến chuyên chế, xác lập nền dân chủ tư sản." },
+    { id: 5, lesson: "b1", qNum: "Câu 5", question: "Một trong những mục tiêu của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["mở đường cho tư bản chủ nghĩa phát triển.", "đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Mục tiêu bao trùm của các cuộc cách mạng tư sản là lật đổ trật tự phong kiến, mở đường cho chủ nghĩa tư bản phát triển." },
+    { id: 6, lesson: "b1", qNum: "Câu 6", question: "Một trong những mục tiêu của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ những rào cản của chế độ phong kiến.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 1, explanation: "Xóa bỏ các rào cản phong kiến để giải phóng sức sản xuất và xác lập quan hệ sản xuất tư bản chủ nghĩa." },
+    { id: 7, lesson: "b1", qNum: "Câu 7", question: "Lãnh đạo của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "nông dân.", "tư sản.", "công nhân."], answer: 2, explanation: "Giai cấp tư sản là lực lượng đại diện cho phương thức sản xuất mới, giữ vai trò lãnh đạo cách mạng." },
+    { id: 8, lesson: "b1", qNum: "Câu 8", question: "Lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "nông dân.", "công nhân.", "quý tộc mới."], answer: 3, explanation: "Ở một số cuộc cách mạng (tiêu biểu như Cách mạng tư sản Anh), tầng lớp quý tộc mới liên minh cùng tư sản lãnh đạo cách mạng." },
+    { id: 9, lesson: "b1", qNum: "Câu 9", question: "Lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "chủ nô.", "công nhân.", "nông dân."], answer: 1, explanation: "Trong cuộc Chiến tranh giành độc lập ở Bắc Mỹ, giai cấp tư sản và tầng lớp chủ nô đồn điền ở miền Nam cùng liên minh lãnh đạo cách mạng." },
+    { id: 10, lesson: "b1", qNum: "Câu 10", question: "Lực lượng nào sau đây không phải là lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Giai cấp công nhân.", "Quý tộc mới.", "Quý tộc tư sản hóa.", "Giai cấp tư sản."], answer: 0, explanation: "Giai cấp công nhân lúc này chưa đủ lớn mạnh và trưởng thành về ý thức hệ để lãnh đạo các cuộc cách mạng tư sản thời cận đại." },
+    { id: 11, lesson: "b1", qNum: "Câu 11", question: "Trong các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX, động lực quyết định thắng lợi của cách mạng là", options: ["mục tiêu của cách mạng.", "phương pháp đấu tranh.", "kết quả cuối cùng.", "giai cấp lãnh đạo."], answer: 3, explanation: "Động lực cách mạng bao gồm giai cấp lãnh đạo và quần chúng nhân dân, trong đó đường lối đúng đắn của giai cấp lãnh đạo định hướng phong trào." },
+    { id: 12, lesson: "b1", qNum: "Câu 12", question: "Trong các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX, động lực quyết định thắng lợi của cách mạng là", options: ["mục tiêu của cách mạng.", "kết quả cuối cùng.", "quần chúng nhân dân.", "phương pháp đấu tranh."], answer: 2, explanation: "Quần chúng nhân dân (nông dân, thợ thủ công, bình dân thành thị, công nhân) là lực lượng đông đảo nhất, là động lực chính quyết định thắng lợi của cách mạng." },
+    { id: 13, lesson: "b1", qNum: "Câu 13", question: "Nội dung nào sau đây là tiền đề về kinh tế dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Kinh tế tư bản chủ nghĩa ra đời và phát triển trong lòng chế độ phong kiến.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến."], answer: 0, explanation: "Sự xuất hiện và phát triển của các mầm mống kinh tế TBCN ngay trong lòng xã hội phong kiến là tiền đề kinh tế căn bản." },
+    { id: 14, lesson: "b1", qNum: "Câu 14", question: "Nội dung nào sau đây là tiền đề về kinh tế dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Những rào cản của chế độ phong kiến kìm hãm kinh tế tư bản chủ nghĩa.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh."], answer: 2, explanation: "Chế độ phong kiến đặt ra nhiều thứ thuế vô lí, chia cắt lãnh địa làm cản trở thị trường tự do, kìm hãm sự phát triển của kinh tế TBCN." },
+    { id: 15, lesson: "b1", qNum: "Câu 15", question: "Nội dung nào sau đây là tiền đề về chính trị dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Chế độ cai trị của nhà nước phong kiến, gây ra sự bất mãn trong xã hội."], answer: 3, explanation: "Sự thối nát, hà khắc và chuyên chế của chính quyền phong kiến chuyên chế đã tạo nên làn sóng bất mãn sâu sắc trong toàn thể xã hội." },
+    { id: 16, lesson: "b1", qNum: "Câu 16", question: "Nội dung nào sau đây là tiền đề về xã hội dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Mâu thuẫn giữa giai cấp tư sản với quý tộc phong kiến ngày càng sâu sắc.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị."], answer: 1, explanation: "Mâu thuẫn giữa các giai tầng mới (tư sản, nhân dân) với quý tộc phong kiến và giáo hội trở nên gay gắt không thể điều hòa." },
+    { id: 17, lesson: "b1", qNum: "Câu 17", question: "Nội dung nào sau đây là tiền đề về tư tưởng dẫn đến sự bùng nổ và thắng lợi của cuộc cách mạng tư sản Pháp ở thế kỉ XVIII?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Mâu thuẫn giữa giai cấp tư sản với quý tộc phong kiến ngày càng sâu sắc."], answer: 2, explanation: "Trào lưu Triết học Ánh sáng (với Montesquieu, Voltaire, Rousseau) đã tấn công vào ý thức hệ phong kiến, dọn đường về mặt tư tưởng cho cách mạng Pháp." },
+    { id: 18, lesson: "b1", qNum: "Câu 18", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Lật đổ nền quân chủ chuyên chế tồn tại lâu đời.", "Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 0, explanation: "Cách mạng tư sản thắng lợi đã lật đổ nền quân chủ chuyên chế phong kiến hoặc ách thống trị của thực dân." },
+    { id: 19, lesson: "b1", qNum: "Câu 19", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 1, explanation: "Ý nghĩa lớn nhất là xóa bỏ rào cản phong kiến, mở đường thông thoáng cho quan hệ sản xuất tư bản chủ nghĩa phát triển mạnh mẽ." },
+    { id: 20, lesson: "b1", qNum: "Câu 20", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Thúc đẩy lực lượng sản xuất phát triển.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 2, explanation: "Thắng lợi của cách mạng tư sản giải phóng sức lao động, kích thích khoa học kỹ thuật và thúc đẩy lực lượng sản xuất xã hội phát triển vượt bậc." },
+    { id: 21, lesson: "b1", qNum: "Câu 21", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Mở đường cho cách mạng công nghiệp.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 2, explanation: "Tạo tiền đề về tư bản tích lũy và nguồn nhân công tự do cho cuộc cách mạng công nghiệp bùng nổ." },
+    { id: 22, lesson: "b1", qNum: "Câu 22", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền.", "Tạo ra nền dân chủ tư sản và nhà nước dân chủ."], answer: 3, explanation: "Xác lập thể chế nhà nước mới (cộng hòa hoặc quân chủ lập hiến) và xây dựng nền dân chủ tư sản với các quyền tự do công dân." },
+    { id: 23, lesson: "b1", qNum: "Câu 23", question: "Cuộc cách mạng tư sản Pháp (cuối thế kỷ XVIII) và cách mạng tư sản Anh (thế kỷ XVII) có điểm khác biệt nào sau đây?", options: ["Tạo điều kiện cho kinh tế tư bản phát triển.", "Tính chất triệt để của cuộc cách mạng tư sản.", "Do giai cấp tư sản và quý tộc mới lãnh đạo.", "Xóa bỏ phong kiến, thiết lập quân chủ lập hiến."], answer: 1, explanation: "Cách mạng tư sản Pháp là cuộc cách mạng triệt để nhất thời cận đại, trong khi Cách mạng Anh là cuộc cách mạng không triệt để (thiết lập quân chủ lập hiến, chưa chia đất cho nông dân)." },
+    { id: 24, lesson: "b1", qNum: "Câu 24", question: "Cuộc cách mạng tư sản Pháp (cuối thế kỷ XVIII) và cách mạng tư sản Anh (thế kỷ XVII) có điểm khác biệt nào sau đây?", options: ["Tạo điều kiện cho kinh tế tư bản phát triển.", "Do giai cấp tư sản và quý tộc mới lãnh đạo.", "Giải quyết vấn đề ruộng đất cho nông dân.", "Xóa bỏ phong kiến, thiết lập quân chủ lập hiến."], answer: 2, explanation: "Thời kì chuyên chính Giacôbanh ở Pháp đã giải quyết triệt để vấn đề ruộng đất cho nông dân, điều mà cách mạng tư sản Anh không làm được." },
+    { id: 25, lesson: "b1", qNum: "Câu 25", question: "Cuộc Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mĩ (cuối thế kỷ XVIII) và cuộc cách mạng tư sản Anh (thế kỷ XVII) có điểm giống nhau nào sau đây?", options: ["Chống thực dân Anh, giành độc lập dân tộc.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Có sự lãnh đạo của tầng lớp quý tộc mới.", "Diễn ra dưới hình thức một cuộc nội chiến."], answer: 1, explanation: "Điểm chung cốt lõi của mọi cuộc cách mạng tư sản là đều mở đường cho chủ nghĩa tư bản phát triển." },
+    { id: 26, lesson: "b1", qNum: "Câu 26", question: "Nội dung nào sau đây phản ánh đúng điểm tiến bộ của Tuyên ngôn Độc lập (1776) ở nước Mỹ và Tuyên ngôn Nhân quyền và Dân quyền (1789) ở nước Pháp?", options: ["Đề cao quyền công dân và quyền con người.", "Bảo vệ quyền lợi cho tất cả các tầng lớp trong xã hội.", "Bảo vệ quyền lợi tư hữu cho giai cấp tư sản.", "Quyền tư hữu là quyền thiêng liêng, bất khả xâm phạm."], answer: 0, explanation: "Cả hai bản tuyên ngôn đều mang tính chất nhân văn, tiến bộ khi lần đầu tiên đề cao các quyền thiêng liêng về con người và quyền tự do, bình đẳng của công dân." },
+    { id: 27, lesson: "b1", qNum: "Câu 27", question: "Nội dung nào dưới đây phản ánh đúng vai trò của trào lưu Triết học Ánh sáng đối với cách mạng tư sản Pháp vào cuối thế kỷ XVIII?", options: ["Lên án chế độ tư bản chủ nghĩa, đưa ra lí thuyết xây dựng nhà nước xã hội chủ nghĩa.", "Lên án chế độ phong kiến, giáo hội Thiên chúa và mặt trái của chủ nghĩa tư bản.", "Tấn công hệ tư tưởng chế độ phong kiến, dọn đường cho cách mạng xã hội bùng nổ.", "Lên án chế độ tư bản chủ nghĩa, chế độ phong kiến, đề nghị xây dựng chế độ tiến bộ."], answer: 2, explanation: "Triết học Ánh sáng đã công phá thành trì tư tưởng phong kiến và giáo hội, chuẩn bị tiền đề lý luận và dọn đường cho cuộc đại cách mạng bùng nổ." },
+    { id: 28, lesson: "b1", qNum: "Câu 28", question: "Điểm khác nhau giữa cuộc Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mĩ cuối thế kỷ XVIII với cuộc cách mạng tư sản Anh là gì?", options: ["Động lực cách mạng là quần chúng nhân dân.", "Giai cấp tư sản tham gia lãnh đạo cách mạng.", "Là cuộc chiến tranh giải phóng dân tộc.", "Diễn ra dưới hình thức thống nhất đất nước."], answer: 2, explanation: "Cách mạng ở Bắc Mỹ diễn ra dưới hình thức một cuộc chiến tranh giải phóng dân tộc chống ách thống trị của thực dân Anh, còn ở Anh diễn ra dưới hình thức nội chiến." },
+    { id: 29, lesson: "b1", qNum: "Câu 29", question: "Cách mạng tư sản Pháp (cuối thế kỉ XVIII) được đánh giá là cuộc cách mạng tư sản triệt để nhất thời cận đại vì lí do nào sau đây?", options: ["Giai cấp tư sản lãnh đạo liên minh với quý tộc lãnh đạo quần chúng nhân dân.", "Lật đổ chế độ phong kiến chuyên chế và nhân dân được làm chủ đất nước.", "Giải quyết vấn đề ruộng đất cho nông dân và thực hiện các quyền bình đẳng.", "Hoàn thành đầy đủ nhiệm vụ dân tộc và dân chủ của cuộc cách mạng tư sản."], answer: 3, explanation: "Cách mạng tư sản Pháp được đánh giá là triệt để nhất vì đã giải quyết trọn vẹn cả hai nhiệm vụ dân tộc (thống nhất thị trường, bảo vệ Tổ quốc) và nhiệm vụ dân chủ (lật đổ chế độ quân chủ chuyên chế, ban bố quyền tự do bình đẳng, giải quyết ruộng đất cho nông dân)." },
+    { id: 30, lesson: "b1", qNum: "Câu 30", question: "Cách mạng tư sản Pháp (cuối thế kỉ XVIII) được đánh giá là cuộc cách mạng tư sản triệt để nhất thời cận đại vì lí do nào sau đây?", options: ["Giai cấp tư sản lãnh đạo liên minh với quý tộc lãnh đạo quần chúng nhân dân.", "Lật đổ chế độ phong kiến chuyên chế và nhân dân được làm chủ đất nước.", "Giải quyết vấn đề ruộng đất cho nông dân và thực hiện các quyền bình đẳng.", "Các nhiệm vụ của một cuộc cách mạng tư sản đã được giải quyết triệt để."], answer: 3, explanation: "Cách mạng Pháp đã giải quyết triệt để các nhiệm vụ kinh tế, chính trị và xã hội của một cuộc cách mạng tư sản thời cận đại." },
+    { id: 31, lesson: "b1", qNum: "Câu 31", question: "Nội dung nào sau đây phản ánh đúng về cuộc Cách mạng tư sản Pháp cuối thế kỷ XVIII?", options: ["Đây là cuộc cách mạng tư sản triệt để nhất, không có hạn chế.", "Đây là cuộc cách mạng tư sản triệt để nhưng có nhiều hạn chế.", "Đây là cuộc cách mạng tư sản diễn ra dưới hình thức nội chiến.", "Tầng lớp quý tộc mới quyết định sự thành công của cách mạng."], answer: 1, explanation: "Dù là cuộc cách mạng triệt để nhất thời cận đại, CMTS Pháp vẫn có hạn chế: chưa xóa bỏ hoàn toàn áp bức bóc lột, thành quả chủ yếu thuộc về giai cấp tư sản." },
+    { id: 32, lesson: "b2", qNum: "Câu 1", question: "Quốc gia nào sau đây khởi đầu cuộc Cách mạng công nghiệp ở thế kỉ XVIII?", options: ["Anh", "Đức.", "I-ta-li-a", "Pháp"], answer: 0, explanation: "Cuộc Cách mạng công nghiệp bắt đầu từ những năm 60 của thế kỉ XVIII tại nước Anh trong ngành dệt." },
+    { id: 33, lesson: "b2", qNum: "Câu 2", question: "Từ đầu thế kỉ XIX, để đáp ứng nhu cầu ngày càng cao về nguyên liệu và nhân công các nước tư bản phương Tây đã tăng cường", options: ["hợp tác và mở rộng đầu tư.", "thu hút vốn đầu tư bên ngoài.", "xâm lược và mở rộng thuộc địa.", "đổi mới hình thức kinh doanh."], answer: 2, explanation: "Các nước tư bản đẩy mạnh các cuộc chiến tranh xâm lược thuộc địa ở châu Á, châu Phi và Mỹ La-tinh." },
+    { id: 34, lesson: "b2", qNum: "Câu 3", question: "Cuối thế kỉ XIX – đầu thế kỉ XX, các nước tư bản chủ nghĩa đã chuyển sang giai đoạn", options: ["tự do cạnh tranh.", "cải cách đất nước.", "đế quốc chủ nghĩa.", "chủ nghĩa phát xít."], answer: 2, explanation: "Sự tập trung sản xuất và tích tụ tư bản đưa CNTB chuyển từ giai đoạn tự do cạnh tranh sang giai đoạn độc quyền (chủ nghĩa đế quốc)." },
+    { id: 35, lesson: "b2", qNum: "Câu 4", question: "Chủ nghĩa đế quốc ra đời từ cuối thế kỉ XIX đầu thế kỉ XX là hệ quả trực tiếp của quá trình", options: ["xâm lược thuộc địa.", "giao lưu buôn bán.", "mở rộng thị trường.", "hợp tác kinh tế."], answer: 0, explanation: "Chủ nghĩa đế quốc là hệ quả trực tiếp của việc mở rộng thị trường, đẩy mạnh xâm lược thuộc địa và xuất khẩu tư bản." },
+    { id: 36, lesson: "b2", qNum: "Câu 5", question: "Cho đến cuối thế kỉ XIX, các nước đế quốc chủ nghĩa đã thiết lập hệ thống thuộc địa rộng khắp ở", options: ["châu Âu, châu Mỹ và khu vực Tây Âu.", "châu Âu, châu Úc và khu vực Bắc Mỹ.", "châu Á, châu Phi và khu vực Mỹ La-tinh.", "châu Mỹ, Tây Âu và khu vực Đông Âu."], answer: 2, explanation: "Hầu hết các quốc gia ở châu Á, châu Phi và khu vực Mỹ La-tinh đều bị biến thành thuộc địa hoặc phụ thuộc của các nước đế quốc." },
+    { id: 37, lesson: "b2", qNum: "Câu 6", question: "Đầu thế kỉ XX, quốc gia nào sau đây có hệ thống thuộc địa rộng lớn nhất?", options: ["Đức.", "I-ta-li-a.", "Nhật", "Anh."], answer: 3, explanation: "Đầu thế kỉ XX, Anh là quốc gia có thuộc địa rộng lớn nhất thế giới, chiếm tới 1/4 diện tích và 1/4 dân số toàn cầu." },
+    { id: 38, lesson: "b2", qNum: "Câu 7", question: "Đến thế kỉ XVIII, nhiều quốc gia ở khu vực Mỹ La-tinh đã trở thành thuộc địa của thực dân", options: ["Tây Ban Nha", "Anh và Pháp.", "Mỹ và Đức.", "I-ta-li-a và Nhật."], answer: 0, explanation: "Phần lớn các nước Trung và Nam Mỹ là thuộc địa của thực dân Tây Ban Nha." },
+    { id: 39, lesson: "b2", qNum: "Câu 8", question: "Đến thế kỉ XVIII, nhiều quốc gia ở khu vực Mỹ La-tinh đã trở thành thuộc địa của thực dân", options: ["Bồ Đào Nha.", "Anh và Pháp.", "Mỹ và Đức.", "I-ta-li-a và Nhật."], answer: 0, explanation: "Bồ Đào Nha chiếm Brazil làm thuộc địa rộng lớn ở Nam Mỹ." },
+    { id: 40, lesson: "b2", qNum: "Câu 9", question: "Cuộc cách mạng Tân Hợi (1911) đã lật đổ triều đại phong kiến nào ở Trung Quốc?", options: ["Nhà Tống.", "Nhà Đường.", "Nhà Thanh.", "Nhà Nguyên."], answer: 2, explanation: "Cách mạng Tân Hợi năm 1911 do Tôn Trung Sơn lãnh đạo đã lật đổ triều đại Mãn Thanh, chấm dứt chế độ quân chủ chuyên chế ở Trung Quốc." },
+    { id: 41, lesson: "b2", qNum: "Câu 10", question: "Các tổ chức độc quyền ra đời ở các nước tư bản (từ cuối thế kỉ XIX đầu thế kỉ XX) là sự liên minh giữa", options: ["vô sản và tư sản.", "chủ nô và tư sản.", "địa chủ và quý tộc.", "các nhà tư bản lớn."], answer: 3, explanation: "Tổ chức độc quyền là sự liên minh, thỏa hiệp giữa các nhà tư bản lớn để thao túng sản xuất và giá cả, thu lợi nhuận cao." },
+    { id: 42, lesson: "b2", qNum: "Câu 11", question: "Các hình thức của tổ chức độc quyền ở Đức và Pháp (ra đời từ cuối thế kỉ XIX đầu thế kỉ XX) có tên gọi là", options: ["Tơ-rớt, Dai-bát-xư.", "Các-ten, Xanh-đi-ca.", "Con-sen, Tơ-rớt.", "Dai-bát-xư, Con-sen."], answer: 1, explanation: "Ở Đức và Pháp, các hình thức tổ chức độc quyền phổ biến là Các-ten (Cartel) và Xanh-đi-ca (Syndicate)." },
+    { id: 43, lesson: "b2", qNum: "Câu 12", question: "Các hình thức của tổ chức độc quyền ở Mỹ (ra đời từ cuối TK XIX đầu thế kỉ XX) có tên gọi là", options: ["Các-ten.", "Tơ-rớt.", "Đai-bát-xư.", "Xanh-đi-ca."], answer: 1, explanation: "Ở Mỹ, hình thức tổ chức độc quyền điển hình nhất là Tơ-rớt (Trust)." },
+    { id: 44, lesson: "b2", qNum: "Câu 13", question: "Quốc gia nào sau đây được mệnh danh là “đế quốc mà Mặt Trời không bao giờ lặn”?", options: ["Pháp.", "Đức.", "Anh.", "Mỹ."], answer: 2, explanation: "Đế quốc Anh sở hữu hệ thống thuộc địa trải khắp mọi múi giờ từ châu Á, châu Phi, châu Mỹ đến châu Đại Dương." },
+    { id: 45, lesson: "b2", qNum: "Câu 14", question: "Sự kiện nào sau đây đánh dấu sự mở rộng của chủ nghĩa tư bản ở ngoài châu Âu?", options: ["Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mỹ.", "Phong trào đấu tranh giành độc lập ở khu vực Mỹ La-tinh.", "Cuộc vận động thống nhất nước Đức và I-ta-li-a.", "Cải cách nông nô ở Nga và cuộc nội chiến ở Mỹ."], answer: 0, explanation: "Thắng lợi của Chiến tranh giành độc lập Bắc Mỹ và sự ra đời của Hợp chúng quốc Hoa Kỳ đánh dấu sự mở rộng của CNTB ngoài châu Âu." },
+    { id: 46, lesson: "b2", qNum: "Câu 15", question: "Thuật ngữ: “chủ nghĩa tư bản hiện đại” dùng để chỉ sự phát triển của chủ nghĩa tư bản trong giai đoạn", options: ["trước Chiến tranh thế giới thứ hai.", "sau Chiến tranh thế giới thứ hai đến nay.", "sau Chiến tranh thế giới thứ nhất đến nay.", "trước Chiến tranh thế giới thứ nhất."], answer: 1, explanation: "Khái niệm 'chủ nghĩa tư bản hiện đại' dùng để chỉ giai đoạn phát triển của CNTB từ sau Chiến tranh thế giới thứ hai đến nay." },
+    { id: 47, lesson: "b2", qNum: "Câu 16", question: "Lĩnh vực nào sau đây là tiềm năng phát triển của chủ nghĩa tư bản hiện đại?", options: ["Quân sự, văn hóa.", "Văn hóa – giáo dục.", "Chính trị, ngoại giao.", "Khoa học – công nghệ."], answer: 3, explanation: "Khoa học – công nghệ là động lực và tiềm năng bứt phá mạnh mẽ nhất của chủ nghĩa tư bản hiện đại." },
+    { id: 48, lesson: "b2", qNum: "Câu 17", question: "Nội dung nào sau đây là tiềm năng phát triển của chủ nghĩa tư bản hiện đại?", options: ["Kinh nghiệm quản lí.", "Liên minh quân sự.", "Liên kết khu vực.", "Hợp tác quốc tế."], answer: 0, explanation: "Kinh nghiệm quản lý kinh tế, tài chính và điều hành sản xuất hiện đại là một trong những tiềm năng lớn của CNTB." },
+    { id: 49, lesson: "b2", qNum: "Câu 18", question: "Nội dung nào sau đây là thách thức mà chủ nghĩa tư bản hiện đại phải đối mặt?", options: ["Sự phát triển mạnh mẽ của khoa học – công nghệ.", "Sự sáp nhập của các công ty độc quyền lũng đoạn.", "Sự vươn lên mạnh mẽ của các nước đang phát triển.", "Khủng hoảng kinh tế, tài chính mang tính toàn cầu."], answer: 3, explanation: "Các cuộc khủng hoảng kinh tế chu kỳ, khủng hoảng tài chính toàn cầu là thách thức nan giải có tính hệ thống của CNTB hiện đại." },
+    { id: 50, lesson: "b2", qNum: "Câu 19", question: "Nội dung nào sau đây là thách thức mà chủ nghĩa tư bản hiện đại phải đối mặt?", options: ["Nguồn nhân công ngày càng cạn kiệt.", "Giao lưu kinh tế quốc tế ngày càng tăng.", "Mâu thuẫn xã hội ngày càng gia tăng.", "Sự ra đời các tổ chức liên kết khu vực."], answer: 2, explanation: "Sự phân hóa giàu nghèo sâu sắc, bất bình đẳng và xung đột xã hội ngày càng gia tăng là thách thức lớn." },
+    { id: 51, lesson: "b2", qNum: "Câu 20", question: "Nội dung nào sau đây khẳng định sự thắng lợi của chủ nghĩa tư bản đối với chế độ phong kiến?", options: ["Xóa bỏ sự trên lệch giàu nghèo ở các nước tư bản lớn.", "Cuộc cách mạng công nghiệp bắt đầu từ nước Anh.", "Tệ nạn xã hội ở các nước tư bản không còn diễn ra.", "Giải quyết được tình trạng nghèo đói trên toàn cầu."], answer: 1, explanation: "Cuộc cách mạng công nghiệp tạo ra năng suất lao động vượt trội, khẳng định sự chiến thắng tuyệt đối của phương thức sản xuất tư bản đối với chế độ phong kiến." },
+    { id: 52, lesson: "b2", qNum: "Câu 21", question: "Chính sách xâm lược và mở rộng thuộc địa của các nước tư bản nhằm mục đích đáp ứng nhu cầu", options: ["phát triển khoa học – kĩ thuật.", "giải quyết tình trạng thất nghiệp.", "thu hút nguồn vốn đầu tư bên ngoài.", "nguyên liệu và nguồn nhân công."], answer: 3, explanation: "Thuộc địa là nơi cung cấp nguồn tài nguyên thiên nhiên, nguyên liệu thô giá rẻ và nhân công dồi dào, đồng thời là thị trường tiêu thụ hàng hóa độc quyền." },
+    { id: 53, lesson: "b2", qNum: "Câu 22", question: "Nước Anh được mệnh danh là “đế quốc mà Mặt Trời không bao giờ lặn” vì lí do nào sau đây?", options: ["Nước Anh có hệ thống thuộc địa rộng khắp thế giới.", "Nước Anh luôn phải đối mặt với nạn ngoại xâm.", "Nguồn vốn đầu tư của nước Anh trải khắp toàn cầu.", "Các nước đế quốc tranh nhau đầu tư vào nước Anh."], answer: 0, explanation: "Thuộc địa của Anh trải dài trên khắp các châu lục và các múi giờ, mặt trời luôn chiếu sáng trên ít nhất một vùng lãnh thổ của đế chế Anh." },
+    { id: 54, lesson: "b2", qNum: "Câu 23", question: "Từ nửa sau thế kỉ XIX, Nhật Bản tránh được nguy cơ xâm lược của thực dân phương Tây là nhờ", options: ["liên minh quân sự với các nước tư bản lớn.", "tiến hành cải cách đất nước trên nhiều lĩnh vực.", "tiến hành cuộc nội chiến lật đổ phong kiến.", "sự giúp đỡ của các nước tư bản phương Tây."], answer: 1, explanation: "Nhật Bản đã tiến hành cuộc Duy Tân Minh Trị (1868) cải cách toàn diện trên các lĩnh vực kinh tế, chính trị, giáo dục, quân sự giúp đất nước thoát khỏi số phận thuộc địa." },
+    { id: 55, lesson: "b2", qNum: "Câu 24", question: "Nội dung nào sau đây tạo cơ sở cho bước chuyển biến của chủ nghĩa tư bản từ tự do cạnh tranh sang giai đoạn độc quyền?", options: ["Quá trình hợp tác ở các nước tư bản.", "Sự phát triển của các tổ chức độc quyền.", "Nhiều trung tâm kinh tế - tài chính ra đời.", "Sự ra đời nhiều tổ chức liên kết khu vực."], answer: 1, explanation: "Sự xuất hiện và lớn mạnh của các tổ chức độc quyền (Cartel, Syndicate, Trust...) là nền tảng chi phối chuyển biến sang giai đoạn độc quyền." },
+    { id: 56, lesson: "b2", qNum: "Câu 25", question: "Nội dung nào sau đây phản ánh đúng ý nghĩa của Cách mạng Tân Hợi (1911) ở Trung Quốc?", options: ["Lật đổ ách thống trị của các nước đế quốc.", "Xóa bỏ hoàn toàn tàn dư phong kiến lỗi thời.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Giải quyết triệt để vấn đề ruộng đất cho nông dân."], answer: 2, explanation: "Cách mạng Tân Hợi là cuộc cách mạng dân chủ tư sản mở đường cho chủ nghĩa tư bản phát triển ở Trung Quốc." },
+    { id: 57, lesson: "b2", qNum: "Câu 26", question: "Nội dung nào sau đây phản ánh đúng ý nghĩa của Cách mạng Tân Hợi (1911) ở Trung Quốc?", options: ["Lật đổ ách thống trị của các nước đế quốc.", "Xóa bỏ hoàn toàn tàn dư phong kiến lỗi thời.", "Giải quyết triệt để vấn đề ruộng đất cho nông dân."], answer: 3, explanation: "Ý nghĩa to lớn nhất của Cách mạng Tân Hợi là lật đổ triều đại Mãn Thanh và chế độ quân chủ chuyên chế tồn tại hơn 2000 năm tại Trung Quốc." },
+    { id: 58, lesson: "b2", qNum: "Câu 27", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm tương đồng nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Là cuộc cách mạng tư sản nhưng không triệt để.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 1, explanation: "Cả hai đều là cuộc cách mạng/cải cách mang tính chất tư sản nhưng không triệt để (chưa giải quyết ruộng đất cho nông dân, vẫn còn tàn dư phong kiến)." },
+    { id: 59, lesson: "b2", qNum: "Câu 28", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm tương đồng nào sau đây?", options: ["Mở đường cho chủ nghĩa tư bản phát triển.", "Là cuộc cách mạng dân chủ tư sản triệt để.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 0, explanation: "Cả hai sự kiện đều mở đường và tạo điều kiện thuận lợi cho kinh tế tư bản chủ nghĩa phát triển." },
+    { id: 60, lesson: "b2", qNum: "Câu 29", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm khác biệt nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Đưa đất nước thoát khỏi họa ngoại xâm.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 1, explanation: "Duy Tân Minh Trị giúp Nhật Bản bảo vệ được độc lập và tránh nguy cơ xâm lược, trong khi sau cách mạng Tân Hợi Trung Quốc vẫn là nước nửa thuộc địa nửa phong kiến." },
+    { id: 61, lesson: "b2", qNum: "Câu 30", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm khác biệt nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Giải quyết được vấn đề ruộng đất cho nông dân.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Đưa đất nước trở thành cường quốc tư bản."], answer: 3, explanation: "Nhật Bản phát triển vượt bậc thành cường quốc tư bản đế quốc chủ nghĩa ở châu Á, điều mà cách mạng Tân Hợi chưa làm được cho Trung Quốc." },
+    { id: 62, lesson: "b2", qNum: "Câu 31", question: "Nội dung nào sau đây phản ánh không đúng đặc điểm của chủ nghĩa tư bản độc quyền?", options: ["Tập trung sản xuất và hình thành độc quyền.", "Hình thành các tổ chức độc quyền quốc tế.", "Đầu tư, hợp tác với các nước đang phát triển.", "Tăng cường phân chia lãnh thổ thế giới."], answer: 2, explanation: "Thời kì này các nước đế quốc chủ yếu xâm lược, bóc lột và chia nhau thuộc địa, chứ không phải hợp tác bình đẳng với các nước đang phát triển." },
+    { id: 63, lesson: "b2", qNum: "Câu 32", question: "Yếu tố nào sau đây đưa đến sự chuyển biến của chủ nghĩa tư bản từ tự do cạnh tranh sang giai đoạn độc quyền?", options: ["Sự phát triển của lực lượng sản xuất dưới tác dụng của tiến bộ khoa học - kỹ thuật.", "Sự sáp nhập của các công ty độc quyền và sự ra đời các tổ chức tín dụng quốc tế.", "Sự ra đời và phát triển của các tổ chức liên kết khu vực nhiều nơi trên thế giới.", "Sự hình thành phát triển của các trung tâm kinh tế tài chính nhiều nơi trên thế giới."], answer: 0, explanation: "Những tiến bộ vượt bậc của khoa học - kỹ thuật cuối thế kỉ XIX đã đẩy mạnh năng suất lao động, thúc đẩy tập trung sản xuất và tích tụ tư bản quy mô lớn." },
+    { id: 64, lesson: "b2", qNum: "Câu 33", question: "Nội dung nào sau đây phản ánh đúng về bản chất chủ nghĩa tư bản hiện đại?", options: ["Luôn tìm cách xóa bỏ sự chênh lệch giàu nghèo và những bất công xã hội.", "Theo đuổi lợi nhuận là mục tiêu cao nhất và cuối cùng của các nhà tư bản.", "Đầu tư, hợp tác nhằm mục tiêu thúc đẩy sự phát triển kinh tế toàn cầu.", "Không ngừng đấu tranh đòi quyền lợi chính đáng cho người lao động."], answer: 1, explanation: "Bản chất bóc lột và mục đích tối thượng của chủ nghĩa tư bản (dù ở giai đoạn nào) vẫn luôn là tối đa hóa lợi nhuận cho giai cấp tư sản." },
+    { id: 65, lesson: "b2", qNum: "Câu 34", question: "Nội dung nào sau đây không phải là thách thức mà chủ nghĩa tư bản hiện đại đang phải đối mặt?", options: ["Khủng hoảng kinh tế, tài chính.", "Sự chênh lệch giàu nghèo.", "Tốc độ phát triển kinh tế toàn cầu.", "Tệ nạn xã hội, phân biệt chủng tộc."], answer: 2, explanation: "Tốc độ tăng trưởng kinh tế toàn cầu là xu thế phát triển chung, không phải là vấn đề thách thức tiêu cực mang tính hệ thống của CNTB." }
 ];
 
-// Xuất ra biến toàn cục nếu chạy môi trường browser thuần
+// Chuyển đổi định dạng phù hợp với QuizMaster
+const QUIZ_QUESTIONS = rawQuestions.map(q => ({
+    id: q.id,
+    category: q.lesson === 'b1' ? 'Bài 1: Cách mạng tư sản' : 'Bài 2: Sự xác lập CNTB',
+    question: q.question,
+    options: q.options,
+    correct: q.answer,
+    isMultiple: false,
+    explanation: q.explanation
+}));
+
 if (typeof window !== 'undefined') {
     window.QUIZ_QUESTIONS = QUIZ_QUESTIONS;
 }
