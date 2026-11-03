@@ -1,4 +1,4 @@
-/**
+﻿/**
  * questions.js - Đề cương ôn tập trắc nghiệm Lịch Sử 11 - Giữa Kì 1
  * Trọn bộ 74 câu hỏi chuẩn đề cương:
  * - PHẦN I: 65 câu trắc nghiệm nhiều lựa chọn (A, B, C, D)
