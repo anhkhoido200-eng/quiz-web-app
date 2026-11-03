@@ -25,7 +25,7 @@ class QuizApp {
         this.timerInterval = null;
 
         // Dữ liệu câu hỏi & Trạng thái làm bài
-        this.allQuestions = window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : [];
+        this.allQuestions = this.normalizeQuestions(window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : []);
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
@@ -44,6 +44,21 @@ class QuizApp {
         };
 
         this.init();
+    }
+
+    /**
+     * Chuẩn hóa dữ liệu câu hỏi (đảm bảo luôn có cả correct và answer hợp lệ)
+     */
+    normalizeQuestions(list) {
+        if (!Array.isArray(list)) return [];
+        return list.map(q => {
+            if (q.qType !== 'short_answer' && q.qType !== 'tf_group' && q.qType !== 'essay') {
+                const c = q.correct !== undefined ? q.correct : q.answer;
+                q.correct = c;
+                q.answer = c;
+            }
+            return q;
+        });
     }
 
     async init() {
@@ -94,7 +109,7 @@ class QuizApp {
             if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (43 câu / 52 ý)";
             if (badgeEl) badgeEl.textContent = "Vật Lí 11 (43 câu / 52 ý)";
 
-            this.allQuestions = window.PHYSICS_QUESTIONS ? [...window.PHYSICS_QUESTIONS] : [];
+            this.allQuestions = this.normalizeQuestions(window.PHYSICS_QUESTIONS ? [...window.PHYSICS_QUESTIONS] : []);
         } else if (subj === 'geography') {
             if (btnGeography) {
                 btnGeography.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-emerald-600/25 border-emerald-500 text-white shadow-md shadow-emerald-600/20";
@@ -103,7 +118,7 @@ class QuizApp {
             if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (52 câu trắc nghiệm & 4 câu tự luận)";
             if (badgeEl) badgeEl.textContent = "Địa Lí 11 (52 câu / 67 ý)";
 
-            this.allQuestions = window.GEOGRAPHY_QUESTIONS ? [...window.GEOGRAPHY_QUESTIONS] : [];
+            this.allQuestions = this.normalizeQuestions(window.GEOGRAPHY_QUESTIONS ? [...window.GEOGRAPHY_QUESTIONS] : []);
         } else {
             if (btnHistory) {
                 btnHistory.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/20";
@@ -112,7 +127,7 @@ class QuizApp {
             if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (74 câu / 101 ý)";
             if (badgeEl) badgeEl.textContent = "Lịch Sử 11 (74 câu / 101 ý)";
 
-            this.allQuestions = window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : [];
+            this.allQuestions = this.normalizeQuestions(window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : []);
         }
 
         const topSubjTitle = document.getElementById('quiz-top-subject-title');
@@ -285,8 +300,8 @@ class QuizApp {
             try {
                 const list = await window.dbService.fetchQuestionsOnline();
                 if (list && list.length > 0) {
-                    this.allQuestions = list;
-                    window.QUIZ_QUESTIONS = [...list];
+                    this.allQuestions = this.normalizeQuestions(list);
+                    window.QUIZ_QUESTIONS = [...this.allQuestions];
                     this.updateTotalQuestionDisplay();
                     this.renderAllQuestions();
                     this.renderAdminQuestionsList();
@@ -698,13 +713,14 @@ class QuizApp {
         const letters = ['A', 'B', 'C', 'D'];
         const userAnswer = this.userAnswers[q.id];
         const isAnswered = userAnswer !== undefined;
-        const isCorrect = isAnswered && (userAnswer === q.correct);
+        const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+        const isCorrect = isAnswered && (userAnswer === qCorrect);
 
         let optionsHtml = '';
         (q.options || []).forEach((optText, optIdx) => {
             const letter = letters[optIdx];
             const isChosen = userAnswer === optIdx;
-            const isTheRightOne = optIdx === q.correct;
+            const isTheRightOne = optIdx === qCorrect;
 
             let btnClasses = "w-full text-left p-3.5 rounded-xl border transition-all duration-200 flex items-start gap-3 mb-2.5 text-xs sm:text-sm ";
 
@@ -753,12 +769,13 @@ class QuizApp {
 
         let explanationBox = '';
         if (isAnswered) {
+            const displayLetter = letters[qCorrect] !== undefined ? letters[qCorrect] : (q.options ? q.options[qCorrect] : '');
             explanationBox = `
                 <div class="mt-4 p-4 rounded-xl ${isCorrect ? 'bg-emerald-950/40 border-emerald-500/40' : 'bg-rose-950/40 border-rose-500/40'} border text-xs leading-relaxed space-y-1.5 animate-fadeIn">
                     <div class="flex items-center gap-2 font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}">
                         <i class="fa-solid ${isCorrect ? 'fa-check-circle' : 'fa-circle-xmark'}"></i>
                         <span>${isCorrect ? 'CHÍNH XÁC!' : 'CHƯA CHÍNH XÁC!'}</span>
-                        <span class="text-slate-300 font-normal ml-2">Đáp án đúng là: <strong class="text-emerald-400 font-bold">${letters[q.correct]}</strong></span>
+                        <span class="text-slate-300 font-normal ml-2">Đáp án đúng là: <strong class="text-emerald-400 font-bold">${displayLetter}</strong></span>
                     </div>
                     ${q.explanation ? `<div class="text-slate-300 pt-1 border-t border-slate-700/60"><strong class="text-indigo-300">Giải thích:</strong> ${this.escapeHtml(q.explanation)}</div>` : ''}
                 </div>
@@ -1014,7 +1031,8 @@ class QuizApp {
         } else {
             const ans = this.userAnswers[q.id];
             if (ans === undefined) return false;
-            return ans !== q.correct;
+            const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+            return ans !== qCorrect;
         }
     }
 
@@ -1058,7 +1076,8 @@ class QuizApp {
                 totalItems++;
                 if (this.userAnswers[q.id] !== undefined) {
                     attemptedCount++;
-                    if (this.userAnswers[q.id] === q.correct) {
+                    const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+                    if (this.userAnswers[q.id] === qCorrect) {
                         correctCount++;
                     } else {
                         wrongCount++;
@@ -1190,7 +1209,8 @@ class QuizApp {
                 });
             } else {
                 totalItems++;
-                if (this.userAnswers[q.id] === q.correct) {
+                const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+                if (this.userAnswers[q.id] === qCorrect) {
                     correctCount++;
                 }
             }
@@ -1288,7 +1308,10 @@ class QuizApp {
             } else {
                 const letters = ['A', 'B', 'C', 'D'];
                 const userAns = this.userAnswers[q.id];
-                const isRight = userAns === q.correct;
+                const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+                const isRight = userAns === qCorrect;
+                const rightLetter = letters[qCorrect] !== undefined ? letters[qCorrect] : (q.options ? q.options[qCorrect] : '');
+                const rightText = (q.options && q.options[qCorrect]) ? q.options[qCorrect] : '';
                 card.innerHTML = `
                     <div class="flex items-center justify-between font-bold">
                         <span class="text-indigo-300">Câu ${q.id}:</span>
@@ -1296,7 +1319,7 @@ class QuizApp {
                     </div>
                     <div class="text-slate-200">${this.escapeHtml(q.question)}</div>
                     <div class="pt-1 text-slate-300">
-                        Đáp án đúng: <strong class="text-emerald-400">${letters[q.correct]}. ${this.escapeHtml((q.options || [])[q.correct] || '')}</strong>
+                        Đáp án đúng: <strong class="text-emerald-400">${rightLetter}${rightText ? `. ${this.escapeHtml(rightText)}` : ''}</strong>
                     </div>
                     ${q.explanation ? `<div class="text-slate-400 italic pt-1 border-t border-slate-800">Giải thích: ${this.escapeHtml(q.explanation)}</div>` : ''}
                 `;
@@ -1479,7 +1502,8 @@ class QuizApp {
             } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 answerSnippet = `<span class="text-amber-300 font-semibold">[Đúng - Sai: ${q.statements.length} ý]</span>`;
             } else {
-                answerSnippet = `<span class="text-emerald-400 font-semibold">Đáp án đúng: ${letters[q.correct] || 'A'}</span>`;
+                const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
+                answerSnippet = `<span class="text-emerald-400 font-semibold">Đáp án đúng: ${letters[qCorrect] || 'A'}</span>`;
             }
 
             item.innerHTML = `
@@ -1546,8 +1570,9 @@ class QuizApp {
         document.getElementById('edit-q-explanation').value = q.explanation || "";
 
         const radios = document.querySelectorAll('input[name="edit-q-correct"]');
+        const qCorrect = (q.correct !== undefined ? q.correct : q.answer);
         radios.forEach((r, idx) => {
-            r.checked = (idx === q.correct);
+            r.checked = (idx === qCorrect);
         });
 
         const modal = document.getElementById('modal-question-editor');

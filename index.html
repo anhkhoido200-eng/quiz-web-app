@@ -43,7 +43,7 @@
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- CSS tùy chỉnh -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
@@ -444,10 +444,10 @@
     </div>
 
     <!-- MODAL 2: BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN (ADMIN DASHBOARD) -->
-    <div id="modal-admin-dashboard" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4">
-        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div id="modal-admin-dashboard" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4 overflow-hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full h-[88vh] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <!-- Header Modal -->
-            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between shrink-0">
+            <div class="p-4 bg-slate-800/95 border-b border-slate-700 flex items-center justify-between shrink-0 select-none">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-crown"></i>
@@ -468,16 +468,16 @@
             </div>
 
             <!-- Thanh điều hướng 3 Tab -->
-            <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold overflow-x-auto shrink-0">
-                <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0">
+            <div class="bg-slate-800/80 px-4 pt-2.5 border-b border-slate-700 flex items-end gap-2 text-xs font-semibold overflow-x-auto shrink-0 select-none no-scrollbar min-h-[48px]">
+                <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-file-lines"></i>
                     <span>Ngân Hàng Câu Hỏi (<span id="admin-badge-q-count">74</span>)</span>
                 </button>
-                <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0">
+                <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-desktop"></i>
                     <span>Giám Sát Máy & Đăng Nhập (<span id="admin-badge-login-count">0</span>)</span>
                 </button>
-                <button id="admin-tab-btn-ips" onclick="app.switchAdminTab('ips')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0">
+                <button id="admin-tab-btn-ips" onclick="app.switchAdminTab('ips')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-earth-americas text-emerald-400"></i>
                     <span>Cấp Quyền IP Môn Địa (<span id="admin-badge-geo-count">0</span>)</span>
                 </button>
@@ -944,10 +944,10 @@
     </div>
 
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ (Kèm tham số v để phá cache trình duyệt triệt để) -->
-    <script src="questions.js?v=2.8"></script>
-    <script src="physics_questions.js?v=2.8"></script>
-    <script src="geography_questions.js?v=2.8"></script>
-    <script src="supabase.js?v=2.8"></script>
-    <script src="app.js?v=2.8"></script>
+    <script src="questions.js?v=3.0"></script>
+    <script src="physics_questions.js?v=3.0"></script>
+    <script src="geography_questions.js?v=3.0"></script>
+    <script src="supabase.js?v=3.0"></script>
+    <script src="app.js?v=3.0"></script>
 </body>
 </html>

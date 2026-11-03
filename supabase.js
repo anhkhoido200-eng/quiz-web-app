@@ -87,6 +87,22 @@ class DatabaseService {
         };
     }
 
+    /**
+     * Tạo mã UUID v4 hợp lệ theo chuẩn RFC4122 (tránh lỗi null value in column "id" trên PostgreSQL)
+     */
+    generateUUID() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            try {
+                return crypto.randomUUID();
+            } catch (e) {}
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
     // =========================================================================
     // PHẦN 1: GHI NHẬN ĐỊA CHỈ IP, THIẾT BỊ & TỰ ĐỘNG NHẬN DIỆN TÊN HỌC SINH
     // =========================================================================
@@ -130,9 +146,11 @@ class DatabaseService {
         // 2. Lưu lên Supabase Cloud để máy Admin có thể xem được thời gian thực
         if (this.isSupabaseActive && this.client) {
             try {
+                const cloudId = this.generateUUID();
                 const { data: inserted, error } = await this.client
                     .from('quiz_logins')
                     .insert([{
+                        id: cloudId,
                         player_name: cleanName,
                         ip_address: cleanIp,
                         device_info: cleanDevice,
@@ -145,6 +163,9 @@ class DatabaseService {
 
                 if (!error && inserted && inserted[0]) {
                     return inserted[0].id;
+                }
+                if (error) {
+                    console.warn("[DatabaseService] Lỗi insert quiz_logins:", error.message);
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Chưa lưu được lên Supabase quiz_logins (sẽ dùng bản local):", err);
@@ -630,7 +651,9 @@ class DatabaseService {
         if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
 
         const nowIso = new Date().toISOString();
+        const noticeId = this.generateUUID();
         const noticeData = {
+            id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
             ip_address: targetIp,
             device_info: '5s',
@@ -643,7 +666,7 @@ class DatabaseService {
         // 1. Lưu LocalStorage để có thể nhận ngay trên cùng máy
         try {
             localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: 'notice_' + Date.now(),
+                id: noticeId,
                 message: cleanMsg,
                 targetIp: targetIp,
                 timestamp: Date.now()

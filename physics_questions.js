@@ -13,6 +13,7 @@ const rawPhysicsMCQ = [
         question: "Khoảng thời gian để vật thực hiện được một dao động toàn phần gọi là",
         options: ["tần số.", "chu kì.", "biên độ.", "tần số góc."],
         answer: 1,
+        correct: 1,
         explanation: "Chu kì dao động (kí hiệu T, đơn vị giây s) là khoảng thời gian để vật thực hiện được một dao động toàn phần."
     },
     {
@@ -21,6 +22,7 @@ const rawPhysicsMCQ = [
         question: "Trong dao động điều hòa thì nhóm đại lượng nào sau đây không thay đổi theo thời gian?",
         options: ["Li độ và thời gian.", "Biên độ và tần số góc.", "Li độ và pha ban đầu.", "Tần số và pha dao động."],
         answer: 1,
+        correct: 1,
         explanation: "Trong dao động điều hòa, biên độ A, tần số góc ω, chu kì T và tần số f là các đại lượng hằng số không đổi theo thời gian."
     },
     {
@@ -34,6 +36,7 @@ const rawPhysicsMCQ = [
             "không phụ thuộc vào các yếu tố bên ngoài."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Dao động tự do là dao động mà chu kì chỉ phụ thuộc vào các đặc tính của hệ, không phụ thuộc vào các yếu tố bên ngoài."
     },
     {
@@ -47,6 +50,7 @@ const rawPhysicsMCQ = [
             "Chuyển động của ôtô trên đường."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Dao động cơ học là chuyển động có giới hạn trong không gian, lặp đi lặp lại nhiều lần quanh một vị trí cân bằng. Chuyển động của ôtô trên đường là chuyển động tịnh tiến dời chỗ."
     },
     {
@@ -55,6 +59,7 @@ const rawPhysicsMCQ = [
         question: "Pít-tông của một động cơ đốt trong dao động trên một đoạn thẳng dài 16 cm và làm cho khuỷu của động cơ quay đều. Biên độ dao động của một điểm trên mặt pít-tông bằng",
         options: ["16 cm.", "8 cm.", "4 cm.", "32 cm."],
         answer: 1,
+        correct: 1,
         explanation: "Đoạn thẳng mà vật dao động qua lại chính là chiều dài quỹ đạo L = 16 cm. Biên độ dao động A = L / 2 = 16 / 2 = 8 cm."
     },
     {
@@ -63,6 +68,7 @@ const rawPhysicsMCQ = [
         question: "Cho hai dao động điều hòa cùng tần số có pha ban đầu lần lượt φ₁ và φ₂, độ lệch pha của hai dao động này là",
         options: ["Δφ = φ₂ - φ₁.", "Δφ = |φ₂ - φ₁|.", "Δφ = φ₁ · φ₂.", "Δφ = φ₂ / φ₁."],
         answer: 1,
+        correct: 1,
         explanation: "Độ lệch pha giữa hai dao động cùng tần số được tính bằng công thức: Δφ = |φ₂ - φ₁|."
     },
     {
@@ -71,6 +77,7 @@ const rawPhysicsMCQ = [
         question: "Một vật dao động điều hòa trên trục Ox có đồ thị li độ theo thời gian với đỉnh cao nhất đạt 2,0 cm. Biên độ của vật dao động bằng",
         options: ["1,0 cm.", "2,0 cm.", "4,0 cm.", "3,0 cm."],
         answer: 1,
+        correct: 1,
         explanation: "Biên độ A là giá trị cực đại của li độ x: A = x_max = 2,0 cm."
     },
     {
@@ -79,6 +86,7 @@ const rawPhysicsMCQ = [
         question: "Một chất điểm dao động điều hòa, gia tốc a và li độ x của chất điểm liên hệ với nhau theo hệ thức a = -16π²x (cm/s²). Chu kỳ của dao động bằng",
         options: ["3 s.", "0,5 s.", "2 s.", "0,25 s."],
         answer: 1,
+        correct: 1,
         explanation: "Ta có a = -ω²x => ω² = 16π² => ω = 4π rad/s. Chu kì T = 2π / ω = 2π / (4π) = 0,5 s."
     },
     {
@@ -87,6 +95,7 @@ const rawPhysicsMCQ = [
         question: "Câu 9a: Một con lắc lò xo có khối lượng vật nhỏ là m dao động điều hòa theo phương ngang với phương trình x = A·cos(ωt). Mốc tính thế năng ở vị trí cân bằng. Cơ năng của con lắc là",
         options: ["W = mωA².", "W = ½ mωA².", "W = mω²A².", "W = ½ mω²A²."],
         answer: 3,
+        correct: 3,
         explanation: "Cơ năng của con lắc lò xo dao động điều hòa: W = ½ kA² = ½ mω²A²."
     },
     {
@@ -95,6 +104,7 @@ const rawPhysicsMCQ = [
         question: "Câu 9b: Vật có đồ thị li độ dao động có biên độ A = 2 cm và chu kì T = 0,4 s. Ở thời điểm t = 0,2 s, vật có tốc độ dao động là",
         options: ["5π cm/s.", "-5π cm/s.", "10π cm/s.", "-10π cm/s."],
         answer: 2,
+        correct: 2,
         explanation: "Tần số góc ω = 2π / T = 2π / 0,4 = 5π rad/s. Tốc độ dao động cực đại v_max = ωA = 5π · 2 = 10π cm/s."
     },
     {
@@ -108,6 +118,7 @@ const rawPhysicsMCQ = [
             "ω²/v² + a²/ω⁴ = A²."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Hệ thức độc lập thời gian giữa vận tốc v và gia tốc a: (v/ω)² + (a/ω²)² = A² <=> v²/ω² + a²/ω⁴ = A²."
     },
     {
@@ -116,6 +127,7 @@ const rawPhysicsMCQ = [
         question: "Câu 11: Một vật dao động điều hòa có gia tốc biến đổi theo phương trình a = -250·cos(5πt) cm/s². Lấy π² = 10. Gia tốc cực đại của vật có độ lớn là",
         options: ["25 cm/s².", "0,1π m/s².", "250 cm/s².", "10 cm/s²."],
         answer: 2,
+        correct: 2,
         explanation: "Phương trình gia tốc a = -a_max · cos(ωt) => Độ lớn gia tốc cực đại a_max = 250 cm/s²."
     },
     {
@@ -129,6 +141,7 @@ const rawPhysicsMCQ = [
             "Biên độ dao động giảm dần theo thời gian."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Dao động tắt dần là dao động có biên độ và cơ năng giảm dần theo thời gian do ma sát và lực cản môi trường."
     },
     {
@@ -142,6 +155,7 @@ const rawPhysicsMCQ = [
             "Dao động cưỡng bức có tần số luôn bằng tần số riêng của hệ dao động."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Phát biểu D sai vì dao động cưỡng bức có tần số luôn bằng tần số của lực cưỡng bức f = f_cb, chỉ khi có cộng hưởng thì f_cb mới bằng f₀."
     },
     {
@@ -155,6 +169,7 @@ const rawPhysicsMCQ = [
             "có thêm một lực cưỡng bức tác dụng vào hệ."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Hiện tượng cộng hưởng xảy ra khi tần số của lực cưỡng bức bằng tần số dao động riêng của hệ (f = f₀), làm biên độ dao động đạt giá trị cực đại."
     },
     {
@@ -163,6 +178,7 @@ const rawPhysicsMCQ = [
         question: "Câu 15: Một vật dao động điều hoà, mỗi chu kỳ dao động vật đi qua vị trí cân bằng",
         options: ["một lần.", "bốn lần.", "ba lần.", "hai lần."],
         answer: 3,
+        correct: 3,
         explanation: "Trong 1 chu kì dao động toàn phần, vật chuyển động qua vị trí cân bằng đúng 2 lần (1 lần theo chiều dương và 1 lần theo chiều âm)."
     },
     {
@@ -171,6 +187,7 @@ const rawPhysicsMCQ = [
         question: "Câu 16: Một vật dao động điều hòa theo phương trình x = 6·cos(4πt) (cm). Biên độ dao động của vật là",
         options: ["A = 4 cm.", "A = 6 cm.", "A = -6 cm.", "A = 12 m."],
         answer: 1,
+        correct: 1,
         explanation: "Theo phương trình x = A·cos(ωt + φ), biên độ A = 6 cm (biên độ luôn là số dương)."
     },
     {
@@ -184,6 +201,7 @@ const rawPhysicsMCQ = [
             "Vận tốc luôn sớm pha π/2 so với li độ."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Vận tốc và gia tốc vuông pha với nhau (gia tốc sớm pha π/2 so với vận tốc), không phải ngược pha."
     },
     {
@@ -197,6 +215,7 @@ const rawPhysicsMCQ = [
             "vật đang chuyển động ngược chiều dương và vận tốc có giá trị âm."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Đi từ biên dương x = +A về VTCB x = 0 là chuyển động ngược chiều dương của trục tọa độ, nên vận tốc v < 0."
     },
     {
@@ -210,6 +229,7 @@ const rawPhysicsMCQ = [
             "f = (1 / π) · √(ℓ / g)."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Tần số dao động của con lắc đơn: f = 1 / T = (1 / 2π) · √(g / ℓ)."
     },
     {
@@ -223,6 +243,7 @@ const rawPhysicsMCQ = [
             "chu kỳ phụ thuộc vào đặc tính của hệ và không phụ thuộc vào yếu tố bên ngoài."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Dao động tự do có chu kì chỉ phụ thuộc vào các đặc tính cấu tạo của hệ và hoàn toàn không phụ thuộc vào các yếu tố bên ngoài."
     },
     {
@@ -231,6 +252,7 @@ const rawPhysicsMCQ = [
         question: "Câu 21: Giảm xóc của ôtô là ứng dụng của dao động",
         options: ["tắt dần.", "tự do.", "duy trì.", "cưỡng bức."],
         answer: 0,
+        correct: 0,
         explanation: "Bộ phận giảm xóc ôtô, xe máy ứng dụng dao động tắt dần nhanh bằng cách tăng ma sát cản trở trong ống dầu piston để dập tắt rung lắc."
     },
     {
@@ -239,6 +261,7 @@ const rawPhysicsMCQ = [
         question: "Câu 22: Một lá thép dao động với chu kì T = 80 ms thì có tần số bằng",
         options: ["10 Hz.", "12,5 Hz.", "15 Hz.", "17,2 Hz."],
         answer: 1,
+        correct: 1,
         explanation: "T = 80 ms = 0,08 s. Tần số f = 1 / T = 1 / 0,08 = 12,5 Hz."
     },
     {
@@ -247,6 +270,7 @@ const rawPhysicsMCQ = [
         question: "Câu 23: Khi thay đổi cách kích thích ban đầu để vật dao động thì đại lượng nào sau đây thay đổi?",
         options: ["tần số và biên độ.", "pha ban đầu và biên độ.", "biên độ.", "tần số và pha ban đầu."],
         answer: 1,
+        correct: 1,
         explanation: "Tần số và chu kì phụ thuộc vào hệ; cách kích thích ban đầu (kéo lệch bao nhiêu, truyền vận tốc ban đầu) quyết định biên độ A và pha ban đầu φ."
     },
     {
@@ -255,6 +279,7 @@ const rawPhysicsMCQ = [
         question: "Câu 24: Một chất điểm dao động điều hoà trên quỹ đạo đoạn thẳng MN = 30 cm, biên độ dao động của vật là",
         options: ["A = 30 cm.", "A = 15 cm.", "A = -15 cm.", "A = 7,5 cm."],
         answer: 1,
+        correct: 1,
         explanation: "Chiều dài quỹ đạo L = 2A = 30 cm => Biên độ A = 30 / 2 = 15 cm."
     },
     {
@@ -263,6 +288,7 @@ const rawPhysicsMCQ = [
         question: "Câu 25: Một con lắc lò xo gồm một vật nhỏ khối lượng m và lò xo có độ cứng k. Con lắc dao động điều hòa với tần số góc là",
         options: ["ω = 2π√(m/k).", "ω = 2π√(k/m).", "ω = √(m/k).", "ω = √(k/m)."],
         answer: 3,
+        correct: 3,
         explanation: "Tần số góc của con lắc lò xo: ω = √(k / m)."
     },
     {
@@ -276,6 +302,7 @@ const rawPhysicsMCQ = [
             "gần nhau nhất trên cùng một phương truyền sóng mà dao động tại hai điểm đó cùng pha."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Định nghĩa: Bước sóng λ là khoảng cách giữa hai điểm gần nhau nhất trên cùng một phương truyền sóng dao động cùng pha."
     },
     {
@@ -284,6 +311,7 @@ const rawPhysicsMCQ = [
         question: "Câu 27: Một sóng cơ có tần số f, truyền trên dây đàn hồi với tốc độ truyền sóng v và bước sóng λ. Hệ thức đúng là",
         options: ["v = λf.", "v = f / λ.", "v = λ / f.", "v = 2πfλ."],
         answer: 0,
+        correct: 0,
         explanation: "Tốc độ truyền sóng: v = λ / T = λf."
     },
     {
@@ -297,6 +325,7 @@ const rawPhysicsMCQ = [
             "Quá trình truyền sóng là quá trình truyền các phần tử vật chất."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Sóng cơ chỉ truyền trạng thái và năng lượng dao động; các phần tử vật chất chỉ dao động tại chỗ quanh vị trí cân bằng, không bị truyền đi."
     },
     {
@@ -310,6 +339,7 @@ const rawPhysicsMCQ = [
             "Li độ và gia tốc của vật."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Khi bỏ qua ma sát, cơ năng toàn phần W = Wt + Wđ = ½ kA² = hằng số, luôn được bảo toàn."
     },
     {
@@ -318,6 +348,7 @@ const rawPhysicsMCQ = [
         question: "Câu 30: Một vật có khối lượng m = 200 g dao động điều hoà với tần số góc ω = 2π rad/s và biên độ A = 10 cm. Tại thời điểm vật có tốc độ v = 10 cm/s, thế năng (Wt) của vật nhận giá trị nào sau đây (lấy π² = 10)?",
         options: ["0,039 J.", "0,040 J.", "0,380 J.", "0,019 J."],
         answer: 0,
+        correct: 0,
         explanation: "Đổi: m = 0,2 kg; A = 0,1 m; v = 0,1 m/s. Cơ năng W = ½ mω²A² = ½ · 0,2 · (4π²) · 0,01 = 0,04 J. Động năng Wđ = ½ mv² = ½ · 0,2 · 0,01 = 0,001 J. Thế năng Wt = W - Wđ = 0,04 - 0,001 = 0,039 J."
     }
 ];

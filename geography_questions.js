@@ -1,4 +1,4 @@
-/**
+﻿/**
  * geography_questions.js - Đề cương ôn tập kiểm tra Giữa Học Kì I - Năm học 2026 – 2027
  * Môn: Địa lí, Lớp 11 (Trung tâm GDNN - GDTX Dầu Tiếng)
  * 
@@ -22,6 +22,7 @@ const rawGeographyMCQ = [
             "Quy mô GDP vượt trội nhóm nước phát triển."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Các nước đang phát triển chiếm phần lớn số lượng quốc gia trên thế giới nhưng phần lớn có quy mô GDP ở mức trung bình và thấp so với các nước phát triển."
     },
     {
@@ -35,6 +36,7 @@ const rawGeographyMCQ = [
             "Tỉ trọng của nông nghiệp còn rất lớn."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Nhóm nước phát triển có GNI bình quân đầu người ở mức cao (thường trên 13.000 USD/người/năm), cơ cấu kinh tế hiện đại với ngành dịch vụ chiếm tỉ trọng rất cao."
     },
     {
@@ -48,6 +50,7 @@ const rawGeographyMCQ = [
             "Chỉ số phát triển con người, cơ cấu ngành kinh tế và sức mạnh quân sự."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Các tổ chức quốc tế (LHQ, WB) phân chia các nhóm nước dựa trên 3 tiêu chí chủ yếu: Thu nhập bình quân (GNI/người), Cơ cấu ngành kinh tế và Chỉ số phát triển con người (HDI)."
     },
     {
@@ -61,6 +64,7 @@ const rawGeographyMCQ = [
             "Tuổi thọ trung bình khá thấp."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Các nước phát triển có hệ thống giáo dục và y tế tiên tiến, tuổi thọ cao nên chỉ số phát triển con người (HDI) đạt mức rất cao (thường từ 0,800 trở lên)."
     },
     {
@@ -74,6 +78,7 @@ const rawGeographyMCQ = [
             "Sử dụng nhiều lao động nhưng có tỉ đóng góp vào GDP nhỏ."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Nông nghiệp ở các nước phát triển được cơ giới hóa và ứng dụng công nghệ cao nên sử dụng rất ít lao động và tỉ lệ đóng góp vào GDP rất nhỏ (thường chỉ 1 - 2%)."
     },
     {
@@ -87,6 +92,7 @@ const rawGeographyMCQ = [
             "Tốc độ tăng trưởng nền kinh tế ở mức rất cao."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Các nước phát triển chiếm tỉ trọng áp đảo trong tổng giá trị xuất khẩu hàng hóa và dịch vụ chất lượng cao của toàn thế giới."
     },
 
@@ -102,6 +108,7 @@ const rawGeographyMCQ = [
             "Thị trường chung Nam Mỹ."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Tổ chức Thương mại Thế giới (WTO) là tổ chức thương mại duy nhất trên quy mô toàn cầu, thiết lập các hiệp định và nguyên tắc thương mại đa phương."
     },
     {
@@ -115,6 +122,7 @@ const rawGeographyMCQ = [
             "Áp dụng rộng rãi các tiêu chuẩn thống nhất trên toàn thế giới."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Biểu hiện đặc trưng của khu vực hóa kinh tế là sự ra đời và phát triển của các tổ chức liên kết kinh tế khu vực (như ASEAN, EU, NAFTA/USMCA, MERCOSUR,...)."
     },
     {
@@ -128,6 +136,7 @@ const rawGeographyMCQ = [
             "chính trị."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Toàn cầu hóa diễn ra mạnh mẽ trong các lĩnh vực kinh tế, văn hóa, xã hội, khoa học kĩ thuật... nhưng mỗi quốc gia vẫn duy trì độc lập chủ quyền chính trị riêng biệt."
     },
     {
@@ -141,6 +150,7 @@ const rawGeographyMCQ = [
             "Thị trường chung Nam Mỹ (MERCOSUR)."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Ngân hàng Thế giới (WBG) và Quỹ Tiền tệ Quốc tế (IMF) hoạt động trên phạm vi toàn cầu, hỗ trợ tín dụng và phát triển kinh tế cho các nước trên khắp thế giới."
     },
     {
@@ -154,6 +164,7 @@ const rawGeographyMCQ = [
             "Các tổ chức liên kết khu vực được ra đời."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Việc 'Các tổ chức liên kết khu vực được ra đời' là biểu hiện của xu hướng khu vực hóa kinh tế, không phải toàn cầu hóa kinh tế."
     },
     {
@@ -167,6 +178,7 @@ const rawGeographyMCQ = [
             "Giảm vai trò quản lí vĩ mô của chính quyền các nước đối với các dòng hàng hóa."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Áp dụng tiêu chuẩn chung (ISO, tiêu chuẩn an toàn, chất lượng) giúp các bộ phận sản phẩm sản xuất ở nhiều nước tương thích hoàn hảo và dễ dàng liên kết chuỗi giá trị toàn cầu."
     },
 
@@ -182,6 +194,7 @@ const rawGeographyMCQ = [
             "Liên hợp quốc."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Mục tiêu và nhiệm vụ hàng đầu của Liên hợp quốc (UN) là duy trì hòa bình, an ninh quốc tế và ngăn chặn xung đột vũ trang trên thế giới."
     },
     {
@@ -195,6 +208,7 @@ const rawGeographyMCQ = [
             "1975."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Liên hợp quốc được chính thức thành lập vào ngày 24-10-1945 sau khi Hiến chương Liên hợp quốc có hiệu lực."
     },
     {
@@ -208,6 +222,7 @@ const rawGeographyMCQ = [
             "1998."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Việt Nam chính thức kế tục tư cách thành viên tại Quỹ Tiền tệ Quốc tế (IMF) từ năm 1976."
     },
     {
@@ -221,6 +236,7 @@ const rawGeographyMCQ = [
             "an ninh tài nguyên."
         ],
         answer: 1,
+        correct: 1,
         explanation: "An ninh nguồn nước là việc bảo đảm về số lượng, chất lượng nước để phục vụ dân sinh và phát triển kinh tế - xã hội bền vững trong mọi hoàn cảnh."
     },
     {
@@ -234,6 +250,7 @@ const rawGeographyMCQ = [
             "Bắc Mĩ."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Đông Phi là khu vực chịu nạn đói và mất an ninh lương thực nghiêm trọng nhất thế giới do hạn hán kéo dài, xung đột vũ trang và nghèo đói."
     },
     {
@@ -247,6 +264,7 @@ const rawGeographyMCQ = [
             "Đẩy nhanh tốc độ biến đổi khí hậu."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Mất an ninh lương thực trực tiếp gây suy dinh dưỡng, bệnh tật, giảm sức lao động và làm suy giảm nghiêm trọng chất lượng cuộc sống của con người."
     },
     {
@@ -260,6 +278,7 @@ const rawGeographyMCQ = [
             "hạn chế tốt việc sử dụng các nguồn năng lượng."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Chuyển dịch sang các nguồn năng lượng tái tạo (mặt trời, gió, thủy triều, sinh khối...) là giải pháp căn cơ và bền vững nhất để thay thế nhiên liệu hóa thạch đang dần cạn kiệt."
     },
     {
@@ -273,6 +292,7 @@ const rawGeographyMCQ = [
             "Tránh xảy ra tranh chấp biên giới, lãnh thổ các quốc gia."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Hòa bình là điều kiện tiên quyết để ổn định xã hội, thúc đẩy phát triển kinh tế toàn cầu và đem lại sự phồn vinh, hạnh phúc cho nhân loại."
     },
     {
@@ -286,6 +306,7 @@ const rawGeographyMCQ = [
             "chuyển đổi toàn bộ diện tích trồng lúa nước sang phát triển công nghiệp khai khoáng."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Việt Nam cần tăng cường đối thoại, hợp tác và giám sát việc chia sẻ nguồn nước công bằng thông qua Ủy hội sông Mê Công (MRC) cùng các cơ chế quốc tế liên quan."
     },
     {
@@ -299,6 +320,7 @@ const rawGeographyMCQ = [
             "Nền kinh tế của thế giới bị suy thoái nhanh."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Các vấn đề an ninh toàn cầu (an ninh năng lượng, lương thực, nguồn nước, an ninh mạng, biến đổi khí hậu...) không biên giới và là thách thức chung đối với mọi quốc gia."
     },
 
@@ -314,6 +336,7 @@ const rawGeographyMCQ = [
             "Rừng lá kim trên vùng núi cao An-đét."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Rừng mưa nhiệt đới A-ma-dôn là khu rừng nhiệt đới lớn nhất hành tinh, cung cấp khoảng 20% lượng oxy và lưu trữ lượng carbon khổng lồ cho Trái Đất."
     },
     {
@@ -327,6 +350,7 @@ const rawGeographyMCQ = [
             "Mê-hi-cô, Trung và Bắc Mỹ, kênh đào Xuy-ê và kênh Pa-na-ma."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Khu vực Mỹ Latinh bao gồm: Mê-hi-cô (Bắc Mỹ), eo đất Trung Mỹ, toàn bộ lục địa Nam Mỹ và các quần đảo trong vùng biển Ca-ri-bê."
     },
     {
@@ -340,6 +364,7 @@ const rawGeographyMCQ = [
             "quần đảo Ăng-ti nhỏ."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Phía bắc của khu vực Mỹ Latinh (cụ thể là Mê-hi-cô) tiếp giáp trực tiếp với Hợp chủng quốc Hoa Kỳ (thị trường tiêu thụ lớn nhất thế giới)."
     },
     {
@@ -353,6 +378,7 @@ const rawGeographyMCQ = [
             "Gia tăng dân số rất nhỏ, dân già."
         ],
         answer: 2,
+        correct: 2,
         explanation: "Mỹ Latinh hiện có quy mô dân số đông (khoảng trên 660 triệu người) và đang trong quá trình chuyển biến già hóa dân số nhanh chóng."
     },
     {
@@ -366,6 +392,7 @@ const rawGeographyMCQ = [
             "phần lớn có khí hậu nóng ẩm."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Đại bộ phận lãnh thổ Mỹ Latinh nằm trong đới nóng với khí hậu xích đạo, cận xích đạo và nhiệt đới nóng ẩm quanh năm, rất thuận lợi cho cây trồng nhiệt đới (cà phê, mía, cao su, ca cao...)."
     },
     {
@@ -379,6 +406,7 @@ const rawGeographyMCQ = [
             "Hầu hết lãnh thổ có khí hậu ôn đới lục địa."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Phát biểu sai là D vì phần lớn lãnh thổ Mỹ Latinh thuộc đới khí hậu nhiệt đới và cận xích đạo; chỉ có phần phía nam Nam Mỹ mới có khí hậu cận nhiệt và ôn đới."
     },
     {
@@ -392,6 +420,7 @@ const rawGeographyMCQ = [
             "Tốc độ đô thị hóa vượt trước trình độ phát triển kinh tế - xã hội của khu vực."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Đô thị hóa tự phát xảy ra do làn sóng di dân ồ ạt từ nông thôn ra các thành phố kiếm sống trong khi công nghiệp chưa đủ khả năng giải quyết việc làm, khiến tốc độ đô thị hóa vượt trước trình độ phát triển kinh tế."
     },
     {
@@ -405,6 +434,7 @@ const rawGeographyMCQ = [
             "chênh lệch giàu nghèo rất lớn."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Mỹ Latinh là khu vực có mức độ bất bình đẳng và chênh lệch giàu nghèo lớn nhất thế giới, dẫn đến nhiều hệ lụy xã hội phức tạp."
     },
     {
@@ -418,6 +448,7 @@ const rawGeographyMCQ = [
             "cận cực và cận nhiệt đới."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Khu vực quần đảo Ca-ri-bê nằm hoàn toàn trong vành đai nội chí tuyến, khí hậu nhiệt đới hải dương ẩm ướt, thích hợp trồng mía đường, chuối, cà phê, cây ăn quả nhiệt đới."
     },
     {
@@ -431,6 +462,7 @@ const rawGeographyMCQ = [
             "dãy núi trẻ, kéo dài theo bắc - nam, phân chia hai sườn rõ rệt."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Dãy An-đét kéo dài gần 9.000 km qua nhiều vĩ độ, có độ cao lớn (nhiều đỉnh trên 6.000m) tạo nên các vành đai thực vật theo độ cao, đồng thời phân hóa sâu sắc giữa sườn đón gió và sườn khuất gió."
     },
     {
@@ -444,6 +476,7 @@ const rawGeographyMCQ = [
             "quản lí yếu, gắn kết trong khu vực yếu, nạn tham nhũng."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Tình hình chính trị bất ổn định kéo dài, các đợt dịch bệnh và gánh nặng nợ nước ngoài quá lớn là những nguyên nhân cốt lõi kìm hãm sự bứt phá kinh tế của khu vực."
     },
     {
@@ -457,6 +490,7 @@ const rawGeographyMCQ = [
             "sinh vật, khoáng sản."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Vùng núi An-đét rất giàu khoáng sản kim loại màu (đồng, chì, kẽm, bạc, thiếc) và hệ thống sông dốc có tiềm năng thủy điện khổng lồ."
     },
     {
@@ -470,6 +504,7 @@ const rawGeographyMCQ = [
             "lao động ở khu vực dịch vụ tăng và nhập cư."
         ],
         answer: 0,
+        correct: 0,
         explanation: "Dân số đô thị tăng nhanh xuất phát từ sự bùng nổ di cư từ nông thôn do thiếu đất canh tác kết hợp với tỉ lệ gia tăng tự nhiên của dân số đô thị."
     },
     {
@@ -483,6 +518,7 @@ const rawGeographyMCQ = [
             "gia súc."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Mỹ Latinh nổi tiếng thế giới về xuất khẩu các sản phẩm cây công nghiệp lâu năm và hàng năm như cà phê, đậu tương, mía, ca cao, chuối."
     },
     {
@@ -496,6 +532,7 @@ const rawGeographyMCQ = [
             "Có nhiều vũng vịnh, hải đảo và nóng quanh năm."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Vùng biển Mỹ Latinh giáp cả Thái Bình Dương và Đại Tây Dương với các dòng hải lưu tạo nên những ngư trường hải sản rộng lớn và trù phú bậc nhất (đặc biệt là vùng biển Pê-ru)."
     },
     {
@@ -509,6 +546,7 @@ const rawGeographyMCQ = [
             "Khai thác dầu khí, trồng trọt và du lịch."
         ],
         answer: 3,
+        correct: 3,
         explanation: "Khu vực thềm lục địa vịnh Mê-hi-cô có trữ lượng dầu khí dồi dào, đồng bằng màu mỡ thuận lợi phát triển trồng trọt nhiệt đới và các bãi biển phát triển du lịch."
     },
     {
@@ -522,6 +560,7 @@ const rawGeographyMCQ = [
             "ngừng tiếp nhận toàn bộ các nguồn vốn đầu tư trực tiếp từ các nước phát triển."
         ],
         answer: 1,
+        correct: 1,
         explanation: "Phát triển công nghiệp chế biến sâu giúp nâng cao giá trị hàng xuất khẩu, chấm dứt tình trạng bán thô giá rẻ, kết hợp cải cách kinh tế và mở rộng quan hệ đối tác đa phương."
     }
 ];
@@ -870,7 +909,13 @@ Cần phải bảo vệ hòa bình thế giới vì những lí do cấp thiết
 
 // Toàn bộ 52 câu trắc nghiệm ghép lại
 const rawAllGeographyQuestions = [
-    ...rawGeographyMCQ,
+    ...rawGeographyMCQ.map(q => ({
+        ...q,
+        qType: 'mcq',
+        correct: (q.correct !== undefined ? q.correct : q.answer),
+        answer: (q.answer !== undefined ? q.answer : q.correct),
+        isMultiple: false
+    })),
     ...rawGeographyTrueFalse,
     ...rawGeographyShortAnswer
 ];
