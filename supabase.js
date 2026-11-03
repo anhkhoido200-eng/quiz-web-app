@@ -547,18 +547,7 @@ class DatabaseService {
             return { isBanned: false };
         }
 
-        // 1. Kiểm tra cache cục bộ
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
-            if (raw) {
-                const map = JSON.parse(raw);
-                if (map[cleanIp]) {
-                    return { isBanned: true, reason: map[cleanIp].reason || "Vi phạm quy chế" };
-                }
-            }
-        } catch (e) {}
-
-        // 2. Kiểm tra trực tiếp trên Supabase Cloud
+        // 1. Kiểm tra trực tiếp trên Supabase Cloud (Nguồn dữ liệu chuẩn nhất)
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -573,11 +562,36 @@ class DatabaseService {
                     const statusStr = data[0].status || "";
                     const reason = statusStr.replace(/^BANNED:\s*/, "") || "Vi phạm quy chế phòng thi";
                     return { isBanned: true, reason: reason };
+                } else if (!error) {
+                    // Nếu trên Supabase đã được mở khóa, tự động làm sạch cache local
+                    try {
+                        let bannedMap = {};
+                        const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+                        if (raw) {
+                            bannedMap = JSON.parse(raw);
+                            if (bannedMap[cleanIp]) {
+                                delete bannedMap[cleanIp];
+                                localStorage.setItem(STORAGE_KEYS.BANNED_IPS, JSON.stringify(bannedMap));
+                            }
+                        }
+                    } catch (e) {}
+                    return { isBanned: false };
                 }
             } catch (err) {
-                console.warn("[DatabaseService] Lỗi kiểm tra ban IP:", err);
+                console.warn("[DatabaseService] Lỗi kiểm tra ban IP trên server:", err);
             }
         }
+
+        // 2. Fallback kiểm tra cache cục bộ (nếu mất mạng hoặc chạy offline)
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            if (raw) {
+                const map = JSON.parse(raw);
+                if (map[cleanIp]) {
+                    return { isBanned: true, reason: map[cleanIp].reason || "Vi phạm quy chế" };
+                }
+            }
+        } catch (e) {}
 
         return { isBanned: false };
     }

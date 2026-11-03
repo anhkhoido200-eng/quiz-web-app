@@ -67,6 +67,15 @@
                 <i class="fa-solid fa-shield-halved text-amber-400 mr-1.5"></i>
                 Nếu đây là nhầm lẫn, vui lòng gặp trực tiếp Quản trị viên phòng thi để được mở khóa.
             </div>
+            <!-- Nút mở khóa khẩn cấp dành cho Admin khi lỡ tay tự chặn mình -->
+            <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                <button onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Tải lại trang
+                </button>
+                <button onclick="app.adminEmergencyUnban()" class="px-3.5 py-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/50 text-xs font-bold cursor-pointer transition">
+                    <i class="fa-solid fa-key mr-1 text-amber-400"></i> Mở khóa khẩn cấp (Admin)
+                </button>
+            </div>
         </div>
     </div>
 

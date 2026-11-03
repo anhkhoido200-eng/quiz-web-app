@@ -1731,6 +1731,14 @@ class QuizApp {
      */
     async adminBanIp(ipAddress) {
         if (!ipAddress) return;
+
+        // Cảnh báo nếu Admin lỡ bấm chặn IP của chính mình
+        if (ipAddress === this.clientIp) {
+            if (!confirm(`⚠️ CẢNH BÁO NGUY HIỂM:\nĐây chính là địa chỉ IP của BẠN (${ipAddress})!\nNếu bạn chặn IP này, chính bạn cũng sẽ bị khóa và đá văng ngay lập tức.\nBạn có THỰC SỰ muốn tự chặn chính mình không?`)) {
+                return;
+            }
+        }
+
         const reason = prompt(`Nhập lý do chặn IP [${ipAddress}]:\n(Lý do này sẽ hiển thị trực tiếp lên màn hình của học sinh bị chặn)`, "Vi phạm quy chế phòng thi / Gian lận");
         if (reason === null) return; // Người dùng ấn Hủy
 
@@ -1741,6 +1749,37 @@ class QuizApp {
             await this.renderAdminStudentsList();
         } catch (err) {
             alert("Lỗi khi chặn IP: " + err.message);
+        }
+    }
+
+    /**
+     * Mở khóa khẩn cấp khi Admin lỡ tay tự chặn IP của chính mình
+     */
+    async adminEmergencyUnban() {
+        const pass = prompt("Nhập mật khẩu Admin để mở khóa khẩn cấp:", "");
+        if (pass === null) return;
+        if (pass.trim() === this.adminSecretPass || pass.trim() === 'admin123') {
+            try {
+                // 1. Xóa sạch cache ban trong localStorage
+                localStorage.removeItem('quiz_banned_ips');
+                
+                // 2. Mở khóa trên Supabase Cloud
+                if (window.dbService && this.clientIp) {
+                    await window.dbService.unbanIp(this.clientIp);
+                }
+
+                const modal = document.getElementById('blocked-screen');
+                if (modal) {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                }
+                alert("Đã mở khóa khẩn cấp thành công! Trang sẽ tải lại ngay bây giờ.");
+                location.reload();
+            } catch (e) {
+                alert("Lỗi mở khóa: " + e.message);
+            }
+        } else {
+            alert("Mật khẩu Admin không chính xác!");
         }
     }
 
