@@ -222,6 +222,7 @@ class DatabaseService {
                 const { data, error } = await this.client
                     .from('quiz_logins')
                     .select('*')
+                    .neq('player_name', '__SYSTEM_NOTICE__')
                     .order('last_active', { ascending: false })
                     .limit(limit);
 
@@ -232,7 +233,7 @@ class DatabaseService {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);
             }
         }
-        return this._getLocalLogins();
+        return this._getLocalLogins().filter(item => item.player_name !== '__SYSTEM_NOTICE__');
     }
 
     /**
@@ -603,6 +604,98 @@ class DatabaseService {
         } catch (e) {
             return {};
         }
+    }
+
+    // =========================================================================
+    // PHẦN 4: PHÁT THÔNG BÁO TỪ GIÁM THỊ ĐẾN THÍ SINH (HIỆN NỔI BẬT 5 GIÂY)
+    // =========================================================================
+
+    /**
+     * Admin phát thông báo tới màn hình học sinh (Hiện trong 5 giây)
+     * targetIp: 'ALL' (toàn bộ học sinh) hoặc địa chỉ IP cụ thể
+     */
+    async sendBroadcastNotice(message, targetIp = 'ALL') {
+        const cleanMsg = (message || '').trim();
+        if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
+
+        const nowIso = new Date().toISOString();
+        const noticeData = {
+            id: targetIp === 'ALL' ? '00000000-0000-0000-0000-000000000001' : undefined,
+            player_name: '__SYSTEM_NOTICE__',
+            ip_address: targetIp,
+            device_info: '5s',
+            status: 'ACTIVE',
+            score_summary: cleanMsg,
+            last_active: nowIso
+        };
+
+        // 1. Lưu LocalStorage để có thể nhận ngay trên cùng máy
+        try {
+            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
+                id: noticeData.id || ('notice_' + Date.now()),
+                message: cleanMsg,
+                targetIp: targetIp,
+                timestamp: Date.now()
+            }));
+        } catch (e) {}
+
+        // 2. Gửi lên Supabase Cloud để đồng bộ xuống mọi máy học sinh
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { error } = await this.client
+                    .from('quiz_logins')
+                    .upsert([noticeData]);
+                if (error) {
+                    console.error("[DatabaseService] Lỗi gửi thông báo lên Supabase:", error);
+                    return { success: false, error: error.message };
+                }
+            } catch (e) {
+                console.error("[DatabaseService] Exception gửi thông báo:", e);
+                return { success: false, error: e.message };
+            }
+        }
+
+        return { success: true, message: cleanMsg, targetIp: targetIp };
+    }
+
+    /**
+     * Kiểm tra thông báo mới nhất từ Giám thị
+     */
+    async fetchLatestNotice(clientIp) {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('*')
+                    .eq('player_name', '__SYSTEM_NOTICE__')
+                    .order('last_active', { ascending: false })
+                    .limit(5);
+
+                if (!error && data && data.length > 0) {
+                    const match = data.find(item => item.ip_address === 'ALL' || (clientIp && item.ip_address === clientIp));
+                    if (match && match.score_summary) {
+                        return {
+                            id: match.id,
+                            message: match.score_summary,
+                            targetIp: match.ip_address,
+                            timestamp: new Date(match.last_active || match.created_at).getTime()
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn("[DatabaseService] Lỗi kiểm tra thông báo:", e);
+            }
+        }
+
+        // Fallback LocalStorage
+        try {
+            const raw = localStorage.getItem('quiz_latest_system_notice');
+            if (raw) {
+                return JSON.parse(raw);
+            }
+        } catch (e) {}
+
+        return null;
     }
 }
 

@@ -79,6 +79,38 @@
         </div>
     </div>
 
+    <!-- BANNER THÔNG BÁO TỪ GIÁM THỊ (HIỆN NỔI BẬT TRÊN MÀN HÌNH HỌC SINH ĐÚNG 5S) -->
+    <div id="student-notice-banner" class="fixed top-20 left-1/2 -translate-x-1/2 z-[9990] max-w-lg w-[92%] sm:w-auto min-w-[340px] hidden transition-all duration-300 pointer-events-auto shadow-2xl">
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-amber-950/95 via-slate-900/95 to-amber-950/95 border-2 border-amber-500/80 shadow-2xl backdrop-blur-xl flex items-start gap-3.5 relative overflow-hidden">
+            <!-- Icon Loa phát thanh hiệu ứng rung nhẹ -->
+            <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl shrink-0 border border-amber-500/30 animate-bounce">
+                <i class="fa-solid fa-bullhorn"></i>
+            </div>
+            
+            <div class="flex-1 pr-6">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-extrabold text-[10px] uppercase tracking-wider border border-amber-500/30">
+                        📢 Thông Báo Từ Giám Thị
+                    </span>
+                    <span id="student-notice-timer" class="text-[11px] text-amber-400/90 font-mono font-bold">5s</span>
+                </div>
+                <p id="student-notice-content" class="text-xs sm:text-sm text-white font-semibold leading-relaxed">
+                    Nội dung thông báo ở đây
+                </p>
+            </div>
+
+            <!-- Nút đóng nhanh -->
+            <button onclick="app.hideStudentNotice()" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white p-1 text-sm cursor-pointer transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <!-- Thanh tiến trình đếm ngược 5 giây ở đáy banner -->
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
+                <div id="student-notice-bar" class="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-100 ease-linear" style="width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Background Glow Effects -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
@@ -484,6 +516,33 @@
                         <button onclick="app.adminClearAllLogins()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-trash-can"></i> Xóa hết lịch sử
                         </button>
+                    </div>
+                </div>
+
+                <!-- CÔNG CỤ PHÁT THÔNG BÁO CHO HỌC SINH (HIỆN NỔI BẬT 5 GIÂY) -->
+                <div class="p-3.5 bg-gradient-to-r from-amber-950/40 via-slate-900/80 to-amber-950/40 border border-amber-500/40 rounded-2xl space-y-2.5 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-amber-300 flex items-center gap-1.5 uppercase tracking-wide">
+                            <i class="fa-solid fa-bullhorn text-amber-400"></i>
+                            <span>Phát Thông Báo Cho Thí Sinh (Hiện Trước Màn Hình 5s):</span>
+                        </label>
+                        <span class="text-[10px] text-slate-400 hidden sm:inline">Tin nhắn sẽ bật lên màn hình thí sinh đúng 5 giây rồi tắt</span>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <input type="text" id="admin-notice-input" maxlength="160" placeholder="Ví dụ: Còn 10 phút nữa hết giờ làm bài! / Giữ trật tự nghiêm túc..." 
+                            class="flex-1 px-3.5 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 font-medium placeholder-slate-500 transition">
+                        <button onclick="app.adminBroadcastNotice()" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Gửi Toàn Phòng</span>
+                        </button>
+                    </div>
+                    <!-- Mẫu tin nhắn nhanh có sẵn -->
+                    <div class="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800 text-[11px]">
+                        <span class="text-slate-500 text-[10px] mr-1">Mẫu nhanh:</span>
+                        <button onclick="app.adminQuickNotice('Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-200 border border-slate-700 transition cursor-pointer">⏳ Còn 10 phút</button>
+                        <button onclick="app.adminQuickNotice('Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition cursor-pointer">⚠️ Còn 5 phút</button>
+                        <button onclick="app.adminQuickNotice('Các em tập trung làm bài, nghiêm túc, không trao đổi!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700 transition cursor-pointer">🤫 Nghiêm túc</button>
+                        <button onclick="app.adminQuickNotice('Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-200 border border-slate-700 transition cursor-pointer">🛑 Hết giờ - Nộp bài</button>
                     </div>
                 </div>
 

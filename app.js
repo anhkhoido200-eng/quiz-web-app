@@ -441,22 +441,120 @@ class QuizApp {
     }
 
     /**
-     * HEARTBEAT KIỂM TRA CHẶN IP THỜI GIAN THỰC (Mỗi 3.5 giây)
-     * Nếu Admin chặn IP của thiết bị này, lập tức khóa màn hình và đá ra ngoài
+     * HEARTBEAT THỜI GIAN THỰC (Mỗi 3 giây):
+     * 1. Kiểm tra lệnh Chặn IP (Bị chặn là đá ra ngay)
+     * 2. Kiểm tra Thông báo mới từ Giám thị (Bật lên màn hình đúng 5 giây)
      */
     startRealtimeBanChecker() {
         if (this.banCheckInterval) clearInterval(this.banCheckInterval);
+        this.lastSeenNoticeTime = Date.now(); // Ghi nhận mốc thời gian lúc mở trang
+
         this.banCheckInterval = setInterval(async () => {
             if (!this.clientIp || this.clientIp === "Chưa xác định" || this.clientIp === "IP Cục Bộ") return;
             if (window.dbService) {
+                // 1. Kiểm tra xem IP có bị Admin chặn không
                 try {
                     const res = await window.dbService.checkIsIpBanned(this.clientIp);
                     if (res && res.isBanned) {
                         this.showBlockedScreen(res.reason);
                     }
                 } catch (e) {}
+
+                // 2. Kiểm tra có Thông báo mới từ Giám thị không (Hiện 5s)
+                try {
+                    const notice = await window.dbService.fetchLatestNotice(this.clientIp);
+                    if (notice && notice.timestamp && notice.timestamp > this.lastSeenNoticeTime) {
+                        // Chỉ hiển thị thông báo phát sinh trong vòng 45 giây gần nhất
+                        if (Date.now() - notice.timestamp < 45000) {
+                            this.lastSeenNoticeTime = notice.timestamp;
+                            this.showStudentNotice(notice.message, 5);
+                        }
+                    }
+                } catch (e) {}
             }
-        }, 3500);
+        }, 3000);
+    }
+
+    /**
+     * PHÁT ÂM THANH CHIME NHẸ KHI CÓ THÔNG BÁO MỚI TỪ GIÁM THỊ
+     */
+    playNoticeSound() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = new AudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+            osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.36);
+        } catch (e) {}
+    }
+
+    /**
+     * HIỂN THỊ THÔNG BÁO TỪ GIÁM THỊ TRƯỚC MÀN HÌNH ĐÚNG 5 GIÂY RỒI TỰ TẮT
+     */
+    showStudentNotice(message, durationSec = 5) {
+        const banner = document.getElementById('student-notice-banner');
+        const contentEl = document.getElementById('student-notice-content');
+        const timerEl = document.getElementById('student-notice-timer');
+        const barEl = document.getElementById('student-notice-bar');
+
+        if (!banner || !contentEl) return;
+
+        this.playNoticeSound();
+
+        contentEl.textContent = message;
+        if (timerEl) timerEl.textContent = `${durationSec}s`;
+        if (barEl) barEl.style.width = '100%';
+
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+
+        if (this._noticeCountdownInterval) clearInterval(this._noticeCountdownInterval);
+        if (this._noticeTimeout) clearTimeout(this._noticeTimeout);
+
+        const startTime = Date.now();
+        const totalMs = durationSec * 1000;
+
+        this._noticeCountdownInterval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const remainingSec = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+            const percentRemaining = Math.max(0, 100 - (elapsed / totalMs) * 100);
+
+            if (timerEl) timerEl.textContent = `${remainingSec}s`;
+            if (barEl) barEl.style.width = `${percentRemaining}%`;
+
+            if (elapsed >= totalMs) {
+                this.hideStudentNotice();
+            }
+        }, 80);
+    }
+
+    /**
+     * TẮT THÔNG BÁO
+     */
+    hideStudentNotice() {
+        if (this._noticeCountdownInterval) {
+            clearInterval(this._noticeCountdownInterval);
+            this._noticeCountdownInterval = null;
+        }
+        if (this._noticeTimeout) {
+            clearTimeout(this._noticeTimeout);
+            this._noticeTimeout = null;
+        }
+
+        const banner = document.getElementById('student-notice-banner');
+        if (banner) {
+            banner.classList.add('hidden');
+            banner.classList.remove('flex');
+        }
     }
 
     /**
@@ -1659,6 +1757,9 @@ class QuizApp {
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap">
                         <div class="inline-flex items-center gap-1.5">
+                            <button onclick="app.adminDirectNotice('${item.ip_address}', '${this.escapeHtml(item.player_name || 'Học sinh')}')" class="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-amber-300 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Gửi thông báo nhắc nhở riêng 5s">
+                                <i class="fa-solid fa-bullhorn text-[10px]"></i> Nhắc
+                            </button>
                             ${isBanned ? `
                                 <button onclick="app.adminUnbanIp('${item.ip_address}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Mở khóa IP này">
                                     <i class="fa-solid fa-lock-open text-[10px]"></i> Mở Khóa
@@ -1722,6 +1823,9 @@ class QuizApp {
                     </div>
                 </div>
                 <div class="shrink-0 flex items-center gap-1">
+                    <button onclick="app.adminDirectNotice('${item.ip_address}', '${this.escapeHtml(item.player_name || 'Học sinh')}')" class="px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 text-[10px] font-bold cursor-pointer transition flex items-center gap-0.5" title="Gửi nhắc nhở riêng 5s">
+                        <i class="fa-solid fa-bullhorn text-[9px]"></i> Nhắc
+                    </button>
                     ${isBanned ? `
                         <button onclick="app.adminUnbanIp('${item.ip_address}')" class="px-2 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/50 text-[10px] font-bold cursor-pointer transition" title="Mở khóa">
                             <i class="fa-solid fa-lock-open mr-1"></i> Mở
@@ -1818,6 +1922,73 @@ class QuizApp {
             await this.renderAdminStudentsList();
         } catch (err) {
             alert("Lỗi khi mở khóa IP: " + err.message);
+        }
+    }
+
+    /**
+     * PHÁT THÔNG BÁO TỚI MÀN HÌNH HỌC SINH (HIỆN NỔI BẬT 5 GIÂY)
+     */
+    async adminBroadcastNotice() {
+        const input = document.getElementById('admin-notice-input');
+        const msg = input ? input.value.trim() : "";
+        if (!msg) {
+            alert("Vui lòng nhập nội dung thông báo trước khi gửi!");
+            return;
+        }
+
+        try {
+            const res = await window.dbService.sendBroadcastNotice(msg, 'ALL');
+            if (res && res.error) {
+                alert("Lỗi: " + res.error);
+                return;
+            }
+            alert(`📢 ĐÃ PHÁT THÔNG BÁO TỚI TOÀN BỘ PHÒNG THI:\n"${msg}"\n\nThông báo sẽ tự động bật lên trước màn hình mọi thí sinh đúng 5 giây!`);
+            if (input) input.value = '';
+        } catch (e) {
+            alert("Lỗi khi phát thông báo: " + e.message);
+        }
+    }
+
+    /**
+     * Gửi mẫu thông báo nhanh có sẵn
+     */
+    async adminQuickNotice(text) {
+        const input = document.getElementById('admin-notice-input');
+        if (input) input.value = text;
+        if (!confirm(`Phát ngay thông báo này tới toàn bộ học sinh (bật trước màn hình 5s)?\n\n"${text}"`)) return;
+
+        try {
+            const res = await window.dbService.sendBroadcastNotice(text, 'ALL');
+            if (res && res.error) {
+                alert("Lỗi: " + res.error);
+                return;
+            }
+            alert(`📢 ĐÃ PHÁT THÔNG BÁO THÀNH CÔNG:\n"${text}"`);
+            if (input) input.value = '';
+        } catch (e) {
+            alert("Lỗi khi phát thông báo: " + e.message);
+        }
+    }
+
+    /**
+     * Gửi thông báo riêng đến 1 học sinh cụ thể (Hiện 5s trên máy bạn đó)
+     */
+    async adminDirectNotice(ipAddress, studentName) {
+        if (!ipAddress) return;
+        const msg = prompt(`Gửi thông báo riêng đến thí sinh [${studentName}] (IP: ${ipAddress}):\n(Thông báo sẽ hiện nổi bật trên màn hình của bạn này trong 5 giây)`, "Em tập trung làm bài, nghiêm túc!");
+        if (msg === null) return;
+        const cleanMsg = msg.trim();
+        if (!cleanMsg) return;
+
+        try {
+            const res = await window.dbService.sendBroadcastNotice(cleanMsg, ipAddress);
+            if (res && res.error) {
+                alert("Lỗi: " + res.error);
+                return;
+            }
+            alert(`💬 Đã gửi thông báo riêng tới [${studentName}]!\n"${cleanMsg}"`);
+        } catch (e) {
+            alert("Lỗi khi gửi thông báo: " + e.message);
         }
     }
 
