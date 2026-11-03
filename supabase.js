@@ -20,6 +20,16 @@ const DEFAULT_SUPABASE_CONFIG = {
     anonKey: "sb_publishable_KtAmEX6Jj97BNElniBrX6w_wVyCeQYs"
 };
 
+function generateUuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        try { return crypto.randomUUID(); } catch (e) {}
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 function formatSupabaseUrl(rawUrl) {
     if (!rawUrl) return "";
     return rawUrl.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
@@ -619,20 +629,25 @@ class DatabaseService {
         if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
 
         const nowIso = new Date().toISOString();
+        const noticeId = targetIp === 'ALL'
+            ? '00000000-0000-0000-0000-000000000001'
+            : generateUuid();
+
         const noticeData = {
-            id: targetIp === 'ALL' ? '00000000-0000-0000-0000-000000000001' : undefined,
+            id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
             ip_address: targetIp,
             device_info: '5s',
             status: 'ACTIVE',
             score_summary: cleanMsg,
-            last_active: nowIso
+            last_active: nowIso,
+            created_at: nowIso
         };
 
         // 1. Lưu LocalStorage để có thể nhận ngay trên cùng máy
         try {
             localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: noticeData.id || ('notice_' + Date.now()),
+                id: noticeData.id,
                 message: cleanMsg,
                 targetIp: targetIp,
                 timestamp: Date.now()
@@ -644,7 +659,7 @@ class DatabaseService {
             try {
                 const { error } = await this.client
                     .from('quiz_logins')
-                    .upsert([noticeData]);
+                    .upsert([noticeData], { onConflict: 'id' });
                 if (error) {
                     console.error("[DatabaseService] Lỗi gửi thông báo lên Supabase:", error);
                     return { success: false, error: error.message };

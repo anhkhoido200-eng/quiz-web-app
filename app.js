@@ -55,8 +55,14 @@ class QuizApp {
         this.startRealtimeBanChecker();
     }
 
+    getSubjectTitle() {
+        if (this.currentSubject === 'physics') return 'Vật Lí 11';
+        if (this.currentSubject === 'geography') return 'Địa Lí 11';
+        return 'Lịch Sử 11';
+    }
+
     /**
-     * Chuyển đổi môn học ôn tập (Lịch Sử 11 / Vật Lí 11)
+     * Chuyển đổi môn học ôn tập (Lịch Sử 11 / Vật Lí 11 / Địa Lí 11)
      */
     selectSubject(subj) {
         if (subj === this.currentSubject) return;
@@ -64,29 +70,41 @@ class QuizApp {
 
         const btnHistory = document.getElementById('tab-btn-history');
         const btnPhysics = document.getElementById('tab-btn-physics');
+        const btnGeography = document.getElementById('tab-btn-geography');
         const titleEl = document.getElementById('navbar-subject-title');
         const subTitleEl = document.getElementById('navbar-subject-subtitle');
         const badgeEl = document.getElementById('home-subject-badge');
 
-        if (subj === 'physics') {
-            btnHistory?.classList.remove('bg-indigo-600/25', 'border-indigo-500', 'text-white', 'shadow-md', 'shadow-indigo-600/20');
-            btnHistory?.classList.add('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
-            
-            btnPhysics?.classList.remove('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
-            btnPhysics?.classList.add('bg-purple-600/25', 'border-purple-500', 'text-white', 'shadow-md', 'shadow-purple-600/20');
+        const resetBtn = (btn) => {
+            if (!btn) return;
+            btn.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300";
+        };
+        resetBtn(btnHistory);
+        resetBtn(btnPhysics);
+        resetBtn(btnGeography);
 
+        if (subj === 'physics') {
+            if (btnPhysics) {
+                btnPhysics.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-purple-600/25 border-purple-500 text-white shadow-md shadow-purple-600/20";
+            }
             if (titleEl) titleEl.textContent = "Vật Lí 11";
             if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (43 câu / 52 ý)";
             if (badgeEl) badgeEl.textContent = "Vật Lí 11 (43 câu / 52 ý)";
 
             this.allQuestions = window.PHYSICS_QUESTIONS ? [...window.PHYSICS_QUESTIONS] : [];
+        } else if (subj === 'geography') {
+            if (btnGeography) {
+                btnGeography.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-emerald-600/25 border-emerald-500 text-white shadow-md shadow-emerald-600/20";
+            }
+            if (titleEl) titleEl.textContent = "Địa Lí 11";
+            if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (52 câu trắc nghiệm & 4 câu tự luận)";
+            if (badgeEl) badgeEl.textContent = "Địa Lí 11 (52 câu / 67 ý)";
+
+            this.allQuestions = window.GEOGRAPHY_QUESTIONS ? [...window.GEOGRAPHY_QUESTIONS] : [];
         } else {
-            btnPhysics?.classList.remove('bg-purple-600/25', 'border-purple-500', 'text-white', 'shadow-md', 'shadow-purple-600/20');
-            btnPhysics?.classList.add('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
-
-            btnHistory?.classList.remove('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
-            btnHistory?.classList.add('bg-indigo-600/25', 'border-indigo-500', 'text-white', 'shadow-md', 'shadow-indigo-600/20');
-
+            if (btnHistory) {
+                btnHistory.className = "p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/20";
+            }
             if (titleEl) titleEl.textContent = "Lịch Sử 11";
             if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (74 câu / 101 ý)";
             if (badgeEl) badgeEl.textContent = "Lịch Sử 11 (74 câu / 101 ý)";
@@ -96,7 +114,7 @@ class QuizApp {
 
         const topSubjTitle = document.getElementById('quiz-top-subject-title');
         if (topSubjTitle) {
-            topSubjTitle.textContent = subj === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+            topSubjTitle.textContent = this.getSubjectTitle();
         }
 
         this.userAnswers = {};
@@ -121,6 +139,19 @@ class QuizApp {
                 <button onclick="app.filterQuestions('mcq')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="mcq">4 lựa chọn (31)</button>
                 <button onclick="app.filterQuestions('tf')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer" data-filter="tf">Đúng - Sai (3)</button>
                 <button onclick="app.filterQuestions('short')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-purple-300 cursor-pointer" data-filter="short">Điền số (9)</button>
+            `;
+        } else if (this.currentSubject === 'geography') {
+            tabsHtml = `
+                <span class="text-slate-500 text-[11px] font-semibold mr-1">Lọc:</span>
+                <button onclick="app.filterQuestions('all')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-emerald-600 text-white cursor-pointer" data-filter="all">Tất cả (52)</button>
+                <button onclick="app.filterQuestions('geo_b1')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="geo_b1">Bài 1: KT-XH (6)</button>
+                <button onclick="app.filterQuestions('geo_b2')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="geo_b2">Bài 2: Toàn cầu hóa (6)</button>
+                <button onclick="app.filterQuestions('geo_b4')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="geo_b4">Bài 4: An ninh (10)</button>
+                <button onclick="app.filterQuestions('geo_latin')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="geo_latin">Mỹ Latinh (17)</button>
+                <button onclick="app.filterQuestions('mcq')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="mcq">4 lựa chọn (39)</button>
+                <button onclick="app.filterQuestions('tf')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer" data-filter="tf">Đúng - Sai (5)</button>
+                <button onclick="app.filterQuestions('short')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-teal-300 cursor-pointer" data-filter="short">Điền số (8)</button>
+                <button onclick="app.openGeographyEssayModal()" class="filter-tab-btn px-3 py-1 rounded-full font-bold transition bg-emerald-700/90 hover:bg-emerald-600 text-emerald-100 cursor-pointer flex items-center gap-1.5 shadow-sm"><i class="fa-solid fa-book-open text-xs"></i> Dàn ý Tự luận (4 câu)</button>
             `;
         } else {
             tabsHtml = `
@@ -295,7 +326,10 @@ class QuizApp {
     }
 
     updateTotalQuestionDisplay() {
-        const count = this.allQuestions ? this.allQuestions.length : (this.currentSubject === 'physics' ? 43 : 74);
+        let defaultCount = 74;
+        if (this.currentSubject === 'physics') defaultCount = 43;
+        else if (this.currentSubject === 'geography') defaultCount = 52;
+        const count = this.allQuestions ? this.allQuestions.length : defaultCount;
         const qBadge = document.getElementById('admin-badge-q-count');
         if (qBadge) qBadge.textContent = count;
     }
@@ -333,7 +367,7 @@ class QuizApp {
         const headerName = document.getElementById('quiz-header-player-name');
         if (headerName) headerName.textContent = rawName;
 
-        const subjTitle = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+        const subjTitle = this.getSubjectTitle();
 
         // Ghi nhận lượt đăng nhập vào hệ thống Supabase Cloud (để Admin giám sát)
         if (window.dbService) {
@@ -387,7 +421,7 @@ class QuizApp {
 
         // Cập nhật trạng thái trong Admin nếu có
         if (window.dbService && this.currentLoginId) {
-            window.dbService.updateLoginStatus(this.currentLoginId, `Đang làm lại (${this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11'})`, '');
+            window.dbService.updateLoginStatus(this.currentLoginId, `Đang làm lại (${this.getSubjectTitle()})`, '');
         }
 
         // 2. Render lại danh sách câu hỏi sạch
@@ -430,7 +464,7 @@ class QuizApp {
     returnToHome() {
         const answeredCount = Object.keys(this.userAnswers).length;
         if (answeredCount > 0) {
-            const subjName = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+            const subjName = this.getSubjectTitle();
             if (!confirm(`Bạn đang làm dở môn ${subjName} (${answeredCount} câu đã chọn).\nBạn có chắc muốn quay lại trang chủ để đổi sang môn học khác không?`)) {
                 return;
             }
@@ -583,7 +617,9 @@ class QuizApp {
         container.innerHTML = '';
         const questions = (this.allQuestions && this.allQuestions.length > 0) 
             ? this.allQuestions 
-            : (this.currentSubject === 'physics' ? (window.PHYSICS_QUESTIONS || []) : (window.QUIZ_QUESTIONS || []));
+            : (this.currentSubject === 'physics' 
+                ? (window.PHYSICS_QUESTIONS || []) 
+                : (this.currentSubject === 'geography' ? (window.GEOGRAPHY_QUESTIONS || []) : (window.QUIZ_QUESTIONS || [])));
 
         let filtered = questions.filter(q => {
             if (this.currentFilter === 'all') return true;
@@ -599,6 +635,12 @@ class QuizApp {
             // Lọc môn Vật Lí
             if (this.currentFilter === 'dao_dong') return (q.category || '').includes('Dao động') || (q.category || '').includes('lắc');
             if (this.currentFilter === 'song_co') return (q.category || '').includes('Sóng');
+
+            // Lọc môn Địa Lí
+            if (this.currentFilter === 'geo_b1') return (q.category || '').includes('Bài 1');
+            if (this.currentFilter === 'geo_b2') return (q.category || '').includes('Bài 2');
+            if (this.currentFilter === 'geo_b4') return (q.category || '').includes('Bài 4');
+            if (this.currentFilter === 'geo_latin') return (q.category || '').includes('Mỹ Latinh');
 
             return true;
         });
@@ -1559,6 +1601,10 @@ class QuizApp {
             const wIdx = window.PHYSICS_QUESTIONS.findIndex(q => q.id === qId);
             if (wIdx !== -1) window.PHYSICS_QUESTIONS[wIdx] = newQObj;
             else window.PHYSICS_QUESTIONS.push(newQObj);
+        } else if (this.currentSubject === 'geography' && Array.isArray(window.GEOGRAPHY_QUESTIONS)) {
+            const wIdx = window.GEOGRAPHY_QUESTIONS.findIndex(q => q.id === qId);
+            if (wIdx !== -1) window.GEOGRAPHY_QUESTIONS[wIdx] = newQObj;
+            else window.GEOGRAPHY_QUESTIONS.push(newQObj);
         } else if (Array.isArray(window.QUIZ_QUESTIONS)) {
             const wIdx = window.QUIZ_QUESTIONS.findIndex(q => q.id === qId);
             if (wIdx !== -1) window.QUIZ_QUESTIONS[wIdx] = newQObj;
@@ -1597,6 +1643,8 @@ class QuizApp {
         this.allQuestions = this.allQuestions.filter(q => q.id !== qId);
         if (this.currentSubject === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
             window.PHYSICS_QUESTIONS = window.PHYSICS_QUESTIONS.filter(q => q.id !== qId);
+        } else if (this.currentSubject === 'geography' && Array.isArray(window.GEOGRAPHY_QUESTIONS)) {
+            window.GEOGRAPHY_QUESTIONS = window.GEOGRAPHY_QUESTIONS.filter(q => q.id !== qId);
         } else if (Array.isArray(window.QUIZ_QUESTIONS)) {
             window.QUIZ_QUESTIONS = window.QUIZ_QUESTIONS.filter(q => q.id !== qId);
         }
@@ -1628,7 +1676,7 @@ class QuizApp {
     }
 
     /**
-     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC (KÈM CHIA 2 CỘT MÔN SỬ / MÔN LÍ & CHẶN IP TỨC THÌ)
+     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC (KÈM CHIA 3 CỘT MÔN SỬ / MÔN LÍ / MÔN ĐỊA & CHẶN IP TỨC THÌ)
      */
     async renderAdminStudentsList() {
         const tbody = document.getElementById('admin-students-tbody');
@@ -1637,6 +1685,8 @@ class QuizApp {
         const historyCountEl = document.getElementById('history-active-count');
         const physicsListEl = document.getElementById('physics-students-list');
         const physicsCountEl = document.getElementById('physics-active-count');
+        const geographyListEl = document.getElementById('geography-students-list');
+        const geographyCountEl = document.getElementById('geography-active-count');
 
         if (!window.dbService) return;
 
@@ -1649,8 +1699,10 @@ class QuizApp {
             if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Chưa có thí sinh nào đăng nhập.</td></tr>';
             if (historyListEl) historyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Chưa có ai đang làm môn Sử.</p>';
             if (physicsListEl) physicsListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Chưa có ai đang làm môn Lí.</p>';
+            if (geographyListEl) geographyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Chưa có ai đang làm môn Địa.</p>';
             if (historyCountEl) historyCountEl.textContent = '0';
             if (physicsCountEl) physicsCountEl.textContent = '0';
+            if (geographyCountEl) geographyCountEl.textContent = '0';
             return;
         }
 
@@ -1658,11 +1710,14 @@ class QuizApp {
 
         let historyStudents = [];
         let physicsStudents = [];
+        let geographyStudents = [];
 
         list.forEach(item => {
             const status = item.status || "";
             if (status.includes("Vật Lí") || status.toLowerCase().includes("lí")) {
                 physicsStudents.push(item);
+            } else if (status.includes("Địa Lí") || status.toLowerCase().includes("địa")) {
+                geographyStudents.push(item);
             } else {
                 historyStudents.push(item);
             }
@@ -1670,6 +1725,7 @@ class QuizApp {
 
         if (historyCountEl) historyCountEl.textContent = historyStudents.length;
         if (physicsCountEl) physicsCountEl.textContent = physicsStudents.length;
+        if (geographyCountEl) geographyCountEl.textContent = geographyStudents.length;
 
         // 1. Render Cột MÔN SỬ ĐANG CÓ AI
         if (historyListEl) {
@@ -1689,7 +1745,16 @@ class QuizApp {
             }
         }
 
-        // 3. Render BẢNG CHI TIẾT TOÀN BỘ DANH SÁCH
+        // 3. Render Cột MÔN ĐỊA ĐANG CÓ AI
+        if (geographyListEl) {
+            if (geographyStudents.length === 0) {
+                geographyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Địa.</p>';
+            } else {
+                geographyListEl.innerHTML = geographyStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Địa Lí')).join('');
+            }
+        }
+
+        // 4. Render BẢNG CHI TIẾT TOÀN BỘ DANH SÁCH
         if (tbody) {
             tbody.innerHTML = '';
             list.forEach((item) => {
@@ -2059,6 +2124,37 @@ class QuizApp {
         if (window.confirm("Bạn có muốn xóa kết nối Supabase và chuyển sang lưu trữ LocalStorage không?")) {
             window.dbService.clearConfig();
             this.closeSettingsModal();
+        }
+    }
+
+    openGeographyEssayModal() {
+        const modal = document.getElementById('modal-geography-essay');
+        const container = document.getElementById('geography-essay-content');
+        if (!modal || !container) return;
+
+        if (window.GEOGRAPHY_ESSAY_OUTLINES) {
+            container.innerHTML = window.GEOGRAPHY_ESSAY_OUTLINES.map((item, idx) => `
+                <div class="p-4 rounded-xl bg-slate-800/90 border border-emerald-500/30 shadow-md space-y-2">
+                    <h4 class="font-bold text-emerald-400 text-sm sm:text-base flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 text-xs flex items-center justify-center font-bold shrink-0">${idx + 1}</span>
+                        <span>${this.escapeHtml(item.title)}</span>
+                    </h4>
+                    <div class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line pl-3 border-l-2 border-emerald-500/40">
+                        ${item.content.trim()}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    closeGeographyEssayModal() {
+        const modal = document.getElementById('modal-geography-essay');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
         }
     }
 

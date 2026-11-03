@@ -185,23 +185,32 @@
                         </label>
                         <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Lịch Sử 11 (74 câu)</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2.5">
-                        <button type="button" onclick="app.selectSubject('history')" id="tab-btn-history" class="p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/20">
-                            <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-base shrink-0 shadow">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
+                        <button type="button" onclick="app.selectSubject('history')" id="tab-btn-history" class="p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/20">
+                            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm sm:text-base shrink-0 shadow">
                                 <i class="fa-solid fa-landmark"></i>
                             </div>
                             <div class="overflow-hidden">
                                 <p class="font-bold text-xs sm:text-sm truncate">Lịch Sử 11</p>
-                                <p class="text-[10px] text-slate-400">74 câu • Giữa Kì 1</p>
+                                <p class="text-[10px] text-slate-400">74 câu • 101 ý</p>
                             </div>
                         </button>
-                        <button type="button" onclick="app.selectSubject('physics')" id="tab-btn-physics" class="p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300">
-                            <div class="w-9 h-9 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center text-base shrink-0">
+                        <button type="button" onclick="app.selectSubject('physics')" id="tab-btn-physics" class="p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300">
+                            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center text-sm sm:text-base shrink-0">
                                 <i class="fa-solid fa-atom"></i>
                             </div>
                             <div class="overflow-hidden">
                                 <p class="font-bold text-xs sm:text-sm truncate">Vật Lí 11</p>
-                                <p class="text-[10px] text-slate-400">43 câu • Đủ 3 phần</p>
+                                <p class="text-[10px] text-slate-400">43 câu • 52 ý</p>
+                            </div>
+                        </button>
+                        <button type="button" onclick="app.selectSubject('geography')" id="tab-btn-geography" class="p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300">
+                            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-sm sm:text-base shrink-0">
+                                <i class="fa-solid fa-earth-americas"></i>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p class="font-bold text-xs sm:text-sm truncate">Địa Lí 11</p>
+                                <p class="text-[10px] text-slate-400">52 câu + Tự luận</p>
                             </div>
                         </button>
                     </div>
@@ -561,42 +570,61 @@
                     </div>
                 </div>
 
-                <!-- BẢNG 2 CỘT: MÔN SỬ ĐANG CÓ AI & MÔN LÍ ĐANG CÓ AI -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- BẢNG 3 CỘT: MÔN SỬ, MÔN LÍ & MÔN ĐỊA ĐANG CÓ AI -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <!-- Cột 1: MÔN LỊCH SỬ 11 -->
-                    <div class="bg-slate-800/80 rounded-2xl border border-indigo-500/40 p-4 shadow-xl flex flex-col">
-                        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-700">
-                            <div class="flex items-center gap-2.5">
+                    <div class="bg-slate-800/80 rounded-2xl border border-indigo-500/40 p-3.5 shadow-xl flex flex-col">
+                        <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-700">
+                            <div class="flex items-center gap-2">
                                 <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm shadow">
                                     <i class="fa-solid fa-landmark"></i>
                                 </div>
                                 <div>
-                                    <h4 class="font-bold text-white text-xs sm:text-sm">Môn Lịch Sử 11</h4>
+                                    <h4 class="font-bold text-white text-xs sm:text-sm">Lịch Sử 11</h4>
                                     <p class="text-[11px] text-slate-400"><span id="history-active-count" class="text-indigo-300 font-bold">0</span> thí sinh đang vào</p>
                                 </div>
                             </div>
-                            <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">Lịch Sử</span>
+                            <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">Sử</span>
                         </div>
-                        <div id="history-students-list" class="space-y-2 max-h-56 overflow-y-auto pr-1 flex-1">
+                        <div id="history-students-list" class="space-y-2 max-h-52 overflow-y-auto pr-1 flex-1">
                             <!-- Render bởi app.js -->
                         </div>
                     </div>
 
                     <!-- Cột 2: MÔN VẬT LÍ 11 -->
-                    <div class="bg-slate-800/80 rounded-2xl border border-purple-500/40 p-4 shadow-xl flex flex-col">
-                        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-700">
-                            <div class="flex items-center gap-2.5">
+                    <div class="bg-slate-800/80 rounded-2xl border border-purple-500/40 p-3.5 shadow-xl flex flex-col">
+                        <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-700">
+                            <div class="flex items-center gap-2">
                                 <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center text-sm shadow">
                                     <i class="fa-solid fa-atom"></i>
                                 </div>
                                 <div>
-                                    <h4 class="font-bold text-white text-xs sm:text-sm">Môn Vật Lí 11</h4>
+                                    <h4 class="font-bold text-white text-xs sm:text-sm">Vật Lí 11</h4>
                                     <p class="text-[11px] text-slate-400"><span id="physics-active-count" class="text-purple-300 font-bold">0</span> thí sinh đang vào</p>
                                 </div>
                             </div>
-                            <span class="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/30">Vật Lí</span>
+                            <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/30">Lí</span>
                         </div>
-                        <div id="physics-students-list" class="space-y-2 max-h-56 overflow-y-auto pr-1 flex-1">
+                        <div id="physics-students-list" class="space-y-2 max-h-52 overflow-y-auto pr-1 flex-1">
+                            <!-- Render bởi app.js -->
+                        </div>
+                    </div>
+
+                    <!-- Cột 3: MÔN ĐỊA LÍ 11 -->
+                    <div class="bg-slate-800/80 rounded-2xl border border-emerald-500/40 p-3.5 shadow-xl flex flex-col">
+                        <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-700">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm shadow">
+                                    <i class="fa-solid fa-earth-americas"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-xs sm:text-sm">Địa Lí 11</h4>
+                                    <p class="text-[11px] text-slate-400"><span id="geography-active-count" class="text-emerald-300 font-bold">0</span> thí sinh đang vào</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">Địa</span>
+                        </div>
+                        <div id="geography-students-list" class="space-y-2 max-h-52 overflow-y-auto pr-1 flex-1">
                             <!-- Render bởi app.js -->
                         </div>
                     </div>
@@ -739,9 +767,38 @@
         </div>
     </div>
 
+    <!-- MODAL 5: DÀN Ý TỰ LUẬN ĐỊA LÍ 11 (4 CÂU TRỌNG TÂM) -->
+    <div id="modal-geography-essay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-emerald-500/50 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm shadow">
+                        <i class="fa-solid fa-book-open"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-heading font-bold text-white text-sm sm:text-base">Dàn Ý Ôn Tập Tự Luận Địa Lí 11</h3>
+                        <p class="text-[11px] text-emerald-400">4 câu tự luận trọng tâm - Giữa Kì 1 (Có thể học thuộc ngay)</p>
+                    </div>
+                </div>
+                <button onclick="app.closeGeographyEssayModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-200" id="geography-essay-content">
+                <!-- Nội dung 4 câu tự luận render tự động từ geography_questions.js -->
+            </div>
+            <div class="p-3 bg-slate-800/80 border-t border-slate-700 flex justify-end">
+                <button onclick="app.closeGeographyEssayModal()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition cursor-pointer">
+                    Đã hiểu, quay lại làm trắc nghiệm
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ -->
     <script src="questions.js"></script>
     <script src="physics_questions.js"></script>
+    <script src="geography_questions.js"></script>
     <script src="supabase.js"></script>
     <script src="app.js"></script>
 </body>
