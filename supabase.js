@@ -714,43 +714,66 @@ class DatabaseService {
     // =========================================================================
 
     /**
-     * Lấy danh sách IP được phép mở môn Địa Lí
+     * Lấy cấu hình phân quyền môn Địa Lí (Chế độ PUBLIC/PRIVATE và danh sách IP)
      */
-    async fetchAllowedGeoIps() {
+    async fetchGeoConfig() {
+        let mode = 'PRIVATE';
+        let ips = [];
+
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('score_summary')
+                    .select('device_info, score_summary')
                     .eq('id', '00000000-0000-0000-0000-000000000002')
                     .limit(1);
 
-                if (!error && data && data.length > 0 && data[0].score_summary) {
-                    const parsed = JSON.parse(data[0].score_summary);
-                    if (Array.isArray(parsed)) {
-                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(parsed));
-                        return parsed;
+                if (!error && data && data.length > 0) {
+                    const row = data[0];
+                    if (row.device_info === 'PUBLIC' || row.device_info === 'PRIVATE') {
+                        mode = row.device_info;
                     }
+                    if (row.score_summary) {
+                        try {
+                            const parsed = JSON.parse(row.score_summary);
+                            if (Array.isArray(parsed)) {
+                                ips = parsed;
+                            } else if (parsed && typeof parsed === 'object') {
+                                if (parsed.mode) mode = parsed.mode;
+                                if (Array.isArray(parsed.ips)) ips = parsed.ips;
+                            }
+                        } catch (e) {}
+                    }
+                    try {
+                        localStorage.setItem('quiz_geo_mode', mode);
+                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
+                    } catch (e) {}
+                    return { mode, ips };
                 }
             } catch (e) {
-                console.warn("[DatabaseService] Lỗi lấy danh sách IP mở môn Địa:", e);
+                console.warn("[DatabaseService] Lỗi lấy cấu hình phân quyền môn Địa:", e);
             }
         }
 
+        // Fallback localStorage
         try {
+            mode = localStorage.getItem('quiz_geo_mode') || 'PRIVATE';
             const raw = localStorage.getItem('quiz_allowed_geo_ips');
-            return raw ? JSON.parse(raw) : [];
-        } catch (e) {
-            return [];
-        }
+            ips = raw ? JSON.parse(raw) : [];
+        } catch (e) {}
+
+        return { mode, ips };
     }
 
     /**
-     * Lưu danh sách IP được phép mở môn Địa Lí lên Supabase & LocalStorage
+     * Lưu cấu hình phân quyền môn Địa Lí (Chế độ và danh sách IP)
      */
-    async saveAllowedGeoIps(ipList) {
+    async saveGeoConfig(mode = 'PRIVATE', ipList = []) {
+        const cleanMode = (mode === 'PUBLIC') ? 'PUBLIC' : 'PRIVATE';
         const cleanList = Array.isArray(ipList) ? [...new Set(ipList.map(ip => String(ip).trim()).filter(Boolean))] : [];
+
         try {
+            localStorage.setItem('quiz_geo_mode', cleanMode);
             localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(cleanList));
         } catch (e) {}
 
@@ -762,37 +785,53 @@ class DatabaseService {
                         id: '00000000-0000-0000-0000-000000000002',
                         player_name: '__ALLOWED_GEO_IPS__',
                         ip_address: 'SYSTEM',
-                        device_info: 'whitelist',
+                        device_info: cleanMode,
                         status: 'ACTIVE',
-                        score_summary: JSON.stringify(cleanList),
+                        score_summary: JSON.stringify({ mode: cleanMode, ips: cleanList }),
                         last_active: new Date().toISOString()
                     }], { onConflict: 'id' });
             } catch (e) {
-                console.error("[DatabaseService] Lỗi lưu danh sách IP mở môn Địa lên Supabase:", e);
+                console.error("[DatabaseService] Lỗi lưu cấu hình phân quyền môn Địa lên Supabase:", e);
             }
         }
 
-        return cleanList;
+        return { mode: cleanMode, ips: cleanList };
+    }
+
+    async setGeoMode(mode) {
+        const config = await this.fetchGeoConfig();
+        return await this.saveGeoConfig(mode, config.ips);
+    }
+
+    async fetchAllowedGeoIps() {
+        const config = await this.fetchGeoConfig();
+        return config.ips;
+    }
+
+    async saveAllowedGeoIps(ipList) {
+        const config = await this.fetchGeoConfig();
+        const res = await this.saveGeoConfig(config.mode, ipList);
+        return res.ips;
     }
 
     async addGeoAllowedIp(ipAddress) {
         const cleanIp = (ipAddress || "").trim();
         if (!cleanIp) return false;
-        const currentList = await this.fetchAllowedGeoIps();
-        if (!currentList.includes(cleanIp)) {
-            currentList.push(cleanIp);
-            await this.saveAllowedGeoIps(currentList);
+        const config = await this.fetchGeoConfig();
+        if (!config.ips.includes(cleanIp)) {
+            config.ips.push(cleanIp);
+            await this.saveGeoConfig(config.mode, config.ips);
         }
-        return currentList;
+        return config.ips;
     }
 
     async removeGeoAllowedIp(ipAddress) {
         const cleanIp = (ipAddress || "").trim();
         if (!cleanIp) return false;
-        let currentList = await this.fetchAllowedGeoIps();
-        currentList = currentList.filter(ip => ip !== cleanIp);
-        await this.saveAllowedGeoIps(currentList);
-        return currentList;
+        const config = await this.fetchGeoConfig();
+        config.ips = config.ips.filter(ip => ip !== cleanIp);
+        await this.saveGeoConfig(config.mode, config.ips);
+        return config.ips;
     }
 }
 

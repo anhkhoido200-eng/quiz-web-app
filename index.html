@@ -447,7 +447,7 @@
     <div id="modal-admin-dashboard" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <!-- Header Modal -->
-            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-crown"></i>
@@ -468,7 +468,7 @@
             </div>
 
             <!-- Thanh điều hướng 3 Tab -->
-            <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold overflow-x-auto">
+            <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold overflow-x-auto shrink-0">
                 <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0">
                     <i class="fa-solid fa-file-lines"></i>
                     <span>Ngân Hàng Câu Hỏi (<span id="admin-badge-q-count">74</span>)</span>
@@ -484,7 +484,7 @@
             </div>
 
             <!-- Nội dung Tab 1: Quản lý câu hỏi -->
-            <div id="admin-tab-questions-content" class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+            <div id="admin-tab-questions-content" class="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-4">
                 <!-- Toolbar tìm kiếm & Thêm mới -->
                 <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/60">
                     <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
@@ -517,7 +517,7 @@
             </div>
 
             <!-- Nội dung Tab 2: Giám Sát Máy & Đăng Nhập (Phân chia 2 cột Môn Sử / Môn Lí & Chặn IP) -->
-            <div id="admin-tab-students-content" class="p-4 sm:p-6 overflow-y-auto flex-1 hidden space-y-4">
+            <div id="admin-tab-students-content" class="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 hidden space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
                     <div class="flex items-center gap-2">
                         <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></div>
@@ -661,7 +661,7 @@
             </div>
 
             <!-- Nội dung Tab 3: Cấp Quyền IP Môn Địa Lí 11 (Người dùng nhập IP ai thì người đó được vào) -->
-            <div id="admin-tab-ips-content" class="p-4 sm:p-6 overflow-y-auto flex-1 hidden space-y-4">
+            <div id="admin-tab-ips-content" class="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 hidden space-y-4">
                 <!-- Giới thiệu & Cơ chế bảo mật -->
                 <div class="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/40 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div class="flex items-start gap-3">
@@ -670,11 +670,11 @@
                         </div>
                         <div class="text-xs">
                             <h3 class="font-bold text-sm text-emerald-300 flex items-center gap-2">
-                                <span>Quản Lý Cấp Quyền IP - Môn Địa Lí 11</span>
-                                <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold tracking-wider">Ẩn Mặc Định</span>
+                                <span>Quản Lý Quyền Truy Cập Môn Địa Lí 11</span>
+                                <span id="admin-geo-mode-pill" class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] uppercase font-bold tracking-wider border border-amber-500/30">Đang Ẩn</span>
                             </h3>
                             <p class="text-slate-300 mt-1 leading-relaxed">
-                                Môn Địa Lí 11 bị ẩn hoàn toàn với mọi học sinh. Chỉ những máy có địa chỉ IP được Admin nhập vào đây mới thấy nút ôn tập Địa Lí.
+                                Bạn có thể bật chế độ <strong>Công khai (Public)</strong> để tất cả mọi người cùng làm, hoặc bật <strong>Ẩn (Riêng tư)</strong> và chỉ thêm IP của những người bạn muốn.
                             </p>
                         </div>
                     </div>
@@ -682,6 +682,49 @@
                         <button onclick="app.refreshGeographyAccess()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-rotate"></i> Đồng bộ ngay
                         </button>
+                    </div>
+                </div>
+
+                <!-- BỘ CHUYỂN ĐỔI CHẾ ĐỘ: PUBLIC (CÔNG KHAI) VS ẨN (THEO IP) -->
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-lg space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-indigo-400"></i>
+                            <span>Chọn Chế Độ Hiển Thị Cho Môn Địa:</span>
+                        </label>
+                        <span id="admin-geo-current-mode-badge" class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            🔒 ĐANG ẨN (Chỉ IP Được Cấp Mới Thấy)
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <!-- Lựa chọn 1: Ẩn theo IP (Private) -->
+                        <div onclick="app.adminSetGeoMode('PRIVATE')" id="admin-mode-card-private" class="p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-emerald-950/40 border-emerald-500 text-white shadow-md">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 text-sm mt-0.5 border border-emerald-500/30">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-xs sm:text-sm text-emerald-300">Chế Độ Ẩn (Riêng Tư)</span>
+                                    <span id="admin-mode-indicator-private" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">Môn Địa bị ẩn trên mọi máy. Chỉ các IP bạn nhập bên dưới mới nhìn thấy và làm bài được.</p>
+                            </div>
+                        </div>
+
+                        <!-- Lựa chọn 2: Công khai (Public) -->
+                        <div onclick="app.adminSetGeoMode('PUBLIC')" id="admin-mode-card-public" class="p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700">
+                            <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0 text-sm mt-0.5 border border-slate-700">
+                                <i class="fa-solid fa-globe"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-xs sm:text-sm text-slate-300">Chế Độ Public (Công Khai)</span>
+                                    <span id="admin-mode-indicator-public" class="w-2.5 h-2.5 rounded-full bg-transparent"></span>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">TẤT CẢ mọi học sinh ở mọi nơi đều nhìn thấy nút Môn Địa Lí 11 và làm bài tự do.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -901,10 +944,10 @@
     </div>
 
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ (Kèm tham số v để phá cache trình duyệt triệt để) -->
-    <script src="questions.js?v=2.7"></script>
-    <script src="physics_questions.js?v=2.7"></script>
-    <script src="geography_questions.js?v=2.7"></script>
-    <script src="supabase.js?v=2.7"></script>
-    <script src="app.js?v=2.7"></script>
+    <script src="questions.js?v=2.8"></script>
+    <script src="physics_questions.js?v=2.8"></script>
+    <script src="geography_questions.js?v=2.8"></script>
+    <script src="supabase.js?v=2.8"></script>
+    <script src="app.js?v=2.8"></script>
 </body>
 </html>

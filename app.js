@@ -34,6 +34,7 @@ class QuizApp {
         this.adminCurrentTab = 'questions';
         this.adminSecretPass = '034569';
         this.allowedGeoIps = [];
+        this.geoMode = 'PRIVATE';
 
         // Cache màn hình
         this.screens = {
@@ -1425,6 +1426,7 @@ class QuizApp {
             tabIContent?.classList.remove('hidden');
             btnI?.classList.add('bg-slate-900', 'text-emerald-400', 'border-t-2', 'border-emerald-500');
             btnI?.classList.remove('text-slate-400');
+            this.updateAdminGeoModeUI();
             this.renderAdminGeoIpBadges();
             this.renderAdminIpsTabList();
         } else {
@@ -2198,41 +2200,106 @@ class QuizApp {
         if (!window.dbService) return;
 
         try {
-            this.allowedGeoIps = await window.dbService.fetchAllowedGeoIps();
+            const config = await window.dbService.fetchGeoConfig();
+            this.geoMode = config.mode || 'PRIVATE';
+            this.allowedGeoIps = config.ips || [];
         } catch (e) {
             this.allowedGeoIps = this.allowedGeoIps || [];
+            this.geoMode = this.geoMode || 'PRIVATE';
         }
 
         const tabBtn = document.getElementById('tab-btn-geography');
-        const statusText = document.getElementById('geo-status-text');
-        const unlockTrigger = document.getElementById('geo-unlock-trigger');
-
         const isLocalUnlocked = localStorage.getItem('quiz_geo_manual_unlocked') === 'true';
         const hasIpAccess = this.clientIp && this.allowedGeoIps && this.allowedGeoIps.includes(this.clientIp);
-        const isAllowed = this.isAdmin || isLocalUnlocked || hasIpAccess;
+
+        // Nếu là PUBLIC thì TẤT CẢ mọi học sinh đều vào được; nếu là PRIVATE thì phải qua IP hoặc Admin
+        const isAllowed = (this.geoMode === 'PUBLIC') || this.isAdmin || isLocalUnlocked || hasIpAccess;
 
         if (tabBtn) {
             if (isAllowed) {
                 tabBtn.classList.remove('hidden');
-                if (statusText) {
-                    statusText.innerHTML = '<span class="text-emerald-400 font-semibold"><i class="fa-solid fa-circle-check"></i> Đã mở khóa môn Địa</span>';
-                }
-                if (unlockTrigger) unlockTrigger.classList.add('hidden');
             } else {
                 tabBtn.classList.add('hidden');
-                // Nếu đang chọn môn Địa mà bị thu hồi quyền thì quay lại môn Sử
+                // Nếu đang chọn môn Địa mà bị thu hồi quyền hoặc đổi chế độ thì quay lại môn Sử
                 if (this.currentSubject === 'geography') {
                     this.selectSubject('history');
                 }
-                if (statusText) {
-                    statusText.textContent = "Môn Địa chỉ hiển thị cho IP được cấp phép";
-                }
-                if (unlockTrigger) unlockTrigger.classList.remove('hidden');
             }
         }
 
+        this.updateAdminGeoModeUI();
         this.renderAdminGeoIpBadges();
         this.renderAdminIpsTabList();
+    }
+
+    /**
+     * Admin đổi chế độ Môn Địa Lí 11: PUBLIC (Công khai) hoặc PRIVATE (Ẩn theo IP)
+     */
+    async adminSetGeoMode(mode) {
+        const cleanMode = (mode === 'PUBLIC') ? 'PUBLIC' : 'PRIVATE';
+        this.geoMode = cleanMode;
+
+        if (window.dbService) {
+            await window.dbService.setGeoMode(cleanMode);
+        }
+
+        this.updateAdminGeoModeUI();
+        await this.refreshGeographyAccess();
+
+        if (cleanMode === 'PUBLIC') {
+            alert("ĐÃ BẬT CHẾ ĐỘ PUBLIC (CÔNG KHAI)!\nTất cả học sinh ở mọi máy đều có thể nhìn thấy nút Môn Địa Lí 11 và làm bài bình thường.");
+        } else {
+            alert("ĐÃ BẬT CHẾ ĐỘ ẨN (RIÊNG TƯ)!\nMôn Địa Lí 11 đã bị ẩn. Chỉ những máy có địa chỉ IP trong danh sách được cấp phép mới nhìn thấy môn Địa.");
+        }
+    }
+
+    /**
+     * Cập nhật giao diện chuyển đổi chế độ trong Admin Tab 3
+     */
+    updateAdminGeoModeUI() {
+        const isPublic = this.geoMode === 'PUBLIC';
+        const badge = document.getElementById('admin-geo-current-mode-badge');
+        const pill = document.getElementById('admin-geo-mode-pill');
+        const cardPrivate = document.getElementById('admin-mode-card-private');
+        const cardPublic = document.getElementById('admin-mode-card-public');
+        const indPrivate = document.getElementById('admin-mode-indicator-private');
+        const indPublic = document.getElementById('admin-mode-indicator-public');
+
+        if (badge) {
+            if (isPublic) {
+                badge.className = "px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40";
+                badge.innerHTML = '<i class="fa-solid fa-globe mr-1"></i> 🌐 ĐANG CÔNG KHAI (Mọi người đều thấy)';
+            } else {
+                badge.className = "px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                badge.innerHTML = '<i class="fa-solid fa-lock mr-1"></i> 🔒 ĐANG ẨN (Chỉ IP Được Cấp Mới Thấy)';
+            }
+        }
+
+        if (pill) {
+            if (isPublic) {
+                pill.className = "px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[10px] uppercase font-bold tracking-wider border border-sky-500/30";
+                pill.textContent = "Công Khai";
+            } else {
+                pill.className = "px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] uppercase font-bold tracking-wider border border-amber-500/30";
+                pill.textContent = "Đang Ẩn";
+            }
+        }
+
+        if (cardPrivate && cardPublic) {
+            if (isPublic) {
+                // Public active
+                cardPublic.className = "p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-sky-950/40 border-sky-500 text-white shadow-md";
+                cardPrivate.className = "p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700";
+                if (indPublic) indPublic.className = "w-2.5 h-2.5 rounded-full bg-sky-400 shadow-sm shadow-sky-400";
+                if (indPrivate) indPrivate.className = "w-2.5 h-2.5 rounded-full bg-transparent";
+            } else {
+                // Private active
+                cardPrivate.className = "p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-emerald-950/40 border-emerald-500 text-white shadow-md";
+                cardPublic.className = "p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700";
+                if (indPrivate) indPrivate.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400";
+                if (indPublic) indPublic.className = "w-2.5 h-2.5 rounded-full bg-transparent";
+            }
+        }
     }
 
     /**
@@ -2275,6 +2342,7 @@ class QuizApp {
         if (window.dbService) {
             this.allowedGeoIps = await window.dbService.addGeoAllowedIp(ip);
             if (inputEl) inputEl.value = '';
+            this.updateAdminGeoModeUI();
             this.renderAdminGeoIpBadges();
             this.renderAdminIpsTabList();
             if (this.lastFetchedLogins) {
@@ -2291,6 +2359,7 @@ class QuizApp {
         if (confirm(`Bạn có chắc muốn hủy quyền mở môn Địa của IP: ${ipToRemove}?`)) {
             if (window.dbService) {
                 this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ipToRemove);
+                this.updateAdminGeoModeUI();
                 this.renderAdminGeoIpBadges();
                 this.renderAdminIpsTabList();
                 if (this.lastFetchedLogins) {
@@ -2323,6 +2392,7 @@ class QuizApp {
             } else {
                 this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ip);
             }
+            this.updateAdminGeoModeUI();
             this.renderAdminGeoIpBadges();
             this.renderAdminIpsTabList();
             if (this.lastFetchedLogins) {
@@ -2338,6 +2408,7 @@ class QuizApp {
         if (!confirm("Bạn có chắc chắn muốn xóa TẤT CẢ các IP đã cấp quyền môn Địa không?\n(Môn Địa Lí 11 sẽ bị ẩn trên tất cả các máy)")) return;
         if (window.dbService) {
             this.allowedGeoIps = await window.dbService.saveAllowedGeoIps([]);
+            this.updateAdminGeoModeUI();
             this.renderAdminGeoIpBadges();
             this.renderAdminIpsTabList();
             if (this.lastFetchedLogins) {
