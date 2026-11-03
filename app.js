@@ -1,12 +1,22 @@
 /**
  * app.js - Logic điều phối ứng dụng trắc nghiệm Lịch Sử 11
- * Chế độ: Cuộn dọc liên tục, Phản hồi đáp án tức thì (Instant Feedback), Không xáo trộn đáp án
+ * Chế độ:
+ * 1. Tự động nhận diện thiết bị & địa chỉ IP để học sinh không cần nhập lại tên cũ
+ * 2. Cuộn dọc liên tục, Phản hồi đáp án tức thì (Instant Feedback), Không xáo trộn đáp án
+ * 3. Nút "Làm lại từ đầu" (Reset toàn bộ đáp án và cuộn về đầu trang)
+ * 4. Bảng Admin giám sát máy và thí sinh đăng nhập thời gian thực
+ * 5. Cập nhật trực tiếp ngân hàng câu hỏi bằng quyền Admin
  */
 
 class QuizApp {
     constructor() {
-        // Thông tin người học & Thời gian
+        // Thông tin người học & Thiết bị & IP
         this.playerName = "";
+        this.clientIp = "Đang nhận diện...";
+        this.deviceInfo = this.detectDevice();
+        this.currentLoginId = null;
+
+        // Đồng hồ bấm giờ (đếm tiến)
         this.secondsElapsed = 0;
         this.timerInterval = null;
 
@@ -24,13 +34,127 @@ class QuizApp {
         this.screens = {
             home: document.getElementById('screen-home'),
             quiz: document.getElementById('screen-quiz'),
-            result: document.getElementById('screen-result'),
-            leaderboard: document.getElementById('screen-leaderboard')
+            result: document.getElementById('screen-result')
         };
 
+        this.init();
+    }
+
+    async init() {
         this.initEventListeners();
-        this.loadQuestionsFromDb();
+        this.displayDeviceInfo();
+        this.checkSavedUser();
+        this.fetchClientIp();
+        await this.loadQuestionsFromDb();
         this.updateTotalQuestionDisplay();
+    }
+
+    /**
+     * Nhận diện hệ điều hành và trình duyệt của người dùng
+     */
+    detectDevice() {
+        const ua = navigator.userAgent || "";
+        let os = "Thiết bị khác";
+        if (/Windows NT/i.test(ua)) os = "Máy tính Windows";
+        else if (/Macintosh|Mac OS/i.test(ua)) os = "Máy Mac (macOS)";
+        else if (/iPhone/i.test(ua)) os = "Điện thoại iPhone (iOS)";
+        else if (/iPad/i.test(ua)) os = "Máy tính bảng iPad";
+        else if (/Android/i.test(ua)) os = "Điện thoại Android";
+        else if (/Linux/i.test(ua)) os = "Hệ thống Linux";
+
+        let browser = "Trình duyệt";
+        if (/Edg\//i.test(ua)) browser = "Edge";
+        else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browser = "Chrome";
+        else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = "Safari";
+        else if (/Firefox\//i.test(ua)) browser = "Firefox";
+        else if (/CocCoc/i.test(ua)) browser = "Cốc Cốc";
+
+        return `${os} • ${browser}`;
+    }
+
+    displayDeviceInfo() {
+        const el = document.getElementById('user-device-display');
+        if (el) el.textContent = this.deviceInfo;
+    }
+
+    /**
+     * Lấy địa chỉ IP công khai của thí sinh qua API
+     */
+    async fetchClientIp() {
+        const ipDisplay = document.getElementById('user-ip-display');
+        try {
+            const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3500) });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.ip) {
+                    this.clientIp = data.ip;
+                }
+            }
+        } catch (e) {
+            try {
+                const res2 = await fetch('https://api64.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
+                if (res2.ok) {
+                    const data2 = await res2.json();
+                    if (data2 && data2.ip) {
+                        this.clientIp = data2.ip;
+                    }
+                }
+            } catch (e2) {
+                this.clientIp = "IP Cục Bộ";
+            }
+        }
+
+        if (ipDisplay) ipDisplay.textContent = this.clientIp;
+
+        // Nếu ô tên đang trống, tra cứu xem IP này đã từng đăng nhập trước đó chưa
+        const nameInput = document.getElementById('player-name-input');
+        if (nameInput && !nameInput.value.trim() && window.dbService) {
+            const matched = await window.dbService.getLoginByIp(this.clientIp);
+            if (matched && matched.playerName) {
+                nameInput.value = matched.playerName;
+                this.showSavedUserBanner(matched.playerName);
+            }
+        }
+    }
+
+    /**
+     * Kiểm tra xem máy này đã từng lưu tên học sinh trước đó chưa (LocalStorage)
+     */
+    checkSavedUser() {
+        const savedName = localStorage.getItem('quiz_saved_player_name');
+        const nameInput = document.getElementById('player-name-input');
+        if (savedName && nameInput) {
+            nameInput.value = savedName;
+            this.showSavedUserBanner(savedName);
+        }
+    }
+
+    showSavedUserBanner(name) {
+        const banner = document.getElementById('saved-user-banner');
+        const nameEl = document.getElementById('saved-user-name');
+        if (banner && nameEl) {
+            nameEl.textContent = name;
+            banner.classList.remove('hidden');
+        }
+    }
+
+    clearSavedUser() {
+        localStorage.removeItem('quiz_saved_player_name');
+        const nameInput = document.getElementById('player-name-input');
+        const banner = document.getElementById('saved-user-banner');
+        if (nameInput) {
+            nameInput.value = '';
+            nameInput.focus();
+        }
+        if (banner) {
+            banner.classList.add('hidden');
+        }
+    }
+
+    switchUser() {
+        this.clearSavedUser();
+        this.switchScreen('home');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     /**
@@ -42,7 +166,10 @@ class QuizApp {
                 const list = await window.dbService.fetchQuestionsOnline();
                 if (list && list.length > 0) {
                     this.allQuestions = list;
+                    window.QUIZ_QUESTIONS = [...list];
                     this.updateTotalQuestionDisplay();
+                    this.renderAllQuestions();
+                    this.renderAdminQuestionsList();
                 }
             } catch (e) {
                 console.warn("[QuizApp] Lỗi nạp câu hỏi:", e);
@@ -61,15 +188,20 @@ class QuizApp {
                     this.startQuiz();
                 }
             });
-            const savedName = localStorage.getItem('quiz_last_player_name');
-            if (savedName) {
-                nameInput.value = savedName;
-            }
+        }
+
+        const adminPassInput = document.getElementById('admin-pass-input');
+        if (adminPassInput) {
+            adminPassInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.verifyAdminPassword();
+                }
+            });
         }
 
         // Phím tắt mở Admin: Alt + A
         window.addEventListener('keydown', (e) => {
-            if (e.altKey && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
+            if (e.altKey && (e.key === 'a' || e.key === 'A')) {
                 e.preventDefault();
                 this.promptAdminAuth();
             }
@@ -77,36 +209,15 @@ class QuizApp {
     }
 
     updateTotalQuestionDisplay() {
-        const countSpan = document.getElementById('info-total-questions');
-        const count = (this.allQuestions && this.allQuestions.length > 0) 
-            ? this.allQuestions.length 
-            : 74;
-            
-        if (countSpan) {
-            countSpan.textContent = `${count} câu`;
-        }
-        const badgeAdmin = document.getElementById('admin-badge-q-count');
-        if (badgeAdmin) {
-            badgeAdmin.textContent = count;
-        }
-    }
-
-    switchScreen(targetScreenName) {
-        Object.keys(this.screens).forEach(screenName => {
-            const screen = this.screens[screenName];
-            if (screenName === targetScreenName) {
-                screen.classList.remove('hidden');
-            } else {
-                screen.classList.add('hidden');
-            }
-        });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const count = this.allQuestions ? this.allQuestions.length : 74;
+        const qBadge = document.getElementById('admin-badge-q-count');
+        if (qBadge) qBadge.textContent = count;
     }
 
     /**
-     * Bắt đầu bài làm (Giữ nguyên 100% thứ tự câu hỏi và thứ tự đáp án A, B, C, D)
+     * Bắt đầu bài làm
      */
-    startQuiz() {
+    async startQuiz() {
         const nameInput = document.getElementById('player-name-input');
         const nameError = document.getElementById('player-name-error');
         const rawName = nameInput ? nameInput.value.trim() : "";
@@ -119,18 +230,34 @@ class QuizApp {
 
         if (nameError) nameError.classList.add('hidden');
         this.playerName = rawName;
-        localStorage.setItem('quiz_last_player_name', rawName);
 
-        // Hiển thị tên người chơi ở thanh điều hướng trên cùng
+        // Lưu tên học sinh để lần sau mở web không cần gõ lại
+        localStorage.setItem('quiz_saved_player_name', rawName);
+
+        // Hiển thị tên người chơi ở thanh sticky trên cùng
         const headerName = document.getElementById('quiz-header-player-name');
         if (headerName) headerName.textContent = rawName;
+
+        // Ghi nhận lượt đăng nhập vào hệ thống Supabase Cloud (để Admin giám sát)
+        if (window.dbService) {
+            try {
+                this.currentLoginId = await window.dbService.recordLogin({
+                    playerName: rawName,
+                    ipAddress: this.clientIp,
+                    deviceInfo: this.deviceInfo,
+                    status: 'Đang làm bài'
+                });
+            } catch (err) {
+                console.warn("Lỗi ghi nhận đăng nhập:", err);
+            }
+        }
 
         // Reset trạng thái làm bài
         this.userAnswers = {};
         this.secondsElapsed = 0;
         this.currentFilter = 'all';
 
-        // Bắt đầu bấm giờ (Đếm tiến thời gian thực)
+        // Bắt đầu bấm giờ
         this.startStopwatch();
 
         // Render toàn bộ câu hỏi thành một hàng dài cuộn dọc
@@ -139,28 +266,63 @@ class QuizApp {
 
         // Chuyển sang màn hình làm bài
         this.switchScreen('quiz');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     /**
-     * Đồng hồ đếm tiến (Stopwatch) không giới hạn thời gian
+     * NÚT LÀM LẠI: Reset toàn bộ đáp án đã chọn và cuộn mượt về đầu trang
+     */
+    resetCurrentQuiz() {
+        const answeredCount = Object.keys(this.userAnswers).length;
+        if (answeredCount > 0) {
+            if (!confirm(`Bạn có chắc chắn muốn xóa hết ${answeredCount} câu đã làm và làm lại từ đầu không?`)) {
+                return;
+            }
+        }
+
+        // 1. Reset đáp án và đồng hồ
+        this.userAnswers = {};
+        this.secondsElapsed = 0;
+        this.currentFilter = 'all';
+
+        const timerDisplay = document.getElementById('timer-display');
+        if (timerDisplay) timerDisplay.textContent = '00:00';
+
+        // Cập nhật trạng thái trong Admin nếu có
+        if (window.dbService && this.currentLoginId) {
+            window.dbService.updateLoginStatus(this.currentLoginId, 'Đang làm lại từ đầu', '');
+        }
+
+        // 2. Render lại danh sách câu hỏi sạch
+        this.renderAllQuestions();
+        this.updateLiveStats();
+
+        // 3. Đảm bảo ở màn hình quiz và cuộn mượt về đầu trang
+        this.switchScreen('quiz');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /**
+     * Đồng hồ bấm giờ đếm tiến (Stopwatch)
      */
     startStopwatch() {
-        clearInterval(this.timerInterval);
-        this.updateStopwatchDisplay();
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        const timerDisplay = document.getElementById('timer-display');
 
         this.timerInterval = setInterval(() => {
             this.secondsElapsed++;
-            this.updateStopwatchDisplay();
+            const minutes = Math.floor(this.secondsElapsed / 60);
+            const seconds = this.secondsElapsed % 60;
+            if (timerDisplay) {
+                timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
         }, 1000);
     }
 
-    updateStopwatchDisplay() {
-        const timerDisplay = document.getElementById('timer-display');
-        const minutes = Math.floor(this.secondsElapsed / 60);
-        const seconds = this.secondsElapsed % 60;
-        const formatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        if (timerDisplay) {
-            timerDisplay.textContent = formatted;
+    stopStopwatch() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
         }
     }
 
@@ -193,7 +355,7 @@ class QuizApp {
                         <i class="fa-solid fa-circle-check text-4xl text-emerald-400 mb-3"></i>
                         <h4 class="font-bold text-white text-base mb-1">Hiện tại bạn chưa làm sai câu nào!</h4>
                         <p class="text-xs text-slate-400 mb-4">Các câu trả lời chưa đúng sẽ tự động được lọc tại đây để bạn ôn lại.</p>
-                        <button onclick="app.filterQuestions('all')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold">Xem tất cả câu hỏi</button>
+                        <button onclick="app.filterQuestions('all')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer">Xem tất cả câu hỏi</button>
                     </div>
                 `;
             } else {
@@ -210,9 +372,9 @@ class QuizApp {
         filtered.forEach((q) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            card.className = "p-5 sm:p-6 rounded-2xl bg-slate-800/60 backdrop-blur-xl border border-slate-700/60 shadow-xl transition-all duration-200 hover:border-slate-600";
+            card.className = "p-5 sm:p-6 rounded-2xl bg-slate-800/70 border border-slate-700/70 shadow-xl transition-all duration-200";
 
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'tf_group' || (Array.isArray(q.statements) && q.statements.length > 0)) {
                 card.innerHTML = this.buildTrueFalseQuestionHTML(q);
             } else {
                 card.innerHTML = this.buildMCQQuestionHTML(q);
@@ -223,7 +385,7 @@ class QuizApp {
     }
 
     /**
-     * Tạo HTML cho câu hỏi trắc nghiệm 4 lựa chọn (A, B, C, D)
+     * Tạo HTML cho câu hỏi trắc nghiệm 4 lựa chọn (MCQ)
      */
     buildMCQQuestionHTML(q) {
         const letters = ['A', 'B', 'C', 'D'];
@@ -232,74 +394,91 @@ class QuizApp {
         const isCorrect = isAnswered && (userAnswer === q.correct);
 
         let optionsHtml = '';
-        q.options.forEach((optText, optIdx) => {
+        (q.options || []).forEach((optText, optIdx) => {
             const letter = letters[optIdx];
             const isChosen = userAnswer === optIdx;
             const isTheRightOne = optIdx === q.correct;
 
             let btnClasses = "w-full text-left p-3.5 rounded-xl border transition-all duration-200 flex items-start gap-3 mb-2.5 text-xs sm:text-sm ";
-            let iconHtml = `<span class="w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center font-bold text-xs bg-slate-800 text-slate-400 border border-slate-700">${letter}</span>`;
 
             if (!isAnswered) {
-                btnClasses += "border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/80 hover:border-indigo-500/50 text-slate-200 cursor-pointer";
+                btnClasses += "bg-slate-900/80 hover:bg-slate-700/70 border-slate-700/80 text-slate-200 cursor-pointer hover:border-indigo-500/50 hover:shadow-md";
             } else {
                 if (isTheRightOne) {
-                    btnClasses += "border-emerald-500/80 bg-emerald-950/40 text-emerald-200 font-semibold cursor-default";
-                    iconHtml = `<span class="w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center font-bold text-xs bg-emerald-600 text-white"><i class="fa-solid fa-check"></i></span>`;
+                    btnClasses += "bg-emerald-950/70 border-emerald-500 text-emerald-100 font-semibold ring-1 ring-emerald-500 shadow-md shadow-emerald-900/30";
                 } else if (isChosen && !isTheRightOne) {
-                    btnClasses += "border-rose-500/80 bg-rose-950/40 text-rose-200 line-through cursor-default";
-                    iconHtml = `<span class="w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center font-bold text-xs bg-rose-600 text-white"><i class="fa-solid fa-xmark"></i></span>`;
+                    btnClasses += "bg-rose-950/70 border-rose-500 text-rose-100 ring-1 ring-rose-500 shadow-md shadow-rose-900/30";
                 } else {
-                    btnClasses += "border-slate-800 bg-slate-900/40 text-slate-500 opacity-50 cursor-default";
+                    btnClasses += "bg-slate-900/40 border-slate-800 text-slate-500 opacity-60";
                 }
             }
 
+            let badgeClasses = "w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ";
+            if (!isAnswered) {
+                badgeClasses += "bg-slate-800 text-indigo-300 border border-slate-700";
+            } else if (isTheRightOne) {
+                badgeClasses += "bg-emerald-500 text-slate-950 font-extrabold";
+            } else if (isChosen && !isTheRightOne) {
+                badgeClasses += "bg-rose-500 text-white font-extrabold";
+            } else {
+                badgeClasses += "bg-slate-800 text-slate-500";
+            }
+
+            let iconTag = '';
+            if (isAnswered) {
+                if (isTheRightOne) {
+                    iconTag = '<i class="fa-solid fa-circle-check text-emerald-400 text-base ml-auto shrink-0 mt-0.5"></i>';
+                } else if (isChosen && !isTheRightOne) {
+                    iconTag = '<i class="fa-solid fa-circle-xmark text-rose-400 text-base ml-auto shrink-0 mt-0.5"></i>';
+                }
+            }
+
+            const clickHandler = !isAnswered ? `onclick="app.selectMCQOption(${q.id}, ${optIdx})"` : '';
+
             optionsHtml += `
-                <button type="button" ${isAnswered ? 'disabled' : ''} onclick="app.selectMCQAnswer(${q.id}, ${optIdx})" class="${btnClasses}">
-                    ${iconHtml}
-                    <span class="pt-0.5 leading-relaxed font-normal">${this.escapeHtml(optText)}</span>
+                <button type="button" ${clickHandler} class="${btnClasses}" ${isAnswered ? 'disabled' : ''}>
+                    <span class="${badgeClasses}">${letter}</span>
+                    <span class="flex-1 mt-0.5 leading-relaxed">${this.escapeHtml(optText)}</span>
+                    ${iconTag}
                 </button>
             `;
         });
 
-        // Hộp giải thích hiển thị ngay khi vừa ấn chọn
         let explanationBox = '';
         if (isAnswered) {
             explanationBox = `
-                <div class="mt-4 p-4 rounded-xl border text-xs leading-relaxed animate-fadeIn ${
-                    isCorrect 
-                        ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200' 
-                        : 'border-rose-500/40 bg-rose-950/30 text-rose-200'
-                }">
-                    <div class="flex items-center gap-2 mb-1.5 font-bold">
-                        <i class="fa-solid ${isCorrect ? 'fa-circle-check text-emerald-400' : 'fa-circle-xmark text-rose-400'} text-sm"></i>
-                        <span>${isCorrect ? 'Chính xác! 🎉' : 'Chưa đúng ❌'}</span>
-                        <span class="text-slate-400 font-normal">| Đáp án đúng: <strong class="text-emerald-300 font-bold">${letters[q.correct]}</strong></span>
+                <div class="mt-4 p-4 rounded-xl ${isCorrect ? 'bg-emerald-950/40 border-emerald-500/40' : 'bg-rose-950/40 border-rose-500/40'} border text-xs leading-relaxed space-y-1.5 animate-fadeIn">
+                    <div class="flex items-center gap-2 font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}">
+                        <i class="fa-solid ${isCorrect ? 'fa-check-circle' : 'fa-circle-xmark'}"></i>
+                        <span>${isCorrect ? 'CHÍNH XÁC!' : 'CHƯA CHÍNH XÁC!'}</span>
+                        <span class="text-slate-300 font-normal ml-2">Đáp án đúng là: <strong class="text-emerald-400 font-bold">${letters[q.correct]}</strong></span>
                     </div>
-                    <p class="text-slate-300 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 mt-2">
-                        <i class="fa-regular fa-lightbulb text-amber-400 mr-1.5"></i>
-                        ${this.escapeHtml(q.explanation || "Đáp án đúng theo chuẩn kiến thức Lịch Sử 11.")}
-                    </p>
+                    ${q.explanation ? `<div class="text-slate-300 pt-1 border-t border-slate-700/60"><strong class="text-indigo-300">Giải thích:</strong> ${this.escapeHtml(q.explanation)}</div>` : ''}
                 </div>
             `;
         }
 
         return `
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between gap-3 mb-3 pb-2.5 border-b border-slate-700/60 text-xs">
                 <div class="flex items-center gap-2">
-                    <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold text-xs border border-indigo-500/30">
+                    <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-extrabold border border-indigo-500/30">
                         Câu ${q.id}
                     </span>
-                    <span class="text-xs font-semibold text-slate-400">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
+                    <span class="text-slate-400 font-medium">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
                 </div>
-                ${isAnswered ? (isCorrect ? '<span class="text-xs font-bold text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-check"></i> Đúng</span>' : '<span class="text-xs font-bold text-rose-400 flex items-center gap-1"><i class="fa-solid fa-xmark"></i> Sai</span>') : ''}
+                ${isAnswered ? `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isCorrect ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}">
+                        <i class="fa-solid ${isCorrect ? 'fa-check' : 'fa-xmark'}"></i>
+                        ${isCorrect ? 'Đúng' : 'Sai'}
+                    </span>
+                ` : '<span class="text-slate-500 text-[11px]">Chưa làm</span>'}
             </div>
 
-            <h3 class="font-heading text-sm sm:text-base font-bold text-slate-100 mb-4 leading-relaxed">
+            <h3 class="font-medium text-slate-100 text-sm sm:text-base leading-relaxed mb-4">
                 ${this.escapeHtml(q.question)}
             </h3>
 
-            <div class="space-y-2">
+            <div class="space-y-1">
                 ${optionsHtml}
             </div>
 
@@ -311,109 +490,105 @@ class QuizApp {
      * Tạo HTML cho câu hỏi trắc nghiệm Đúng - Sai (gồm 4 ý a, b, c, d)
      */
     buildTrueFalseQuestionHTML(q) {
+        const statements = q.statements || [];
         const ansObj = this.userAnswers[q.id] || {};
-        const stmts = q.statements || [];
 
-        let stmtsHtml = '';
-        stmts.forEach((st, idx) => {
-            const chosen = ansObj[idx];
-            const isStmtAnswered = chosen !== undefined;
-            const isCorrect = isStmtAnswered && (Boolean(chosen) === Boolean(st.answer));
+        let statementsHtml = '';
+        statements.forEach((st, idx) => {
+            const userChoice = ansObj[idx]; // true hoặc false hoặc undefined
+            const isAnswered = userChoice !== undefined;
+            const isCorrectChoice = isAnswered && (Boolean(userChoice) === Boolean(st.answer));
 
-            let rowClass = "p-3 sm:p-3.5 rounded-xl border mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm ";
-            if (!isStmtAnswered) {
-                rowClass += "border-slate-700/60 bg-slate-900/50";
+            let trueBtnClasses = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ";
+            let falseBtnClasses = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ";
+
+            if (!isAnswered) {
+                trueBtnClasses += "bg-slate-800 hover:bg-emerald-600/30 text-slate-300 hover:text-emerald-300 border border-slate-700";
+                falseBtnClasses += "bg-slate-800 hover:bg-rose-600/30 text-slate-300 hover:text-rose-300 border border-slate-700";
             } else {
-                rowClass += isCorrect ? "border-emerald-500/40 bg-emerald-950/20" : "border-rose-500/40 bg-rose-950/20";
+                if (st.answer === true) {
+                    trueBtnClasses += "bg-emerald-600 text-white font-extrabold shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400";
+                    falseBtnClasses += (userChoice === false) 
+                        ? "bg-rose-600 text-white font-extrabold line-through" 
+                        : "bg-slate-900 text-slate-600 border border-slate-800 opacity-50";
+                } else {
+                    falseBtnClasses += "bg-rose-600 text-white font-extrabold shadow-md shadow-rose-600/30 ring-1 ring-rose-400";
+                    trueBtnClasses += (userChoice === true) 
+                        ? "bg-rose-900/60 text-rose-300 line-through" 
+                        : "bg-slate-900 text-slate-600 border border-slate-800 opacity-50";
+                }
             }
 
-            // Nút ĐÚNG
-            let btnTrueClass = "px-3.5 py-1.5 rounded-lg border font-bold text-xs transition cursor-pointer ";
-            if (!isStmtAnswered) {
-                btnTrueClass += "bg-slate-800 hover:bg-emerald-600/30 text-slate-300 border-slate-700";
-            } else if (st.answer === true) {
-                btnTrueClass += "bg-emerald-600 text-white border-emerald-500 shadow-sm";
-            } else if (chosen === true && st.answer === false) {
-                btnTrueClass += "bg-rose-600 text-white border-rose-500 line-through";
-            } else {
-                btnTrueClass += "bg-slate-900/60 text-slate-500 border-slate-800 opacity-40 cursor-default";
-            }
+            statementsHtml += `
+                <div class="p-3.5 rounded-xl ${isAnswered ? (isCorrectChoice ? 'bg-emerald-950/20 border border-emerald-500/30' : 'bg-rose-950/20 border border-rose-500/30') : 'bg-slate-900/70 border border-slate-700/80'} transition-all">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="flex items-start gap-2.5 flex-1">
+                            <span class="w-6 h-6 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                                ${st.label || String.fromCharCode(97 + idx)}
+                            </span>
+                            <div class="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                                ${this.escapeHtml(st.text)}
+                            </div>
+                        </div>
 
-            // Nút SAI
-            let btnFalseClass = "px-3.5 py-1.5 rounded-lg border font-bold text-xs transition cursor-pointer ";
-            if (!isStmtAnswered) {
-                btnFalseClass += "bg-slate-800 hover:bg-rose-600/30 text-slate-300 border-slate-700";
-            } else if (st.answer === false) {
-                btnFalseClass += "bg-emerald-600 text-white border-emerald-500 shadow-sm";
-            } else if (chosen === false && st.answer === true) {
-                btnFalseClass += "bg-rose-600 text-white border-rose-500 line-through";
-            } else {
-                btnFalseClass += "bg-slate-900/60 text-slate-500 border-slate-800 opacity-40 cursor-default";
-            }
-
-            let stmtExplanation = '';
-            if (isStmtAnswered) {
-                stmtExplanation = `
-                    <div class="w-full text-xs text-slate-300 bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 mt-2">
-                        <span class="font-bold text-amber-400 mr-1">Đáp án: ${st.answer ? 'ĐÚNG' : 'SAI'}</span> - ${this.escapeHtml(st.explanation || '')}
-                    </div>
-                `;
-            }
-
-            stmtsHtml += `
-                <div class="${rowClass}">
-                    <div class="flex items-start gap-2.5 flex-1">
-                        <span class="w-6 h-6 rounded-md bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0 border border-amber-500/30 mt-0.5">
-                            ${st.key || ['a','b','c','d'][idx]})
-                        </span>
-                        <div class="flex-1">
-                            <p class="leading-relaxed text-slate-200">${this.escapeHtml(st.text)}</p>
-                            ${stmtExplanation}
+                        <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
+                            <button type="button" ${!isAnswered ? `onclick="app.selectStatementTF(${q.id}, ${idx}, true)"` : 'disabled'} class="${trueBtnClasses}">
+                                <i class="fa-solid fa-check"></i> ĐÚNG
+                            </button>
+                            <button type="button" ${!isAnswered ? `onclick="app.selectStatementTF(${q.id}, ${idx}, false)"` : 'disabled'} class="${falseBtnClasses}">
+                                <i class="fa-solid fa-xmark"></i> SAI
+                            </button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <button type="button" ${isStmtAnswered ? 'disabled' : ''} onclick="app.selectTrueFalseAnswer(${q.id}, ${idx}, true)" class="${btnTrueClass}">
-                            <i class="fa-solid fa-check mr-1"></i> Đúng
-                        </button>
-                        <button type="button" ${isStmtAnswered ? 'disabled' : ''} onclick="app.selectTrueFalseAnswer(${q.id}, ${idx}, false)" class="${btnFalseClass}">
-                            <i class="fa-solid fa-xmark mr-1"></i> Sai
-                        </button>
-                    </div>
+
+                    ${isAnswered ? `
+                        <div class="mt-2.5 pt-2 border-t border-slate-800 text-xs flex flex-wrap items-center justify-between gap-2">
+                            <span class="font-semibold ${isCorrectChoice ? 'text-emerald-400' : 'text-rose-400'} flex items-center gap-1.5">
+                                <i class="fa-solid ${isCorrectChoice ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
+                                ${isCorrectChoice ? 'Chính xác!' : 'Chưa đúng!'}
+                                <span class="text-slate-300 font-normal">Đáp án: <strong class="${st.answer ? 'text-emerald-400' : 'text-rose-400'}">${st.answer ? 'ĐÚNG' : 'SAI'}</strong></span>
+                            </span>
+                            ${st.explanation ? `<span class="text-slate-400 text-[11px] italic">${this.escapeHtml(st.explanation)}</span>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             `;
         });
 
         return `
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between gap-3 mb-3 pb-2.5 border-b border-slate-700/60 text-xs">
                 <div class="flex items-center gap-2">
-                    <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/30">
+                    <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/30">
                         Câu ${q.id} (Đúng - Sai)
                     </span>
-                    <span class="text-xs font-semibold text-slate-400">${this.escapeHtml(q.category || 'Đúng - Sai')}</span>
+                    <span class="text-slate-400 font-medium">${this.escapeHtml(q.category || 'Phần II: Câu hỏi Đúng - Sai')}</span>
                 </div>
             </div>
 
-            <!-- Khung tư liệu / Đoạn dẫn -->
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line mb-4 font-normal shadow-inner">
+            <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs sm:text-sm text-slate-200 leading-relaxed mb-4 whitespace-pre-line font-serif italic">
                 ${this.escapeHtml(q.question)}
             </div>
 
-            <div class="space-y-2">
-                ${stmtsHtml}
+            <p class="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">
+                Chọn ĐÚNG hoặc SAI cho mỗi ý dưới đây:
+            </p>
+
+            <div class="space-y-2.5">
+                ${statementsHtml}
             </div>
         `;
     }
 
     /**
-     * Xử lý khi thí sinh chọn đáp án MCQ (Phản hồi tức thì)
+     * Xử lý chọn đáp án MCQ -> Phản hồi tức thì ngay lập tức
      */
-    selectMCQAnswer(questionId, optionIndex) {
-        if (this.userAnswers[questionId] !== undefined) return;
-        this.userAnswers[questionId] = optionIndex;
+    selectMCQOption(qId, optIdx) {
+        if (this.userAnswers[qId] !== undefined) return;
+        this.userAnswers[qId] = optIdx;
 
-        // Cập nhật thẻ câu hỏi cụ thể trong DOM
-        const card = document.getElementById(`q-card-${questionId}`);
-        const q = this.allQuestions.find(item => item.id === questionId);
+        // Cập nhật giao diện của câu hỏi đó
+        const card = document.getElementById(`q-card-${qId}`);
+        const q = this.allQuestions.find(item => item.id === qId);
         if (card && q) {
             card.innerHTML = this.buildMCQQuestionHTML(q);
         }
@@ -422,18 +597,18 @@ class QuizApp {
     }
 
     /**
-     * Xử lý khi thí sinh chọn Đúng/Sai cho từng mệnh đề (Phản hồi tức thì)
+     * Xử lý chọn Đúng / Sai cho từng ý
      */
-    selectTrueFalseAnswer(questionId, stmtIndex, boolVal) {
-        if (!this.userAnswers[questionId] || typeof this.userAnswers[questionId] !== 'object') {
-            this.userAnswers[questionId] = {};
+    selectStatementTF(qId, stmtIdx, choiceBool) {
+        if (!this.userAnswers[qId]) {
+            this.userAnswers[qId] = {};
         }
-        if (this.userAnswers[questionId][stmtIndex] !== undefined) return;
-        this.userAnswers[questionId][stmtIndex] = Boolean(boolVal);
+        if (this.userAnswers[qId][stmtIdx] !== undefined) return;
 
-        // Cập nhật thẻ câu hỏi trong DOM
-        const card = document.getElementById(`q-card-${questionId}`);
-        const q = this.allQuestions.find(item => item.id === questionId);
+        this.userAnswers[qId][stmtIdx] = choiceBool;
+
+        const card = document.getElementById(`q-card-${qId}`);
+        const q = this.allQuestions.find(item => item.id === qId);
         if (card && q) {
             card.innerHTML = this.buildTrueFalseQuestionHTML(q);
         }
@@ -442,13 +617,15 @@ class QuizApp {
     }
 
     /**
-     * Kiểm tra xem câu hỏi có bị làm sai ít nhất 1 ý hay không
+     * Kiểm tra xem câu hỏi này có làm sai không (dành cho bộ lọc "Câu làm sai")
      */
     isQuestionWrong(q) {
         if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
             const ansObj = this.userAnswers[q.id];
-            if (!ansObj || typeof ansObj !== 'object') return false;
-            return q.statements.some((st, idx) => ansObj[idx] !== undefined && Boolean(ansObj[idx]) !== Boolean(st.answer));
+            if (!ansObj) return false;
+            return q.statements.some((st, idx) => {
+                return ansObj[idx] !== undefined && Boolean(ansObj[idx]) !== Boolean(st.answer);
+            });
         } else {
             const ans = this.userAnswers[q.id];
             if (ans === undefined) return false;
@@ -457,22 +634,21 @@ class QuizApp {
     }
 
     /**
-     * Cập nhật điểm số thời gian thực và thanh tiến trình
+     * Cập nhật các chỉ số thời gian thực trên Sticky Top Bar
      */
     updateLiveStats() {
-        let correctCount = 0;
+        const questions = this.allQuestions || [];
+        let totalItems = 0;
         let attemptedCount = 0;
+        let correctCount = 0;
         let wrongCount = 0;
-
-        const questions = (this.allQuestions && this.allQuestions.length > 0) 
-            ? this.allQuestions 
-            : (window.QUIZ_QUESTIONS || []);
 
         questions.forEach(q => {
             if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 const ansObj = this.userAnswers[q.id] || {};
                 let hasWrong = false;
                 q.statements.forEach((st, idx) => {
+                    totalItems++;
                     if (ansObj[idx] !== undefined) {
                         attemptedCount++;
                         if (Boolean(ansObj[idx]) === Boolean(st.answer)) {
@@ -484,6 +660,7 @@ class QuizApp {
                 });
                 if (hasWrong) wrongCount++;
             } else {
+                totalItems++;
                 if (this.userAnswers[q.id] !== undefined) {
                     attemptedCount++;
                     if (this.userAnswers[q.id] === q.correct) {
@@ -499,28 +676,27 @@ class QuizApp {
         const liveScore = document.getElementById('quiz-live-score');
         const attemptedEl = document.getElementById('quiz-attempted-count');
         const wrongBadge = document.getElementById('wrong-count-badge');
-        const progressBar = document.getElementById('quiz-progress-bar');
         const progressText = document.getElementById('quiz-progress-text');
+        const progressBar = document.getElementById('quiz-progress-bar');
 
         if (liveScore) liveScore.textContent = correctCount;
         if (attemptedEl) attemptedEl.textContent = attemptedCount;
         if (wrongBadge) wrongBadge.textContent = wrongCount;
 
-        // Tổng số mục (65 trắc nghiệm + 36 ý đúng sai = 101 mục)
-        const totalItems = 101;
-        const percent = Math.min(100, Math.round((attemptedCount / totalItems) * 100));
-
-        if (progressBar) progressBar.style.width = `${percent}%`;
+        const percent = totalItems > 0 ? Math.round((attemptedCount / totalItems) * 100) : 0;
         if (progressText) progressText.textContent = `Đã làm ${attemptedCount}/${totalItems} ý (${percent}%)`;
+        if (progressBar) progressBar.style.width = `${percent}%`;
     }
 
     /**
-     * Lọc danh sách câu hỏi theo danh mục
+     * Lọc danh sách câu hỏi
      */
     filterQuestions(filterKey) {
         this.currentFilter = filterKey;
 
-        document.querySelectorAll('.filter-tab-btn').forEach(btn => {
+        // Cập nhật style nút filter
+        const buttons = document.querySelectorAll('.filter-tab-btn');
+        buttons.forEach(btn => {
             if (btn.getAttribute('data-filter') === filterKey) {
                 btn.className = "filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-indigo-600 text-white cursor-pointer";
             } else {
@@ -528,37 +704,59 @@ class QuizApp {
             }
         });
 
-        const wrongBtn = document.getElementById('btn-filter-wrong');
-        if (wrongBtn) {
+        const btnWrong = document.getElementById('btn-filter-wrong');
+        if (btnWrong) {
             if (filterKey === 'wrong') {
-                wrongBtn.classList.add('ring-2', 'ring-rose-500', 'bg-rose-600/40');
+                btnWrong.className = "px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer";
             } else {
-                wrongBtn.classList.remove('ring-2', 'ring-rose-500', 'bg-rose-600/40');
+                btnWrong.className = "px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer";
             }
         }
 
         this.renderAllQuestions();
-        window.scrollTo({ top: 100, behavior: 'smooth' });
+        window.scrollTo({ top: 120, behavior: 'smooth' });
     }
 
     /**
      * Xác nhận và nộp bài
      */
     confirmSubmit() {
-        if (window.confirm("Bạn có chắc chắn muốn nộp bài và tổng kết điểm không?")) {
-            this.submitQuiz();
+        const questions = this.allQuestions || [];
+        let totalItems = 0;
+        let attemptedCount = 0;
+
+        questions.forEach(q => {
+            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+                const ansObj = this.userAnswers[q.id] || {};
+                q.statements.forEach((st, idx) => {
+                    totalItems++;
+                    if (ansObj[idx] !== undefined) attemptedCount++;
+                });
+            } else {
+                totalItems++;
+                if (this.userAnswers[q.id] !== undefined) attemptedCount++;
+            }
+        });
+
+        const unattempted = totalItems - attemptedCount;
+        let msg = `Bạn đã hoàn thành ${attemptedCount}/${totalItems} ý hỏi.`;
+        if (unattempted > 0) {
+            msg += ` Còn ${unattempted} ý chưa trả lời. Bạn có chắc chắn muốn nộp bài ngay bây giờ?`;
+        } else {
+            msg += ` Bạn đã trả lời hết toàn bộ bài thi! Bạn có muốn nộp bài để xem điểm tổng kết?`;
+        }
+
+        if (confirm(msg)) {
+            this.finishQuiz();
         }
     }
 
-    async submitQuiz() {
-        clearInterval(this.timerInterval);
+    finishQuiz() {
+        this.stopStopwatch();
 
+        const questions = this.allQuestions || [];
         let totalItems = 0;
         let correctCount = 0;
-
-        const questions = (this.allQuestions && this.allQuestions.length > 0) 
-            ? this.allQuestions 
-            : (window.QUIZ_QUESTIONS || []);
 
         questions.forEach(q => {
             if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
@@ -580,160 +778,130 @@ class QuizApp {
         const finalScore = totalItems > 0 ? Math.round((correctCount / totalItems) * 100) : 0;
 
         // Cập nhật kết quả lên màn hình Result
-        document.getElementById('result-player-greeting').textContent = 
-            `Chúc mừng ${this.playerName} đã hoàn thành bài thi!`;
-        document.getElementById('result-score').textContent = finalScore;
-        document.getElementById('result-correct-ratio').textContent = `${correctCount}/${totalItems}`;
+        const greetingEl = document.getElementById('result-player-greeting');
+        if (greetingEl) greetingEl.textContent = `Chúc mừng ${this.playerName} đã hoàn thành bài thi!`;
+
+        const scoreEl = document.getElementById('result-score');
+        if (scoreEl) scoreEl.textContent = finalScore;
+
+        const ratioEl = document.getElementById('result-correct-ratio');
+        if (ratioEl) ratioEl.textContent = `${correctCount}/${totalItems}`;
 
         const minutes = Math.floor(this.secondsElapsed / 60);
         const seconds = this.secondsElapsed % 60;
-        document.getElementById('result-time-spent').textContent = 
-            `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        const timeSpentEl = document.getElementById('result-time-spent');
+        if (timeSpentEl) timeSpentEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-        if (finalScore >= 70 && typeof confetti === 'function') {
-            confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+        // Cập nhật trạng thái và điểm của thí sinh lên Supabase Cloud (để Admin theo dõi)
+        if (window.dbService && this.currentLoginId) {
+            window.dbService.updateLoginStatus(
+                this.currentLoginId, 
+                'Đã nộp bài', 
+                `Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm)`
+            );
         }
 
-        // Lưu kết quả vào Supabase Database
-        if (window.dbService) {
-            window.dbService.saveResult({
-                playerName: this.playerName,
-                score: finalScore,
-                correctCount: correctCount,
-                totalQuestions: totalItems,
-                timeSpentSeconds: this.secondsElapsed
+        // Bắn pháo hoa ăn mừng
+        if (typeof confetti === 'function') {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
             });
         }
 
+        this.renderReviewList();
         this.switchScreen('result');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    restartQuiz() {
-        this.startQuiz();
-    }
+    renderReviewList() {
+        const reviewList = document.getElementById('review-list');
+        if (!reviewList) return;
 
-    async showLeaderboard() {
-        this.switchScreen('leaderboard');
-        await this.refreshLeaderboard();
-    }
+        reviewList.innerHTML = '';
+        const questions = this.allQuestions || [];
 
-    async refreshLeaderboard() {
-        const tbody = document.getElementById('leaderboard-table-body');
-        const podiumContainer = document.getElementById('podium-container');
-        const statusText = document.getElementById('storage-status-text');
-        if (!tbody || !window.dbService) return;
+        questions.forEach((q, qIndex) => {
+            const card = document.createElement('div');
+            card.className = "p-4 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs space-y-2";
 
-        const config = window.dbService.getConfig();
-        if (config.isActive) {
-            statusText.innerHTML = '<span class="inline-flex items-center gap-1 text-emerald-400"><i class="fa-solid fa-cloud"></i> Đang đồng bộ từ Supabase Cloud Database</span>';
-        } else {
-            statusText.innerHTML = '<span class="inline-flex items-center gap-1 text-amber-400"><i class="fa-solid fa-hard-drive"></i> Đang hiển thị điểm lưu trên trình duyệt (LocalStorage)</span>';
-        }
-
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-500">Đang tải bảng vàng...</td></tr>';
-        const list = await window.dbService.getLeaderboard(50);
-
-        if (!list || list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-slate-500">Chưa có ai hoàn thành bài thi. Hãy là người đầu tiên ghi danh!</td></tr>';
-            if (podiumContainer) podiumContainer.innerHTML = '';
-            return;
-        }
-
-        this.renderPodium(list.slice(0, 3));
-
-        tbody.innerHTML = '';
-        list.forEach((item, index) => {
-            const rank = index + 1;
-            const row = document.createElement('tr');
-            row.className = "hover:bg-slate-800/40 transition";
-
-            const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString('vi-VN') : 'Mới đây';
-            const minutes = Math.floor((item.time_spent_seconds || 0) / 60);
-            const seconds = (item.time_spent_seconds || 0) % 60;
-            const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-            let rankBadge = `<span class="font-bold text-slate-400">${rank}</span>`;
-            if (rank === 1) rankBadge = `<span class="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-extrabold flex items-center justify-center mx-auto text-xs shadow-md shadow-amber-400/20">1</span>`;
-            else if (rank === 2) rankBadge = `<span class="w-6 h-6 rounded-full bg-slate-300 text-slate-950 font-extrabold flex items-center justify-center mx-auto text-xs shadow-md shadow-slate-300/20">2</span>`;
-            else if (rank === 3) rankBadge = `<span class="w-6 h-6 rounded-full bg-amber-700 text-amber-100 font-extrabold flex items-center justify-center mx-auto text-xs shadow-md shadow-amber-700/20">3</span>`;
-
-            row.innerHTML = `
-                <td class="py-3 px-4 text-center">${rankBadge}</td>
-                <td class="py-3 px-4 font-semibold text-slate-200">${this.escapeHtml(item.player_name || 'Học sinh')}</td>
-                <td class="py-3 px-4 text-center font-bold text-indigo-400">${item.score} đ</td>
-                <td class="py-3 px-4 text-center text-slate-400 font-mono">${timeStr}</td>
-                <td class="py-3 px-4 text-right text-slate-500 text-[11px]">${dateStr}</td>
-            `;
-            tbody.appendChild(row);
+            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+                const ansObj = this.userAnswers[q.id] || {};
+                let stRows = '';
+                q.statements.forEach((st, idx) => {
+                    const ans = ansObj[idx];
+                    const isRight = ans !== undefined && Boolean(ans) === Boolean(st.answer);
+                    stRows += `
+                        <div class="p-2 rounded-lg ${isRight ? 'bg-emerald-950/30 border border-emerald-500/30' : 'bg-rose-950/30 border border-rose-500/30'} flex items-center justify-between gap-2">
+                            <span><strong>${st.label || String.fromCharCode(97+idx)}.</strong> ${this.escapeHtml(st.text)}</span>
+                            <span class="font-bold shrink-0 ${st.answer ? 'text-emerald-400' : 'text-rose-400'}">
+                                Đáp án: ${st.answer ? 'ĐÚNG' : 'SAI'} ${isRight ? '✅' : '❌'}
+                            </span>
+                        </div>
+                    `;
+                });
+                card.innerHTML = `
+                    <div class="font-bold text-amber-300">Câu ${q.id} (Đúng - Sai):</div>
+                    <div class="italic text-slate-300">${this.escapeHtml(q.question)}</div>
+                    <div class="space-y-1.5 pt-1">${stRows}</div>
+                `;
+            } else {
+                const letters = ['A', 'B', 'C', 'D'];
+                const userAns = this.userAnswers[q.id];
+                const isRight = userAns === q.correct;
+                card.innerHTML = `
+                    <div class="flex items-center justify-between font-bold">
+                        <span class="text-indigo-300">Câu ${q.id}:</span>
+                        <span class="${isRight ? 'text-emerald-400' : 'text-rose-400'}">${isRight ? 'ĐÚNG ✅' : 'CHƯA ĐÚNG ❌'}</span>
+                    </div>
+                    <div class="text-slate-200">${this.escapeHtml(q.question)}</div>
+                    <div class="pt-1 text-slate-300">
+                        Đáp án đúng: <strong class="text-emerald-400">${letters[q.correct]}. ${this.escapeHtml((q.options || [])[q.correct] || '')}</strong>
+                    </div>
+                    ${q.explanation ? `<div class="text-slate-400 italic pt-1 border-t border-slate-800">Giải thích: ${this.escapeHtml(q.explanation)}</div>` : ''}
+                `;
+            }
+            reviewList.appendChild(card);
         });
     }
 
-    renderPodium(top3) {
-        const podiumContainer = document.getElementById('podium-container');
-        if (!podiumContainer || top3.length === 0) {
-            if (podiumContainer) podiumContainer.innerHTML = '';
-            return;
-        }
-
-        const rank2 = top3[1];
-        const rank1 = top3[0];
-        const rank3 = top3[2];
-
-        podiumContainer.innerHTML = `
-            <div class="text-center">
-                ${rank2 ? `
-                    <div class="w-12 h-12 mx-auto rounded-full bg-slate-700 border-2 border-slate-300 flex items-center justify-center text-slate-200 font-bold mb-2 shadow-lg">
-                        <i class="fa-solid fa-medal text-slate-300 text-lg"></i>
-                    </div>
-                    <p class="font-bold text-xs truncate text-slate-200">${this.escapeHtml(rank2.player_name)}</p>
-                    <p class="text-xs text-indigo-400 font-bold">${rank2.score} điểm</p>
-                    <div class="h-16 mt-2 rounded-t-xl bg-slate-800 border-t border-slate-600 flex items-center justify-center text-slate-400 font-black text-sm">#2</div>
-                ` : ''}
-            </div>
-            <div class="text-center">
-                ${rank1 ? `
-                    <div class="w-14 h-14 mx-auto rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-amber-400 font-bold mb-2 shadow-xl shadow-amber-500/20 animate-pulse">
-                        <i class="fa-solid fa-crown text-amber-400 text-xl"></i>
-                    </div>
-                    <p class="font-extrabold text-sm truncate text-amber-300">${this.escapeHtml(rank1.player_name)}</p>
-                    <p class="text-xs text-amber-400 font-black">${rank1.score} điểm</p>
-                    <div class="h-24 mt-2 rounded-t-xl bg-gradient-to-t from-amber-600/30 to-amber-500/40 border-t-2 border-amber-400 flex items-center justify-center text-amber-300 font-black text-base">#1</div>
-                ` : ''}
-            </div>
-            <div class="text-center">
-                ${rank3 ? `
-                    <div class="w-12 h-12 mx-auto rounded-full bg-slate-800 border-2 border-amber-700 flex items-center justify-center text-amber-600 font-bold mb-2 shadow-lg">
-                        <i class="fa-solid fa-award text-amber-700 text-lg"></i>
-                    </div>
-                    <p class="font-bold text-xs truncate text-slate-300">${this.escapeHtml(rank3.player_name)}</p>
-                    <p class="text-xs text-indigo-400 font-bold">${rank3.score} điểm</p>
-                    <div class="h-12 mt-2 rounded-t-xl bg-slate-800/80 border-t border-amber-800 flex items-center justify-center text-amber-700 font-black text-sm">#3</div>
-                ` : ''}
-            </div>
-        `;
+    switchScreen(screenName) {
+        Object.keys(this.screens).forEach(key => {
+            if (this.screens[key]) {
+                if (key === screenName) {
+                    this.screens[key].classList.remove('hidden');
+                } else {
+                    this.screens[key].classList.add('hidden');
+                }
+            }
+        });
     }
 
     showHome() {
         this.switchScreen('home');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // ==========================================
-    // PHẦN QUẢN TRỊ VIÊN (ADMIN DASHBOARD & CRUD)
-    // ==========================================
+    // =========================================================================
+    // QUẢN TRỊ VIÊN (ADMIN DASHBOARD): GIÁM SÁT MÁY & SỬA CÂU HỎI TRỰC TIẾP
+    // =========================================================================
+
     promptAdminAuth() {
         if (this.isAdminAuthenticated) {
             this.openAdminDashboard();
             return;
         }
         const modal = document.getElementById('modal-admin-auth');
-        const input = document.getElementById('admin-password-input');
-        const err = document.getElementById('admin-auth-error-msg');
-        if (input) input.value = '';
-        if (err) err.classList.add('hidden');
+        const passInput = document.getElementById('admin-pass-input');
+        const errText = document.getElementById('admin-auth-error');
+        if (errText) errText.classList.add('hidden');
+        if (passInput) passInput.value = '';
+
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            setTimeout(() => input?.focus(), 50);
+            setTimeout(() => passInput?.focus(), 100);
         }
     }
 
@@ -746,16 +914,17 @@ class QuizApp {
     }
 
     verifyAdminPassword() {
-        const input = document.getElementById('admin-password-input');
-        const err = document.getElementById('admin-auth-error-msg');
-        const entered = input ? input.value.trim() : '';
+        const passInput = document.getElementById('admin-pass-input');
+        const errText = document.getElementById('admin-auth-error');
+        const pass = passInput ? passInput.value.trim() : '';
 
-        if (entered === this.adminSecretPass || entered === 'admin123') {
+        if (pass === this.adminSecretPass || pass === 'admin123') {
             this.isAdminAuthenticated = true;
             this.closeAdminAuthModal();
             this.openAdminDashboard();
         } else {
-            if (err) err.classList.remove('hidden');
+            if (errText) errText.classList.remove('hidden');
+            if (passInput) passInput.select();
         }
     }
 
@@ -764,7 +933,7 @@ class QuizApp {
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            this.switchAdminTab('questions');
+            this.switchAdminTab(this.adminCurrentTab);
         }
     }
 
@@ -786,22 +955,29 @@ class QuizApp {
         if (tabName === 'questions') {
             tabQContent?.classList.remove('hidden');
             tabSContent?.classList.add('hidden');
+
             btnQ?.classList.add('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnQ?.classList.remove('text-slate-400');
             btnS?.classList.remove('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnS?.classList.add('text-slate-400');
+
             this.renderAdminQuestionsList();
         } else {
             tabQContent?.classList.add('hidden');
             tabSContent?.classList.remove('hidden');
+
             btnS?.classList.add('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnS?.classList.remove('text-slate-400');
             btnQ?.classList.remove('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnQ?.classList.add('text-slate-400');
+
             this.renderAdminStudentsList();
         }
     }
 
+    /**
+     * Render danh sách câu hỏi cho Admin chỉnh sửa
+     */
     renderAdminQuestionsList() {
         const listContainer = document.getElementById('admin-questions-list');
         const searchInput = document.getElementById('admin-search-q-input');
@@ -824,56 +1000,48 @@ class QuizApp {
         });
 
         if (filtered.length === 0) {
-            listContainer.innerHTML = '<div class="text-center py-8 text-slate-500 text-xs">Không tìm thấy câu hỏi nào phù hợp.</div>';
+            listContainer.innerHTML = '<div class="text-center py-8 text-slate-500 text-xs">Không tìm thấy câu hỏi phù hợp.</div>';
             return;
         }
 
-        const letters = ['A', 'B', 'C', 'D'];
         listContainer.innerHTML = '';
+        filtered.forEach(q => {
+            const item = document.createElement('div');
+            item.className = "p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 hover:border-slate-600 transition text-xs space-y-2";
 
-        filtered.forEach((q) => {
-            const card = document.createElement('div');
-            card.className = "p-4 rounded-xl bg-slate-800/80 border border-slate-700/80 hover:border-slate-600 transition flex flex-col md:flex-row md:items-center justify-between gap-3";
-
-            let previewHtml = '';
+            const letters = ['A', 'B', 'C', 'D'];
+            let answerSnippet = '';
             if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
-                previewHtml = `<span class="inline-block px-2 py-0.5 rounded text-[11px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">4 Mệnh đề Đúng - Sai</span>`;
-            } else if (Array.isArray(q.options)) {
-                previewHtml = q.options.map((opt, i) => {
-                    const isCorrect = i === q.correct;
-                    return `<span class="inline-block px-2 py-0.5 rounded text-[11px] ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'bg-slate-900 text-slate-400'}">${letters[i]}: ${this.escapeHtml(opt.length > 25 ? opt.substring(0, 25) + '...' : opt)}</span>`;
-                }).join(' ');
+                answerSnippet = `<span class="text-amber-300 font-semibold">[Đúng - Sai: ${q.statements.length} ý]</span>`;
+            } else {
+                answerSnippet = `<span class="text-emerald-400 font-semibold">Đáp án đúng: ${letters[q.correct] || 'A'}</span>`;
             }
 
-            card.innerHTML = `
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1.5">
-                        <span class="w-6 h-6 rounded-md bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0 border border-amber-500/30">
-                            #${q.id}
-                        </span>
-                        <span class="text-[11px] font-semibold text-indigo-400">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
+            item.innerHTML = `
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1 space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[11px]">Câu #${q.id}</span>
+                            <span class="text-slate-400 text-[11px]">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
+                            ${answerSnippet}
+                        </div>
+                        <p class="font-medium text-slate-200 line-clamp-2 leading-relaxed">${this.escapeHtml(q.question)}</p>
                     </div>
-                    <p class="text-xs font-medium text-slate-100 line-clamp-2 mb-2 leading-relaxed">
-                        ${this.escapeHtml(q.question)}
-                    </p>
-                    <div class="flex flex-wrap gap-1.5">
-                        ${previewHtml}
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="app.openEditQuestion(${q.id})" class="px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white transition cursor-pointer" title="Chỉnh sửa">
+                            <i class="fa-solid fa-pen-to-square"></i> Sửa
+                        </button>
+                        <button onclick="app.deleteQuestion(${q.id})" class="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white transition cursor-pointer" title="Xóa">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
                     </div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-700/60">
-                    <button onclick="app.openEditQuestion(${q.id})" class="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer">
-                        <i class="fa-solid fa-pen"></i> Sửa
-                    </button>
-                    <button onclick="app.deleteQuestion(${q.id})" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1 cursor-pointer">
-                        <i class="fa-solid fa-trash-can"></i> Xóa
-                    </button>
                 </div>
             `;
-            listContainer.appendChild(card);
+            listContainer.appendChild(item);
         });
     }
 
-    openNewQuestionEditor() {
+    openNewQuestionModal() {
         document.getElementById('editor-modal-title').textContent = "Thêm Câu Hỏi Mới";
         document.getElementById('edit-q-id').value = "";
         document.getElementById('edit-q-category').value = "Bài 1: Cách mạng tư sản";
@@ -909,6 +1077,7 @@ class QuizApp {
             document.getElementById('edit-q-opt-2').value = q.options[2] || "";
             document.getElementById('edit-q-opt-3').value = q.options[3] || "";
         }
+
         document.getElementById('edit-q-explanation').value = q.explanation || "";
 
         const radios = document.querySelectorAll('input[name="edit-q-correct"]');
@@ -931,6 +1100,10 @@ class QuizApp {
         }
     }
 
+    /**
+     * LƯU CÂU HỎI TRỰC TIẾP BẰNG QUYỀN ADMIN
+     * Cập nhật ngay lập tức vào bộ nhớ, DOM và đồng bộ lên Supabase Cloud
+     */
     async saveQuestionFromEditor() {
         const idInput = document.getElementById('edit-q-id').value;
         const category = document.getElementById('edit-q-category').value;
@@ -955,17 +1128,23 @@ class QuizApp {
             qId = maxId + 1;
         }
 
+        // Lấy lại các thông tin của câu hỏi cũ nếu là dạng tf_group
+        const oldQ = this.allQuestions.find(q => q.id === qId);
+        const qType = oldQ ? oldQ.qType : 'mcq';
+        const statements = oldQ ? oldQ.statements : [];
+
         const newQObj = {
             id: qId,
-            qType: 'mcq',
+            qType: qType,
             category: category,
             question: questionText,
             options: [opt0, opt1, opt2, opt3],
             correct: correctIndex,
-            isMultiple: false,
+            statements: statements,
             explanation: explanation
         };
 
+        // 1. Cập nhật vào mảng allQuestions và window.QUIZ_QUESTIONS
         const existingIdx = this.allQuestions.findIndex(q => q.id === qId);
         if (existingIdx !== -1) {
             this.allQuestions[existingIdx] = newQObj;
@@ -973,21 +1152,41 @@ class QuizApp {
             this.allQuestions.push(newQObj);
         }
 
+        if (Array.isArray(window.QUIZ_QUESTIONS)) {
+            const wIdx = window.QUIZ_QUESTIONS.findIndex(q => q.id === qId);
+            if (wIdx !== -1) window.QUIZ_QUESTIONS[wIdx] = newQObj;
+            else window.QUIZ_QUESTIONS.push(newQObj);
+        }
+
+        // 2. Nếu câu hỏi này đã từng được chọn đáp án trước đó, xóa lựa chọn cũ để cập nhật theo đáp án mới
+        if (this.userAnswers[qId] !== undefined) {
+            delete this.userAnswers[qId];
+        }
+
+        // 3. Lưu vào Database (Supabase Cloud & LocalStorage Fallback)
         if (window.dbService) {
             await window.dbService.saveQuestion(newQObj);
         }
 
+        // 4. Cập nhật ngay toàn bộ giao diện làm bài và danh sách Admin
         this.updateTotalQuestionDisplay();
         this.renderAdminQuestionsList();
         this.closeQuestionEditor();
         this.renderAllQuestions();
-        alert(`Đã lưu Câu #${qId} thành công và đồng bộ lên hệ thống!`);
+        this.updateLiveStats();
+
+        alert(`Đã lưu Câu #${qId} thành công và cập nhật ngay lập tức!`);
     }
 
     async deleteQuestion(qId) {
         if (!confirm(`Bạn có chắc chắn muốn xóa Câu #${qId} không?`)) return;
 
         this.allQuestions = this.allQuestions.filter(q => q.id !== qId);
+        if (Array.isArray(window.QUIZ_QUESTIONS)) {
+            window.QUIZ_QUESTIONS = window.QUIZ_QUESTIONS.filter(q => q.id !== qId);
+        }
+        delete this.userAnswers[qId];
+
         if (window.dbService) {
             await window.dbService.deleteQuestion(qId);
         }
@@ -995,28 +1194,35 @@ class QuizApp {
         this.updateTotalQuestionDisplay();
         this.renderAdminQuestionsList();
         this.renderAllQuestions();
+        this.updateLiveStats();
         alert(`Đã xóa Câu #${qId} thành công!`);
     }
 
     async seedDefaultQuestionsToCloud() {
-        if (!confirm("Hành động này sẽ lưu toàn bộ câu hỏi lên Supabase để bạn có thể chỉnh sửa mọi lúc mọi nơi. Tiếp tục?")) {
+        if (!confirm("Hành động này sẽ tải toàn bộ 74 câu hỏi lên Supabase Cloud Database để mọi máy khác đều được đồng bộ. Bạn muốn tiếp tục?")) {
             return;
         }
         if (window.dbService) {
             await window.dbService.seedInitialQuestions(this.allQuestions);
-            alert("Đã lưu thành công lên cơ sở dữ liệu Supabase Cloud!");
+            alert("Đã lưu thành công 74 câu hỏi lên Supabase Cloud!");
         }
     }
 
+    /**
+     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC (Thay thế Bảng Xếp Hạng)
+     */
     async renderAdminStudentsList() {
         const tbody = document.getElementById('admin-students-tbody');
+        const badgeCount = document.getElementById('admin-badge-login-count');
         if (!tbody || !window.dbService) return;
 
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-500">Đang tải danh sách thí sinh...</td></tr>';
-        const list = await window.dbService.getLeaderboard(100);
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Đang tải lịch sử đăng nhập thiết bị...</td></tr>';
+        const list = await window.dbService.getLoginHistory(100);
+
+        if (badgeCount) badgeCount.textContent = list ? list.length : 0;
 
         if (!list || list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-500">Chưa có bài nộp nào.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Chưa có lượt đăng nhập nào được ghi nhận.</td></tr>';
             return;
         }
 
@@ -1025,18 +1231,41 @@ class QuizApp {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-slate-800/40 transition";
 
-            const minutes = Math.floor((item.time_spent_seconds || 0) / 60);
-            const seconds = (item.time_spent_seconds || 0) % 60;
-            const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            let timeStr = "";
+            try {
+                const d = new Date(item.last_active || item.created_at);
+                timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + d.toLocaleDateString('vi-VN');
+            } catch (e) {
+                timeStr = "Vừa xong";
+            }
+
+            const status = item.status || "Đang làm bài";
+            const isFinished = status.includes("Đã nộp bài") || status.includes("Hoàn thành");
 
             tr.innerHTML = `
-                <td class="py-2.5 px-3 font-semibold text-slate-200">${this.escapeHtml(item.player_name)}</td>
-                <td class="py-2.5 px-3 text-center font-bold text-indigo-400">${item.score} đ</td>
-                <td class="py-2.5 px-3 text-center text-slate-400">${item.correct_count || 0}/${item.total_questions || 74}</td>
-                <td class="py-2.5 px-3 text-center text-slate-400 font-mono">${timeStr}</td>
+                <td class="py-2.5 px-3 font-semibold text-slate-100 flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-md bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <span>${this.escapeHtml(item.player_name || 'Khách')}</span>
+                </td>
+                <td class="py-2.5 px-3 font-mono text-emerald-400 text-xs">
+                    <i class="fa-solid fa-wifi text-[10px] mr-1 text-slate-500"></i>${this.escapeHtml(item.ip_address || 'Chưa rõ')}
+                </td>
+                <td class="py-2.5 px-3 text-slate-300 text-xs">
+                    <i class="fa-solid fa-laptop text-[10px] mr-1 text-indigo-400"></i>${this.escapeHtml(item.device_info || 'Trình duyệt')}
+                </td>
+                <td class="py-2.5 px-3 text-center text-slate-400 text-[11px]">${timeStr}</td>
+                <td class="py-2.5 px-3 text-center">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isFinished ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
+                        ${isFinished ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-spinner animate-spin"></i>'}
+                        ${this.escapeHtml(status)}
+                    </span>
+                    ${item.score_summary ? `<div class="text-[10px] text-slate-400 mt-0.5 font-medium">${this.escapeHtml(item.score_summary)}</div>` : ''}
+                </td>
                 <td class="py-2.5 px-3 text-right">
-                    <button onclick="app.adminDeleteScore('${item.id}')" class="text-rose-400 hover:text-rose-300 font-semibold text-xs">
-                        <i class="fa-solid fa-trash-can"></i> Xóa
+                    <button onclick="app.adminDeleteLogin('${item.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer" title="Xóa bản ghi này">
+                        <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </td>
             `;
@@ -1044,22 +1273,20 @@ class QuizApp {
         });
     }
 
-    async adminDeleteScore(scoreId) {
-        if (!confirm("Xóa kết quả này khỏi bảng vàng?")) return;
+    async adminDeleteLogin(loginId) {
+        if (!confirm("Xóa bản ghi đăng nhập này khỏi danh sách?")) return;
         if (window.dbService) {
-            await window.dbService.deleteResult(scoreId);
+            await window.dbService.deleteLoginRecord(loginId);
             this.renderAdminStudentsList();
-            this.refreshLeaderboard();
         }
     }
 
-    async adminClearAllScores() {
-        if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa TOÀN BỘ bảng xếp hạng không?")) return;
+    async adminClearAllLogins() {
+        if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa TOÀN BỘ nhật ký thiết bị đăng nhập không?")) return;
         if (window.dbService) {
-            await window.dbService.clearAllResults();
+            await window.dbService.clearAllLogins();
             this.renderAdminStudentsList();
-            this.refreshLeaderboard();
-            alert("Đã làm sạch toàn bộ bảng xếp hạng!");
+            alert("Đã làm sạch toàn bộ lịch sử đăng nhập!");
         }
     }
 
@@ -1091,11 +1318,12 @@ class QuizApp {
     saveSupabaseConfig() {
         const urlInput = document.getElementById('supabase-url-input');
         const keyInput = document.getElementById('supabase-key-input');
+
         const url = urlInput ? urlInput.value.trim() : '';
         const key = keyInput ? keyInput.value.trim() : '';
 
         if (!url || !key) {
-            alert("Vui lòng nhập đầy đủ Project URL và Anon Public Key!");
+            alert("Vui lòng điền đầy đủ Supabase URL và Anon Public Key.");
             return;
         }
 
@@ -1103,7 +1331,6 @@ class QuizApp {
             window.dbService.saveConfig(url, key);
             alert("Đã lưu cấu hình Supabase thành công!");
             this.closeSettingsModal();
-            this.refreshLeaderboard();
         } catch (e) {
             alert("Lỗi: " + e.message);
         }
@@ -1113,11 +1340,11 @@ class QuizApp {
         if (window.confirm("Bạn có muốn xóa kết nối Supabase và chuyển sang lưu trữ LocalStorage không?")) {
             window.dbService.clearConfig();
             this.closeSettingsModal();
-            this.refreshLeaderboard();
         }
     }
 
     escapeHtml(text) {
+        if (!text) return "";
         const map = {
             '&': '&amp;',
             '<': '&lt;',
@@ -1125,10 +1352,11 @@ class QuizApp {
             '"': '&quot;',
             "'": '&#039;'
         };
-        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+        return String(text).replace(/[&<>"']/g, m => map[m]);
     }
 }
 
+// Khởi tạo ứng dụng sau khi DOM sẵn sàng
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new QuizApp();
 });

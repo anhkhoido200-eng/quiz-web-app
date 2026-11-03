@@ -68,13 +68,9 @@
 
             <!-- Status & Action Buttons -->
             <div class="flex items-center space-x-2 sm:space-x-4">
-                <button id="btn-open-leaderboard" onclick="app.showLeaderboard()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-xs font-semibold text-slate-300 hover:text-white transition flex items-center gap-2">
-                    <i class="fa-solid fa-trophy text-amber-400"></i>
-                    <span class="hidden sm:inline">Bảng Xếp Hạng</span>
-                </button>
-                <button id="btn-open-admin" onclick="app.promptAdminAuth()" title="Bảng quản trị Admin" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-semibold text-amber-300 transition flex items-center gap-1.5 cursor-pointer">
+                <button id="btn-open-admin" onclick="app.promptAdminAuth()" title="Bảng quản trị Admin" class="px-3.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-semibold text-amber-300 transition flex items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-crown text-amber-400"></i>
-                    <span class="hidden sm:inline">Quản Trị (Admin)</span>
+                    <span>Quản Trị (Admin)</span>
                 </button>
                 <button id="btn-open-settings" onclick="app.openSettingsModal()" title="Cài đặt Supabase" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/60 flex items-center justify-center text-slate-400 hover:text-white transition">
                     <i class="fa-solid fa-gear text-sm"></i>
@@ -91,8 +87,8 @@
         <!-- ========================================== -->
         <section id="screen-home" class="screen-view transition-all duration-300">
             <div class="max-w-xl mx-auto bg-slate-800/60 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-                <div class="text-center mb-8">
-                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-4">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-3">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                         Đề Cương Ôn Thi Giữa Kì 1 (74 câu / 101 ý)
                     </div>
@@ -100,26 +96,56 @@
                     <p class="text-slate-400 text-xs sm:text-sm leading-relaxed">Hệ thống ôn luyện trắc nghiệm cuộn dọc thông minh: Ấn chọn là biết ngay Đúng / Sai kèm lời giải chi tiết!</p>
                 </div>
 
+                <!-- Thẻ chào mừng thí sinh đã từng vào (Nhận diện tự động qua IP / Thiết bị) -->
+                <div id="saved-user-banner" class="hidden mb-5 p-4 rounded-2xl bg-gradient-to-r from-indigo-950/90 via-slate-900 to-purple-950/90 border border-indigo-500/40 shadow-xl transition-all">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-user-check"></i>
+                            </div>
+                            <div>
+                                <p class="text-white text-xs font-bold">Chào mừng <span id="saved-user-name" class="text-emerald-300 font-extrabold text-sm"></span> quay lại!</p>
+                                <p class="text-[11px] text-slate-300">Đã nhận diện máy & IP — Bạn không cần gõ lại tên cũ.</p>
+                            </div>
+                        </div>
+                        <button type="button" onclick="app.clearSavedUser()" class="px-2.5 py-1 text-[11px] font-semibold text-slate-300 hover:text-rose-300 bg-slate-800/80 hover:bg-slate-800 rounded-lg border border-slate-700 transition cursor-pointer" title="Đổi sang tên học sinh khác">
+                            <i class="fa-solid fa-user-pen mr-1"></i> Đổi tên
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Form thông tin người tham gia -->
-                <div class="space-y-5">
+                <div class="space-y-4">
                     <div>
-                        <label for="player-name-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                        <label for="player-name-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                             Họ và Tên học sinh <span class="text-rose-400">*</span>
                         </label>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
                                 <i class="fa-regular fa-user"></i>
                             </span>
-                            <input type="text" id="player-name-input" maxlength="30" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
+                            <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
                                 class="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
                         </div>
                         <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1">
                             <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
                         </p>
+
+                        <!-- Thông tin nhận diện IP và Thiết bị thời gian thực -->
+                        <div class="mt-2.5 flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2 bg-slate-900/40 px-3 py-1.5 rounded-lg border border-slate-800">
+                            <span class="inline-flex items-center gap-1.5">
+                                <i class="fa-solid fa-wifi text-emerald-400"></i>
+                                <span>IP: <strong id="user-ip-display" class="font-mono text-emerald-300">Đang nhận diện...</strong></span>
+                            </span>
+                            <span class="inline-flex items-center gap-1.5">
+                                <i class="fa-solid fa-laptop text-indigo-400"></i>
+                                <span id="user-device-display" class="text-slate-300 font-medium">Đang kiểm tra...</span>
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Quy định bài thi tóm tắt -->
-                    <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2.5 text-slate-400">
+                    <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 text-slate-400">
                         <div class="flex items-center gap-2 text-slate-300 font-medium">
                             <i class="fa-solid fa-list-check text-indigo-400"></i>
                             <span>Nội dung: <strong>65 câu trắc nghiệm A-B-C-D</strong> & <strong>9 câu Đúng - Sai</strong> (36 ý)</span>
@@ -133,8 +159,8 @@
                             <span>Giao diện lướt cuộn dọc mượt mà, tiện lợi trên cả máy tính và điện thoại.</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-hourglass text-sky-400"></i>
-                            <span>Không giới hạn thời gian làm bài, tự do ôn tập theo tốc độ của bạn.</span>
+                            <i class="fa-solid fa-rotate-left text-sky-400"></i>
+                            <span>Có nút <strong>"Làm lại từ đầu"</strong> để xóa hết đáp án và cuộn về đầu trang bất cứ lúc nào.</span>
                         </div>
                     </div>
 
@@ -154,16 +180,16 @@
         <!-- ========================================== -->
         <section id="screen-quiz" class="screen-view hidden transition-all duration-300 w-full">
             <!-- Sticky Filter & Status Bar -->
-            <div class="sticky top-16 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-6 shadow-xl space-y-2">
+            <div class="sticky top-16 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-6 shadow-xl space-y-2.5">
                 <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
                         <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
                             <i class="fa-solid fa-user-graduate text-indigo-400"></i>
-                            <span id="quiz-header-player-name">Học sinh</span>
+                            <span id="quiz-header-player-name" class="text-white max-w-[120px] truncate">Học sinh</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold text-amber-300">
-                            <i class="fa-solid fa-star text-amber-400"></i>
-                            <span>Đúng: <strong id="quiz-live-score" class="text-white">0</strong>/<span id="quiz-attempted-count">0</span></span>
+                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                            <span>Đúng: <strong id="quiz-live-score" class="text-emerald-400">0</strong>/<span id="quiz-attempted-count">0</span></span>
                         </div>
                         <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300">
                             <i class="fa-regular fa-clock text-indigo-400"></i>
@@ -172,9 +198,14 @@
                     </div>
 
                     <div class="flex items-center gap-2">
+                        <!-- Nút LÀM LẠI: Reset đáp án và cuộn về đầu trang -->
+                        <button onclick="app.resetCurrentQuiz()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm" title="Xóa hết đáp án và làm lại từ đầu">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Làm lại</span>
+                        </button>
                         <button onclick="app.filterQuestions('wrong')" id="btn-filter-wrong" class="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark"></i>
-                            <span>Câu làm sai (<span id="wrong-count-badge">0</span>)</span>
+                            <span>Câu sai (<span id="wrong-count-badge">0</span>)</span>
                         </button>
                         <button onclick="app.confirmSubmit()" class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-check"></i>
@@ -216,11 +247,11 @@
                 <!-- Thẻ điểm vinh danh chính -->
                 <div class="bg-slate-800/70 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
                     <div id="result-badge-container" class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-600 mx-auto flex items-center justify-center text-slate-950 text-3xl shadow-xl shadow-amber-500/20 mb-4 animate-bounce">
-                        <i class="fa-solid fa-crown"></i>
+                        <i class="fa-solid fa-award"></i>
                     </div>
 
                     <h2 class="font-heading text-2xl sm:text-3xl font-extrabold text-white mb-1" id="result-title">
-                        Xuất Sắc!
+                        Hoàn Thành Bài Thi!
                     </h2>
                     <p class="text-slate-400 text-sm mb-6" id="result-player-greeting">
                         Chúc mừng bạn đã hoàn thành bài thi trắc nghiệm.
@@ -234,9 +265,9 @@
                             <span class="text-[11px] text-slate-500">/ 100 điểm</span>
                         </div>
                         <div class="text-center p-2 border-x border-slate-800">
-                            <span class="block text-slate-400 text-xs mb-1">Đúng / Tổng</span>
-                            <span class="font-heading text-2xl sm:text-3xl font-extrabold text-emerald-400" id="result-correct-ratio">0/10</span>
-                            <span class="text-[11px] text-slate-500">câu hỏi</span>
+                            <span class="block text-slate-400 text-xs mb-1">Đúng / Tổng ý</span>
+                            <span class="font-heading text-2xl sm:text-3xl font-extrabold text-emerald-400" id="result-correct-ratio">0/101</span>
+                            <span class="text-[11px] text-slate-500">ý hỏi</span>
                         </div>
                         <div class="text-center p-2">
                             <span class="block text-slate-400 text-xs mb-1">Thời gian</span>
@@ -247,26 +278,26 @@
 
                     <!-- Nút thao tác sau khi xong bài -->
                     <div class="flex flex-wrap items-center justify-center gap-3">
-                        <button onclick="app.restartQuiz()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-2">
-                            <i class="fa-solid fa-rotate-right"></i>
-                            <span>Làm lại đề mới</span>
+                        <button onclick="app.resetCurrentQuiz()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Làm lại từ đầu</span>
                         </button>
-                        <button onclick="app.showLeaderboard()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
-                            <i class="fa-solid fa-trophy text-amber-300"></i>
-                            <span>Xem Bảng Xếp Hạng</span>
+                        <button onclick="app.filterQuestions('wrong')" class="px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-semibold text-rose-300 transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                            <span>Xem các câu làm sai</span>
                         </button>
-                        <button onclick="app.toggleReviewDetails()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-2">
-                            <i class="fa-solid fa-magnifying-glass"></i>
-                            <span id="btn-toggle-review-text">Xem lời giải chi tiết</span>
+                        <button onclick="app.switchUser()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-300 transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-user-pen"></i>
+                            <span>Đổi người thi</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- Khu vực xem lại đáp án chi tiết (Review Answers) -->
-                <div id="review-container" class="hidden space-y-4">
+                <div id="review-container" class="space-y-4">
                     <h3 class="font-heading text-lg font-bold text-slate-200 flex items-center gap-2">
                         <i class="fa-solid fa-clipboard-check text-indigo-400"></i>
-                        <span>Chi Tiết Từng Câu Hỏi & Lời Giải</span>
+                        <span>Chi Tiết Toàn Bộ Đề & Lời Giải</span>
                     </h3>
                     <div id="review-list" class="space-y-4">
                         <!-- Render các câu hỏi kèm giải thích bởi app.js -->
@@ -275,98 +306,16 @@
             </div>
         </section>
 
-        <!-- ========================================== -->
-        <!-- MÀN HÌNH 4: BẢNG XẾP HẠNG (LEADERBOARD)     -->
-        <!-- ========================================== -->
-        <section id="screen-leaderboard" class="screen-view hidden transition-all duration-300">
-            <div class="max-w-3xl mx-auto bg-slate-800/70 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl">
-                <!-- Tiêu đề & nút quay lại -->
-                <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-700/60">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl border border-amber-500/30">
-                            <i class="fa-solid fa-trophy"></i>
-                        </div>
-                        <div>
-                            <h2 class="font-heading text-xl sm:text-2xl font-bold text-white">Bảng Xếp Hạng Vinh Danh</h2>
-                            <p class="text-xs text-slate-400">Top những thành viên có số điểm và thời gian tốt nhất</p>
-                        </div>
-                    </div>
-                    <button onclick="app.showHome()" class="px-3.5 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-arrow-left"></i>
-                        <span>Về trang chủ</span>
-                    </button>
-                </div>
-
-                <!-- Trạng thái nguồn dữ liệu (Supabase hoặc LocalStorage) -->
-                <div id="storage-status-banner" class="mb-5 px-3 py-2 rounded-xl bg-slate-900/50 border border-slate-700/60 text-xs flex items-center justify-between text-slate-400">
-                    <span id="storage-status-text">Đang đồng bộ dữ liệu...</span>
-                    <button onclick="app.refreshLeaderboard()" class="text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
-                        <i class="fa-solid fa-arrows-rotate"></i> Làm mới
-                    </button>
-                </div>
-
-                <!-- Podium Top 3 người dẫn đầu -->
-                <div id="podium-container" class="grid grid-cols-3 gap-3 mb-6 items-end">
-                    <!-- Render bởi app.js nếu có đủ top 3 -->
-                </div>
-
-                <!-- Bảng danh sách kết quả -->
-                <div class="overflow-x-auto rounded-2xl border border-slate-700/60 bg-slate-900/40">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-900/80 text-slate-400 uppercase font-semibold border-b border-slate-700/60">
-                            <tr>
-                                <th class="py-3 px-4 text-center w-16">Hạng</th>
-                                <th class="py-3 px-4">Tên thí sinh</th>
-                                <th class="py-3 px-4 text-center">Điểm</th>
-                                <th class="py-3 px-4 text-center">Thời gian</th>
-                                <th class="py-3 px-4 text-right">Ngày thi</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leaderboard-table-body" class="divide-y divide-slate-800/80 text-slate-300">
-                            <!-- Dòng danh sách người tham gia -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
     </main>
 
-    <!-- Modal Cấu hình Supabase nhanh -->
-    <div id="modal-settings" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
-        <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
-                <h3 class="font-heading font-bold text-white text-base flex items-center gap-2">
-                    <i class="fa-solid fa-database text-emerald-400"></i>
-                    <span>Cấu Hình Supabase (Database)</span>
-                </h3>
-                <button onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-white">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-                Mặc định hệ thống lưu kết quả trên trình duyệt (LocalStorage). Nếu bạn muốn điểm lưu chung cho toàn bộ bạn bè trên internet, hãy nhập Supabase URL và Anon Key của bạn vào đây:
-            </p>
-            <div class="space-y-3 mb-5">
-                <div>
-                    <label class="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Project URL</label>
-                    <input type="text" id="supabase-url-input" placeholder="https://xyzcompany.supabase.co" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Anon Public Key</label>
-                    <input type="password" id="supabase-key-input" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                </div>
-            </div>
-            <div class="flex items-center justify-end gap-2">
-                <button onclick="app.clearSupabaseConfig()" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-slate-300">
-                    Xóa & Dùng Local
-                </button>
-                <button onclick="app.saveSupabaseConfig()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
-                    Lưu Kết Nối
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- Footer -->
+    <footer class="relative z-10 border-t border-slate-800/80 bg-slate-900/60 backdrop-blur-md py-4 text-center text-xs text-slate-500">
+        <p>Hệ Thống Ôn Thi Trực Tuyến Lịch Sử 11 • Giữa Kì 1 • Tự động nhận diện thiết bị & IP</p>
+    </footer>
+
+    <!-- ======================================================= -->
+    <!-- CÁC MODAL HỆ THỐNG: ADMIN, SOẠN THẢO, CÀI ĐẶT           -->
+    <!-- ======================================================= -->
 
     <!-- MODAL 1: XÁC THỰC MẬT KHẨU ADMIN -->
     <div id="modal-admin-auth" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
@@ -377,27 +326,18 @@
                     <span>Xác Thực Quyền Admin</span>
                 </h3>
                 <button onclick="app.closeAdminAuthModal()" class="text-slate-400 hover:text-white cursor-pointer">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                    <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <p class="text-xs text-slate-400 mb-3">
-                Nhập mật khẩu quản trị để sửa trực tiếp câu hỏi và quản lý hệ thống thi:
-            </p>
-            <div class="space-y-3 mb-4">
-                <input type="password" id="admin-password-input" placeholder="Nhập mật khẩu (Mặc định: 034569)" 
-                    onkeydown="if(event.key==='Enter') app.verifyAdminPassword()"
-                    class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500">
-                <p id="admin-auth-error-msg" class="hidden text-rose-400 text-xs flex items-center gap-1">
-                    <i class="fa-solid fa-circle-exclamation"></i> Mật khẩu quản trị không chính xác!
-                </p>
-            </div>
-            <div class="flex items-center justify-end gap-2">
-                <button onclick="app.closeAdminAuthModal()" class="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-slate-300 cursor-pointer">
-                    Hủy
-                </button>
-                <button onclick="app.verifyAdminPassword()" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 cursor-pointer">
-                    Đăng Nhập
-                </button>
+            <p class="text-xs text-slate-400 mb-4">Vui lòng nhập mật mã quản trị viên để mở bảng điều khiển quản lý và giám sát máy đăng nhập.</p>
+            <div class="space-y-3">
+                <input type="password" id="admin-pass-input" placeholder="Nhập mã bí mật..." 
+                    class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <p id="admin-auth-error" class="hidden text-rose-400 text-xs">Mã bí mật không chính xác!</p>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button onclick="app.closeAdminAuthModal()" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white cursor-pointer">Hủy</button>
+                    <button onclick="app.verifyAdminPassword()" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition cursor-pointer">Mở Bảng Admin</button>
+                </div>
             </div>
         </div>
     </div>
@@ -406,28 +346,19 @@
     <div id="modal-admin-dashboard" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <!-- Header Modal -->
-            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex flex-wrap items-center justify-between gap-3">
+            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-crown"></i>
                     </div>
                     <div>
-                        <h2 class="font-heading font-bold text-white text-base sm:text-lg flex items-center gap-2">
-                            Bảng Quản Trị Hệ Thống Trắc Nghiệm
-                            <span class="text-[11px] font-normal px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                                <i class="fa-solid fa-cloud mr-1"></i>Supabase Live
-                            </span>
-                        </h2>
-                        <p class="text-xs text-slate-400">Chỉnh sửa trực tiếp câu hỏi, cập nhật đáp án và quản lý bảng điểm</p>
+                        <h2 class="font-heading font-bold text-white text-base">Bảng Quản Trị Hệ Thống (Admin)</h2>
+                        <p class="text-[11px] text-slate-400">Giám sát thiết bị đăng nhập thời gian thực & Cập nhật câu hỏi trực tiếp</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="app.seedDefaultQuestionsToCloud()" title="Đẩy toàn bộ 65 câu gốc lên Supabase để lưu vĩnh viễn" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer">
-                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span class="hidden sm:inline">Lưu 65 câu lên Supabase</span>
-                    </button>
-                    <button onclick="app.closeAdminDashboard()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
-                        <i class="fa-solid fa-xmark text-lg"></i>
+                    <button onclick="app.closeAdminDashboard()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
+                        <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
             </div>
@@ -436,11 +367,11 @@
             <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold">
                 <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer">
                     <i class="fa-solid fa-file-lines"></i>
-                    <span>Ngân Hàng Câu Hỏi (<span id="admin-badge-q-count">65</span>)</span>
+                    <span>Ngân Hàng Câu Hỏi (<span id="admin-badge-q-count">74</span>)</span>
                 </button>
                 <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer">
-                    <i class="fa-solid fa-users"></i>
-                    <span>Bảng Điểm Thí Sinh</span>
+                    <i class="fa-solid fa-desktop"></i>
+                    <span>Giám Sát Máy & Đăng Nhập (<span id="admin-badge-login-count">0</span>)</span>
                 </button>
             </div>
 
@@ -451,45 +382,58 @@
                     <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
                         <div class="relative flex-1 max-w-sm">
                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
-                            <input type="text" id="admin-search-q-input" oninput="app.renderAdminQuestionsList()" placeholder="Tìm kiếm nội dung câu hỏi..." 
-                                class="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-500">
+                            <input type="text" id="admin-search-q-input" oninput="app.renderAdminQuestionsList()" placeholder="Tìm kiếm câu hỏi theo từ khóa..." 
+                                class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
                         </div>
-                        <select id="admin-filter-category" onchange="app.renderAdminQuestionsList()" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 outline-none">
+                        <select id="admin-filter-category" onchange="app.renderAdminQuestionsList()" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-300 outline-none">
                             <option value="all">Tất cả bài học</option>
-                            <option value="b1">Bài 1: Cách mạng tư sản</option>
-                            <option value="b2">Bài 2: Sự xác lập CNTB</option>
+                            <option value="b1">Bài 1: CM Tư sản</option>
+                            <option value="b2">Bài 2: Xác lập CNTB</option>
                         </select>
                     </div>
 
-                    <button onclick="app.openNewQuestionEditor()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-plus"></i>
-                        <span>Thêm Câu Hỏi Mới</span>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="app.seedDefaultQuestionsToCloud()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Lưu toàn bộ 74 câu lên Supabase để mọi máy đều cập nhật">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Lưu 74 câu lên Supabase
+                        </button>
+                        <button onclick="app.openNewQuestionModal()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-plus"></i> Thêm Câu Hỏi Mới
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Danh sách các câu hỏi -->
+                <!-- Danh sách câu hỏi có thể chỉnh sửa -->
                 <div id="admin-questions-list" class="space-y-3">
-                    <!-- Render động bởi app.js -->
+                    <!-- Render bởi app.js -->
                 </div>
             </div>
 
-            <!-- Nội dung Tab 2: Quản lý Bảng điểm thí sinh -->
+            <!-- Nội dung Tab 2: Giám Sát Máy & Đăng Nhập (Thay thế Bảng Xếp Hạng) -->
             <div id="admin-tab-students-content" class="p-4 sm:p-6 overflow-y-auto flex-1 hidden space-y-4">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-                    <p class="text-xs text-slate-400">Danh sách kết quả làm bài của học sinh:</p>
-                    <button onclick="app.adminClearAllScores()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-trash-can"></i> Xóa Hết Điểm (Reset)
-                    </button>
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></div>
+                        <p class="text-xs font-semibold text-slate-200">Nhật Ký Thiết Bị & Học Sinh Đã Đăng Nhập:</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="app.renderAdminStudentsList()" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-rotate"></i> Làm mới danh sách
+                        </button>
+                        <button onclick="app.adminClearAllLogins()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-trash-can"></i> Xóa Hết Lịch Sử
+                        </button>
+                    </div>
                 </div>
                 <div class="overflow-x-auto rounded-xl border border-slate-800">
                     <table class="w-full text-left text-xs">
                         <thead class="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700">
                             <tr>
-                                <th class="py-2.5 px-3">Thí sinh</th>
-                                <th class="py-2.5 px-3 text-center">Điểm</th>
-                                <th class="py-2.5 px-3 text-center">Đúng/Tổng</th>
-                                <th class="py-2.5 px-3 text-center">Thời gian</th>
-                                <th class="py-2.5 px-3 text-right">Thao tác</th>
+                                <th class="py-2.5 px-3">Tên Thí Sinh</th>
+                                <th class="py-2.5 px-3">Địa Chỉ IP</th>
+                                <th class="py-2.5 px-3">Thiết Bị / Trình Duyệt</th>
+                                <th class="py-2.5 px-3 text-center">Thời Gian</th>
+                                <th class="py-2.5 px-3 text-center">Trạng Thái & Điểm</th>
+                                <th class="py-2.5 px-3 text-right">Thao Tác</th>
                             </tr>
                         </thead>
                         <tbody id="admin-students-tbody" class="divide-y divide-slate-800 text-slate-300">
@@ -501,7 +445,7 @@
         </div>
     </div>
 
-    <!-- MODAL 3: TRÌNH SOẠN THẢO / CHỈNH SỬA CÂU HỎI -->
+    <!-- MODAL 3: TRÌNH SOẠN THẢO / CHỈNH SỬA CÂU HỎI TRỰC TIẾP -->
     <div id="modal-question-editor" class="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <div class="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
@@ -531,7 +475,8 @@
                     <textarea id="edit-q-text" rows="3" placeholder="Nhập nội dung câu hỏi..." class="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:ring-1 focus:ring-amber-500"></textarea>
                 </div>
 
-                <div>
+                <!-- Khu vực 4 Phương án Trắc nghiệm MCQ -->
+                <div id="editor-mcq-options-container">
                     <label class="block font-semibold text-slate-400 uppercase mb-2">4 Phương án & Tích chọn đáp án đúng <span class="text-rose-400">*</span></label>
                     <div class="space-y-2">
                         <div class="flex items-center gap-2 bg-slate-800/80 p-2 rounded-xl border border-slate-700">
@@ -568,22 +513,49 @@
             </div>
 
             <div class="p-4 bg-slate-800/80 border-t border-slate-700 flex justify-end gap-2">
-                <button onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold cursor-pointer">
-                    Hủy
-                </button>
-                <button onclick="app.saveQuestionFromEditor()" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-500/20 cursor-pointer">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu & Đồng Bộ Lên Supabase
+                <button onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy</button>
+                <button onclick="app.saveQuestionFromEditor()" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                    <i class="fa-solid fa-floppy-disk"></i> Lưu & Cập Nhật Tức Thì
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="relative z-10 py-4 text-center text-xs text-slate-500 border-t border-slate-800/80 bg-slate-900/40">
-        <p>© 2026 QuizMaster Pro. Thiết kế & phát triển cho cộng đồng học tập trực tuyến.</p>
-    </footer>
+    <!-- MODAL 4: CÀI ĐẶT SUPABASE CLOUD (KẾT NỐI DATABASE) -->
+    <div id="modal-settings" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
+                <h3 class="font-heading font-bold text-white text-base flex items-center gap-2">
+                    <i class="fa-solid fa-cloud text-indigo-400"></i>
+                    <span>Cấu Hình Supabase Cloud</span>
+                </h3>
+                <button onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-white cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
 
-    <!-- Các kịch bản JavaScript -->
+            <div class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Project URL</label>
+                    <input type="text" id="supabase-url-input" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px]">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Anon Public Key</label>
+                    <input type="password" id="supabase-key-input" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px]">
+                </div>
+
+                <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
+                    <button onclick="app.clearSupabaseConfig()" class="text-rose-400 hover:underline cursor-pointer">Xóa kết nối</button>
+                    <div class="flex gap-2">
+                        <button onclick="app.closeSettingsModal()" class="px-3 py-1.5 text-slate-400 hover:text-white cursor-pointer">Đóng</button>
+                        <button onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ -->
     <script src="questions.js"></script>
     <script src="supabase.js"></script>
     <script src="app.js"></script>
