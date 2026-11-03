@@ -784,55 +784,86 @@ const rawGeographyShortAnswer = [
     }
 ];
 
-// Dàn ý 4 câu Tự luận trọng tâm để học sinh ôn tập lý thuyết
+// Dàn ý 4 câu Tự luận trọng tâm chuẩn GDPT 2018 chi tiết
 const rawGeographyEssayOutlines = [
     {
         id: "essay_1",
-        title: "Câu 1: Đặc điểm vị trí địa lí và phạm vi lãnh thổ khu vực Mỹ Latinh",
+        title: "Câu 1: Nêu đặc điểm vị trí địa lí và phạm vi lãnh thổ của khu vực Mỹ Latinh?",
         content: `
-• **Phạm vi lãnh thổ:**
-  - Diện tích rộng lớn khoảng 20 triệu km², bao gồm: Mê-hi-cô (Bắc Mỹ), eo đất Trung Mỹ, toàn bộ lục địa Nam Mỹ và các quần đảo trong vùng biển Ca-ri-bê.
-  - Lãnh thổ kéo dài qua khoảng 87 độ vĩ tuyến (từ khoảng 33°B đến 54°N), tiếp giáp nhiều biển và đại dương lớn.
+1. Phạm vi lãnh thổ:
+• Mỹ Latinh là một không gian địa lí rộng lớn với diện tích khoảng 20 triệu km² (chiếm gần 15% diện tích đất nổi của Trái Đất).
+• Lãnh thổ trải dài trên nhiều vĩ độ, từ khoảng 33°B đến gần 54°N.
+• Bao gồm 4 bộ phận chính: Mê-hi-cô (Bắc Mỹ), eo đất Trung Mỹ, toàn bộ lục địa Nam Mỹ và các quần đảo trong vùng biển Ca-ri-bê (quần đảo Ăng-ti Lớn, Ăng-ti Nhỏ, Ba-ha-mát).
 
-• **Vị trí địa lí:**
-  - Phía Bắc: Giáp với Hoa Kỳ (thị trường tiêu thụ rộng lớn, nguồn cung cấp vốn và công nghệ hàng đầu).
-  - Phía Đông: Giáp Đại Tây Dương; Phía Tây: Giáp Thái Bình Dương; Phía Nam: Giáp vùng biển Nam Cực.
-  - Sở hữu kênh đào Pa-na-ma nối liền Thái Bình Dương và Đại Tây Dương, giữ vị trí yết hầu về giao thông vận tải đường biển quốc tế.
+2. Vị trí địa lí:
+• Tọa độ & Bán cầu: Nằm hoàn toàn ở Bán cầu Tây, tách biệt rõ rệt với lục địa Á - Âu - Phi.
+• Tiếp giáp:
+   + Phía bắc: Tiếp giáp trực tiếp với Hợp chúng quốc Hoa Kỳ (thị trường kinh tế lớn hàng đầu thế giới).
+   + Phía đông: Tiếp giáp Đại Tây Dương rộng lớn.
+   + Phía tây: Tiếp giáp Thái Bình Dương.
+   + Phía nam: Tiếp giáp vùng biển Nam Đại Dương (vùng biển Nam Cực qua eo biển Đrây-cơ).
+• Tuyến hàng hải: Nằm gần các tuyến đường biển quốc tế nhộn nhịp, đặc biệt sở hữu kênh đào Pa-na-ma – huyết mạch giao thông đường biển nối liền hai đại dương lớn là Thái Bình Dương và Đại Tây Dương.
         `
     },
     {
         id: "essay_2",
-        title: "Câu 2: Ảnh hưởng của vị trí địa lí và phạm vi lãnh thổ đến phát triển kinh tế - xã hội Mỹ Latinh",
+        title: "Câu 2: Trình bày ảnh hưởng của vị trí địa lí và phạm vi lãnh thổ của Mỹ Latinh đến phát triển kinh tế và xã hội của khu vực?",
         content: `
-• **Thuận lợi:**
-  - Nằm giáp biển lớn và sở hữu kênh đào Pa-na-ma giúp khu vực phát triển kinh tế biển mạnh mẽ (hàng hải, cảng biển, du lịch, đánh bắt hải sản) và thuận lợi giao lưu quốc tế.
-  - Tiếp giáp với thị trường lớn Bắc Mỹ (Hoa Kỳ) tạo cơ hội thu hút vốn đầu tư, chuyển giao công nghệ và xuất khẩu hàng hóa.
-  - Lãnh thổ kéo dài qua nhiều vĩ độ tạo nên sự phân hóa đa dạng về khí hậu, cảnh quan sinh thái, thuận lợi cho việc phát triển cơ cấu cây trồng, vật nuôi nhiệt đới và cận nhiệt đới.
+1. Thuận lợi đối với phát triển kinh tế - xã hội:
+• Phát triển kinh tế đa ngành: Lãnh thổ rộng lớn, trải dài qua nhiều đới và kiểu khí hậu giúp hình thành các vành đai nông nghiệp phong phú (cây công nghiệp nhiệt đới, cây lương thực, chăn nuôi gia súc lớn), phát triển lâm nghiệp và khai thác khoáng sản.
+• Phát triển kinh tế biển: Vùng biển rộng bao bọc ở cả hai phía đông và tây với bờ biển dài tạo điều kiện cực kỳ thuận lợi để phát triển tổng hợp kinh tế biển: xây dựng hệ thống cảng biển nước sâu, vận tải hàng hải quốc tế, khai thác hải sản và du lịch biển - đảo.
+• Giao thương quốc tế: Tiếp giáp với Hoa Kỳ và sở hữu kênh đào Pa-na-ma tạo lợi thế chiến lược trong thu hút vốn đầu tư FDI, chuyển giao công nghệ và đẩy mạnh xuất nhập khẩu sang thị trường Bắc Mỹ cũng như toàn cầu.
+• Giao thoa văn hóa: Tiếp giáp nhiều biển và đại dương tạo điều kiện sớm tiếp nhận các luồng di cư, hình thành nền văn hóa Mỹ Latinh đặc sắc, đa dạng, thúc đẩy du lịch nhân văn.
 
-• **Khó khăn:**
-  - Lãnh thổ trải dài, địa hình phân cắt phức tạp gây trở ngại lớn cho việc xây dựng mạng lưới giao thông kết nối nội vùng.
-  - Thường xuyên chịu ảnh hưởng của các thiên tai như bão nhiệt đới (vùng vịnh Ca-ri-bê), động đất, núi lửa (vùng núi An-đét).
+2. Khó khăn, thách thức:
+• Trở ngại giao thông nội lục: Chiều dài lãnh thổ quá lớn kết hợp với các rào cản tự nhiên hiểm trở (hệ thống núi cao An-đét, bồn địa rừng mưa A-ma-dôn) gây chia cắt địa hình, khó khăn và tốn kém chi phí cho việc xây dựng mạng lưới giao thông đường bộ kết nối giữa các vùng và các quốc gia.
+• Thiên tai và biến đổi khí hậu: Nằm trong khu vực thường xuyên chịu tác động của bão nhiệt đới dữ dội (vùng biển Ca-ri-bê), hiện tượng El Nino/La Nina gây lũ lụt, hạn hán thất thường; sườn tây nằm trên Vành đai lửa Thái Bình Dương nên thường xuyên xảy ra động đất và núi lửa.
         `
     },
     {
         id: "essay_3",
-        title: "Câu 3: Những biểu hiện của toàn cầu hóa kinh tế",
+        title: "Câu 3: Trình bày những biểu hiện của toàn cầu hóa kinh tế?",
         content: `
-• **Thương mại thế giới phát triển nhanh:** Tốc độ tăng trưởng thương mại quốc tế cao hơn tốc độ tăng trưởng kinh tế chung; rào cản thuế quan dần được gỡ bỏ; WTO đóng vai trò điều tiết then chốt.
-• **Thị trường tài chính quốc tế mở rộng:** Dòng vốn luân chuyển nhanh chóng toàn cầu qua hệ thống ngân hàng quốc tế; vai trò giám sát, điều tiết tài chính lớn của IMF và WB.
-• **Các công ty xuyên quốc gia (TNCs) đóng vai trò ngày càng lớn:** Nắm giữ tiềm lực kinh tế chi phối chuỗi giá trị sản xuất và nghiên cứu khoa học công nghệ toàn cầu.
-• **Gia tăng sự hợp tác và phân công lao động quốc tế:** Các công đoạn sản xuất một sản phẩm được phân bổ tối ưu hóa trên nhiều quốc gia khác nhau.
-• **Áp dụng rộng rãi các tiêu chuẩn toàn cầu:** Các tiêu chuẩn về kỹ thuật, chất lượng (ISO), bảo vệ môi trường và lao động được thống nhất và áp dụng trên quy mô toàn cầu.
+Các biểu hiện đặc trưng của toàn cầu hóa kinh tế gồm 5 nội dung chính:
+1. Thương mại thế giới phát triển nhanh chóng:
+   • Tốc độ tăng trưởng thương mại quốc tế luôn cao hơn tốc độ tăng trưởng kinh tế chung (GDP thế giới).
+   • Các rào cản thuế quan và phi thuế quan từng bước được dỡ bỏ; hàng hóa và dịch vụ được tự do lưu thông thuận lợi giữa các quốc gia.
+   • Sự hình thành và mở rộng vai trò điều phối thương mại toàn cầu của Tổ chức Thương mại Thế giới (WTO).
+
+2. Tài chính quốc tế phát triển với quy mô bùng nổ:
+   • Dòng vốn đầu tư quốc tế (gồm đầu tư trực tiếp nước ngoài - FDI và đầu tư gián tiếp - FPI) luân chuyển tự do, nhanh chóng qua biên giới các quốc gia.
+   • Mạng lưới liên kết tài chính, ngân hàng toàn cầu kết nối điện tử 24/7; vai trò giám sát, điều phối tài chính của IMF và WB ngày càng lớn.
+
+3. Các công ty đa quốc gia (MNCs) gia tăng vai trò chi phối:
+   • Nắm giữ phần lớn giá trị tài sản, thương mại, vốn đầu tư và sở hữu các công nghệ nguồn hàng đầu thế giới.
+   • Trực tiếp thiết lập và chi phối các chuỗi giá trị và mạng lưới sản xuất toàn cầu, thúc đẩy phân công lao động quốc tế chuyên môn hóa sâu.
+
+4. Áp dụng rộng rãi các tiêu chuẩn toàn cầu:
+   • Các tiêu chuẩn thống nhất về quản lý chất lượng (ISO), bảo vệ môi trường, trách nhiệm xã hội, truy xuất nguồn gốc sản phẩm ngày càng được chuẩn hóa và bắt buộc áp dụng trong sản xuất, kinh doanh toàn cầu.
+
+5. Gia tăng sự dịch chuyển các nguồn lực sản xuất:
+   • Lao động (nhất là lao động chất lượng cao, chuyên gia), nguồn vốn, thông tin dữ liệu và khoa học công nghệ chuyển giao xuyên quốc gia với tốc độ ngày càng nhanh.
         `
     },
     {
         id: "essay_4",
-        title: "Câu 4: Tại sao cần phải bảo vệ hòa bình thế giới?",
+        title: "Câu 4: Hãy cho biết tại sao cần phải bảo vệ hòa bình Thế giới?",
         content: `
-• **Tạo môi trường phát triển:** Hòa bình là điều kiện tiên quyết để thúc đẩy kinh tế tăng trưởng, thương mại toàn cầu thông suốt và tạo dựng cuộc sống ấm no cho nhân loại.
-• **Bảo vệ quyền con người:** Tránh khỏi những thảm họa tàn khốc của chiến tranh, xung đột vũ trang gây thiệt hại tính mạng, ly tán gia đình và nạn di cư tị nạn.
-• **Tập trung nguồn lực giải quyết các vấn đề cấp bách:** Khi có hòa bình, các quốc gia sẽ giảm bớt chi phí quân sự để dồn nguồn tài chính - khoa học giải quyết đói nghèo, dịch bệnh, biến đổi khí hậu và an ninh năng lượng/lương thực.
-• **Bảo tồn các di sản và giá trị văn hóa:** Ngăn chặn sự phá hủy các công trình văn hóa, lịch sử và suy thoái môi trường do bom đạn và xung đột chiến sự gây ra.
+Cần phải bảo vệ hòa bình thế giới vì những lí do cấp thiết sau:
+1. Hòa bình là nền tảng sống còn để phát triển xã hội:
+   • Môi trường hòa bình và ổn định chính trị là điều kiện tiên quyết để các quốc gia tập trung mọi nguồn lực vào tăng trưởng kinh tế, phát triển giáo dục, y tế, an sinh xã hội và nâng cao chất lượng cuộc sống của con người.
+
+2. Ngăn ngừa hậu quả thảm khốc của chiến tranh và xung đột vũ trang:
+   • Chiến tranh cướp đi sinh mạng của hàng triệu thường dân vô tội, gây thương tật, li tán gia đình, khủng hoảng người tị nạn.
+   • Phá hủy hoàn toàn các công trình hạ tầng kinh tế - xã hội, gây lãng phí khổng lồ của cải vật chất và đẩy nền kinh tế thụt lùi hàng chục năm.
+   • Nguy cơ vũ khí hủy diệt hàng loạt (vũ khí hạt nhân, hóa học, sinh học) có thể đe dọa trực tiếp đến sự tồn vong của toàn nhân loại.
+
+3. Điều kiện bắt buộc để hợp tác giải quyết các vấn đề toàn cầu:
+   • Thế giới ngày nay đang đối mặt với các nguy cơ an ninh phi truyền thống mang tính toàn cầu như: biến đổi khí hậu, dịch bệnh truyền nhiễm, cạn kiệt tài nguyên, khủng hoảng an ninh lương thực và an ninh năng lượng.
+   • Không một quốc gia nào có thể tự giải quyết đơn lẻ các thách thức này; chỉ có hòa bình, tin cậy lẫn nhau mới tạo cơ sở để các nước hợp tác, chia sẻ nguồn lực đối phó.
+
+4. Giảm thiểu chi phí quân sự, hướng nguồn lực vào xóa đói giảm nghèo:
+   • Chạy đua vũ trang tiêu tốn hàng nghìn tỉ USD mỗi năm. Bảo vệ hòa bình giúp các nước cắt giảm ngân sách quốc phòng vô nghĩa để chuyển sang đầu tư cho các Mục tiêu Phát triển Bền vững (SDGs) của Liên hợp quốc.
         `
     }
 ];

@@ -1399,28 +1399,39 @@ class QuizApp {
         this.adminCurrentTab = tabName;
         const tabQContent = document.getElementById('admin-tab-questions-content');
         const tabSContent = document.getElementById('admin-tab-students-content');
+        const tabIContent = document.getElementById('admin-tab-ips-content');
+
         const btnQ = document.getElementById('admin-tab-btn-questions');
         const btnS = document.getElementById('admin-tab-btn-students');
+        const btnI = document.getElementById('admin-tab-btn-ips');
+
+        // Ẩn tất cả tab nội dung
+        tabQContent?.classList.add('hidden');
+        tabSContent?.classList.add('hidden');
+        tabIContent?.classList.add('hidden');
+
+        // Đặt lại style mặc định của tất cả các tab
+        [btnQ, btnS, btnI].forEach(btn => {
+            btn?.classList.remove('bg-slate-900', 'text-amber-400', 'text-emerald-400', 'border-t-2', 'border-amber-500', 'border-emerald-500');
+            btn?.classList.add('text-slate-400');
+        });
 
         if (tabName === 'questions') {
             tabQContent?.classList.remove('hidden');
-            tabSContent?.classList.add('hidden');
-
             btnQ?.classList.add('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnQ?.classList.remove('text-slate-400');
-            btnS?.classList.remove('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
-            btnS?.classList.add('text-slate-400');
-
             this.renderAdminQuestionsList();
+        } else if (tabName === 'ips') {
+            tabIContent?.classList.remove('hidden');
+            btnI?.classList.add('bg-slate-900', 'text-emerald-400', 'border-t-2', 'border-emerald-500');
+            btnI?.classList.remove('text-slate-400');
+            this.renderAdminGeoIpBadges();
+            this.renderAdminIpsTabList();
         } else {
-            tabQContent?.classList.add('hidden');
+            // Tab 2: Giám sát thí sinh
             tabSContent?.classList.remove('hidden');
-
             btnS?.classList.add('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
             btnS?.classList.remove('text-slate-400');
-            btnQ?.classList.remove('bg-slate-900', 'text-amber-400', 'border-t-2', 'border-amber-500');
-            btnQ?.classList.add('text-slate-400');
-
             this.renderAdminStudentsList();
         }
     }
@@ -1701,6 +1712,7 @@ class QuizApp {
 
         if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Đang tải lịch sử đăng nhập thiết bị...</td></tr>';
         const list = await window.dbService.getLoginHistory(100);
+        this.lastFetchedLogins = list || [];
 
         if (badgeCount) badgeCount.textContent = list ? list.length : 0;
 
@@ -1857,6 +1869,8 @@ class QuizApp {
                 tbody.appendChild(tr);
             });
         }
+
+        this.renderAdminIpsTabList();
     }
 
     /**
@@ -2218,6 +2232,7 @@ class QuizApp {
         }
 
         this.renderAdminGeoIpBadges();
+        this.renderAdminIpsTabList();
     }
 
     /**
@@ -2261,6 +2276,7 @@ class QuizApp {
             this.allowedGeoIps = await window.dbService.addGeoAllowedIp(ip);
             if (inputEl) inputEl.value = '';
             this.renderAdminGeoIpBadges();
+            this.renderAdminIpsTabList();
             if (this.lastFetchedLogins) {
                 this.renderAdminStudentsList(this.lastFetchedLogins);
             }
@@ -2276,6 +2292,7 @@ class QuizApp {
             if (window.dbService) {
                 this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ipToRemove);
                 this.renderAdminGeoIpBadges();
+                this.renderAdminIpsTabList();
                 if (this.lastFetchedLogins) {
                     this.renderAdminStudentsList(this.lastFetchedLogins);
                 }
@@ -2307,9 +2324,26 @@ class QuizApp {
                 this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ip);
             }
             this.renderAdminGeoIpBadges();
+            this.renderAdminIpsTabList();
             if (this.lastFetchedLogins) {
                 this.renderAdminStudentsList(this.lastFetchedLogins);
             }
+        }
+    }
+
+    /**
+     * Admin xóa toàn bộ IP được cấp quyền mở môn Địa
+     */
+    async adminClearAllGeoIps() {
+        if (!confirm("Bạn có chắc chắn muốn xóa TẤT CẢ các IP đã cấp quyền môn Địa không?\n(Môn Địa Lí 11 sẽ bị ẩn trên tất cả các máy)")) return;
+        if (window.dbService) {
+            this.allowedGeoIps = await window.dbService.saveAllowedGeoIps([]);
+            this.renderAdminGeoIpBadges();
+            this.renderAdminIpsTabList();
+            if (this.lastFetchedLogins) {
+                this.renderAdminStudentsList(this.lastFetchedLogins);
+            }
+            alert("Đã xóa toàn bộ danh sách IP được cấp quyền.");
         }
     }
 
@@ -2319,13 +2353,15 @@ class QuizApp {
     renderAdminGeoIpBadges() {
         const container = document.getElementById('admin-geo-ip-badges');
         const countEl = document.getElementById('admin-geo-ip-count');
+        const badgeCountEl = document.getElementById('admin-badge-geo-count');
         const ips = this.allowedGeoIps || [];
 
         if (countEl) countEl.textContent = ips.length;
+        if (badgeCountEl) badgeCountEl.textContent = ips.length;
         if (!container) return;
 
         if (ips.length === 0) {
-            container.innerHTML = '<span class="text-xs text-slate-500 italic">Chưa có IP nào trong danh sách. Chỉ Admin và thí sinh có mật mã mới thấy môn Địa.</span>';
+            container.innerHTML = '<span class="text-xs text-slate-500 italic">Chưa có IP nào trong danh sách. Chỉ Admin mới thấy môn Địa. Hãy nhập IP của học sinh bên trên để cấp quyền.</span>';
             return;
         }
 
@@ -2338,6 +2374,67 @@ class QuizApp {
                 </button>
             </span>
         `).join('');
+    }
+
+    /**
+     * Hiển thị bảng thí sinh với nút gạt cấp quyền nhanh trong Tab 3
+     */
+    renderAdminIpsTabList() {
+        const tbody = document.getElementById('admin-ips-students-table');
+        if (!tbody) return;
+
+        const list = this.lastFetchedLogins || [];
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500 italic">Chưa có dữ liệu thí sinh đăng nhập. Khi có học sinh vào phòng, danh sách sẽ hiển thị tại đây để Admin cấp quyền nhanh bằng 1 cú nhấp chuột.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        list.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-800/40 transition";
+
+            const ip = item.ip_address || "Chưa rõ";
+            const isAllowed = this.allowedGeoIps && this.allowedGeoIps.includes(ip);
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-3 font-semibold text-slate-100 flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-lg ${isAllowed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'} flex items-center justify-center text-xs shrink-0 font-bold">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <span>${this.escapeHtml(item.player_name || 'Khách')}</span>
+                </td>
+                <td class="py-2.5 px-3 font-mono text-xs text-indigo-300">
+                    ${this.escapeHtml(ip)}
+                </td>
+                <td class="py-2.5 px-3 text-slate-400 text-xs truncate max-w-[140px]">
+                    ${this.escapeHtml(item.device_info || 'Trình duyệt')}
+                </td>
+                <td class="py-2.5 px-3 text-center">
+                    ${isAllowed ? `
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
+                            <i class="fa-solid fa-check"></i> ĐÃ CẤP QUYỀN
+                        </span>
+                    ` : `
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[11px]">
+                            <i class="fa-solid fa-lock"></i> Chưa cấp
+                        </span>
+                    `}
+                </td>
+                <td class="py-2.5 px-3 text-right">
+                    ${isAllowed ? `
+                        <button onclick="app.adminToggleGeoIp('${ip}', false)" class="px-3 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 ml-auto">
+                            <i class="fa-solid fa-xmark"></i> Thu Hồi Quyền
+                        </button>
+                    ` : `
+                        <button onclick="app.adminToggleGeoIp('${ip}', true)" class="px-3 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-md shadow-emerald-900/20 ml-auto">
+                            <i class="fa-solid fa-plus"></i> + Cấp Quyền Địa
+                        </button>
+                    `}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
     }
 
     escapeHtml(text) {

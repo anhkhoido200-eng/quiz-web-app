@@ -232,12 +232,13 @@ class DatabaseService {
                 const { data, error } = await this.client
                     .from('quiz_logins')
                     .select('*')
-                    .not('player_name', 'like', '__%')
                     .order('last_active', { ascending: false })
                     .limit(limit);
 
-                if (!error && data && data.length > 0) {
-                    return data;
+                if (!error && Array.isArray(data)) {
+                    // Lọc bỏ các bản ghi hệ thống nội bộ (__SYSTEM_NOTICE__, __ALLOWED_GEO_IPS__)
+                    const realLogins = data.filter(item => !item.player_name || !item.player_name.startsWith('__'));
+                    return realLogins;
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);

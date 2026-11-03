@@ -215,15 +215,6 @@
                             </div>
                         </button>
                     </div>
-                    <!-- Thanh phụ trợ mở khóa môn Địa -->
-                    <div class="mt-2.5 flex items-center justify-between text-[11px] text-slate-500">
-                        <span id="geo-access-status" class="flex items-center gap-1.5 text-slate-500">
-                            <i class="fa-solid fa-shield-halved text-[10px]"></i> <span id="geo-status-text">Môn Địa chỉ hiển thị cho IP được cấp phép</span>
-                        </span>
-                        <button type="button" onclick="app.promptUnlockGeography()" id="geo-unlock-trigger" class="text-slate-400 hover:text-emerald-400 transition flex items-center gap-1 cursor-pointer">
-                            <i class="fa-solid fa-key text-[10px]"></i> <span>Nhập IP mở môn Địa</span>
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Form thông tin người tham gia -->
@@ -476,15 +467,19 @@
                 </div>
             </div>
 
-            <!-- Thanh điều hướng 2 Tab -->
-            <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold">
-                <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer">
+            <!-- Thanh điều hướng 3 Tab -->
+            <div class="bg-slate-800/50 px-4 pt-2 border-b border-slate-700 flex items-center gap-2 text-xs font-semibold overflow-x-auto">
+                <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0">
                     <i class="fa-solid fa-file-lines"></i>
                     <span>Ngân Hàng Câu Hỏi (<span id="admin-badge-q-count">74</span>)</span>
                 </button>
-                <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer">
+                <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0">
                     <i class="fa-solid fa-desktop"></i>
                     <span>Giám Sát Máy & Đăng Nhập (<span id="admin-badge-login-count">0</span>)</span>
+                </button>
+                <button id="admin-tab-btn-ips" onclick="app.switchAdminTab('ips')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0">
+                    <i class="fa-solid fa-earth-americas text-emerald-400"></i>
+                    <span>Cấp Quyền IP Môn Địa (<span id="admin-badge-geo-count">0</span>)</span>
                 </button>
             </div>
 
@@ -580,38 +575,6 @@
                     </div>
                 </div>
 
-                <!-- CÔNG CỤ CẤP QUYỀN IP MÔN ĐỊA LÍ (ẨN MÔN ĐỊA, CHỈ IP ĐƯỢC DUYỆT MỚI THẤY) -->
-                <div class="p-3.5 bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-emerald-950/40 border border-emerald-500/40 rounded-2xl space-y-2.5 shadow-lg">
-                    <div class="flex items-center justify-between">
-                        <label class="text-xs font-bold text-emerald-300 flex items-center gap-1.5 uppercase tracking-wide">
-                            <i class="fa-solid fa-earth-americas text-emerald-400"></i>
-                            <span>Quản Lý Cấp Quyền IP Xem Môn Địa Lí 11:</span>
-                        </label>
-                        <span class="text-[10px] text-slate-400 hidden sm:inline">Môn Địa bị ẩn mặc định, chỉ IP có trong danh sách mới thấy môn Địa</span>
-                    </div>
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="admin-geo-ip-input" placeholder="Nhập địa chỉ IP cần mở môn Địa (ví dụ: 14.164.221.205)..." 
-                            class="flex-1 px-3.5 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 font-mono placeholder-slate-500 transition">
-                        <button onclick="app.adminAddGeoIp()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
-                            <i class="fa-solid fa-plus"></i>
-                            <span>Cấp Quyền IP</span>
-                        </button>
-                        <button onclick="app.adminAuthorizeCurrentIp()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0" title="Cấp quyền cho chính máy tính/điện thoại Admin đang dùng">
-                            <i class="fa-solid fa-laptop"></i>
-                            <span>Cấp Máy Này</span>
-                        </button>
-                    </div>
-                    <!-- Danh sách các IP đã được cấp quyền -->
-                    <div class="pt-2 border-t border-slate-800/80">
-                        <div class="flex items-center justify-between mb-1.5 text-[11px] text-slate-400 font-semibold">
-                            <span>Danh sách IP đang được phép mở môn Địa (<span id="admin-geo-ip-count" class="text-emerald-400 font-bold">0</span> IP):</span>
-                        </div>
-                        <div id="admin-geo-ip-badges" class="flex flex-wrap gap-1.5 min-h-[28px] items-center">
-                            <!-- Render bởi app.js -->
-                        </div>
-                    </div>
-                </div>
-
                 <!-- BẢNG 3 CỘT: MÔN SỬ, MÔN LÍ & MÔN ĐỊA ĐANG CÓ AI -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <!-- Cột 1: MÔN LỊCH SỬ 11 -->
@@ -690,6 +653,106 @@
                                 </tr>
                             </thead>
                             <tbody id="admin-students-tbody" class="divide-y divide-slate-800 text-slate-300">
+                                <!-- Render bởi app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nội dung Tab 3: Cấp Quyền IP Môn Địa Lí 11 (Người dùng nhập IP ai thì người đó được vào) -->
+            <div id="admin-tab-ips-content" class="p-4 sm:p-6 overflow-y-auto flex-1 hidden space-y-4">
+                <!-- Giới thiệu & Cơ chế bảo mật -->
+                <div class="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/40 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg shrink-0 border border-emerald-500/30">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <div class="text-xs">
+                            <h3 class="font-bold text-sm text-emerald-300 flex items-center gap-2">
+                                <span>Quản Lý Cấp Quyền IP - Môn Địa Lí 11</span>
+                                <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold tracking-wider">Ẩn Mặc Định</span>
+                            </h3>
+                            <p class="text-slate-300 mt-1 leading-relaxed">
+                                Môn Địa Lí 11 bị ẩn hoàn toàn với mọi học sinh. Chỉ những máy có địa chỉ IP được Admin nhập vào đây mới thấy nút ôn tập Địa Lí.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                        <button onclick="app.refreshGeographyAccess()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-rotate"></i> Đồng bộ ngay
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Ô Nhập IP Người Cần Thêm (Thêm ai thì nhập IP người đó) -->
+                <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-emerald-500/30 shadow-md space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label for="admin-geo-ip-input" class="text-xs font-bold text-emerald-300 flex items-center gap-2 uppercase tracking-wide">
+                            <i class="fa-solid fa-user-plus text-emerald-400"></i>
+                            <span>Thêm Học Sinh Được Phép Làm Môn Địa (Nhập Địa Chỉ IP):</span>
+                        </label>
+                        <span class="text-[11px] text-slate-400 hidden sm:inline">Nhập IP xong bấm "Cấp Quyền", máy học sinh sẽ hiện môn Địa sau 3 giây</span>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-2.5">
+                        <div class="relative flex-1">
+                            <i class="fa-solid fa-network-wired absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                            <input type="text" id="admin-geo-ip-input" onkeydown="if(event.key==='Enter') app.adminAddGeoIp()" placeholder="Nhập địa chỉ IP học sinh (ví dụ: 14.164.221.205 hoặc 113.161.x.x)..." 
+                                class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 font-mono placeholder-slate-500 transition">
+                        </div>
+                        <button onclick="app.adminAddGeoIp()" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>+ Cấp Quyền Cho IP Này</span>
+                        </button>
+                        <button onclick="app.adminAuthorizeCurrentIp()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0" title="Cấp quyền cho chính máy tính/điện thoại Admin đang dùng">
+                            <i class="fa-solid fa-laptop"></i>
+                            <span>Cấp Máy Này</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Danh Sách Các IP Đang Được Cấp Quyền -->
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div class="flex items-center gap-2 text-xs font-bold text-slate-200">
+                            <i class="fa-solid fa-list-check text-emerald-400"></i>
+                            <span>Danh Sách IP Đang Được Phép Mở Môn Địa (<span id="admin-geo-ip-count" class="text-emerald-400 font-bold font-mono">0</span> IP):</span>
+                        </div>
+                        <button onclick="app.adminClearAllGeoIps()" class="text-[11px] text-slate-400 hover:text-rose-400 transition flex items-center gap-1 cursor-pointer">
+                            <i class="fa-solid fa-trash-can text-[10px]"></i> Xóa toàn bộ danh sách
+                        </button>
+                    </div>
+
+                    <div id="admin-geo-ip-badges" class="flex flex-wrap gap-2 min-h-[36px] p-2.5 bg-slate-950/60 rounded-xl border border-slate-800/80 items-center">
+                        <!-- Render bởi app.js -->
+                    </div>
+                </div>
+
+                <!-- Bảng Chọn Nhanh IP Từ Thí Sinh Đang Online (Không Cần Gõ IP) -->
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-users text-indigo-400"></i>
+                                <span>Cấp Quyền Nhanh Từ Danh Sách Thí Sinh Online:</span>
+                            </h4>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Bấm nút để Bật hoặc Tắt quyền môn Địa cho từng học sinh ngay lập tức</p>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/50">
+                                    <th class="py-2.5 px-3">Tên Thí Sinh</th>
+                                    <th class="py-2.5 px-3">Địa Chỉ IP</th>
+                                    <th class="py-2.5 px-3">Thiết Bị</th>
+                                    <th class="py-2.5 px-3 text-center">Trạng Thái Quyền</th>
+                                    <th class="py-2.5 px-3 text-right">Thao Tác Cấp / Hủy</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-ips-students-table" class="divide-y divide-slate-800/60 text-slate-200">
                                 <!-- Render bởi app.js -->
                             </tbody>
                         </table>
@@ -838,10 +901,10 @@
     </div>
 
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ (Kèm tham số v để phá cache trình duyệt triệt để) -->
-    <script src="questions.js?v=2.6"></script>
-    <script src="physics_questions.js?v=2.6"></script>
-    <script src="geography_questions.js?v=2.6"></script>
-    <script src="supabase.js?v=2.6"></script>
-    <script src="app.js?v=2.6"></script>
+    <script src="questions.js?v=2.7"></script>
+    <script src="physics_questions.js?v=2.7"></script>
+    <script src="geography_questions.js?v=2.7"></script>
+    <script src="supabase.js?v=2.7"></script>
+    <script src="app.js?v=2.7"></script>
 </body>
 </html>
