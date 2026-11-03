@@ -232,7 +232,7 @@ class DatabaseService {
                 const { data, error } = await this.client
                     .from('quiz_logins')
                     .select('*')
-                    .neq('player_name', '__SYSTEM_NOTICE__')
+                    .not('player_name', 'like', '__%')
                     .order('last_active', { ascending: false })
                     .limit(limit);
 
@@ -243,7 +243,7 @@ class DatabaseService {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);
             }
         }
-        return this._getLocalLogins().filter(item => item.player_name !== '__SYSTEM_NOTICE__');
+        return this._getLocalLogins().filter(item => !item.player_name || !item.player_name.startsWith('__'));
     }
 
     /**
@@ -629,12 +629,7 @@ class DatabaseService {
         if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
 
         const nowIso = new Date().toISOString();
-        const noticeId = targetIp === 'ALL'
-            ? '00000000-0000-0000-0000-000000000001'
-            : generateUuid();
-
         const noticeData = {
-            id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
             ip_address: targetIp,
             device_info: '5s',
@@ -647,7 +642,7 @@ class DatabaseService {
         // 1. Lưu LocalStorage để có thể nhận ngay trên cùng máy
         try {
             localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: noticeData.id,
+                id: 'notice_' + Date.now(),
                 message: cleanMsg,
                 targetIp: targetIp,
                 timestamp: Date.now()
@@ -659,7 +654,7 @@ class DatabaseService {
             try {
                 const { error } = await this.client
                     .from('quiz_logins')
-                    .upsert([noticeData], { onConflict: 'id' });
+                    .insert([noticeData]);
                 if (error) {
                     console.error("[DatabaseService] Lỗi gửi thông báo lên Supabase:", error);
                     return { success: false, error: error.message };
@@ -711,6 +706,92 @@ class DatabaseService {
         } catch (e) {}
 
         return null;
+    }
+
+    // =========================================================================
+    // PHẦN 5: QUẢN LÝ DANH SÁCH IP ĐƯỢC MỞ MÔN ĐỊA LÍ (IP WHITELIST)
+    // =========================================================================
+
+    /**
+     * Lấy danh sách IP được phép mở môn Địa Lí
+     */
+    async fetchAllowedGeoIps() {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('score_summary')
+                    .eq('id', '00000000-0000-0000-0000-000000000002')
+                    .limit(1);
+
+                if (!error && data && data.length > 0 && data[0].score_summary) {
+                    const parsed = JSON.parse(data[0].score_summary);
+                    if (Array.isArray(parsed)) {
+                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(parsed));
+                        return parsed;
+                    }
+                }
+            } catch (e) {
+                console.warn("[DatabaseService] Lỗi lấy danh sách IP mở môn Địa:", e);
+            }
+        }
+
+        try {
+            const raw = localStorage.getItem('quiz_allowed_geo_ips');
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Lưu danh sách IP được phép mở môn Địa Lí lên Supabase & LocalStorage
+     */
+    async saveAllowedGeoIps(ipList) {
+        const cleanList = Array.isArray(ipList) ? [...new Set(ipList.map(ip => String(ip).trim()).filter(Boolean))] : [];
+        try {
+            localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(cleanList));
+        } catch (e) {}
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .upsert([{
+                        id: '00000000-0000-0000-0000-000000000002',
+                        player_name: '__ALLOWED_GEO_IPS__',
+                        ip_address: 'SYSTEM',
+                        device_info: 'whitelist',
+                        status: 'ACTIVE',
+                        score_summary: JSON.stringify(cleanList),
+                        last_active: new Date().toISOString()
+                    }], { onConflict: 'id' });
+            } catch (e) {
+                console.error("[DatabaseService] Lỗi lưu danh sách IP mở môn Địa lên Supabase:", e);
+            }
+        }
+
+        return cleanList;
+    }
+
+    async addGeoAllowedIp(ipAddress) {
+        const cleanIp = (ipAddress || "").trim();
+        if (!cleanIp) return false;
+        const currentList = await this.fetchAllowedGeoIps();
+        if (!currentList.includes(cleanIp)) {
+            currentList.push(cleanIp);
+            await this.saveAllowedGeoIps(currentList);
+        }
+        return currentList;
+    }
+
+    async removeGeoAllowedIp(ipAddress) {
+        const cleanIp = (ipAddress || "").trim();
+        if (!cleanIp) return false;
+        let currentList = await this.fetchAllowedGeoIps();
+        currentList = currentList.filter(ip => ip !== cleanIp);
+        await this.saveAllowedGeoIps(currentList);
+        return currentList;
     }
 }
 

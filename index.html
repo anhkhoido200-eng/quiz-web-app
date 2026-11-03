@@ -204,7 +204,8 @@
                                 <p class="text-[10px] text-slate-400">43 câu • 52 ý</p>
                             </div>
                         </button>
-                        <button type="button" onclick="app.selectSubject('geography')" id="tab-btn-geography" class="p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300">
+                        <!-- Môn Địa Lí 11: Ẩn mặc định, chỉ IP được cấp phép mới hiển thị -->
+                        <button type="button" onclick="app.selectSubject('geography')" id="tab-btn-geography" class="hidden p-2.5 sm:p-3 rounded-xl border transition-all text-left flex items-center gap-2.5 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300">
                             <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-sm sm:text-base shrink-0">
                                 <i class="fa-solid fa-earth-americas"></i>
                             </div>
@@ -212,6 +213,15 @@
                                 <p class="font-bold text-xs sm:text-sm truncate">Địa Lí 11</p>
                                 <p class="text-[10px] text-slate-400">52 câu + Tự luận</p>
                             </div>
+                        </button>
+                    </div>
+                    <!-- Thanh phụ trợ mở khóa môn Địa -->
+                    <div class="mt-2.5 flex items-center justify-between text-[11px] text-slate-500">
+                        <span id="geo-access-status" class="flex items-center gap-1.5 text-slate-500">
+                            <i class="fa-solid fa-shield-halved text-[10px]"></i> <span id="geo-status-text">Môn Địa chỉ hiển thị cho IP được cấp phép</span>
+                        </span>
+                        <button type="button" onclick="app.promptUnlockGeography()" id="geo-unlock-trigger" class="text-slate-400 hover:text-emerald-400 transition flex items-center gap-1 cursor-pointer">
+                            <i class="fa-solid fa-key text-[10px]"></i> <span>Nhập IP mở môn Địa</span>
                         </button>
                     </div>
                 </div>
@@ -570,6 +580,38 @@
                     </div>
                 </div>
 
+                <!-- CÔNG CỤ CẤP QUYỀN IP MÔN ĐỊA LÍ (ẨN MÔN ĐỊA, CHỈ IP ĐƯỢC DUYỆT MỚI THẤY) -->
+                <div class="p-3.5 bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-emerald-950/40 border border-emerald-500/40 rounded-2xl space-y-2.5 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-emerald-300 flex items-center gap-1.5 uppercase tracking-wide">
+                            <i class="fa-solid fa-earth-americas text-emerald-400"></i>
+                            <span>Quản Lý Cấp Quyền IP Xem Môn Địa Lí 11:</span>
+                        </label>
+                        <span class="text-[10px] text-slate-400 hidden sm:inline">Môn Địa bị ẩn mặc định, chỉ IP có trong danh sách mới thấy môn Địa</span>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <input type="text" id="admin-geo-ip-input" placeholder="Nhập địa chỉ IP cần mở môn Địa (ví dụ: 14.164.221.205)..." 
+                            class="flex-1 px-3.5 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 font-mono placeholder-slate-500 transition">
+                        <button onclick="app.adminAddGeoIp()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Cấp Quyền IP</span>
+                        </button>
+                        <button onclick="app.adminAuthorizeCurrentIp()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0" title="Cấp quyền cho chính máy tính/điện thoại Admin đang dùng">
+                            <i class="fa-solid fa-laptop"></i>
+                            <span>Cấp Máy Này</span>
+                        </button>
+                    </div>
+                    <!-- Danh sách các IP đã được cấp quyền -->
+                    <div class="pt-2 border-t border-slate-800/80">
+                        <div class="flex items-center justify-between mb-1.5 text-[11px] text-slate-400 font-semibold">
+                            <span>Danh sách IP đang được phép mở môn Địa (<span id="admin-geo-ip-count" class="text-emerald-400 font-bold">0</span> IP):</span>
+                        </div>
+                        <div id="admin-geo-ip-badges" class="flex flex-wrap gap-1.5 min-h-[28px] items-center">
+                            <!-- Render bởi app.js -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- BẢNG 3 CỘT: MÔN SỬ, MÔN LÍ & MÔN ĐỊA ĐANG CÓ AI -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <!-- Cột 1: MÔN LỊCH SỬ 11 -->
@@ -795,11 +837,11 @@
         </div>
     </div>
 
-    <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ -->
-    <script src="questions.js"></script>
-    <script src="physics_questions.js"></script>
-    <script src="geography_questions.js"></script>
-    <script src="supabase.js"></script>
-    <script src="app.js"></script>
+    <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ (Kèm tham số v để phá cache trình duyệt triệt để) -->
+    <script src="questions.js?v=2.6"></script>
+    <script src="physics_questions.js?v=2.6"></script>
+    <script src="geography_questions.js?v=2.6"></script>
+    <script src="supabase.js?v=2.6"></script>
+    <script src="app.js?v=2.6"></script>
 </body>
 </html>

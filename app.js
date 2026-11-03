@@ -29,10 +29,11 @@ class QuizApp {
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
-        // Quyền quản trị Admin
+        // Quyền quản trị Admin & Danh sách IP mở môn Địa
         this.isAdminAuthenticated = false;
         this.adminCurrentTab = 'questions';
         this.adminSecretPass = '034569';
+        this.allowedGeoIps = [];
 
         // Cache màn hình
         this.screens = {
@@ -48,10 +49,11 @@ class QuizApp {
         this.initEventListeners();
         this.displayDeviceInfo();
         this.checkSavedUser();
-        this.fetchClientIp();
+        await this.fetchClientIp();
         this.renderFilterTabs();
         await this.loadQuestionsFromDb();
         this.updateTotalQuestionDisplay();
+        await this.refreshGeographyAccess();
         this.startRealtimeBanChecker();
     }
 
@@ -504,6 +506,11 @@ class QuizApp {
                             this.showStudentNotice(notice.message, 5);
                         }
                     }
+                } catch (e) {}
+
+                // 3. Đồng bộ quyền mở môn Địa Lí thời gian thực
+                try {
+                    await this.refreshGeographyAccess();
                 } catch (e) {}
             }
         }, 3000);
@@ -1370,6 +1377,8 @@ class QuizApp {
     }
 
     openAdminDashboard() {
+        this.isAdminAuthenticated = true;
+        this.refreshGeographyAccess();
         const modal = document.getElementById('modal-admin-dashboard');
         if (modal) {
             modal.classList.remove('hidden');
@@ -1785,6 +1794,8 @@ class QuizApp {
                     percent = 100;
                 }
 
+                const isGeoAllowed = this.allowedGeoIps && this.allowedGeoIps.includes(item.ip_address);
+
                 tr.innerHTML = `
                     <td class="py-2.5 px-3 font-semibold text-slate-100 flex items-center gap-2">
                         <div class="w-7 h-7 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-400'} flex items-center justify-center text-xs shrink-0">
@@ -1822,6 +1833,9 @@ class QuizApp {
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap">
                         <div class="inline-flex items-center gap-1.5">
+                            <button onclick="app.adminToggleGeoIp('${item.ip_address}', ${!isGeoAllowed})" class="px-2 py-1 rounded-lg ${isGeoAllowed ? 'bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300' : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400'} font-bold text-xs transition cursor-pointer flex items-center gap-1" title="${isGeoAllowed ? 'Hủy quyền mở môn Địa của IP này' : 'Cấp quyền mở môn Địa cho IP này'}">
+                                <i class="fa-solid fa-earth-americas text-[10px]"></i> ${isGeoAllowed ? 'Đã cấp Địa' : '+ Cấp Địa'}
+                            </button>
                             <button onclick="app.adminDirectNotice('${item.ip_address}', '${this.escapeHtml(item.player_name || 'Học sinh')}')" class="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-amber-300 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Gửi thông báo nhắc nhở riêng 5s">
                                 <i class="fa-solid fa-bullhorn text-[10px]"></i> Nhắc
                             </button>
@@ -1862,6 +1876,8 @@ class QuizApp {
             if (tot > 0) percent = Math.min(100, Math.round((cur / tot) * 100));
         }
 
+        const isGeoAllowed = this.allowedGeoIps && this.allowedGeoIps.includes(item.ip_address);
+
         return `
             <div class="p-2.5 rounded-xl ${isBanned ? 'bg-rose-950/40 border border-rose-500/40' : 'bg-slate-900/80 border border-slate-700/70'} flex items-center justify-between gap-2 transition hover:border-slate-600">
                 <div class="overflow-hidden flex-1 min-w-0">
@@ -1888,6 +1904,9 @@ class QuizApp {
                     </div>
                 </div>
                 <div class="shrink-0 flex items-center gap-1">
+                    <button onclick="app.adminToggleGeoIp('${item.ip_address}', ${!isGeoAllowed})" class="px-2 py-1 rounded-lg ${isGeoAllowed ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/50' : 'bg-slate-800 text-slate-400 border border-slate-700'} text-[10px] font-bold cursor-pointer transition flex items-center gap-0.5" title="${isGeoAllowed ? 'Hủy quyền mở môn Địa' : 'Cấp quyền mở môn Địa'}">
+                        <i class="fa-solid fa-earth-americas text-[9px]"></i> ${isGeoAllowed ? 'Địa' : '+Địa'}
+                    </button>
                     <button onclick="app.adminDirectNotice('${item.ip_address}', '${this.escapeHtml(item.player_name || 'Học sinh')}')" class="px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 text-[10px] font-bold cursor-pointer transition flex items-center gap-0.5" title="Gửi nhắc nhở riêng 5s">
                         <i class="fa-solid fa-bullhorn text-[9px]"></i> Nhắc
                     </button>
@@ -2156,6 +2175,169 @@ class QuizApp {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
+    }
+
+    /**
+     * Đồng bộ và kiểm tra quyền truy cập môn Địa Lí 11
+     */
+    async refreshGeographyAccess() {
+        if (!window.dbService) return;
+
+        try {
+            this.allowedGeoIps = await window.dbService.fetchAllowedGeoIps();
+        } catch (e) {
+            this.allowedGeoIps = this.allowedGeoIps || [];
+        }
+
+        const tabBtn = document.getElementById('tab-btn-geography');
+        const statusText = document.getElementById('geo-status-text');
+        const unlockTrigger = document.getElementById('geo-unlock-trigger');
+
+        const isLocalUnlocked = localStorage.getItem('quiz_geo_manual_unlocked') === 'true';
+        const hasIpAccess = this.clientIp && this.allowedGeoIps && this.allowedGeoIps.includes(this.clientIp);
+        const isAllowed = this.isAdmin || isLocalUnlocked || hasIpAccess;
+
+        if (tabBtn) {
+            if (isAllowed) {
+                tabBtn.classList.remove('hidden');
+                if (statusText) {
+                    statusText.innerHTML = '<span class="text-emerald-400 font-semibold"><i class="fa-solid fa-circle-check"></i> Đã mở khóa môn Địa</span>';
+                }
+                if (unlockTrigger) unlockTrigger.classList.add('hidden');
+            } else {
+                tabBtn.classList.add('hidden');
+                // Nếu đang chọn môn Địa mà bị thu hồi quyền thì quay lại môn Sử
+                if (this.currentSubject === 'geography') {
+                    this.selectSubject('history');
+                }
+                if (statusText) {
+                    statusText.textContent = "Môn Địa chỉ hiển thị cho IP được cấp phép";
+                }
+                if (unlockTrigger) unlockTrigger.classList.remove('hidden');
+            }
+        }
+
+        this.renderAdminGeoIpBadges();
+    }
+
+    /**
+     * Mở popup cho thí sinh hoặc Admin nhập mật khẩu hoặc IP để mở môn Địa
+     */
+    async promptUnlockGeography() {
+        const myIp = this.clientIp || "Đang lấy...";
+        const input = prompt(`MÔN ĐỊA LÍ 11 ĐANG ĐƯỢC BẢO VỆ\n\nĐịa chỉ IP máy bạn: ${myIp}\n\nNhập mật mã mở khóa (hoặc yêu cầu Admin cấp phép cho IP trên):`);
+        if (!input) return;
+
+        const val = input.trim();
+        const isSecret = (val === '034569' || val === 'admin123');
+        const isWhitelisted = this.allowedGeoIps && (this.allowedGeoIps.includes(val) || (this.clientIp && this.allowedGeoIps.includes(this.clientIp)));
+
+        if (isSecret || isWhitelisted) {
+            localStorage.setItem('quiz_geo_manual_unlocked', 'true');
+            if (this.clientIp && isSecret && window.dbService) {
+                await window.dbService.addGeoAllowedIp(this.clientIp);
+            }
+            await this.refreshGeographyAccess();
+            this.selectSubject('geography');
+            alert("Chúc mừng! Đã mở khóa thành công môn Địa Lí 11.");
+        } else {
+            alert(`Mật mã không đúng hoặc IP [${myIp}] chưa được Admin cấp phép!\nVui lòng gửi địa chỉ IP của bạn cho Admin để được cấp quyền.`);
+        }
+    }
+
+    /**
+     * Admin thêm IP vào danh sách được mở môn Địa
+     */
+    async adminAddGeoIp(ipToAdd) {
+        const inputEl = document.getElementById('admin-geo-ip-input');
+        const ip = (ipToAdd || (inputEl ? inputEl.value : '')).trim();
+
+        if (!ip) {
+            alert("Vui lòng nhập địa chỉ IP hợp lệ.");
+            return;
+        }
+
+        if (window.dbService) {
+            this.allowedGeoIps = await window.dbService.addGeoAllowedIp(ip);
+            if (inputEl) inputEl.value = '';
+            this.renderAdminGeoIpBadges();
+            if (this.lastFetchedLogins) {
+                this.renderAdminStudentsList(this.lastFetchedLogins);
+            }
+        }
+    }
+
+    /**
+     * Admin xóa IP khỏi danh sách mở môn Địa
+     */
+    async adminRemoveGeoIp(ipToRemove) {
+        if (!ipToRemove) return;
+        if (confirm(`Bạn có chắc muốn hủy quyền mở môn Địa của IP: ${ipToRemove}?`)) {
+            if (window.dbService) {
+                this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ipToRemove);
+                this.renderAdminGeoIpBadges();
+                if (this.lastFetchedLogins) {
+                    this.renderAdminStudentsList(this.lastFetchedLogins);
+                }
+            }
+        }
+    }
+
+    /**
+     * Admin cấp nhanh quyền cho IP của máy đang thao tác
+     */
+    async adminAuthorizeCurrentIp() {
+        if (!this.clientIp || this.clientIp === "Chưa xác định" || this.clientIp === "IP Cục Bộ") {
+            alert("Chưa lấy được địa chỉ IP của máy bạn. Vui lòng kiểm tra lại kết nối mạng.");
+            return;
+        }
+        await this.adminAddGeoIp(this.clientIp);
+        alert(`Đã cấp quyền mở môn Địa thành công cho IP máy này: ${this.clientIp}`);
+    }
+
+    /**
+     * Admin bật/tắt quyền môn Địa trực tiếp từ bảng giám sát học sinh
+     */
+    async adminToggleGeoIp(ip, allow) {
+        if (!ip || ip === 'Chưa rõ') return;
+        if (window.dbService) {
+            if (allow) {
+                this.allowedGeoIps = await window.dbService.addGeoAllowedIp(ip);
+            } else {
+                this.allowedGeoIps = await window.dbService.removeGeoAllowedIp(ip);
+            }
+            this.renderAdminGeoIpBadges();
+            if (this.lastFetchedLogins) {
+                this.renderAdminStudentsList(this.lastFetchedLogins);
+            }
+        }
+    }
+
+    /**
+     * Hiển thị danh sách badge IP được cấp quyền mở môn Địa trong Admin
+     */
+    renderAdminGeoIpBadges() {
+        const container = document.getElementById('admin-geo-ip-badges');
+        const countEl = document.getElementById('admin-geo-ip-count');
+        const ips = this.allowedGeoIps || [];
+
+        if (countEl) countEl.textContent = ips.length;
+        if (!container) return;
+
+        if (ips.length === 0) {
+            container.innerHTML = '<span class="text-xs text-slate-500 italic">Chưa có IP nào trong danh sách. Chỉ Admin và thí sinh có mật mã mới thấy môn Địa.</span>';
+            return;
+        }
+
+        container.innerHTML = ips.map(ip => `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-mono text-xs shadow-sm">
+                <i class="fa-solid fa-earth-americas text-[10px]"></i>
+                <span>${this.escapeHtml(ip)}</span>
+                <button onclick="app.adminRemoveGeoIp('${ip}')" class="text-slate-400 hover:text-rose-400 cursor-pointer ml-1 text-[11px] transition" title="Xóa IP này khỏi danh sách">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </span>
+        `).join('');
     }
 
     escapeHtml(text) {
