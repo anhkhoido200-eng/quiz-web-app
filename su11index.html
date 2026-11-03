@@ -1,0 +1,2920 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ôn Tập Lịch Sử 11 - Giữa Kì 1 | Hệ Thống Ôn Thi Trực Tuyến</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Thêm thư viện Firebase chính hãng của Google -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Be Vietnam Pro', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 3px;
+    }
+    @keyframes rowPulseGreen {
+      0%, 100% {
+        background-color: rgba(16, 185, 129, 0.22);
+        box-shadow: inset 0 0 0 2px #10b981;
+      }
+      50% {
+        background-color: rgba(16, 185, 129, 0.05);
+        box-shadow: inset 0 0 0 1px #34d399;
+      }
+    }
+    .animate-new-row {
+      animation: rowPulseGreen 1s ease-in-out 2;
+    }
+  </style>
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- MÀN HÌNH CHẶN / KHÓA TRUY CẬP (KICK / BAN / LOCKED ROOM) -->
+  <div id="blocked-screen" class="fixed inset-0 bg-slate-900/95 z-[100] hidden flex-col items-center justify-center p-4 text-center">
+    <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border-2 border-rose-500">
+      <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+        <i class="fa-solid fa-ban"></i>
+      </div>
+      <h2 id="blocked-title" class="text-xl font-bold text-slate-800 mb-2">Truy cập bị từ chối</h2>
+      <p id="blocked-message" class="text-sm text-slate-600 mb-6 leading-relaxed">
+        Tài khoản của bạn đã bị Quản trị viên chặn hoặc phòng thi hiện đang đóng.
+      </p>
+      <button type="button" onclick="switchAccount()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer">
+        <i class="fa-solid fa-arrow-right-from-bracket mr-1.5"></i> Đổi tài khoản khác
+      </button>
+    </div>
+  </div>
+
+  <!-- CỔNG KIỂM SOÁT ĐĂNG NHẬP -->
+  <div id="login-gate-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 md:p-8 shadow-2xl border border-emerald-100">
+      <div class="flex items-center gap-3 mb-5">
+        <div onclick="handleSecretLogoTap()" class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-2xl shadow-md select-none cursor-pointer">
+          <i class="fa-solid fa-landmark"></i>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-slate-800 leading-snug">Cổng Đăng Nhập Phòng Thi</h2>
+          <p id="login-subtitle-count" class="text-xs text-slate-500">Ôn Tập Hóa Học 11 - Giữa Kì 1 (81 câu)</p>
+        </div>
+      </div>
+
+      <div id="login-error-box" class="hidden mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2">
+        <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+        <span id="login-error-text"></span>
+      </div>
+
+      <div id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Họ và tên học sinh <span class="text-rose-500">*</span></label>
+          <div class="relative">
+            <input type="text" id="input-fullname" placeholder="Nhập đầy đủ Họ và Tên thật (VD: Nguyễn Văn An)"
+              oninput="checkInstantHostPin(this.value)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();handleStudentLogin();}"
+              class="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+            <i class="fa-solid fa-user-pen absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1.5"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Yêu cầu nhập đúng họ và tên thật (tối thiểu 2 từ, chỉ chữ cái tiếng Việt)</p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Lớp</label>
+          <div class="relative">
+            <input type="text" id="input-class" placeholder="Nhập lớp (tùy ý, VD: 11A1, 11B2, 11C...)"
+              oninput="checkInstantHostPin(this.value)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();handleStudentLogin();}"
+              class="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+            <i class="fa-solid fa-graduation-cap absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+          </div>
+        </div>
+        <div id="room-code-field" class="hidden">
+          <label class="block text-xs font-semibold text-amber-700 mb-1">Mã vào phòng <span class="text-rose-500">*</span></label>
+          <input type="text" id="input-roomcode" placeholder="Nhập mã phòng do giáo viên cung cấp"
+            oninput="checkInstantHostPin(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();handleStudentLogin();}"
+            class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-amber-300 bg-amber-50/50 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition">
+        </div>
+
+        <button type="button" id="btn-start-quiz" onclick="handleStudentLogin()"
+          class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+          <i class="fa-solid fa-play"></i> Bắt đầu làm bài
+        </button>
+        <button type="button" onclick="bypassLoginToView()"
+          class="w-full mt-2.5 py-2.5 px-3 text-xs text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 border border-slate-200 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer font-medium">
+          <i class="fa-solid fa-eye"></i> Xem ngay câu hỏi (Chế độ xem tự do)
+        </button>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+        <span><i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i>Tự động lưu & đồng bộ tức thì</span>
+        <span id="sync-status-login"><i class="fa-solid fa-circle text-emerald-500 text-[8px] mr-1"></i>Sẵn sàng</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-emerald-700 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center space-x-3">
+        <div id="header-flask-icon" onclick="handleSecretLogoTap()" class="bg-emerald-800 p-2 rounded-lg select-none cursor-pointer">
+          <i class="fa-solid fa-landmark text-2xl text-emerald-300"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg md:text-xl leading-tight">Lịch Sử 11 - Đề Cương Ôn Tập Giữa Kì 1</h1>
+          <p id="header-subtitle-count" class="text-xs text-emerald-200">Trọn bộ 74 câu trắc nghiệm & Đúng-Sai chuẩn theo đề cương (101 ý)</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm">
+        <button type="button" id="host-admin-badge" onclick="openAdminDashboard()" class="hidden bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg shadow-sm transition items-center gap-1.5 cursor-pointer">
+          <span>👑 Quản trị viên (Host)</span>
+        </button>
+
+        <button type="button" id="btn-open-login-modal" onclick="openLoginModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> Đăng nhập làm bài
+        </button>
+
+        <div id="student-badge" class="hidden bg-emerald-800/90 px-3 py-1.5 rounded-lg border border-emerald-600/50 items-center gap-2">
+          <i class="fa-solid fa-user-graduate text-emerald-300"></i>
+          <span id="header-student-name" class="font-semibold">---</span>
+          <span id="header-student-class" class="bg-emerald-600 text-white text-[11px] px-1.5 py-0.5 rounded font-bold">---</span>
+        </div>
+
+        <div class="bg-emerald-800/80 px-3 py-1.5 rounded-lg border border-emerald-600/50 flex items-center gap-2">
+          <i class="fa-regular fa-clock text-emerald-300"></i>
+          <span id="timer" class="font-mono font-bold">00:00</span>
+        </div>
+        <div class="bg-emerald-800/80 px-3 py-1.5 rounded-lg border border-emerald-600/50 flex items-center gap-2">
+          <i class="fa-solid fa-star text-amber-300"></i>
+          <span>Điểm: <strong id="score-display" class="text-emerald-200">0/0</strong></span>
+        </div>
+
+        <button type="button" id="btn-switch-account" onclick="switchAccount()" class="hidden bg-emerald-900/70 hover:bg-emerald-900 text-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-600/40 transition items-center gap-1 cursor-pointer" title="Đổi tài khoản">
+          <i class="fa-solid fa-user-pen"></i> <span class="hidden sm:inline">Đổi tài khoản</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs & Filter Bar -->
+  <div class="bg-white border-b border-slate-200 shadow-sm sticky top-[61px] z-40">
+    <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-1.5 text-xs md:text-sm">
+        <span class="text-slate-500 font-medium mr-1"><i class="fa-solid fa-filter mr-1"></i>Lọc:</span>
+        <button type="button" id="filter-btn-all" onclick="filterLesson('all')" class="tab-btn px-3 py-1 rounded-full font-medium transition bg-emerald-600 text-white" data-lesson="all">Tất cả (74 câu)</button>
+        <button type="button" id="filter-btn-b1" onclick="filterLesson('b1')" class="tab-btn px-3 py-1 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-700" data-lesson="b1">Bài 1: Cách mạng tư sản (35 câu)</button>
+        <button type="button" id="filter-btn-b2" onclick="filterLesson('b2')" class="tab-btn px-3 py-1 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-700" data-lesson="b2">Bài 2: Sự xác lập CNTB (39 câu)</button>
+        <button type="button" id="filter-btn-tf" onclick="filterLesson('tf')" class="tab-btn px-3 py-1 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-amber-700" data-lesson="tf">
+          <i class="fa-solid fa-list-check mr-1 text-amber-600"></i>Câu Đúng - Sai (9 câu / 36 ý)
+        </button>
+        <button type="button" id="filter-btn-wrong" onclick="filterLesson('wrong')" class="tab-btn px-3 py-1 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-rose-600" data-lesson="wrong">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>Câu làm sai (<span id="wrong-count-badge">0</span>)
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button type="button" id="btn-view-wrong" onclick="filterLesson('wrong')" class="text-xs md:text-sm bg-rose-500 hover:bg-rose-600 text-white px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+          <i class="fa-solid fa-circle-xmark"></i> Xem câu sai (<span id="wrong-count">0</span>)
+        </button>
+        <button type="button" onclick="openModal('extra-modal')" class="text-xs md:text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-book-open"></i> Phần Đúng-Sai & Tự luận
+        </button>
+        <button type="button" onclick="resetQuiz()" class="text-xs md:text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1 cursor-pointer">
+          <i class="fa-solid fa-rotate-right mr-1"></i> Làm lại
+        </button>
+      </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-4 py-1.5 flex justify-between items-center text-xs text-slate-500 font-medium">
+      <span id="view-mode-indicator">Đang xem: <strong class="text-slate-700">Tất cả câu hỏi</strong></span>
+      <span id="progress-text" class="text-emerald-700 font-bold">Đã làm 0/101 câu (0%)</span>
+    </div>
+    <div class="w-full bg-slate-100 h-1.5">
+      <div id="progress-bar" class="bg-emerald-500 h-1.5 transition-all duration-300" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-6">
+    <div id="completed-banner" class="hidden mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center text-lg shrink-0">
+          <i class="fa-solid fa-trophy"></i>
+        </div>
+        <div>
+          <h4 id="completed-title" class="font-bold text-sm">Chúc mừng! Bạn đã hoàn thành toàn bộ 74 câu (101 ý) hỏi!</h4>
+          <p id="completed-detail" class="text-xs text-emerald-700">Kết quả đã được hệ thống tự động chấm điểm và đồng bộ thời gian thực.</p>
+        </div>
+      </div>
+      <button type="button" onclick="resetQuiz()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition cursor-pointer">
+        Làm lượt mới
+      </button>
+    </div>
+
+    <div id="questions-container" class="space-y-6"></div>
+  </main>
+
+  <!-- Modal for Parts II and III -->
+  <div id="extra-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-emerald-600"></i> Đáp án Phần II (Đúng - Sai) Lịch Sử 11
+        </h2>
+        <button type="button" onclick="closeModal('extra-modal')" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg text-lg cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-8 text-sm leading-relaxed">
+        <section class="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+          <h3 class="font-bold text-emerald-800 text-base mb-3 border-b pb-2">Phần II: Câu hỏi trắc nghiệm Đúng - Sai</h3>
+          <div class="space-y-3">
+            <div>
+              <p class="font-semibold text-slate-700">Đề cương chính:</p>
+              <ul class="list-disc list-inside space-y-1 text-slate-600 pl-2">
+                <li><strong>Câu 1:</strong> A - Đúng | B - Đúng | C - Sai | D - Đúng</li>
+                <li><strong>Câu 2:</strong> (a) - Đúng | (b) - Sai | (c) - Sai | (d) - Đúng</li>
+                <li><strong>Câu 3:</strong> A - Đúng | B - Đúng | C - Sai | D - Đúng</li>
+                <li><strong>Câu 4:</strong> A - Đúng | B - Đúng | C - Đúng | D - Đúng</li>
+                <li><strong>Câu 5:</strong> a - Đúng | b - Sai | c - Đúng | d - Đúng</li>
+                <li><strong>Câu 6:</strong> a - Sai | b - Đúng | c - Đúng | d - Đúng</li>
+                <li><strong>Câu 7:</strong> a - Sai | b - Sai | c - Sai | d - Sai</li>
+                <li><strong>Câu 8:</strong> a - Đúng | b - Đúng | c - Đúng | d - Đúng</li>
+                <li><strong>Câu 9:</strong> a - Đúng | b - Đúng | c - Đúng | d - Đúng</li>
+                <li><strong>Câu 10:</strong> a - Đúng | b - Sai | c - Đúng | d - Sai</li>
+                <li><strong>Câu 11:</strong> a - Sai | b - Sai | c - Sai | d - Đúng</li>
+                <li><strong>Câu 12:</strong> a - Sai | b - Đúng | c - Đúng | d - Sai</li>
+              </ul>
+            </div>
+            <div>
+              <p class="font-semibold text-slate-700">Phần còn lại (Nitrogen oxides & HNO3):</p>
+              <ul class="list-disc list-inside space-y-1 text-slate-600 pl-2">
+                <li><strong>Câu 1:</strong> A - Đúng | B - Đúng | C - Đúng | D - Đúng</li>
+                <li><strong>Câu 2:</strong> A - Sai | B - Đúng | C - Đúng | D - Đúng</li>
+                <li><strong>Câu 3:</strong> A - Đúng | B - Đúng | C - Đúng | D - Sai</li>
+                <li><strong>Câu 4:</strong> A - Đúng | B - Đúng | C - Đúng | D - Sai</li>
+                <li><strong>Câu 5:</strong> A - Sai | B - Đúng | C - Sai | D - Sai</li>
+                <li><strong>Câu 6:</strong> A - Sai | B - Đúng | C - Đúng | D - Đúng</li>
+                <li><strong>Câu 7:</strong> A - Sai | B - Đúng | C - Sai | D - Sai</li>
+                <li><strong>Câu 8:</strong> A - Đúng | B - Đúng | C - Sai | D - Đúng</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+          <h3 class="font-bold text-emerald-800 text-base mb-3 border-b pb-2">Phần III: Câu hỏi Trả lời ngắn</h3>
+          <div class="space-y-2">
+            <ul class="list-disc list-inside space-y-1 text-slate-600 pl-2">
+              <li><strong>Câu 1:</strong> Có <strong>3</strong> dung dịch muối bị thủy phân.</li>
+              <li><strong>Câu 2:</strong> Nồng độ ion Cl- là <strong>0,56 M</strong>.</li>
+              <li><strong>Câu 3:</strong> Có <strong>2</strong> phản ứng có cùng PT ion thu gọn.</li>
+              <li><strong>Câu 4:</strong> pH của dung dịch Z bằng <strong>1</strong>.</li>
+              <li><strong>Câu 5:</strong> Pha loãng dung dịch X gấp <strong>10</strong> lần.</li>
+              <li><strong>Câu 6:</strong> Giá trị của a = <strong>0,125 M</strong>.</li>
+              <li><strong>Câu 7:</strong> Khối lượng kết tủa BaSO4 thu được = <strong>6,99 gam</strong>.</li>
+              <li><strong>Câu 8:</strong> Khối lượng chất rắn cô cạn = <strong>4,45 gam</strong>.</li>
+              <li><strong>Câu 9:</strong> Có <strong>3</strong> phản ứng oxi hóa - khử.</li>
+              <li><strong>Câu 10:</strong> Có <strong>2</strong> chất tan tốt ở nhiệt độ thường.</li>
+              <li><strong>Câu 11:</strong> Thể tích thu được là <strong>0,715 lít</strong>.</li>
+              <li><strong>Câu 12:</strong> Nhiệt tạo thành chuẩn của NO(g) là <strong>90,3 kJ/mol</strong>.</li>
+              <li><strong>Câu 13:</strong> Hiệu suất phản ứng tổng hợp NH3 là <strong>25%</strong>.</li>
+              <li><strong>Câu 14:</strong> Hiệu suất phản ứng tổng hợp NH3 là <strong>20%</strong>.</li>
+              <li><strong>Câu 15:</strong> % thể tích N2 trong X là <strong>25%</strong>.</li>
+              <li><strong>Câu 16:</strong> Mối quan hệ: <strong>x &lt; y</strong>.</li>
+              <li><strong>Bài tập HNO3:</strong> Câu 37: <strong>26</strong> | Câu 38: <strong>30</strong>.</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+      <div class="p-4 border-t border-slate-200 bg-slate-50 flex justify-end rounded-b-2xl">
+        <button type="button" onclick="closeModal('extra-modal')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-medium transition cursor-pointer">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HỘP THOẠI NHẬP MẬT KHẨU ADMIN -->
+  <div id="admin-auth-modal" class="fixed inset-0 bg-slate-900/75 z-[90] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+          <i class="fa-solid fa-user-shield text-emerald-600"></i> Xác thực Quản trị viên (Host)
+        </h3>
+        <button type="button" onclick="closeModal('admin-auth-modal')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Mật khẩu quản trị</label>
+          <input type="password" id="admin-pass-input" placeholder="Nhập mật khẩu..."
+            oninput="checkInstantHostPin(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();handleAdminAuth();}"
+            class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none">
+          <p id="admin-auth-error" class="text-xs text-rose-600 mt-1 hidden">Mật khẩu không chính xác!</p>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('admin-auth-modal')" class="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer">Hủy</button>
+          <button type="button" onclick="handleAdminAuth()" class="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl cursor-pointer">Đăng nhập</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL THÊM CÂU HỎI MỚI -->
+  <div id="admin-add-question-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[98] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-emerald-200 overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex justify-between items-center">
+        <h3 class="font-bold text-sm md:text-base flex items-center gap-2">
+          <i class="fa-solid fa-circle-plus text-emerald-400"></i> Thêm Câu Hỏi Mới Vào Đề Thi
+        </h3>
+        <button type="button" onclick="closeModal('admin-add-question-modal')" class="text-slate-400 hover:text-white cursor-pointer">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div id="form-add-question" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs md:text-sm">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1.5">Chọn dạng câu hỏi muốn thêm <span class="text-rose-500">*</span></label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button type="button" id="btn-qtype-mcq" onclick="switchNewQuestionType('mcq')"
+              class="px-3 py-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition">
+              <i class="fa-solid fa-list-ul"></i> 4 lựa chọn (A, B, C, D)
+            </button>
+            <button type="button" id="btn-qtype-tf-group" onclick="switchNewQuestionType('tf_group')"
+              class="px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition">
+              <i class="fa-solid fa-check-double"></i> Đúng - Sai (4 ý a, b, c, d)
+            </button>
+            <button type="button" id="btn-qtype-tf-single" onclick="switchNewQuestionType('tf_single')"
+              class="px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition">
+              <i class="fa-solid fa-toggle-on"></i> Đúng - Sai đơn (1 ý)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Chọn bài học / chủ đề <span class="text-rose-500">*</span></label>
+          <select id="new-q-lesson" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 outline-none bg-white font-medium">
+            <option value="b1">Bài 1: Một số vấn đề chung về cách mạng tư sản</option>
+            <option value="b2">Bài 2: Sự xác lập và phát triển của chủ nghĩa tư bản</option>
+          </select>
+        </div>
+
+        <div>
+          <label id="new-q-text-label" class="block font-bold text-slate-700 mb-1">Nội dung câu hỏi <span class="text-rose-500">*</span></label>
+          <textarea id="new-q-text" rows="3" placeholder="Nhập nội dung câu hỏi hoặc câu dẫn..."
+            class="w-full p-3 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"></textarea>
+        </div>
+
+        <!-- Khung 4 lựa chọn -->
+        <div id="new-q-section-mcq" class="space-y-2.5">
+          <label class="block font-bold text-slate-700">
+            Nhập 4 phương án & Tích chọn 1 đáp án đúng <span class="text-rose-500">*</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 text-emerald-800 px-3 py-2 rounded-xl cursor-pointer shrink-0 font-bold">
+              <input type="radio" name="new-q-answer" value="0" checked class="accent-emerald-600"> A
+            </label>
+            <input type="text" id="new-q-opt-0" placeholder="Nội dung phương án A..."
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 outline-none">
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-xl cursor-pointer shrink-0 font-bold">
+              <input type="radio" name="new-q-answer" value="1" class="accent-emerald-600"> B
+            </label>
+            <input type="text" id="new-q-opt-1" placeholder="Nội dung phương án B..."
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 outline-none">
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-xl cursor-pointer shrink-0 font-bold">
+              <input type="radio" name="new-q-answer" value="2" class="accent-emerald-600"> C
+            </label>
+            <input type="text" id="new-q-opt-2" placeholder="Nội dung phương án C..."
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 outline-none">
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-xl cursor-pointer shrink-0 font-bold">
+              <input type="radio" name="new-q-answer" value="3" class="accent-emerald-600"> D
+            </label>
+            <input type="text" id="new-q-opt-3" placeholder="Nội dung phương án D..."
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 outline-none">
+          </div>
+        </div>
+
+        <!-- Khung Đúng - Sai 4 ý -->
+        <div id="new-q-section-tf-group" class="hidden space-y-3 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-amber-900">
+              Nhập các mệnh đề a), b), c), d) và chọn Đúng / Sai cho từng ý <span class="text-rose-500">*</span>
+            </label>
+            <span class="text-[11px] text-amber-700">(Có thể để trống ý cuối nếu chỉ có 2-3 ý)</span>
+          </div>
+
+          <div class="space-y-2.5">
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
+              <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center shrink-0">a)</span>
+              <input type="text" id="new-tf-stmt-0" placeholder="Nhập mệnh đề a..."
+                class="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-slate-300 focus:border-emerald-500 outline-none">
+              <div class="flex items-center gap-1.5 shrink-0">
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-0" value="true" checked class="accent-emerald-600"> Đúng
+                </label>
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-0" value="false" class="accent-rose-600"> Sai
+                </label>
+              </div>
+            </div>
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
+              <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center shrink-0">b)</span>
+              <input type="text" id="new-tf-stmt-1" placeholder="Nhập mệnh đề b..."
+                class="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-slate-300 focus:border-emerald-500 outline-none">
+              <div class="flex items-center gap-1.5 shrink-0">
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-1" value="true" checked class="accent-emerald-600"> Đúng
+                </label>
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-1" value="false" class="accent-rose-600"> Sai
+                </label>
+              </div>
+            </div>
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
+              <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center shrink-0">c)</span>
+              <input type="text" id="new-tf-stmt-2" placeholder="Nhập mệnh đề c..."
+                class="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-slate-300 focus:border-emerald-500 outline-none">
+              <div class="flex items-center gap-1.5 shrink-0">
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-2" value="true" checked class="accent-emerald-600"> Đúng
+                </label>
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-2" value="false" class="accent-rose-600"> Sai
+                </label>
+              </div>
+            </div>
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
+              <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center shrink-0">d)</span>
+              <input type="text" id="new-tf-stmt-3" placeholder="Nhập mệnh đề d..."
+                class="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-slate-300 focus:border-emerald-500 outline-none">
+              <div class="flex items-center gap-1.5 shrink-0">
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-3" value="true" checked class="accent-emerald-600"> Đúng
+                </label>
+                <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 font-bold cursor-pointer">
+                  <input type="radio" name="new-tf-ans-3" value="false" class="accent-rose-600"> Sai
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Khung Đúng - Sai đơn -->
+        <div id="new-q-section-tf-single" class="hidden space-y-2.5 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+          <label class="block font-bold text-amber-900">
+            Chọn đáp án đúng cho phát biểu trên <span class="text-rose-500">*</span>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center justify-center gap-2 p-3 rounded-xl bg-emerald-50 border-2 border-emerald-400 text-emerald-900 font-bold cursor-pointer">
+              <input type="radio" name="new-tf-single-ans" value="0" checked class="accent-emerald-600 w-4 h-4">
+              <span><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>ĐÚNG</span>
+            </label>
+            <label class="flex items-center justify-center gap-2 p-3 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-900 font-bold cursor-pointer">
+              <input type="radio" name="new-tf-single-ans" value="1" class="accent-rose-600 w-4 h-4">
+              <span><i class="fa-solid fa-circle-xmark text-rose-600 mr-1"></i>SAI</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Lời giải chi tiết</label>
+          <textarea id="new-q-explanation" rows="2" placeholder="Nhập giải thích chi tiết cho đáp án đúng..."
+            class="w-full p-3 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('admin-add-question-modal')" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer">
+            Hủy
+          </button>
+          <button type="button" onclick="handleCreateNewQuestion()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm flex items-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-plus"></i> Lưu & Đồng bộ ngay
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BẢNG QUẢN TRỊ ADMIN -->
+  <div id="admin-dashboard-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[95] hidden items-center justify-center p-2 md:p-6">
+    <div class="bg-white rounded-2xl max-w-6xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <!-- Top Header -->
+      <div class="p-4 bg-slate-900 text-white flex flex-wrap justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-gauge-high"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-base md:text-lg leading-tight flex items-center gap-2">
+              Bảng Quản Trị Thời Gian Thực
+              <span id="admin-live-indicator" class="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                <span id="admin-live-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="admin-live-text">Firebase Online</span>
+              </span>
+              <span id="cloud-status-badge" class="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                <i class="fa-solid fa-database"></i> Firebase DB
+              </span>
+            </h2>
+            <p class="text-xs text-slate-400">Giám sát học sinh làm bài tức thì, thêm câu hỏi A-B-C-D / Đúng-Sai & xuất đề mới</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="loadFirebaseDataForce()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-arrows-rotate"></i> Đồng bộ ngay
+          </button>
+          <button type="button" onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+            <i class="fa-solid fa-file-csv"></i> Xuất CSV/Excel
+          </button>
+          <button type="button" onclick="closeModal('admin-dashboard-modal')" class="bg-rose-600 hover:bg-rose-500 text-white w-8 h-8 rounded-xl flex items-center justify-center transition cursor-pointer">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Thanh Điều Hướng 2 Tab Admin -->
+      <div class="bg-slate-800 px-4 pt-2 border-b border-slate-700 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <button type="button" id="admin-tab-btn-monitor" onclick="switchAdminTab('monitor')"
+            class="px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-50 text-emerald-700 border-t-2 border-emerald-500">
+            <i class="fa-solid fa-users-viewfinder"></i> Giám sát phòng thi & Học sinh
+          </button>
+          <button type="button" id="admin-tab-btn-questions" onclick="switchAdminTab('questions')"
+            class="px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-700/60 text-slate-300 hover:bg-slate-700 hover:text-white">
+            <i class="fa-solid fa-file-pen"></i> Quản lý câu hỏi (<span id="admin-total-q-count">81</span>)
+            <span id="admin-modified-q-badge" class="hidden bg-amber-500 text-slate-950 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">Đã tùy chỉnh</span>
+          </button>
+        </div>
+        <div id="admin-toast-notice" class="hidden text-xs font-semibold text-emerald-300 py-1 px-3 rounded-lg bg-emerald-950/80 border border-emerald-600/40 items-center gap-1.5">
+          <i class="fa-solid fa-circle-check text-emerald-400"></i>
+          <span id="admin-toast-text">Đã lưu và đồng bộ!</span>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50 flex-1">
+        <!-- TAB 1: GIÁM SÁT -->
+        <div id="admin-tab-monitor" class="space-y-5">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl">
+                <i class="fa-solid fa-users"></i>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 font-medium">Tổng số truy cập</p>
+                <p id="stat-total-users" class="text-xl font-bold text-slate-800">0</p>
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                <i class="fa-solid fa-pen-to-square"></i>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 font-medium">Đang làm / Đã hoàn thành</p>
+                <p id="stat-active-users" class="text-xl font-bold text-slate-800">0 / 0</p>
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
+                <i class="fa-solid fa-chart-line"></i>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 font-medium">Điểm TB (Thang 10)</p>
+                <p id="stat-avg-score" class="text-xl font-bold text-slate-800">0.0</p>
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl">
+                <i class="fa-solid fa-user-slash"></i>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 font-medium">Danh sách chặn</p>
+                <p id="stat-banned-count" class="text-xl font-bold text-slate-800">0</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2 border-b pb-2">
+                <i class="fa-solid fa-sliders text-emerald-600"></i> Cài Đặt Phòng Thi
+              </h3>
+              <div class="flex items-center justify-between py-1">
+                <div>
+                  <p class="text-xs font-semibold text-slate-700">Khóa đóng link phòng thi</p>
+                  <p class="text-[11px] text-slate-500">Chặn không cho học sinh mới đăng nhập vào làm bài</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="toggle-lock-room" onchange="saveRoomConfigFromAdmin()" class="sr-only peer">
+                  <div class="w-10 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-600"></div>
+                </label>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" id="toggle-require-code" onchange="saveRoomConfigFromAdmin()" class="w-4 h-4 accent-emerald-600 rounded cursor-pointer">
+                  <label for="toggle-require-code" class="text-xs font-semibold text-slate-700 cursor-pointer">Yêu cầu Mã vào phòng:</label>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input type="text" id="admin-room-code" placeholder="VD: SU11"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();saveRoomConfigFromAdmin();}"
+                    class="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:border-emerald-500 outline-none w-32 font-mono uppercase">
+                  <button type="button" onclick="saveRoomConfigFromAdmin()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
+                    Lưu mã
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2 border-b pb-2">
+                <i class="fa-solid fa-ban text-rose-600"></i> Quản Lý Danh Sách Chặn (Blacklist)
+              </h3>
+              <div class="flex gap-2">
+                <input type="text" id="input-blacklist-name" placeholder="Nhập họ tên cần chặn..."
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();addManualBlacklist();}"
+                  class="flex-1 px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:border-rose-500 outline-none">
+                <button type="button" onclick="addManualBlacklist()" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition cursor-pointer shrink-0">
+                  <i class="fa-solid fa-plus mr-1"></i> Chặn tên này
+                </button>
+              </div>
+              <div id="blacklist-tags" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                <span class="text-xs text-slate-400 italic">Chưa có ai trong danh sách chặn.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+                <div class="relative flex-1 max-w-xs">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                  <input type="text" id="admin-search-input" oninput="renderAdminTable()" placeholder="Tìm theo họ tên hoặc lớp..."
+                    class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:border-emerald-500 outline-none">
+                </div>
+                <select id="admin-sort-select" onchange="renderAdminTable()"
+                  class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700 outline-none cursor-pointer">
+                  <option value="newest">Sắp xếp: Mới vào nhất</option>
+                  <option value="score_desc">Sắp xếp: Điểm cao → thấp</option>
+                  <option value="progress_desc">Sắp xếp: Tiến độ nhanh nhất</option>
+                </select>
+              </div>
+              <button type="button" onclick="clearAllSessions()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer">
+                <i class="fa-solid fa-trash-can"></i> Xóa toàn bộ danh sách
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                    <th class="py-2.5 px-3 font-semibold">#</th>
+                    <th class="py-2.5 px-3 font-semibold">Họ và tên</th>
+                    <th class="py-2.5 px-3 font-semibold">Lớp</th>
+                    <th class="py-2.5 px-3 font-semibold">Trạng thái</th>
+                    <th class="py-2.5 px-3 font-semibold">Điểm số</th>
+                    <th class="py-2.5 px-3 font-semibold">Tiến độ</th>
+                    <th class="py-2.5 px-3 font-semibold">Thời gian làm</th>
+                    <th class="py-2.5 px-3 font-semibold">Giờ vào / Thiết bị</th>
+                    <th class="py-2.5 px-3 font-semibold text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-tbody" class="divide-y divide-slate-200">
+                  <tr>
+                    <td colspan="9" class="py-8 text-center text-slate-400">Chưa có học sinh nào đăng nhập.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: QUẢN LÝ CÂU HỎI -->
+        <div id="admin-tab-questions" class="hidden space-y-4">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+              <div class="relative flex-1 max-w-sm">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input type="text" id="admin-q-search" oninput="renderAdminQuestionsList()" placeholder="Tìm theo số câu hoặc từ khóa nội dung..."
+                  class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:border-emerald-500 outline-none">
+              </div>
+              <select id="admin-q-lesson-filter" onchange="renderAdminQuestionsList()"
+                class="px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white text-slate-700 font-medium outline-none cursor-pointer">
+                <option value="all">Tất cả bài học</option>
+                <option value="b1">Bài 1: Cách mạng tư sản (35 câu)</option>
+                <option value="b2">Bài 2: Sự xác lập CNTB (39 câu)</option>
+                <option value="tf">Chỉ hiện câu hỏi Đúng - Sai</option>
+                <option value="modified">Các câu mới thêm / đã sửa</option>
+              </select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="openAddQuestionModal('mcq')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                <i class="fa-solid fa-plus"></i> + Thêm câu A, B, C, D
+              </button>
+              <button type="button" onclick="openAddQuestionModal('tf_group')" class="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                <i class="fa-solid fa-check-double"></i> + Thêm câu Đúng - Sai
+              </button>
+              <button type="button" onclick="resetAllQuestionsToDefault()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-rotate-left"></i> Khôi phục gốc (81 câu)
+              </button>
+              <button type="button" onclick="republishAllQuestionChanges()" class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Đẩy lại tất cả thay đổi
+              </button>
+              <button type="button" onclick="downloadUpdatedHTMLFile()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                📥 Xuất file HTML đã cập nhật
+              </button>
+            </div>
+          </div>
+
+          <div id="q-sync-warning" class="hidden p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 text-xs leading-relaxed"></div>
+          <div id="admin-questions-list" class="space-y-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trạng thái kết nối & Thông báo nổi -->
+  <div id="sync-pill" class="fixed bottom-3 left-3 z-[60] text-[11px] font-semibold px-2.5 py-1 rounded-full shadow border bg-white/95 text-slate-600 border-slate-200 flex items-center gap-1.5 select-none transition-all">
+    <span id="sync-pill-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+    <span id="sync-pill-text">Firebase Online</span>
+  </div>
+  <div id="student-toast" class="hidden fixed bottom-14 left-1/2 -translate-x-1/2 z-[110] max-w-[92vw] bg-slate-900 text-white text-xs md:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-2xl items-center gap-2">
+    <i class="fa-solid fa-bell text-amber-300"></i><span id="student-toast-text"></span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. CẤU HÌNH FIREBASE DATABASE CHÍNH HÃNG
+    // =========================================================================
+    const firebaseConfig = {
+      databaseURL: "https://luu-thog-tin-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // =========================================================================
+    // 2. DỮ LIỆU CÂU HỎI GỐC & PART 2
+    // =========================================================================
+    const part2Data = [
+      {
+        id: "b2_tf1",
+        lesson: "b2",
+        title: "Bài 2 • Câu 1",
+        statements: [
+          {
+            key: "b2_1_c",
+            text: "Nước được vận chuyển từ rễ lên lá rồi lên thân bằng mạch gỗ.",
+            answer: false,
+            explanation: "Sai. Nước được vận chuyển một chiều từ rễ lên thân rồi mới đến lá qua mạch gỗ."
+          }
+        ]
+      }
+    ];
+
+    /*__QUESTIONS_DATA_START__*/
+const p1Raw = [
+{ id: 1, lesson: "b1", qNum: "Câu 1", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân.", "xóa bỏ tình trạng phong kiến cát cứ."], answer: 3, explanation: "Xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường dân tộc là một trong những nhiệm vụ dân tộc hàng đầu của cách mạng tư sản." },
+      { id: 2, lesson: "b1", qNum: "Câu 2", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["hình thành thị trường dân tộc thống nhất.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Hình thành thị trường dân tộc thống nhất là nhiệm vụ dân tộc quan trọng nhằm mở đường cho kinh tế tư bản phát triển." },
+      { id: 3, lesson: "b1", qNum: "Câu 3", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["xóa bỏ chế độ phong kiến chuyên chế.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Xóa bỏ chế độ phong kiến chuyên chế, xác lập nền dân chủ tư sản là nhiệm vụ dân chủ của cách mạng tư sản." },
+      { id: 4, lesson: "b1", qNum: "Câu 4", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["xác lập sự thống trị của chủ nghĩa thực dân.", "đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xóa bỏ phong kiến, xác lập nền dân chủ tư sản."], answer: 3, explanation: "Nhiệm vụ dân chủ là xóa bỏ chế độ phong kiến chuyên chế, xác lập nền dân chủ tư sản." },
+      { id: 5, lesson: "b1", qNum: "Câu 5", question: "Một trong những mục tiêu của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["mở đường cho tư bản chủ nghĩa phát triển.", "đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Mục tiêu bao trùm của các cuộc cách mạng tư sản là lật đổ trật tự phong kiến, mở đường cho chủ nghĩa tư bản phát triển." },
+      { id: 6, lesson: "b1", qNum: "Câu 6", question: "Một trong những mục tiêu của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["đưa giai cấp công nhân lên nắm chính quyền.", "xóa bỏ những rào cản của chế độ phong kiến.", "xóa bỏ triệt để những mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 1, explanation: "Xóa bỏ các rào cản phong kiến để giải phóng sức sản xuất và xác lập quan hệ sản xuất tư bản chủ nghĩa." },
+      { id: 7, lesson: "b1", qNum: "Câu 7", question: "Lãnh đạo của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "nông dân.", "tư sản.", "công nhân."], answer: 2, explanation: "Giai cấp tư sản là lực lượng đại diện cho phương thức sản xuất mới, giữ vai trò lãnh đạo cách mạng." },
+      { id: 8, lesson: "b1", qNum: "Câu 8", question: "Lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "nông dân.", "công nhân.", "quý tộc mới."], answer: 3, explanation: "Ở một số cuộc cách mạng (tiêu biểu như Cách mạng tư sản Anh), tầng lớp quý tộc mới liên minh cùng tư sản lãnh đạo cách mạng." },
+      { id: 9, lesson: "b1", qNum: "Câu 9", question: "Lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX là", options: ["địa chủ.", "chủ nô.", "công nhân.", "nông dân."], answer: 1, explanation: "Trong cuộc Chiến tranh giành độc lập ở Bắc Mỹ, giai cấp tư sản và tầng lớp chủ nô đồn điền ở miền Nam cùng liên minh lãnh đạo cách mạng." },
+      { id: 10, lesson: "b1", qNum: "Câu 10", question: "Lực lượng nào sau đây không phải là lãnh đạo của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Giai cấp công nhân.", "Quý tộc mới.", "Quý tộc tư sản hóa.", "Giai cấp tư sản."], answer: 0, explanation: "Giai cấp công nhân lúc này chưa đủ lớn mạnh và trưởng thành về ý thức hệ để lãnh đạo các cuộc cách mạng tư sản thời cận đại." },
+      { id: 11, lesson: "b1", qNum: "Câu 11", question: "Trong các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX, động lực quyết định thắng lợi của cách mạng là", options: ["mục tiêu của cách mạng.", "phương pháp đấu tranh.", "kết quả cuối cùng.", "giai cấp lãnh đạo."], answer: 3, explanation: "Động lực cách mạng bao gồm giai cấp lãnh đạo và quần chúng nhân dân, trong đó đường lối đúng đắn của giai cấp lãnh đạo định hướng phong trào." },
+      { id: 12, lesson: "b1", qNum: "Câu 12", question: "Trong các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX, động lực quyết định thắng lợi của cách mạng là", options: ["mục tiêu của cách mạng.", "kết quả cuối cùng.", "quần chúng nhân dân.", "phương pháp đấu tranh."], answer: 2, explanation: "Quần chúng nhân dân (nông dân, thợ thủ công, bình dân thành thị, công nhân) là lực lượng đông đảo nhất, là động lực chính quyết định thắng lợi của cách mạng." },
+      { id: 13, lesson: "b1", qNum: "Câu 13", question: "Nội dung nào sau đây là tiền đề về kinh tế dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Kinh tế tư bản chủ nghĩa ra đời và phát triển trong lòng chế độ phong kiến.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến."], answer: 0, explanation: "Sự xuất hiện và phát triển của các mầm mống kinh tế TBCN ngay trong lòng xã hội phong kiến là tiền đề kinh tế căn bản." },
+      { id: 14, lesson: "b1", qNum: "Câu 14", question: "Nội dung nào sau đây là tiền đề về kinh tế dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Những rào cản của chế độ phong kiến kìm hãm kinh tế tư bản chủ nghĩa.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh."], answer: 2, explanation: "Chế độ phong kiến đặt ra nhiều thứ thuế vô lí, chia cắt lãnh địa làm cản trở thị trường tự do, kìm hãm sự phát triển của kinh tế TBCN." },
+      { id: 15, lesson: "b1", qNum: "Câu 15", question: "Nội dung nào sau đây là tiền đề về chính trị dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Chế độ cai trị của nhà nước phong kiến, gây ra sự bất mãn trong xã hội."], answer: 3, explanation: "Sự thối nát, hà khắc và chuyên chế của chính quyền phong kiến chuyên chế đã tạo nên làn sóng bất mãn sâu sắc trong toàn thể xã hội." },
+      { id: 16, lesson: "b1", qNum: "Câu 16", question: "Nội dung nào sau đây là tiền đề về xã hội dẫn đến sự bùng nổ và thắng lợi của các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Mâu thuẫn giữa giai cấp tư sản với quý tộc phong kiến ngày càng sâu sắc.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị."], answer: 1, explanation: "Mâu thuẫn giữa các giai tầng mới (tư sản, nhân dân) với quý tộc phong kiến và giáo hội trở nên gay gắt không thể điều hòa." },
+      { id: 17, lesson: "b1", qNum: "Câu 17", question: "Nội dung nào sau đây là tiền đề về tư tưởng dẫn đến sự bùng nổ và thắng lợi của cuộc cách mạng tư sản Pháp ở thế kỉ XVIII?", options: ["Quan hệ sản xuất tư bản chủ nghĩa thay thế hoàn toàn quan hệ phong kiến.", "Giai cấp tư sản và đồng minh có thế lực rất lớn cả về kinh tế và chính trị.", "Triết học Ánh sáng ra đời, thức tĩnh, dọn đường cho quần chúng đấu tranh.", "Mâu thuẫn giữa giai cấp tư sản với quý tộc phong kiến ngày càng sâu sắc."], answer: 2, explanation: "Trào lưu Triết học Ánh sáng (với Montesquieu, Voltaire, Rousseau) đã tấn công vào ý thức hệ phong kiến, dọn đường về mặt tư tưởng cho cách mạng Pháp." },
+      { id: 18, lesson: "b1", qNum: "Câu 18", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Lật đổ nền quân chủ chuyên chế tồn tại lâu đời.", "Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 0, explanation: "Cách mạng tư sản thắng lợi đã lật đổ nền quân chủ chuyên chế phong kiến hoặc ách thống trị của thực dân." },
+      { id: 19, lesson: "b1", qNum: "Câu 19", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 1, explanation: "Ý nghĩa lớn nhất là xóa bỏ rào cản phong kiến, mở đường thông thoáng cho quan hệ sản xuất tư bản chủ nghĩa phát triển mạnh mẽ." },
+      { id: 20, lesson: "b1", qNum: "Câu 20", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Thúc đẩy lực lượng sản xuất phát triển.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 2, explanation: "Thắng lợi của cách mạng tư sản giải phóng sức lao động, kích thích khoa học kỹ thuật và thúc đẩy lực lượng sản xuất xã hội phát triển vượt bậc." },
+      { id: 21, lesson: "b1", qNum: "Câu 21", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Mở đường cho cách mạng công nghiệp.", "Đưa giai cấp công nhân lên nắm chính quyền."], answer: 2, explanation: "Tạo tiền đề về tư bản tích lũy và nguồn nhân công tự do cho cuộc cách mạng công nghiệp bùng nổ." },
+      { id: 22, lesson: "b1", qNum: "Câu 22", question: "Các cuộc cách mạng tư sản từ giữa thế kỉ XVI đến đầu thế kỉ XX thắng lợi có ý nghĩa quan trọng nào sau đây?", options: ["Giải quyết triệt để mọi yêu cầu của nông dân.", "Xóa bỏ được tình trạng áp bức trong xã hội.", "Đưa giai cấp công nhân lên nắm chính quyền.", "Tạo ra nền dân chủ tư sản và nhà nước dân chủ."], answer: 3, explanation: "Xác lập thể chế nhà nước mới (cộng hòa hoặc quân chủ lập hiến) và xây dựng nền dân chủ tư sản với các quyền tự do công dân." },
+      { id: 23, lesson: "b1", qNum: "Câu 23", question: "Cuộc cách mạng tư sản Pháp (cuối thế kỷ XVIII) và cách mạng tư sản Anh (thế kỷ XVII) có điểm khác biệt nào sau đây?", options: ["Tạo điều kiện cho kinh tế tư bản phát triển.", "Tính chất triệt để của cuộc cách mạng tư sản.", "Do giai cấp tư sản và quý tộc mới lãnh đạo.", "Xóa bỏ phong kiến, thiết lập quân chủ lập hiến."], answer: 1, explanation: "Cách mạng tư sản Pháp là cuộc cách mạng triệt để nhất thời cận đại, trong khi Cách mạng Anh là cuộc cách mạng không triệt để (thiết lập quân chủ lập hiến, chưa chia đất cho nông dân)." },
+      { id: 24, lesson: "b1", qNum: "Câu 24", question: "Cuộc cách mạng tư sản Pháp (cuối thế kỷ XVIII) và cách mạng tư sản Anh (thế kỷ XVII) có điểm khác biệt nào sau đây?", options: ["Tạo điều kiện cho kinh tế tư bản phát triển.", "Do giai cấp tư sản và quý tộc mới lãnh đạo.", "Giải quyết vấn đề ruộng đất cho nông dân.", "Xóa bỏ phong kiến, thiết lập quân chủ lập hiến."], answer: 2, explanation: "Thời kì chuyên chính Giacôbanh ở Pháp đã giải quyết triệt để vấn đề ruộng đất cho nông dân, điều mà cách mạng tư sản Anh không làm được." },
+      { id: 25, lesson: "b1", qNum: "Câu 25", question: "Cuộc Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mĩ (cuối thế kỷ XVIII) và cuộc cách mạng tư sản Anh (thế kỷ XVII) có điểm giống nhau nào sau đây?", options: ["Chống thực dân Anh, giành độc lập dân tộc.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Có sự lãnh đạo của tầng lớp quý tộc mới.", "Diễn ra dưới hình thức một cuộc nội chiến."], answer: 1, explanation: "Điểm chung cốt lõi của mọi cuộc cách mạng tư sản là đều mở đường cho chủ nghĩa tư bản phát triển." },
+      { id: 26, lesson: "b1", qNum: "Câu 26", question: "Nội dung nào sau đây phản ánh đúng điểm tiến bộ của Tuyên ngôn Độc lập (1776) ở nước Mỹ và Tuyên ngôn Nhân quyền và Dân quyền (1789) ở nước Pháp?", options: ["Đề cao quyền công dân và quyền con người.", "Bảo vệ quyền lợi cho tất cả các tầng lớp trong xã hội.", "Bảo vệ quyền lợi tư hữu cho giai cấp tư sản.", "Quyền tư hữu là quyền thiêng liêng, bất khả xâm phạm."], answer: 0, explanation: "Cả hai bản tuyên ngôn đều mang tính chất nhân văn, tiến bộ khi lần đầu tiên đề cao các quyền thiêng liêng về con người và quyền tự do, bình đẳng của công dân." },
+      { id: 27, lesson: "b1", qNum: "Câu 27", question: "Nội dung nào dưới đây phản ánh đúng vai trò của trào lưu Triết học Ánh sáng đối với cách mạng tư sản Pháp vào cuối thế kỷ XVIII?", options: ["Lên án chế độ tư bản chủ nghĩa, đưa ra lí thuyết xây dựng nhà nước xã hội chủ nghĩa.", "Lên án chế độ phong kiến, giáo hội Thiên chúa và mặt trái của chủ nghĩa tư bản.", "Tấn công hệ tư tưởng chế độ phong kiến, dọn đường cho cách mạng xã hội bùng nổ.", "Lên án chế độ tư bản chủ nghĩa, chế độ phong kiến, đề nghị xây dựng chế độ tiến bộ."], answer: 2, explanation: "Triết học Ánh sáng đã công phá thành trì tư tưởng phong kiến và giáo hội, chuẩn bị tiền đề lý luận và dọn đường cho cuộc đại cách mạng bùng nổ." },
+      { id: 28, lesson: "b1", qNum: "Câu 28", question: "Điểm khác nhau giữa cuộc Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mĩ cuối thế kỷ XVIII với cuộc cách mạng tư sản Anh là gì?", options: ["Động lực cách mạng là quần chúng nhân dân.", "Giai cấp tư sản tham gia lãnh đạo cách mạng.", "Là cuộc chiến tranh giải phóng dân tộc.", "Diễn ra dưới hình thức thống nhất đất nước."], answer: 2, explanation: "Cách mạng ở Bắc Mỹ diễn ra dưới hình thức một cuộc chiến tranh giải phóng dân tộc chống ách thống trị của thực dân Anh, còn ở Anh diễn ra dưới hình thức nội chiến." },
+      { id: 29, lesson: "b1", qNum: "Câu 29", question: "Cách mạng tư sản Pháp (cuối thế kỉ XVIII) được đánh giá là cuộc cách mạng tư sản triệt để nhất thời cận đại vì lí do nào sau đây?", options: ["Giai cấp tư sản lãnh đạo liên minh với quý tộc lãnh đạo quần chúng nhân dân.", "Lật đổ chế độ phong kiến chuyên chế và nhân dân được làm chủ đất nước.", "Giải quyết vấn đề ruộng đất cho nông dân và thực hiện các quyền bình đẳng.", "Hoàn thành đầy đủ nhiệm vụ dân tộc và dân chủ của cuộc cách mạng tư sản."], answer: 3, explanation: "Cách mạng tư sản Pháp được đánh giá là triệt để nhất vì đã giải quyết trọn vẹn cả hai nhiệm vụ dân tộc (thống nhất thị trường, bảo vệ Tổ quốc) và nhiệm vụ dân chủ (lật đổ chế độ quân chủ chuyên chế, ban bố quyền tự do bình đẳng, giải quyết ruộng đất cho nông dân)." },
+      { id: 30, lesson: "b1", qNum: "Câu 30", question: "Cách mạng tư sản Pháp (cuối thế kỉ XVIII) được đánh giá là cuộc cách mạng tư sản triệt để nhất thời cận đại vì lí do nào sau đây?", options: ["Giai cấp tư sản lãnh đạo liên minh với quý tộc lãnh đạo quần chúng nhân dân.", "Lật đổ chế độ phong kiến chuyên chế và nhân dân được làm chủ đất nước.", "Giải quyết vấn đề ruộng đất cho nông dân và thực hiện các quyền bình đẳng.", "Các nhiệm vụ của một cuộc cách mạng tư sản đã được giải quyết triệt để."], answer: 3, explanation: "Cách mạng Pháp đã giải quyết triệt để các nhiệm vụ kinh tế, chính trị và xã hội của một cuộc cách mạng tư sản thời cận đại." },
+      { id: 31, lesson: "b1", qNum: "Câu 31", question: "Nội dung nào sau đây phản ánh đúng về cuộc Cách mạng tư sản Pháp cuối thế kỷ XVIII?", options: ["Đây là cuộc cách mạng tư sản triệt để nhất, không có hạn chế.", "Đây là cuộc cách mạng tư sản triệt để nhưng có nhiều hạn chế.", "Đây là cuộc cách mạng tư sản diễn ra dưới hình thức nội chiến.", "Tầng lớp quý tộc mới quyết định sự thành công của cách mạng."], answer: 1, explanation: "Dù là cuộc cách mạng triệt để nhất thời cận đại, CMTS Pháp vẫn có hạn chế: chưa xóa bỏ hoàn toàn áp bức bóc lột, thành quả chủ yếu thuộc về giai cấp tư sản." },
+      { id: 32, lesson: "b2", qNum: "Câu 1", question: "Quốc gia nào sau đây khởi đầu cuộc Cách mạng công nghiệp ở thế kỉ XVIII?", options: ["Anh", "Đức.", "I-ta-li-a", "Pháp"], answer: 0, explanation: "Cuộc Cách mạng công nghiệp bắt đầu từ những năm 60 của thế kỉ XVIII tại nước Anh trong ngành dệt." },
+      { id: 33, lesson: "b2", qNum: "Câu 2", question: "Từ đầu thế kỉ XIX, để đáp ứng nhu cầu ngày càng cao về nguyên liệu và nhân công các nước tư bản phương Tây đã tăng cường", options: ["hợp tác và mở rộng đầu tư.", "thu hút vốn đầu tư bên ngoài.", "xâm lược và mở rộng thuộc địa.", "đổi mới hình thức kinh doanh."], answer: 2, explanation: "Các nước tư bản đẩy mạnh các cuộc chiến tranh xâm lược thuộc địa ở châu Á, châu Phi và Mỹ La-tinh." },
+      { id: 34, lesson: "b2", qNum: "Câu 3", question: "Cuối thế kỉ XIX – đầu thế kỉ XX, các nước tư bản chủ nghĩa đã chuyển sang giai đoạn", options: ["tự do cạnh tranh.", "cải cách đất nước.", "đế quốc chủ nghĩa.", "chủ nghĩa phát xít."], answer: 2, explanation: "Sự tập trung sản xuất và tích tụ tư bản đưa CNTB chuyển từ giai đoạn tự do cạnh tranh sang giai đoạn độc quyền (chủ nghĩa đế quốc)." },
+      { id: 35, lesson: "b2", qNum: "Câu 4", question: "Chủ nghĩa đế quốc ra đời từ cuối thế kỉ XIX đầu thế kỉ XX là hệ quả trực tiếp của quá trình", options: ["xâm lược thuộc địa.", "giao lưu buôn bán.", "mở rộng thị trường.", "hợp tác kinh tế."], answer: 0, explanation: "Chủ nghĩa đế quốc là hệ quả trực tiếp của việc mở rộng thị trường, đẩy mạnh xâm lược thuộc địa và xuất khẩu tư bản." },
+      { id: 36, lesson: "b2", qNum: "Câu 5", question: "Cho đến cuối thế kỉ XIX, các nước đế quốc chủ nghĩa đã thiết lập hệ thống thuộc địa rộng khắp ở", options: ["châu Âu, châu Mỹ và khu vực Tây Âu.", "châu Âu, châu Úc và khu vực Bắc Mỹ.", "châu Á, châu Phi và khu vực Mỹ La-tinh.", "châu Mỹ, Tây Âu và khu vực Đông Âu."], answer: 2, explanation: "Hầu hết các quốc gia ở châu Á, châu Phi và khu vực Mỹ La-tinh đều bị biến thành thuộc địa hoặc phụ thuộc của các nước đế quốc." },
+      { id: 37, lesson: "b2", qNum: "Câu 6", question: "Đầu thế kỉ XX, quốc gia nào sau đây có hệ thống thuộc địa rộng lớn nhất?", options: ["Đức.", "I-ta-li-a.", "Nhật", "Anh."], answer: 3, explanation: "Đầu thế kỉ XX, Anh là quốc gia có thuộc địa rộng lớn nhất thế giới, chiếm tới 1/4 diện tích và 1/4 dân số toàn cầu." },
+      { id: 38, lesson: "b2", qNum: "Câu 7", question: "Đến thế kỉ XVIII, nhiều quốc gia ở khu vực Mỹ La-tinh đã trở thành thuộc địa của thực dân", options: ["Tây Ban Nha", "Anh và Pháp.", "Mỹ và Đức.", "I-ta-li-a và Nhật."], answer: 0, explanation: "Phần lớn các nước Trung và Nam Mỹ là thuộc địa của thực dân Tây Ban Nha." },
+      { id: 39, lesson: "b2", qNum: "Câu 8", question: "Đến thế kỉ XVIII, nhiều quốc gia ở khu vực Mỹ La-tinh đã trở thành thuộc địa của thực dân", options: ["Bồ Đào Nha.", "Anh và Pháp.", "Mỹ và Đức.", "I-ta-li-a và Nhật."], answer: 0, explanation: "Bồ Đào Nha chiếm Brazil làm thuộc địa rộng lớn ở Nam Mỹ." },
+      { id: 40, lesson: "b2", qNum: "Câu 9", question: "Cuộc cách mạng Tân Hợi (1911) đã lật đổ triều đại phong kiến nào ở Trung Quốc?", options: ["Nhà Tống.", "Nhà Đường.", "Nhà Thanh.", "Nhà Nguyên."], answer: 2, explanation: "Cách mạng Tân Hợi năm 1911 do Tôn Trung Sơn lãnh đạo đã lật đổ triều đại Mãn Thanh, chấm dứt chế độ quân chủ chuyên chế ở Trung Quốc." },
+      { id: 41, lesson: "b2", qNum: "Câu 10", question: "Các tổ chức độc quyền ra đời ở các nước tư bản (từ cuối thế kỉ XIX đầu thế kỉ XX) là sự liên minh giữa", options: ["vô sản và tư sản.", "chủ nô và tư sản.", "địa chủ và quý tộc.", "các nhà tư bản lớn."], answer: 3, explanation: "Tổ chức độc quyền là sự liên minh, thỏa hiệp giữa các nhà tư bản lớn để thao túng sản xuất và giá cả, thu lợi nhuận cao." },
+      { id: 42, lesson: "b2", qNum: "Câu 11", question: "Các hình thức của tổ chức độc quyền ở Đức và Pháp (ra đời từ cuối thế kỉ XIX đầu thế kỉ XX) có tên gọi là", options: ["Tơ-rớt, Dai-bát-xư.", "Các-ten, Xanh-đi-ca.", "Con-sen, Tơ-rớt.", "Dai-bát-xư, Con-sen."], answer: 1, explanation: "Ở Đức và Pháp, các hình thức tổ chức độc quyền phổ biến là Các-ten (Cartel) và Xanh-đi-ca (Syndicate)." },
+      { id: 43, lesson: "b2", qNum: "Câu 12", question: "Các hình thức của tổ chức độc quyền ở Mỹ (ra đời từ cuối TK XIX đầu thế kỉ XX) có tên gọi là", options: ["Các-ten.", "Tơ-rớt.", "Đai-bát-xư.", "Xanh-đi-ca."], answer: 1, explanation: "Ở Mỹ, hình thức tổ chức độc quyền điển hình nhất là Tơ-rớt (Trust)." },
+      { id: 44, lesson: "b2", qNum: "Câu 13", question: "Quốc gia nào sau đây được mệnh danh là “đế quốc mà Mặt Trời không bao giờ lặn”?", options: ["Pháp.", "Đức.", "Anh.", "Mỹ."], answer: 2, explanation: "Đế quốc Anh sở hữu hệ thống thuộc địa trải khắp mọi múi giờ từ châu Á, châu Phi, châu Mỹ đến châu Đại Dương." },
+      { id: 45, lesson: "b2", qNum: "Câu 14", question: "Sự kiện nào sau đây đánh dấu sự mở rộng của chủ nghĩa tư bản ở ngoài châu Âu?", options: ["Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mỹ.", "Phong trào đấu tranh giành độc lập ở khu vực Mỹ La-tinh.", "Cuộc vận động thống nhất nước Đức và I-ta-li-a.", "Cải cách nông nô ở Nga và cuộc nội chiến ở Mỹ."], answer: 0, explanation: "Thắng lợi của Chiến tranh giành độc lập Bắc Mỹ và sự ra đời của Hợp chúng quốc Hoa Kỳ đánh dấu sự mở rộng của CNTB ngoài châu Âu." },
+      { id: 46, lesson: "b2", qNum: "Câu 15", question: "Thuật ngữ: “chủ nghĩa tư bản hiện đại” dùng để chỉ sự phát triển của chủ nghĩa tư bản trong giai đoạn", options: ["trước Chiến tranh thế giới thứ hai.", "sau Chiến tranh thế giới thứ hai đến nay.", "sau Chiến tranh thế giới thứ nhất đến nay.", "trước Chiến tranh thế giới thứ nhất."], answer: 1, explanation: "Khái niệm 'chủ nghĩa tư bản hiện đại' dùng để chỉ giai đoạn phát triển của CNTB từ sau Chiến tranh thế giới thứ hai đến nay." },
+      { id: 47, lesson: "b2", qNum: "Câu 16", question: "Lĩnh vực nào sau đây là tiềm năng phát triển của chủ nghĩa tư bản hiện đại?", options: ["Quân sự, văn hóa.", "Văn hóa – giáo dục.", "Chính trị, ngoại giao.", "Khoa học – công nghệ."], answer: 3, explanation: "Khoa học – công nghệ là động lực và tiềm năng bứt phá mạnh mẽ nhất của chủ nghĩa tư bản hiện đại." },
+      { id: 48, lesson: "b2", qNum: "Câu 17", question: "Nội dung nào sau đây là tiềm năng phát triển của chủ nghĩa tư bản hiện đại?", options: ["Kinh nghiệm quản lí.", "Liên minh quân sự.", "Liên kết khu vực.", "Hợp tác quốc tế."], answer: 0, explanation: "Kinh nghiệm quản lý kinh tế, tài chính và điều hành sản xuất hiện đại là một trong những tiềm năng lớn của CNTB." },
+      { id: 49, lesson: "b2", qNum: "Câu 18", question: "Nội dung nào sau đây là thách thức mà chủ nghĩa tư bản hiện đại phải đối mặt?", options: ["Sự phát triển mạnh mẽ của khoa học – công nghệ.", "Sự sáp nhập của các công ty độc quyền lũng đoạn.", "Sự vươn lên mạnh mẽ của các nước đang phát triển.", "Khủng hoảng kinh tế, tài chính mang tính toàn cầu."], answer: 3, explanation: "Các cuộc khủng hoảng kinh tế chu kỳ, khủng hoảng tài chính toàn cầu là thách thức nan giải có tính hệ thống của CNTB hiện đại." },
+      { id: 50, lesson: "b2", qNum: "Câu 19", question: "Nội dung nào sau đây là thách thức mà chủ nghĩa tư bản hiện đại phải đối mặt?", options: ["Nguồn nhân công ngày càng cạn kiệt.", "Giao lưu kinh tế quốc tế ngày càng tăng.", "Mâu thuẫn xã hội ngày càng gia tăng.", "Sự ra đời các tổ chức liên kết khu vực."], answer: 2, explanation: "Sự phân hóa giàu nghèo sâu sắc, bất bình đẳng và xung đột xã hội ngày càng gia tăng là thách thức lớn." },
+      { id: 51, lesson: "b2", qNum: "Câu 20", question: "Nội dung nào sau đây khẳng định sự thắng lợi của chủ nghĩa tư bản đối với chế độ phong kiến?", options: ["Xóa bỏ sự trên lệch giàu nghèo ở các nước tư bản lớn.", "Cuộc cách mạng công nghiệp bắt đầu từ nước Anh.", "Tệ nạn xã hội ở các nước tư bản không còn diễn ra.", "Giải quyết được tình trạng nghèo đói trên toàn cầu."], answer: 1, explanation: "Cuộc cách mạng công nghiệp tạo ra năng suất lao động vượt trội, khẳng định sự chiến thắng tuyệt đối của phương thức sản xuất tư bản đối với chế độ phong kiến." },
+      { id: 52, lesson: "b2", qNum: "Câu 21", question: "Chính sách xâm lược và mở rộng thuộc địa của các nước tư bản nhằm mục đích đáp ứng nhu cầu", options: ["phát triển khoa học – kĩ thuật.", "giải quyết tình trạng thất nghiệp.", "thu hút nguồn vốn đầu tư bên ngoài.", "nguyên liệu và nguồn nhân công."], answer: 3, explanation: "Thuộc địa là nơi cung cấp nguồn tài nguyên thiên nhiên, nguyên liệu thô giá rẻ và nhân công dồi dào, đồng thời là thị trường tiêu thụ hàng hóa độc quyền." },
+      { id: 53, lesson: "b2", qNum: "Câu 22", question: "Nước Anh được mệnh danh là “đế quốc mà Mặt Trời không bao giờ lặn” vì lí do nào sau đây?", options: ["Nước Anh có hệ thống thuộc địa rộng khắp thế giới.", "Nước Anh luôn phải đối mặt với nạn ngoại xâm.", "Nguồn vốn đầu tư của nước Anh trải khắp toàn cầu.", "Các nước đế quốc tranh nhau đầu tư vào nước Anh."], answer: 0, explanation: "Thuộc địa của Anh trải dài trên khắp các châu lục và các múi giờ, mặt trời luôn chiếu sáng trên ít nhất một vùng lãnh thổ của đế chế Anh." },
+      { id: 54, lesson: "b2", qNum: "Câu 23", question: "Từ nửa sau thế kỉ XIX, Nhật Bản tránh được nguy cơ xâm lược của thực dân phương Tây là nhờ", options: ["liên minh quân sự với các nước tư bản lớn.", "tiến hành cải cách đất nước trên nhiều lĩnh vực.", "tiến hành cuộc nội chiến lật đổ phong kiến.", "sự giúp đỡ của các nước tư bản phương Tây."], answer: 1, explanation: "Nhật Bản đã tiến hành cuộc Duy Tân Minh Trị (1868) cải cách toàn diện trên các lĩnh vực kinh tế, chính trị, giáo dục, quân sự giúp đất nước thoát khỏi số phận thuộc địa." },
+      { id: 55, lesson: "b2", qNum: "Câu 24", question: "Nội dung nào sau đây tạo cơ sở cho bước chuyển biến của chủ nghĩa tư bản từ tự do cạnh tranh sang giai đoạn độc quyền?", options: ["Quá trình hợp tác ở các nước tư bản.", "Sự phát triển của các tổ chức độc quyền.", "Nhiều trung tâm kinh tế - tài chính ra đời.", "Sự ra đời nhiều tổ chức liên kết khu vực."], answer: 1, explanation: "Sự xuất hiện và lớn mạnh của các tổ chức độc quyền (Cartel, Syndicate, Trust...) là nền tảng chi phối chuyển biến sang giai đoạn độc quyền." },
+      { id: 56, lesson: "b2", qNum: "Câu 25", question: "Nội dung nào sau đây phản ánh đúng ý nghĩa của Cách mạng Tân Hợi (1911) ở Trung Quốc?", options: ["Lật đổ ách thống trị của các nước đế quốc.", "Xóa bỏ hoàn toàn tàn dư phong kiến lỗi thời.", "Mở đường cho chủ nghĩa tư bản phát triển.", "Giải quyết triệt để vấn đề ruộng đất cho nông dân."], answer: 2, explanation: "Cách mạng Tân Hợi là cuộc cách mạng dân chủ tư sản mở đường cho chủ nghĩa tư bản phát triển ở Trung Quốc." },
+      { id: 57, lesson: "b2", qNum: "Câu 26", question: "Nội dung nào sau đây phản ánh đúng ý nghĩa của Cách mạng Tân Hợi (1911) ở Trung Quốc?", options: ["Lật đổ ách thống trị của các nước đế quốc.", "Xóa bỏ hoàn toàn tàn dư phong kiến lỗi thời.", "Giải quyết triệt để vấn đề ruộng đất cho nông dân.", "Lật đổ chế độ phong kiến tồn tại lâu đời ở Trung Quốc."], answer: 3, explanation: "Ý nghĩa to lớn nhất của Cách mạng Tân Hợi là lật đổ triều đại Mãn Thanh và chế độ quân chủ chuyên chế tồn tại hơn 2000 năm tại Trung Quốc." },
+      { id: 58, lesson: "b2", qNum: "Câu 27", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm tương đồng nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Là cuộc cách mạng tư sản nhưng không triệt để.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 1, explanation: "Cả hai đều là cuộc cách mạng/cải cách mang tính chất tư sản nhưng không triệt để (chưa giải quyết ruộng đất cho nông dân, vẫn còn tàn dư phong kiến)." },
+      { id: 59, lesson: "b2", qNum: "Câu 28", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm tương đồng nào sau đây?", options: ["Mở đường cho chủ nghĩa tư bản phát triển.", "Là cuộc cách mạng dân chủ tư sản triệt để.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 0, explanation: "Cả hai sự kiện đều mở đường và tạo điều kiện thuận lợi cho kinh tế tư bản chủ nghĩa phát triển." },
+      { id: 60, lesson: "b2", qNum: "Câu 29", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm khác biệt nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Đưa đất nước thoát khỏi họa ngoại xâm.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Giải quyết được vấn đề ruộng đất cho nông dân."], answer: 1, explanation: "Duy Tân Minh Trị giúp Nhật Bản bảo vệ được độc lập và tránh nguy cơ xâm lược, trong khi sau cách mạng Tân Hợi Trung Quốc vẫn là nước nửa thuộc địa nửa phong kiến." },
+      { id: 61, lesson: "b2", qNum: "Câu 30", question: "Cuộc Duy Tân Minh Trị (1868) ở Nhật Bản và cuộc cách mạng Tân Hợi (1911) ở Trung Quốc có điểm khác biệt nào sau đây?", options: ["Là cuộc cách mạng dân chủ tư sản triệt để.", "Giải quyết được vấn đề ruộng đất cho nông dân.", "Là những cuộc chiến tranh giải phóng dân tộc.", "Đưa đất nước trở thành cường quốc tư bản."], answer: 3, explanation: "Nhật Bản phát triển vượt bậc thành cường quốc tư bản đế quốc chủ nghĩa ở châu Á, điều mà cách mạng Tân Hợi chưa làm được cho Trung Quốc." },
+      { id: 62, lesson: "b2", qNum: "Câu 31", question: "Nội dung nào sau đây phản ánh không đúng đặc điểm của chủ nghĩa tư bản độc quyền?", options: ["Tập trung sản xuất và hình thành độc quyền.", "Hình thành các tổ chức độc quyền quốc tế.", "Đầu tư, hợp tác với các nước đang phát triển.", "Tăng cường phân chia lãnh thổ thế giới."], answer: 2, explanation: "Thời kì này các nước đế quốc chủ yếu xâm lược, bóc lột và chia nhau thuộc địa, chứ không phải hợp tác bình đẳng với các nước đang phát triển." },
+      { id: 63, lesson: "b2", qNum: "Câu 32", question: "Yếu tố nào sau đây đưa đến sự chuyển biến của chủ nghĩa tư bản từ tự do cạnh tranh sang giai đoạn độc quyền?", options: ["Sự phát triển của lực lượng sản xuất dưới tác dụng của tiến bộ khoa học - kỹ thuật.", "Sự sáp nhập của các công ty độc quyền và sự ra đời các tổ chức tín dụng quốc tế.", "Sự ra đời và phát triển của các tổ chức liên kết khu vực nhiều nơi trên thế giới.", "Sự hình thành phát triển của các trung tâm kinh tế tài chính nhiều nơi trên thế giới."], answer: 0, explanation: "Những tiến bộ vượt bậc của khoa học - kỹ thuật cuối thế kỉ XIX đã đẩy mạnh năng suất lao động, thúc đẩy tập trung sản xuất và tích tụ tư bản quy mô lớn." },
+      { id: 64, lesson: "b2", qNum: "Câu 33", question: "Nội dung nào sau đây phản ánh đúng về bản chất chủ nghĩa tư bản hiện đại?", options: ["Luôn tìm cách xóa bỏ sự chênh lệch giàu nghèo và những bất công xã hội.", "Theo đuổi lợi nhuận là mục tiêu cao nhất và cuối cùng của các nhà tư bản.", "Đầu tư, hợp tác nhằm mục tiêu thúc đẩy sự phát triển kinh tế toàn cầu.", "Không ngừng đấu tranh đòi quyền lợi chính đáng cho người lao động."], answer: 1, explanation: "Bản chất bóc lột và mục đích tối thượng của chủ nghĩa tư bản (dù ở giai đoạn nào) vẫn luôn là tối đa hóa lợi nhuận cho giai cấp tư sản." },
+      { id: 65, lesson: "b2", qNum: "Câu 34", question: "Nội dung nào sau đây không phải là thách thức mà chủ nghĩa tư bản hiện đại đang phải đối mặt?", options: ["Khủng hoảng kinh tế, tài chính.", "Sự chênh lệch giàu nghèo.", "Tốc độ phát triển kinh tế toàn cầu.", "Tệ nạn xã hội, phân biệt chủng tộc."], answer: 2, explanation: "Tốc độ tăng trưởng kinh tế toàn cầu là xu thế phát triển chung, không phải là vấn đề thách thức tiêu cực mang tính hệ thống của CNTB." }
+];
+const p2Raw = [
+{
+        id: "b1_tf1", lesson: "b1", lessonTitle: "Bài 1", qNum: "Câu 1",
+        title: `Đọc đoạn tư liệu sau đây:
+        <div class="mt-2.5 p-3.5 bg-white rounded-xl border-l-4 border-amber-500 shadow-sm text-xs md:text-sm font-normal text-slate-700 space-y-2 leading-relaxed">
+          <p><strong class="text-amber-900">Tư liệu 1:</strong> “Tất cả mọi người sinh ra có quyền bình đẳng. Tạo hóa cho họ những quyền không ai có thể xâm phạm được; trong những quyền ấy, có quyền được sống, quyền tự do và quyền mưu cầu hạnh phúc”. <em class="text-slate-500">(Tuyên ngôn Độc lập (Mĩ), năm 1776)</em></p>
+          <p><strong class="text-amber-900">Tư liệu 2:</strong> “Điều 1. Con người sinh ra đều có quyền tự do và bình đẳng. Những sự phân biệt xã hội chỉ có thể dựa trên lợi ích chung. Điều 17. Quyền tư hữu là quyền bất khả xâm phạm và thiêng liêng không ai có thể bị tước bỏ”. <em class="text-slate-500">(Tuyên ngôn Nhân quyền và Dân quyền (Pháp), năm 1789)</em></p>
+        </div>`,
+        items: [
+          { key: "b1_1_a", label: "a", text: "Bản Tuyên ngôn Nhân quyền và Dân quyền ra đời từ cuộc cách mạng tư sản Pháp cuối thế kỉ XVIII.", answer: true, explanation: "Đúng. Tuyên ngôn Nhân quyền và Dân quyền được Quốc hội Lập hiến Pháp thông qua tháng 8/1789 (cuối thế kỉ XVIII)." },
+          { key: "b1_1_b", label: "b", text: "Điểm chung của Tuyên ngôn Độc lập của nước Mĩ và Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp là đề cao quyền con người và quyền công dân.", answer: true, explanation: "Đúng. Cả hai văn kiện đều khẳng định quyền tự do, bình đẳng và các quyền thiêng liêng của con người." },
+          { key: "b1_1_c", label: "c", text: "Bản Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp năm 1789 không đề cao quyền tư hữu cá nhân vì đó là biểu hiện cho sự phân biệt giàu – nghèo trong xã hội.", answer: false, explanation: "Sai. Điều 17 ghi rõ: Quyền tư hữu là quyền thiêng liêng và bất khả xâm phạm." },
+          { key: "b1_1_d", label: "d", text: "Trong Tuyên ngôn độc lập của nước Việt Nam dân chủ cộng hòa (2/9/1945), chủ tịch Hồ Chí Minh đã trích dẫn những câu nói nổi tiếng trong bản tuyên ngôn Độc lập của nước Mĩ và Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp.", answer: true, explanation: "Đúng. Mở đầu bản Tuyên ngôn Độc lập ngày 2/9/1945, Bác Hồ đã trích dẫn trực tiếp lời bất hủ từ hai bản Tuyên ngôn này." }
+        ]
+      },
+      {
+        id: "b1_tf2", lesson: "b1", lessonTitle: "Bài 1", qNum: "Câu 2",
+        title: `Đọc đoạn trích sau đây:
+        <blockquote class="mt-2.5 p-3.5 bg-white rounded-xl border-l-4 border-amber-500 shadow-sm text-xs md:text-sm font-normal text-slate-700 leading-relaxed">
+          “Ở Pháp, vương quyền là đỉnh cao của lâu đài phong kiến và chuyên chế. Nhà vua luôn có quyền hành chuyên chế và vô hạn; … quyết định mọi công việc đối nội và đối ngoại của quốc gia. Triều vua Lu-I XVI là một sự chuyên chế cao độ. Theo những “mật lệnh có ấn vua” nhằm khủng bố nhân dân, hàng trăm người bị bắt, bị tù đày ở các nơi trong nước”.
+          <footer class="mt-1 text-right italic text-slate-500">— (A. Man-phờ-rét, Đại Cách mạng Pháp 1789)</footer>
+        </blockquote>`,
+        items: [
+          { key: "b1_2_a", label: "a", text: "Chính sách cai trị của nhà nước phong kiến chuyên chế gây bất mãn cho nhân dân.", answer: true, explanation: "Đúng. Sự hà khắc, khủng bố bằng mật lệnh của vua phong kiến gây căm phẫn trong toàn xã hội." },
+          { key: "b1_2_b", label: "b", text: "Sự tồn tại của nhà nước quân chủ lập hiến gây bất mãn cho tầng lớp quý tộc mới.", answer: false, explanation: "Sai. Nước Pháp lúc bấy giờ duy trì chế độ quân chủ chuyên chế cao độ, chưa có quân chủ lập hiến." },
+          { key: "b1_2_c", label: "c", text: "Mâu thuẫn giữa đẳng cấp thứ ba với đẳng cấp tăng lữ và quý tộc ngày càng sâu sắc.", answer: true, explanation: "Đúng. Đẳng cấp thứ ba không có quyền lợi chính trị và chịu mọi thứ thuế, đối kháng gay gắt với hai đẳng cấp trên." },
+          { key: "b1_2_d", label: "d", text: "Tình hình chính trị ở Pháp dưới triều vua Lu-I XVI khủng hoảng trầm trọng.", answer: true, explanation: "Đúng. Sự chuyên chế cao độ dẫn đến khủng hoảng chính trị sâu sắc trước thềm cách mạng." }
+        ]
+      },
+      {
+        id: "b1_tf3", lesson: "b1", lessonTitle: "Bài 1", qNum: "Câu 3",
+        title: `Cho bảng dữ kiện về một số mục tiêu của các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại:
+        <div class="mt-2.5 overflow-x-auto rounded-xl border border-amber-300 shadow-sm">
+          <table class="w-full text-left border-collapse text-xs md:text-sm font-normal text-slate-700 bg-white">
+            <thead>
+              <tr class="bg-amber-100/90 text-amber-950 font-bold border-b border-amber-300">
+                <th class="p-2.5 border-r border-amber-200 w-1/4">Quốc gia / Thuộc địa</th>
+                <th class="p-2.5">Mục tiêu của cuộc cách mạng tư sản</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-amber-200">
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">Anh (thế kỉ XVII)</td>
+                <td class="p-2.5 leading-relaxed">Lật đổ chế độ phong kiến chuyên chế (đứng đầu là vua Sác-lơ I), thiết lập nền thống trị của giai cấp tư sản và quý tộc mới, mở đường cho chủ nghĩa tư bản phát triển.</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">13 thuộc địa Anh ở Bắc Mĩ (cuối thế kỉ XVIII)</td>
+                <td class="p-2.5 leading-relaxed">Lật đổ ách thống trị của thực dân Anh, giành độc lập dân tộc, thiết lập chính quyền của giai cấp tư sản và chủ nô, mở đường cho chủ nghĩa tư bản phát triển.</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">Pháp (cuối thế kỉ XVIII)</td>
+                <td class="p-2.5 leading-relaxed">Lật đổ chế độ quân chủ chuyên chế (đứng đầu là vua Lu-i XVI), thiết lập nền thống trị của giai cấp tư sản và dân chủ tư sản; mở rộng sự phát triển kinh tế hàng hóa, cải tiến kĩ thuật, mở đường cho chủ nghĩa tư bản phát triển.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`,
+        items: [
+          { key: "b1_3_a", label: "a", text: "Ở Anh tầng lớp quý tộc và tư sản đã liên kết đấu tranh chống chế độ phong kiến để xác lập nhà nước do dân bầu ra.", answer: false, explanation: "Sai. Ở Anh xác lập chế độ quân chủ lập hiến, quyền lực nằm trong tay Nghị viện của tư sản và quý tộc mới, không phải do dân bầu." },
+          { key: "b1_3_b", label: "b", text: "Ở Tây Âu và Bắc Mỹ có mục tiêu đấu tranh chung là lật đổ chế độ quân chủ chuyên chế, gạt bỏ những trở ngại trên con đường xác lập và phát triển của chủ nghĩa tư bản.", answer: false, explanation: "Sai. Bắc Mĩ đấu tranh lật đổ ách thống trị của thực dân Anh, không phải lật đổ quân chủ chuyên chế trong nước." },
+          { key: "b1_3_c", label: "c", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mĩ đều hướng đến thành lập nhà nước dân chủ tư sản với tầng lớp quý tộc mới và tư sản thay nhau cầm quyền.", answer: false, explanation: "Sai. Tầng lớp quý tộc mới chỉ liên minh cầm quyền ở Anh; ở Pháp và Bắc Mĩ là tư sản (liên minh chủ nô ở Mĩ)." },
+          { key: "b1_3_d", label: "d", text: "Ở Tây Âu và Bắc Mỹ hướng đến mục tiêu đấu tranh để mở rộng sự phát triển kinh tế hàng hóa, cải tiến kỹ thuật.", answer: true, explanation: "Đúng. Mục tiêu chung là giải phóng sức sản xuất, mở đường cho kinh tế hàng hóa và cải tiến kĩ thuật phát triển." }
+        ]
+      },
+      {
+        id: "b1_tf4", lesson: "b1", lessonTitle: "Bài 1", qNum: "Câu 4",
+        title: `Cho bảng dữ kiện về một số nhiệm vụ của các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại:
+        <div class="mt-2.5 overflow-x-auto rounded-xl border border-amber-300 shadow-sm">
+          <table class="w-full text-left border-collapse text-xs md:text-sm font-normal text-slate-700 bg-white">
+            <thead>
+              <tr class="bg-amber-100/90 text-amber-950 font-bold border-b border-amber-300">
+                <th class="p-2.5 border-r border-amber-200 w-1/5">Cuộc cách mạng</th>
+                <th class="p-2.5 border-r border-amber-200 w-2/5">Nhiệm vụ dân tộc</th>
+                <th class="p-2.5 w-2/5">Nhiệm vụ dân chủ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-amber-200">
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">Cách mạng tư sản Anh</td>
+                <td class="p-2.5 border-r border-amber-200 leading-relaxed">Thống nhất thị trường dân tộc, hình thành quốc gia dân tộc.</td>
+                <td class="p-2.5 leading-relaxed">Xóa bỏ tính chất chuyên chế phong kiến, xác lập nền dân chủ tư sản (chế độ quân chủ lập hiến).</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">Chiến tranh giành độc lập của 13 thuộc địa Bắc Mĩ</td>
+                <td class="p-2.5 border-r border-amber-200 leading-relaxed">Giành độc lập dân tộc khỏi thực dân Anh, thống nhất thị trường, hình thành quốc gia dân tộc (Hợp chúng quốc Mĩ).</td>
+                <td class="p-2.5 leading-relaxed">Xác lập nền dân chủ tư sản (Cộng hòa liên bang), ban bố các quyền tự do, dân chủ tư sản.</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200">Cách mạng tư sản Pháp</td>
+                <td class="p-2.5 border-r border-amber-200 leading-relaxed">Xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường dân tộc, bảo vệ Tổ quốc.</td>
+                <td class="p-2.5 leading-relaxed">Xóa bỏ chế độ quân chủ chuyên chế, xác lập nền dân chủ tư sản, ban bố các quyền dân chủ và giải quyết ruộng đất cho nông dân.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`,
+        items: [
+          { key: "b1_4_a", label: "a", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại chỉ thực hiện một nhiệm vụ chung là nhiệm vụ dân tộc điển hình.", answer: false, explanation: "Sai. Cách mạng tư sản đồng thời thực hiện cả nhiệm vụ dân tộc và nhiệm vụ dân chủ." },
+          { key: "b1_4_b", label: "b", text: "Giành độc lập dân tộc, xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường và hình thành quốc gia dân tộc là nhiệm vụ dân tộc của các cuộc cách mạng tư sản cận đại.", answer: true, explanation: "Đúng. Đây là toàn bộ nội dung của nhiệm vụ dân tộc." },
+          { key: "b1_4_c", label: "c", text: "Xóa bỏ tính chất chuyên chế phong kiến, xác lập nền dân chủ tư sản, ban bố các quyền dân chủ tư sản là nhiệm vụ dân chủ chung của cách mạng tư sản ở Tây Âu và Bắc Mĩ.", answer: true, explanation: "Đúng. Đây là nội dung cốt lõi của nhiệm vụ dân chủ." },
+          { key: "b1_4_d", label: "d", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại chỉ thực hiện một nhiệm vụ chung là nhiệm vụ dân chủ điển hình.", answer: false, explanation: "Sai. Cách mạng luôn bao gồm hai nhiệm vụ song hành: dân tộc và dân chủ." }
+        ]
+      },
+      {
+        id: "b2_tf1", lesson: "b2", lessonTitle: "Bài 2", qNum: "Câu 1",
+        title: `Quan sát sơ đồ về các đặc điểm của chủ nghĩa tư bản hiện đại:
+        <div class="mt-2.5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-xs font-normal">
+          <div class="p-2.5 bg-white rounded-lg border border-amber-300 shadow-sm flex items-center gap-2"><span class="w-5 h-5 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">1</span><span>Độc quyền nhà nước</span></div>
+          <div class="p-2.5 bg-white rounded-lg border border-amber-300 shadow-sm flex items-center gap-2"><span class="w-5 h-5 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">2</span><span>Sức sản xuất phát triển cao</span></div>
+          <div class="p-2.5 bg-white rounded-lg border border-amber-300 shadow-sm flex items-center gap-2"><span class="w-5 h-5 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">3</span><span>Lực lượng lao động chuyển biến</span></div>
+          <div class="p-2.5 bg-white rounded-lg border border-amber-300 shadow-sm flex items-center gap-2"><span class="w-5 h-5 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">4</span><span>Không ngừng tự điều chỉnh</span></div>
+          <div class="p-2.5 bg-white rounded-lg border border-amber-300 shadow-sm flex items-center gap-2"><span class="w-5 h-5 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">5</span><span>Hệ thống thế giới &amp; toàn cầu</span></div>
+        </div>`,
+        items: [
+          { key: "b2_1_a", label: "a", text: "Chủ nghĩa tư bản hiện đại là chủ nghĩa tư bản độc quyền nhà nước, thể hiện sự kết hợp giữa tiềm lực kinh tế của các tổ chức độc quyền tư nhân với sức mạnh chính trị của nhà nước tư sản.", answer: true, explanation: "Đúng. Thể hiện sự liên minh chặt chẽ giữa độc quyền tư nhân và quyền lực nhà nước tư sản." },
+          { key: "b2_1_b", label: "b", text: "“Chủ nghĩa tư bản hiện đại” là thuật ngữ để chỉ giai đoạn đầu của chủ nghĩa tư bản độc quyền.", answer: false, explanation: "Sai. Thuật ngữ CNTB hiện đại dùng để chỉ giai đoạn từ sau Chiến tranh thế giới thứ hai đến nay." },
+          { key: "b2_1_c", label: "c", text: "Chủ nghĩa tư bản hiện đại có sức sản xuất phát triển cao trên cơ sở những thành tựu của cách mạng khoa học – công nghệ hiện đại.", answer: true, explanation: "Đúng. Sức sản xuất bứt phá vượt bậc nhờ ứng dụng khoa học – công nghệ cao." },
+          { key: "b2_1_d", label: "d", text: "Sau chiến tranh thế giới thứ nhất, chủ nghĩa tư bản chuyển sang thời kì mới gọi là chủ nghĩa tư bản hiện đại.", answer: false, explanation: "Sai. Giai đoạn CNTB hiện đại bắt đầu từ sau Chiến tranh thế giới thứ hai, không phải thứ nhất." }
+        ]
+      },
+      {
+        id: "b2_tf2", lesson: "b2", lessonTitle: "Bài 2", qNum: "Câu 2",
+        title: `Đọc đoạn tư liệu sau đây:
+        <blockquote class="mt-2.5 p-3.5 bg-white rounded-xl border-l-4 border-amber-500 shadow-sm text-xs md:text-sm font-normal text-slate-700 leading-relaxed space-y-1.5">
+          <p class="font-medium text-amber-900">Năm đặc điểm lớn của chủ nghĩa đế quốc được V.I. Lê-nin khái quát:</p>
+          <p>“1) Sự tập trung sản xuất và tư bản đạt tới một mức độ phát triển cao tạo thành những tổ chức độc quyền có một vai trò quyết định trong sinh hoạt kinh tế;</p>
+          <p>2) Sự hợp nhất tư bản ngân hàng với tư bản công nghiệp, và trên cơ sở “tư bản tài chính” đó, xuất hiện một bọn đầu sỏ tài chính;</p>
+          <p>3) Việc xuất khẩu tư bản, khác với việc xuất khẩu hàng hóa, đã có một ý nghĩa quan trọng đặc biệt;</p>
+          <p>4) Sự hình thành những liên minh độc quyền quốc tế của bọn tư bản chia nhau thế giới;</p>
+          <p>5) Việc các cường quốc tư bản chủ nghĩa lớn nhất đã chia nhau xong đất đai trên thế giới”.</p>
+          <footer class="mt-1 text-right italic text-slate-500">— (V.I. Lê-nin, Toàn tập, Tập 27, NXB Chính trị quốc gia, Hà Nội, 2005, tr. 489)</footer>
+        </blockquote>`,
+        items: [
+          { key: "b2_2_a", label: "a", text: "Một trong những đặc điểm của chủ nghĩa tư bản độc quyền là xuất hiện các tổ chức độc quyền.", answer: true, explanation: "Đúng. Tập trung sản xuất và tích tụ tư bản cao độ làm xuất hiện các tổ chức độc quyền chi phối kinh tế." },
+          { key: "b2_2_b", label: "b", text: "Tổ chức độc quyền là sự liên minh giữa các giai cấp tư sản và chủ nô để thu lợi nhuận cao.", answer: false, explanation: "Sai. Tổ chức độc quyền là sự liên minh giữa các nhà tư bản lớn, không liên quan đến giai cấp chủ nô." },
+          { key: "b2_2_c", label: "c", text: "Sự hợp nhất tư bản ngân hàng với tư bản công nghiệp tạo nên “tư bản tài chính”.", answer: true, explanation: "Đúng. Theo Lê-nin, sự dung hợp giữa tư bản ngân hàng và công nghiệp hình thành tư bản tài chính." },
+          { key: "b2_2_d", label: "d", text: "Các cường quốc tư bản chủ nghĩa bắt đầu xâm lược, phân chia thuộc địa trên thế giới.", answer: false, explanation: "Sai. Tư liệu nêu rõ các cường quốc tư bản chủ nghĩa 'đã chia nhau xong đất đai trên thế giới'." }
+        ]
+      },
+      {
+        id: "b2_tf3", lesson: "b2", lessonTitle: "Bài 2", qNum: "Câu 3",
+        title: `Đọc đoạn tư liệu sau đây:
+        <blockquote class="mt-2.5 p-3.5 bg-white rounded-xl border-l-4 border-amber-500 shadow-sm text-xs md:text-sm font-normal text-slate-700 leading-relaxed">
+          “Chủ nghĩa tư bản hiện đại là chủ nghĩa tư bản văn minh, đề cao tính nhân văn, là chủ nghĩa tư bản có ý thức. Trong xã hội tư bản hiện đại, mục tiêu của các doanh nghiệp không chỉ là lợi nhuận của cá nhân nhà tư bản mà còn hướng đến lợi ích chung của cộng đồng, giải quyết hài hòa mối quan hệ giữa lợi ích của doanh nghiệp với lợi ích của người lao động và toàn xã hội. Chủ nghĩa tư bản có nhiều tiềm năng phát triển, không ngừng tự điều chỉnh để thích nghi với bối cảnh lịch sử mới theo hướng tích cực, văn minh”.
+        </blockquote>`,
+        items: [
+          { key: "b2_3_a", label: "a", text: "Chủ nghĩa tư bản hiện đại mang bản chất khác hẳn với Chủ nghĩa tư bản thời kì tự do cạnh tranh.", answer: false, explanation: "Sai. Dù có nhiều điều chỉnh thích ứng, bản chất áp bức bóc lột nhằm thu lợi nhuận tối đa của CNTB không hề thay đổi." },
+          { key: "b2_3_b", label: "b", text: "Chủ nghĩa tư bản không hướng tới việc tìm kiếm lợi nhuận cá nhân của nhà tư bản, mà nó hướng tới những yếu tố nhân văn, đặt quyền lợi người lao động lên trên hết.", answer: false, explanation: "Sai. Mục tiêu tối thượng của các nhà tư bản vẫn là lợi nhuận, quyền lợi người lao động không bao giờ đặt lên trên hết." },
+          { key: "b2_3_c", label: "c", text: "Chủ nghĩa tư bản hiện đại vẫn chú trọng việc tìm kiếm lợi nhuận cho các nhà tư bản. Bên cạnh đó nó còn giải quyết hài hoà lợi ích cho người lao động và xã hội.", answer: true, explanation: "Đúng. Vừa đảm bảo lợi nhuận, vừa thực hiện các chính sách an sinh xã hội để xoa dịu mâu thuẫn giai cấp." },
+          { key: "b2_3_d", label: "d", text: "Chủ nghĩa tư bản có nhiều tiềm năng, ngày càng tự điều chỉnh để thích nghi theo hướng tích cực, văn minh.", answer: true, explanation: "Đúng. CNTB có khả năng tự điều chỉnh thể chế, pháp luật và cơ chế thị trường để thích ứng bối cảnh mới." }
+        ]
+      },
+      {
+        id: "b2_tf4", lesson: "b2", lessonTitle: "Bài 2", qNum: "Câu 4",
+        title: `Đọc đoạn tư liệu sau đây:
+        <blockquote class="mt-2.5 p-3.5 bg-white rounded-xl border-l-4 border-amber-500 shadow-sm text-xs md:text-sm font-normal text-slate-700 leading-relaxed">
+          “Chủ nghĩa tư bản, với tư cách là phương thức sản xuất được hình thành và thay thế phương thức sản xuất phong kiến, là một giai đoạn phát triển mới của lịch sử nhân loại. Trong quá trình tồn tại và phát triển, chủ nghĩa tư bản đã vận dụng hiệu quả những quy luật của kinh tế thị trường để kích thích sản xuất. Giai cấp tư sản, trong quá trình thống trị giai cấp chưa đầy một thế kỉ, đã tạo ra những lực lượng sản xuất nhiều hơn và đồ sộ hơn lực lượng sản xuất của tất cả các thế hệ trước kia gộp lại”.
+          <footer class="mt-1 text-right italic text-slate-500">— (C. Mác và Ph. Ăng-ghen, Toàn tập, Tập 4, NXB Chính trị quốc gia, Hà Nội, 1995, tr. 603)</footer>
+        </blockquote>`,
+        items: [
+          { key: "b2_4_a", label: "a", text: "Chủ nghĩa tư bản là phương thức sản xuất tiến bộ, đã đem lại lực lượng sản xuất to lớn chưa từng có trong lịch sử.", answer: true, explanation: "Đúng. C. Mác và Ph. Ăng-ghen khẳng định CNTB tạo ra lực lượng sản xuất đồ sộ hơn tất cả các thế hệ trước gộp lại." },
+          { key: "b2_4_b", label: "b", text: "Chủ nghĩa tư bản là phương thức sản xuất kế tiếp, thay thế cho xã hội nguyên thuỷ.", answer: false, explanation: "Sai. Phương thức sản xuất tư bản chủ nghĩa thay thế cho phương thức sản xuất phong kiến." },
+          { key: "b2_4_c", label: "c", text: "Một trong những kinh nghiệm, bài học thành công của Chủ nghĩa tư bản là vận dụng hiệu quả quy luật của kinh tế thị trường.", answer: true, explanation: "Đúng. Việc vận dụng triệt để các quy luật thị trường đã kích thích năng lực cạnh tranh và sản xuất." },
+          { key: "b2_4_d", label: "d", text: "Trong xã hội Chủ nghĩa tư bản, không có giai cấp thống trị, mọi hoạt động kinh tế, sản xuất và hưởng thụ đều mang tính công bằng, dân chủ.", answer: false, explanation: "Sai. Xã hội tư bản vẫn duy trì sự thống trị của giai cấp tư sản và tồn tại bất công giai cấp." }
+        ]
+      },
+      {
+        id: "b2_tf5", lesson: "b2", lessonTitle: "Bài 2", qNum: "Câu 5",
+        title: `Quan sát bảng số liệu về sự thay đổi của các chỉ số kinh tế từ năm 1929 đến năm 1932 ở các nước tư bản chủ nghĩa tiêu biểu:
+        <div class="mt-2.5 overflow-x-auto rounded-xl border border-amber-300 shadow-sm">
+          <table class="w-full text-center border-collapse text-xs md:text-sm font-normal text-slate-700 bg-white">
+            <thead>
+              <tr class="bg-amber-100/90 text-amber-950 font-bold border-b border-amber-300">
+                <th class="p-2.5 border-r border-amber-200 text-left">Quốc gia</th>
+                <th class="p-2.5 border-r border-amber-200">Sản xuất công nghiệp</th>
+                <th class="p-2.5 border-r border-amber-200">Ngoại thương</th>
+                <th class="p-2.5 border-r border-amber-200">Giá sỉ</th>
+                <th class="p-2.5">Thất nghiệp</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-amber-200">
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200 text-left">Hoa Kỳ</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-46%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-70%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-32%</td>
+                <td class="p-2.5 text-amber-800 font-bold">+607%</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200 text-left">Đức</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-41%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-61%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-29%</td>
+                <td class="p-2.5 text-amber-800 font-bold">+232%</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200 text-left">Anh</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-23%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 text-semibold">-60%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 text-semibold">-33%</td>
+                <td class="p-2.5 text-amber-800 font-bold">+129%</td>
+              </tr>
+              <tr class="hover:bg-amber-50/40">
+                <td class="p-2.5 font-semibold text-slate-800 border-r border-amber-200 text-left">Pháp</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 font-semibold">-24%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 text-semibold">-54%</td>
+                <td class="p-2.5 border-r border-amber-200 text-rose-600 text-semibold">-34%</td>
+                <td class="p-2.5 text-amber-800 font-bold">+214%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`,
+        items: [
+          { key: "b2_5_a", label: "a", text: "Với sự ra đời của máy móc thay thế sức lao động của con người, từ 1929- 1933, tình trạng thất nghiệp của các nước tư bản tăng nhanh.", answer: false, explanation: "Sai. Nguyên nhân khủng hoảng 1929 - 1933 là do khủng hoảng thừa chu kỳ của CNTB, không phải do máy móc thay thế con người." },
+          { key: "b2_5_b", label: "b", text: "Từ 1929 - 1933, nền kinh tế của các nước tư bản, trong đó điển hình là Mỹ, Anh, Pháp, Đức lâm vào khủng hoảng trầm trọng.", answer: true, explanation: "Đúng. Cả 4 cường quốc đều có sản xuất công nghiệp và ngoại thương sụt giảm nghiêm trọng." },
+          { key: "b2_5_c", label: "c", text: "Đức là quốc gia chịu ảnh hưởng nặng nề nhất từ khủng hoảng kinh tế 1929 - 1933.", answer: false, explanation: "Sai. Hoa Kỳ mới là quốc gia chịu thiệt hại nặng nề nhất (sản xuất công nghiệp giảm 46%, ngoại thương giảm 70%, thất nghiệp tăng 607%)." },
+          { key: "b2_5_d", label: "d", text: "Thời điểm đó, Mỹ là nước có nền kinh tế lớn nhất thế giới, và cũng là quốc gia chịu ảnh hưởng nặng nề nhất của cuộc đại khủng hoảng.", answer: true, explanation: "Đúng. Mỹ là tâm chấn và gánh chịu mức độ sụt giảm kinh tế lớn nhất toàn cầu." }
+        ]
+      }
+];
+    const defaultQuestionsData = [
+      ...p1Raw.map(q => ({
+        ...q,
+        qType: 'mcq',
+        lessonName: q.lesson === 'b1' ? 'Bài 1: Cách mạng tư sản' : 'Bài 2: Sự xác lập CNTB'
+      })),
+      ...p2Raw.map((g, idx) => ({
+        id: 66 + idx,
+        qType: 'tf_group',
+        lesson: g.lesson,
+        lessonName: g.lesson === 'b1' ? 'Bài 1: Cách mạng tư sản (Câu 66 - 69)' : 'Bài 2: Sự xác lập CNTB (Câu 70 - 74)',
+        question: g.title,
+        options: [],
+        answer: 0,
+        statements: g.items.map(it => ({
+          key: it.label || it.key,
+          text: it.text,
+          answer: it.answer,
+          explanation: it.explanation
+        })),
+        explanation: g.items.map(it => it.label + ') ' + (it.answer ? 'Đúng' : 'Sai') + ': ' + it.explanation).join(' | ')
+      }))
+    ];
+    /*__QUESTIONS_DATA_END__*/
+
+    const LESSON_LABELS = {
+      b1: "Bài 1: Một số vấn đề chung về cách mạng tư sản",
+      b2: "Bài 2: Sự xác lập và phát triển của chủ nghĩa tư bản"
+    };
+    const FIREBASE_NAMESPACE = "lichsu11_gk1";
+    const dbNamespaceRef = db.ref(FIREBASE_NAMESPACE);
+
+        let currentClientIP = "";
+    let safeIpKey = "";
+
+    function sanitizeFirebaseData(val) {
+      if (val === undefined || val === null) return null;
+      if (typeof val !== 'object') return val;
+      if (Array.isArray(val)) {
+        return val.map(item => sanitizeFirebaseData(item)).filter(item => item !== undefined);
+      }
+      const clean = {};
+      for (const k of Object.keys(val)) {
+        const v = val[k];
+        if (v !== undefined) {
+          clean[k] = sanitizeFirebaseData(v);
+        }
+      }
+      return clean;
+    }
+
+    async function fetchClientIP() {
+      if (currentClientIP && safeIpKey) return currentClientIP;
+      const timeoutMs = 2500;
+      const fetchWithTimeout = async (url) => {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const resp = await fetch(url, { signal: controller.signal });
+          clearTimeout(tid);
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const data = await resp.json();
+          return data.ip || (data.query ? data.query : null);
+        } catch (e) {
+          clearTimeout(tid);
+          return null;
+        }
+      };
+
+      try {
+        currentClientIP = await fetchWithTimeout("https://api.ipify.org?format=json");
+        if (!currentClientIP) {
+          currentClientIP = await fetchWithTimeout("https://ipapi.co/json/");
+        }
+      } catch (e) {}
+
+      if (!currentClientIP) {
+        let devId = localStorage.getItem("client_device_ip_fallback");
+        if (!devId) {
+          devId = "device_" + Math.random().toString(36).substring(2, 10);
+          localStorage.setItem("client_device_ip_fallback", devId);
+        }
+        currentClientIP = devId;
+      }
+
+      safeIpKey = String(currentClientIP).replace(/[\.\:\#\$\[\]\/]/g, "_");
+      return currentClientIP;
+    }
+
+    function cloneQuestionItem(q) {
+      const item = {
+        ...q,
+        qType: q.qType || "mcq",
+        options: Array.isArray(q.options) ? [...q.options] : []
+      };
+      if (Array.isArray(q.statements)) {
+        item.statements = q.statements.map(s => ({ ...s }));
+      }
+      return item;
+    }
+
+    let questionsData = defaultQuestionsData.map(cloneQuestionItem);
+
+    // =========================================================================
+    // 3. LOGIC ĐỒNG BỘ REALTIME QUA FIREBASE DATABASE
+    // =========================================================================
+    const STORAGE_KEY_STATE = "hoa11_gk1_shared_state_fb";
+    const STORAGE_KEY_STUDENT = "hoa11_gk1_current_student_fb";
+    const KEY_CUSTOM_QUESTIONS = "custom_questions_data_fb";
+    const ADMIN_SECRET_PASS = "034569";
+
+    let sharedState = {
+      config: { locked: false, requireCode: false, roomCode: "", updatedAt: 0 },
+      blacklist: {},
+      sessions: {},
+      questionOverrides: {},
+      deletedQuestionIds: {},
+      questionsResetAt: 0,
+      lastClearServerSec: 0
+    };
+
+    let isHostAdmin = false;
+    let currentStudent = null;
+    let currentFilter = 'all';
+    let userAnswers = {};
+    let secondsElapsed = 0;
+    let timerInterval = null;
+    let currentAdminTab = 'monitor';
+    let editingQuestionId = null;
+    let currentNewQuestionType = 'mcq';
+    let adminToastTimeout = null;
+    let newlyJoinedTimestamps = {};
+    let knownSessionIds = new Set();
+    let secretTapCount = 0;
+    let secretTapTimer = null;
+    let globalKeyBuffer = "";
+
+    function normalizeName(str) {
+      return (str || "").trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    function detectDeviceName() {
+      const ua = navigator.userAgent || "";
+      let os = "Máy tính";
+      if (/android/i.test(ua)) os = "Android";
+      else if (/iPad|iPhone|iPod/.test(ua)) os = "iOS";
+      else if (/Windows/i.test(ua)) os = "Windows";
+      else if (/Mac/i.test(ua)) os = "macOS";
+
+      let browser = "Browser";
+      if (/Edg/i.test(ua)) browser = "Edge";
+      else if (/Chrome/i.test(ua)) browser = "Chrome";
+      else if (/Safari/i.test(ua)) browser = "Safari";
+      else if (/Firefox/i.test(ua)) browser = "Firefox";
+      return `${os} • ${browser}`;
+    }
+
+    function formatDuration(sec) {
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function formatClock(ts) {
+      if (!ts) return "--:--";
+      const d = new Date(ts);
+      return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function isTrueFalseQuestion(q) {
+      return q && (q.qType === 'tf_group' || q.qType === 'tf_single');
+    }
+
+    function isQuestionAnswered(q) {
+      if (!q) return false;
+      const ans = userAnswers[q.id];
+      if (ans === undefined || ans === null) return false;
+      if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+        if (typeof ans !== 'object') return false;
+        return q.statements.every((_, idx) => ans[idx] !== undefined);
+      }
+      return true;
+    }
+
+    function isQuestionCorrect(q) {
+      if (!isQuestionAnswered(q)) return false;
+      const ans = userAnswers[q.id];
+      if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+        return q.statements.every((st, idx) => Boolean(ans[idx]) === Boolean(st.answer));
+      }
+      return Number(ans) === Number(q.answer);
+    }
+
+    function hasAnyWrongInQuestion(q) {
+      if (!q) return false;
+      const ans = userAnswers[q.id];
+      if (ans === undefined || ans === null) return false;
+      if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+        if (typeof ans !== 'object') return false;
+        return q.statements.some((st, idx) => ans[idx] !== undefined && Boolean(ans[idx]) !== Boolean(st.answer));
+      }
+      return Number(ans) !== Number(q.answer);
+    }
+
+    function rebuildActiveQuestionsData() {
+      const resetAt = sharedState.questionsResetAt || 0;
+      const result = [];
+      const seenIds = new Set();
+
+      for (const defQ of defaultQuestionsData) {
+        const delTs = sharedState.deletedQuestionIds && sharedState.deletedQuestionIds[defQ.id];
+        const ov = sharedState.questionOverrides && sharedState.questionOverrides[defQ.id];
+
+        if (delTs && delTs >= resetAt && (!ov || (ov.updatedAt || 0) <= delTs)) {
+          continue;
+        }
+
+        if (ov && (ov.updatedAt || 0) >= resetAt) {
+          result.push(cloneQuestionItem({
+            id: Number(defQ.id),
+            qType: ov.qType || defQ.qType || "mcq",
+            lesson: ov.lesson || defQ.lesson,
+            lessonName: ov.lessonName || LESSON_LABELS[ov.lesson] || defQ.lessonName,
+            question: ov.question !== undefined ? ov.question : defQ.question,
+            options: Array.isArray(ov.options) ? ov.options : (defQ.options || []),
+            answer: typeof ov.answer === 'number' ? ov.answer : defQ.answer,
+            statements: Array.isArray(ov.statements) ? ov.statements : defQ.statements,
+            explanation: ov.explanation !== undefined ? ov.explanation : defQ.explanation
+          }));
+        } else {
+          result.push(cloneQuestionItem(defQ));
+        }
+        seenIds.add(Number(defQ.id));
+      }
+
+      if (sharedState.questionOverrides) {
+        const extraIds = Object.keys(sharedState.questionOverrides)
+          .map(Number)
+          .filter(id => !seenIds.has(id))
+          .sort((a, b) => a - b);
+
+        for (const id of extraIds) {
+          const ov = sharedState.questionOverrides[id];
+          const delTs = sharedState.deletedQuestionIds && sharedState.deletedQuestionIds[id];
+          if (!ov || (ov.updatedAt || 0) < resetAt) continue;
+          if (delTs && delTs >= (ov.updatedAt || 0)) continue;
+
+          result.push(cloneQuestionItem({
+            id: Number(id),
+            qType: ov.qType || "mcq",
+            lesson: ov.lesson || "b1",
+            lessonName: ov.lessonName || LESSON_LABELS[ov.lesson || "b1"] || "Bài 3: Nitrogen",
+            question: ov.question || "",
+            options: Array.isArray(ov.options) ? ov.options : ["", "", "", ""],
+            answer: typeof ov.answer === 'number' ? ov.answer : 0,
+            statements: Array.isArray(ov.statements) ? ov.statements : undefined,
+            explanation: ov.explanation || ""
+          }));
+        }
+      }
+
+      questionsData = result;
+      updateLessonFilterCountsUI();
+    }
+
+    function updateLessonFilterCountsUI() {
+      const total = questionsData.length;
+      const b1Count = questionsData.filter(q => q.lesson === 'b1').length;
+      const b2Count = questionsData.filter(q => q.lesson === 'b2').length;
+      const tfCount = questionsData.filter(q => isTrueFalseQuestion(q)).length;
+
+      const loginSub = document.getElementById('login-subtitle-count');
+      if (loginSub) loginSub.textContent = `Lịch Sử 11 - Ôn Tập Giữa Kì 1 (${total} câu / 101 mục)`;
+
+      const headerSub = document.getElementById('header-subtitle-count');
+      if (headerSub) headerSub.textContent = `Trọn bộ ${total} câu (65 trắc nghiệm & 9 câu Đúng-Sai / 101 mục chuẩn đề cương)`;
+
+      const btnAll = document.getElementById('filter-btn-all');
+      if (btnAll) btnAll.textContent = `Tất cả (${total} câu)`;
+
+      const btnB1 = document.getElementById('filter-btn-b1');
+      if (btnB1) btnB1.textContent = `Bài 1: Cách mạng tư sản (${b1Count} câu)`;
+
+      const btnB2 = document.getElementById('filter-btn-b2');
+      if (btnB2) btnB2.textContent = `Bài 2: Sự xác lập CNTB (${b2Count} câu)`;
+
+      const btnTf = document.getElementById('filter-btn-tf');
+      if (btnTf) btnTf.textContent = `Câu Đúng - Sai (${tfCount} câu)`;
+
+      const adminTotalQ = document.getElementById('admin-total-q-count');
+      if (adminTotalQ) adminTotalQ.textContent = total;
+    }
+
+            function isQuestionModified(qId) {
+      const def = defaultQuestionsData.find(q => q.id === qId);
+      const cur = questionsData.find(q => q.id === qId);
+      if (!cur) return false;
+      if (!def) return true;
+      if ((def.qType || 'mcq') !== (cur.qType || 'mcq')) return true;
+      if (def.lesson !== cur.lesson) return true;
+      if (def.question !== cur.question) return true;
+      if (def.answer !== cur.answer) return true;
+      if (def.explanation !== cur.explanation) return true;
+      if ((def.options || []).length !== (cur.options || []).length) return true;
+      for (let i = 0; i < (def.options || []).length; i++) {
+        if (def.options[i] !== cur.options[i]) return true;
+      }
+      if (cur.qType === 'tf_group') {
+        const defStmts = Array.isArray(def.statements) ? def.statements : [];
+        const curStmts = Array.isArray(cur.statements) ? cur.statements : [];
+        if (defStmts.length !== curStmts.length) return true;
+        for (let i = 0; i < defStmts.length; i++) {
+          if ((defStmts[i].text || "").trim() !== (curStmts[i].text || "").trim()) return true;
+          if (Boolean(defStmts[i].answer) !== Boolean(curStmts[i].answer)) return true;
+        }
+      }
+      return false;
+    }
+
+    function saveLocalCache() {
+      try {
+        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(sharedState));
+        localStorage.setItem(KEY_CUSTOM_QUESTIONS, JSON.stringify(questionsData));
+      } catch (e) {}
+    }
+
+    function saveCurrentStudentCache() {
+      try {
+        if (currentStudent && !currentStudent.isHost) {
+          localStorage.setItem(STORAGE_KEY_STUDENT, JSON.stringify({
+            student: currentStudent,
+            userAnswers,
+            secondsElapsed
+          }));
+        } else if (!currentStudent) {
+          localStorage.removeItem(STORAGE_KEY_STUDENT);
+        }
+      } catch (e) {}
+    }
+
+    // Kết nối Firebase Realtime Database lắng nghe thay đổi tức thì
+        // Kết nối Firebase Realtime Database lắng nghe thay đổi tức thì
+        // Kết nối Firebase Realtime Database lắng nghe thay đổi tức thì
+    function initFirebaseSync() {
+      dbNamespaceRef.on('value', (snapshot) => {
+        const val = snapshot.val();
+        if (val && typeof val === 'object') {
+          sharedState.config = val.config || sharedState.config;
+          sharedState.blacklist = val.blacklist || {};
+          sharedState.sessions = val.sessions || {};
+          sharedState.questionOverrides = val.questionOverrides || {};
+          sharedState.deletedQuestionIds = val.deletedQuestionIds || {};
+          sharedState.questionsResetAt = val.questionsResetAt || 0;
+          sharedState.lastClearServerSec = val.lastClearServerSec || 0;
+          sharedState.ipMappings = val.ipMappings || {};
+
+          for (const sid in sharedState.sessions) {
+            if (sharedState.sessions[sid] && !sharedState.sessions[sid].deleted && !knownSessionIds.has(sid)) {
+              knownSessionIds.add(sid);
+              newlyJoinedTimestamps[sid] = Date.now();
+            }
+          }
+
+          rebuildActiveQuestionsData();
+          renderQuestions();
+          if (currentStudent && !currentStudent.isHost) { syncCurrentStudentProgress(); }
+          onRealtimeStateUpdated();
+        }
+      });
+    }
+
+    function pushStateToFirebase() {
+      dbNamespaceRef.update({
+        config: sharedState.config,
+        blacklist: sharedState.blacklist || {},
+        sessions: sharedState.sessions || {},
+        questionOverrides: sanitizeFirebaseData(sharedState.questionOverrides || {}),
+        deletedQuestionIds: sharedState.deletedQuestionIds || {},
+        questionsResetAt: sharedState.questionsResetAt || 0,
+        lastClearServerSec: sharedState.lastClearServerSec || 0
+      });
+    }
+
+    function loadFirebaseDataForce() {
+      dbNamespaceRef.once('value', (snapshot) => {
+        const val = snapshot.val();
+        if (val) {
+          sharedState.config = val.config || sharedState.config;
+          sharedState.blacklist = val.blacklist || {};
+          sharedState.sessions = val.sessions || {};
+          sharedState.questionOverrides = val.questionOverrides || {};
+          sharedState.deletedQuestionIds = val.deletedQuestionIds || {};
+          sharedState.ipMappings = val.ipMappings || {};
+          rebuildActiveQuestionsData();
+          renderAdminTable();
+          showAdminToast("Đã đồng bộ mới nhất từ Firebase!");
+        }
+      });
+    }
+
+    function scheduleSessionPublish(immediate = false) {
+      if (!currentStudent || currentStudent.isHost) return;
+      const now = Date.now();
+      dbNamespaceRef.child(`sessions/${currentStudent.id}`).set(currentStudent);
+      saveCurrentStudentCache();
+    }
+
+    function isStudentBanned(name, sessionId) {
+      if (isHostAdmin) return false;
+      const norm = normalizeName(name);
+      if (norm && sharedState.blacklist[norm] && sharedState.blacklist[norm].banned) {
+        return true;
+      }
+      if (sessionId && sharedState.sessions[sessionId] && sharedState.sessions[sessionId].status === 'banned') {
+        return true;
+      }
+      return false;
+    }
+
+    function onRealtimeStateUpdated() {
+      const roomCodeField = document.getElementById('room-code-field');
+      if (roomCodeField) {
+        if (sharedState.config.requireCode) {
+          roomCodeField.classList.remove('hidden');
+        } else {
+          roomCodeField.classList.add('hidden');
+        }
+      }
+
+      if (currentStudent && !currentStudent.isHost && !isHostAdmin) {
+        if (isStudentBanned(currentStudent.name, currentStudent.id)) {
+          if (timerInterval) clearInterval(timerInterval);
+          document.getElementById('blocked-title').textContent = "Tài khoản đã bị chặn!";
+          document.getElementById('blocked-message').textContent = `Học sinh "${currentStudent.name}" (${currentStudent.className}) đã bị Quản trị viên chặn khỏi phòng làm bài.`;
+          document.getElementById('blocked-screen').classList.remove('hidden');
+          document.getElementById('blocked-screen').classList.add('flex');
+        } else {
+          document.getElementById('blocked-screen').classList.add('hidden');
+          document.getElementById('blocked-screen').classList.remove('flex');
+        }
+      }
+
+      updateAdminModifiedBadge();
+      syncAdminConfigInputs();
+      renderAdminTable();
+
+      if (currentAdminTab === 'questions' && editingQuestionId === null) {
+        renderAdminQuestionsList();
+      }
+    }
+
+    // =========================================================================
+    // 4. ADMIN HOST CODE & ĐĂNG NHẬP
+    // =========================================================================
+    function checkInstantHostPin(val) {
+      if (String(val || "").trim() === ADMIN_SECRET_PASS) {
+        const fn = document.getElementById('input-fullname');
+        const cl = document.getElementById('input-class');
+        const rc = document.getElementById('input-roomcode');
+        const ap = document.getElementById('admin-pass-input');
+        if (fn && fn.value.trim() === ADMIN_SECRET_PASS) fn.value = '';
+        if (cl && cl.value.trim() === ADMIN_SECRET_PASS) cl.value = '';
+        if (rc && rc.value.trim() === ADMIN_SECRET_PASS) rc.value = '';
+        if (ap) ap.value = '';
+
+        closeModal('admin-auth-modal');
+        activateHostAdminRole(true);
+        return true;
+      }
+      return false;
+    }
+
+    function checkUrlAdminBypass() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const adminPin = params.get('admin');
+        const role = params.get('role');
+        const pin = params.get('pin');
+
+        if (adminPin === ADMIN_SECRET_PASS || (role === 'admin' && pin === ADMIN_SECRET_PASS)) {
+          activateHostAdminRole(true);
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    function activateHostAdminRole(openDashboardImmediately = true) {
+      isHostAdmin = true;
+      document.getElementById('login-gate-modal').classList.add('hidden');
+      document.getElementById('blocked-screen').classList.add('hidden');
+      document.getElementById('blocked-screen').classList.remove('flex');
+
+      const hostBadge = document.getElementById('host-admin-badge');
+      if (hostBadge) {
+        hostBadge.classList.remove('hidden');
+        hostBadge.classList.add('flex');
+      }
+
+      if (!currentStudent) {
+        currentStudent = {
+          id: "host_admin",
+          name: "👑 Quản trị viên (Host)",
+          className: "HOST",
+          isHost: true
+        };
+      }
+
+      updateStudentHeaderUI();
+      if (openDashboardImmediately) {
+        openAdminDashboard();
+      }
+    }
+
+    function showLoginError(msg) {
+      const box = document.getElementById('login-error-box');
+      const txt = document.getElementById('login-error-text');
+      txt.textContent = msg;
+      box.classList.remove('hidden');
+    }
+
+            async function handleStudentLogin(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      document.getElementById('login-error-box').classList.add('hidden');
+
+      const name = document.getElementById('input-fullname').value.trim();
+      const rawClass = document.getElementById('input-class') ? document.getElementById('input-class').value.trim() : "";
+      const enteredCode = document.getElementById('input-roomcode') ? document.getElementById('input-roomcode').value.trim() : "";
+
+      if (name === ADMIN_SECRET_PASS || rawClass === ADMIN_SECRET_PASS || enteredCode === ADMIN_SECRET_PASS) {
+        checkInstantHostPin(ADMIN_SECRET_PASS);
+        return;
+      }
+
+      if (!name) {
+        showLoginError("Vui lòng nhập đầy đủ Họ và tên thật của bạn!");
+        document.getElementById('input-fullname').focus();
+        return;
+      }
+
+      const nameParts = name.split(/\s+/).filter(Boolean);
+      if (nameParts.length < 2) {
+        showLoginError("Họ và tên không hợp lệ! Vui lòng nhập đầy đủ cả Họ và Tên thật (tối thiểu 2 từ, VD: Nguyễn Văn An)!");
+        document.getElementById('input-fullname').focus();
+        return;
+      }
+
+      if (name.length < 4 || name.length > 50) {
+        showLoginError("Độ dài Họ và tên không hợp lệ (phải từ 4 đến 50 ký tự)!");
+        document.getElementById('input-fullname').focus();
+        return;
+      }
+
+      const vietnameseNameRegex = /^[a-zA-ZàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ\s]+$/;
+      if (!vietnameseNameRegex.test(name)) {
+        showLoginError("Họ và tên thật chỉ được chứa chữ cái, không được chứa chữ số hoặc ký tự lạ!");
+        document.getElementById('input-fullname').focus();
+        return;
+      }
+
+      if (nameParts.some(part => part.length < 2)) {
+        showLoginError("Mỗi từ trong Họ và tên phải có tối thiểu 2 chữ cái hợp lệ!");
+        document.getElementById('input-fullname').focus();
+        return;
+      }
+
+      const formattedName = nameParts.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+      if (isStudentBanned(formattedName, null)) {
+        showLoginError("Tên của bạn nằm trong danh sách bị Quản trị viên chặn truy cập!");
+        return;
+      }
+
+      if (sharedState.config.locked && !isHostAdmin) {
+        showLoginError("Phòng thi hiện đã bị khóa bởi Quản trị viên, không nhận thêm lượt truy cập mới.");
+        return;
+      }
+
+      if (sharedState.config.requireCode && sharedState.config.roomCode && !isHostAdmin) {
+        if (enteredCode.toUpperCase() !== sharedState.config.roomCode.toUpperCase()) {
+          showLoginError("Mã vào phòng không chính xác. Vui lòng kiểm tra lại!");
+          return;
+        }
+      }
+
+      await fetchClientIP();
+
+      const sessionId = "stu_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+      const loginTime = Date.now();
+
+      currentStudent = {
+        id: sessionId,
+        name: formattedName,
+        className: rawClass,
+        loginTime,
+        device: detectDeviceName(),
+        ip: currentClientIP || "unknown",
+        status: 'working',
+        correctCount: 0,
+        answeredCount: 0,
+        totalQuestions: questionsData.length,
+        score10: 0,
+        progress: 0,
+        duration: 0,
+        seq: 1,
+        updatedAt: loginTime
+      };
+
+      userAnswers = {};
+      secondsElapsed = 0;
+
+      knownSessionIds.add(currentStudent.id);
+      newlyJoinedTimestamps[currentStudent.id] = loginTime;
+      sharedState.sessions[currentStudent.id] = { ...currentStudent };
+
+      dbNamespaceRef.child(`sessions/${sessionId}`).set(sanitizeFirebaseData(currentStudent));
+      
+      if (safeIpKey) {
+        dbNamespaceRef.child(`ipMappings/${safeIpKey}`).set({
+          sessionId: sessionId,
+          name: formattedName,
+          className: rawClass,
+          ip: currentClientIP,
+          updatedAt: loginTime
+        });
+      }
+
+      saveCurrentStudentCache();
+
+      updateStudentHeaderUI();
+      document.getElementById('login-gate-modal').classList.add('hidden');
+      document.getElementById('completed-banner').classList.add('hidden');
+
+      startTimer();
+      renderQuestions();
+      renderAdminTable();
+    }
+
+    function updateStudentHeaderUI() {
+      const badge = document.getElementById('student-badge');
+      const btnSwitch = document.getElementById('btn-switch-account');
+      const hostBadge = document.getElementById('host-admin-badge');
+      const btnOpenLogin = document.getElementById('btn-open-login-modal');
+
+      if (isHostAdmin) {
+        if (hostBadge) {
+          hostBadge.classList.remove('hidden');
+          hostBadge.classList.add('flex');
+        }
+      } else {
+        if (hostBadge) {
+          hostBadge.classList.add('hidden');
+          hostBadge.classList.remove('flex');
+        }
+      }
+
+      if (currentStudent && !currentStudent.isHost) {
+        if (btnOpenLogin) btnOpenLogin.classList.add('hidden');
+        document.getElementById('header-student-name').textContent = currentStudent.name;
+        const classEl = document.getElementById('header-student-class');
+        if (classEl) {
+          if (currentStudent.className) {
+            classEl.textContent = currentStudent.className;
+            classEl.classList.remove('hidden');
+          } else {
+            classEl.classList.add('hidden');
+          }
+        }
+        badge.classList.remove('hidden');
+        badge.classList.add('flex');
+        btnSwitch.classList.remove('hidden');
+        btnSwitch.classList.add('flex');
+      } else if (isHostAdmin) {
+        if (btnOpenLogin) btnOpenLogin.classList.add('hidden');
+        badge.classList.add('hidden');
+        badge.classList.remove('flex');
+        btnSwitch.classList.remove('hidden');
+        btnSwitch.classList.add('flex');
+      } else {
+        if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
+        badge.classList.add('hidden');
+        btnSwitch.classList.add('hidden');
+      }
+    }
+
+    function computeCurrentStudentStats() {
+      let totalItems = 0;
+      let answeredItems = 0;
+      let correctItems = 0;
+
+      for (const q of questionsData) {
+        if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+          const ansObj = (userAnswers[q.id] && typeof userAnswers[q.id] === 'object') ? userAnswers[q.id] : {};
+          q.statements.forEach((st, idx) => {
+            totalItems++;
+            if (ansObj[idx] !== undefined) {
+              answeredItems++;
+              if (Boolean(ansObj[idx]) === Boolean(st.answer)) {
+                correctItems++;
+              }
+            }
+          });
+        } else {
+          totalItems++;
+          if (userAnswers[q.id] !== undefined && userAnswers[q.id] !== null) {
+            answeredItems++;
+            if (Number(userAnswers[q.id]) === Number(q.answer)) {
+              correctItems++;
+            }
+          }
+        }
+      }
+
+      const progress = totalItems > 0 ? Math.round((answeredItems / totalItems) * 100) : 0;
+      const score10 = totalItems > 0 ? Number(((correctItems / totalItems) * 10).toFixed(2)) : 0;
+      const isCompleted = answeredItems >= totalItems && totalItems > 0;
+
+      return {
+        status: isCompleted ? 'completed' : 'working',
+        correctCount: correctItems,
+        answeredCount: answeredItems,
+        totalQuestions: totalItems,
+        progress,
+        score10
+      };
+    }
+
+    function updateCompletionBannerUI() {
+      const banner = document.getElementById('completed-banner');
+      const title = document.getElementById('completed-title');
+      const detail = document.getElementById('completed-detail');
+      if (!currentStudent || currentStudent.isHost) {
+        banner.classList.add('hidden');
+        return;
+      }
+
+      const stats = computeCurrentStudentStats();
+      const totalQ = stats.totalQuestions;
+
+      if (stats.answeredCount >= totalQ && totalQ > 0) {
+        if (timerInterval) clearInterval(timerInterval);
+        if (title) title.textContent = `Chúc mừng! Bạn đã hoàn thành toàn bộ ${totalQ}/${totalQ} câu hỏi!`;
+        detail.textContent = `Tổng điểm: ${stats.score10}/10 điểm • Số câu đúng: ${stats.correctCount}/${totalQ} câu • Tổng thời gian làm bài: ${formatDuration(secondsElapsed)}.`;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function syncCurrentStudentProgress() {
+      if (!currentStudent || currentStudent.isHost) return;
+
+      const stats = computeCurrentStudentStats();
+      const now = Date.now();
+
+      Object.assign(currentStudent, stats, {
+        duration: secondsElapsed,
+        seq: (Number(currentStudent.seq) || 1) + 1,
+        updatedAt: now
+      });
+
+      sharedState.sessions[currentStudent.id] = {
+        ...(sharedState.sessions[currentStudent.id] || {}),
+        ...currentStudent
+      };
+
+      saveCurrentStudentCache();
+      updateCompletionBannerUI();
+      renderAdminTable();
+      scheduleSessionPublish(stats.status === 'completed');
+    }
+
+            function switchAccount() {
+      if (timerInterval) clearInterval(timerInterval);
+      isHostAdmin = false;
+      currentStudent = null;
+      userAnswers = {};
+      secondsElapsed = 0;
+      saveCurrentStudentCache();
+
+      if (safeIpKey) {
+        try {
+          dbNamespaceRef.child(`ipMappings/${safeIpKey}`).remove();
+        } catch (e) {}
+      }
+
+      const fn = document.getElementById('input-fullname');
+      const cl = document.getElementById('input-class');
+      if (fn) fn.value = '';
+      if (cl) cl.value = '';
+
+      document.getElementById('blocked-screen').classList.add('hidden');
+      document.getElementById('blocked-screen').classList.remove('flex');
+      document.getElementById('completed-banner').classList.add('hidden');
+      document.getElementById('login-error-box').classList.add('hidden');
+      document.getElementById('login-gate-modal').classList.remove('hidden');
+      updateStudentHeaderUI();
+    }
+
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        document.getElementById('timer').textContent = formatDuration(secondsElapsed);
+        if (currentStudent && !currentStudent.isHost) {
+          currentStudent.duration = secondsElapsed;
+        }
+        saveCurrentStudentCache();
+      }, 1000);
+    }
+
+    function renderQuestions() {
+      const container = document.getElementById('questions-container');
+      container.innerHTML = '';
+      const totalQ = questionsData.length;
+
+      let filtered = [];
+      if (currentFilter === 'all') {
+        filtered = questionsData;
+      } else if (currentFilter === 'wrong') {
+        filtered = questionsData.filter(q => hasAnyWrongInQuestion(q));
+      } else if (currentFilter === 'tf') {
+        filtered = questionsData.filter(q => isTrueFalseQuestion(q));
+      } else {
+        filtered = questionsData.filter(q => q.lesson === currentFilter);
+      }
+
+      if (filtered.length === 0) {
+        if (currentFilter === 'wrong') {
+          container.innerHTML = `
+            <div class="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+              <i class="fa-solid fa-circle-check text-4xl text-emerald-500 mb-3"></i>
+              <h4 class="font-bold text-slate-800 text-base mb-1">Hiện tại bạn chưa làm sai câu nào!</h4>
+              <p class="text-xs text-slate-500 mb-4">Khi bạn trả lời sai một câu bất kỳ, câu đó sẽ tự động xuất hiện tại đây.</p>
+              <button type="button" onclick="filterLesson('all')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-semibold transition cursor-pointer">Quay lại xem tất cả câu hỏi</button>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `
+            <div class="text-center py-12 bg-white rounded-xl border border-slate-200 p-6">
+              <i class="fa-solid fa-folder-open text-4xl text-slate-400 mb-3"></i>
+              <h4 class="font-bold text-slate-700 text-base">Chưa có câu hỏi nào trong mục này.</h4>
+            </div>
+          `;
+        }
+        updateScoreAndProgress();
+        return;
+      }
+
+      filtered.forEach((q) => {
+        const card = document.createElement('div');
+        card.id = `q-card-${q.id}`;
+        card.className = "bg-white rounded-xl shadow-sm border border-slate-200 p-5 md:p-6 transition hover:shadow-md";
+
+        const questionNumberBadge = `<span class="inline-flex items-center justify-center px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold mr-2 text-sm shrink-0">Câu ${q.id}</span>`;
+
+        if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+          const ansObj = (userAnswers[q.id] && typeof userAnswers[q.id] === 'object') ? userAnswers[q.id] : {};
+          const fullyAnswered = isQuestionAnswered(q);
+          const allCorrect = isQuestionCorrect(q);
+
+          const stmtsHtml = q.statements.map((st, idx) => {
+            const chosen = ansObj[idx];
+            const isStmtAnswered = chosen !== undefined;
+            const stmtKey = st.key || ['a', 'b', 'c', 'd'][idx] || (idx + 1);
+            const isStmtRight = isStmtAnswered && (Boolean(chosen) === Boolean(st.answer));
+
+            let rowClass = "border-slate-200 bg-slate-50/70";
+            if (isStmtAnswered) {
+              rowClass = isStmtRight ? "border-emerald-400 bg-emerald-50/60" : "border-rose-300 bg-rose-50/60";
+            }
+
+            const btnTrueClass = !isStmtAnswered
+              ? "bg-white hover:bg-emerald-50 text-slate-700 border-slate-300"
+              : (st.answer === true
+                  ? "bg-emerald-600 text-white border-emerald-600 font-bold"
+                  : (chosen === true ? "bg-rose-500 text-white border-rose-500 font-bold" : "bg-slate-100 text-slate-400 border-slate-200 opacity-60"));
+
+            const btnFalseClass = !isStmtAnswered
+              ? "bg-white hover:bg-rose-50 text-slate-700 border-slate-300"
+              : (st.answer === false
+                  ? "bg-emerald-600 text-white border-emerald-600 font-bold"
+                  : (chosen === false ? "bg-rose-500 text-white border-rose-500 font-bold" : "bg-slate-100 text-slate-400 border-slate-200 opacity-60"));
+
+            return `
+              <div class="p-3 rounded-xl border ${rowClass} flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 mb-2.5">
+                <div class="flex items-start gap-2.5 flex-1">
+                  <span class="w-6 h-6 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">${escapeHtml(stmtKey)})</span>
+                  <span class="text-sm text-slate-800 leading-relaxed">${escapeHtml(st.text)}</span>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button type="button" ${isStmtAnswered ? 'disabled' : ''} onclick="selectTrueFalseStatement(${q.id}, ${idx}, true)"
+                    class="px-3.5 py-1.5 rounded-lg border text-xs transition cursor-pointer ${btnTrueClass}">
+                    Đúng
+                  </button>
+                  <button type="button" ${isStmtAnswered ? 'disabled' : ''} onclick="selectTrueFalseStatement(${q.id}, ${idx}, false)"
+                    class="px-3.5 py-1.5 rounded-lg border text-xs transition cursor-pointer ${btnFalseClass}">
+                    Sai
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          let explanationHtml = '';
+          if (fullyAnswered) {
+            const rightStmtCount = q.statements.filter((st, idx) => Boolean(ansObj[idx]) === Boolean(st.answer)).length;
+            const summaryKey = q.statements.map((st, idx) => `${st.key || ['a','b','c','d'][idx]} - ${st.answer ? 'Đúng' : 'Sai'}`).join(' | ');
+            explanationHtml = `
+              <div class="mt-4 pt-3 border-t border-slate-100 text-xs md:text-sm">
+                <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                  <span class="px-2.5 py-0.5 rounded font-bold text-xs ${allCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}">
+                    ${allCorrect ? 'Chính xác cả 4 ý! 🎉' : `Đúng ${rightStmtCount}/${q.statements.length} mệnh đề`}
+                  </span>
+                  <span class="text-slate-600 font-medium">Đáp án: <strong>${escapeHtml(summaryKey)}</strong></span>
+                </div>
+                <p class="text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                  <i class="fa-solid fa-circle-info text-emerald-600 mr-1"></i> ${escapeHtml(q.explanation)}
+                </p>
+              </div>
+            `;
+          }
+
+          card.innerHTML = `
+            <div class="flex justify-between items-start gap-2 mb-3">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-600">${escapeHtml(q.lessonName)}</span>
+                <span class="text-xs font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-300"><i class="fa-solid fa-check-double mr-1"></i>Đúng - Sai</span>
+              </div>
+              <span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Câu ${q.id}/${totalQ}</span>
+            </div>
+            <h3 class="text-base font-semibold text-slate-800 mb-4 leading-snug flex items-start">
+              ${questionNumberBadge} <span>${escapeHtml(q.question)}</span>
+            </h3>
+            <div class="options-group">${stmtsHtml}</div>
+            ${explanationHtml}
+          `;
+          container.appendChild(card);
+          return;
+        }
+
+        const isAnswered = userAnswers[q.id] !== undefined;
+        const userAnswer = userAnswers[q.id];
+        let optionsHtml = '';
+        const labels = q.qType === 'tf_single' ? ['Đúng', 'Sai'] : ['A', 'B', 'C', 'D'];
+
+        q.options.forEach((opt, optIndex) => {
+          let btnClass = "border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700";
+          let icon = `<span class="w-6 h-6 rounded-full border border-slate-300 flex items-center justify-center text-xs font-semibold mr-3 shrink-0">${['A', 'B', 'C', 'D'][optIndex] || (optIndex + 1)}</span>`;
+
+          if (isAnswered) {
+            if (optIndex === q.answer) {
+              btnClass = "border-emerald-500 bg-emerald-50 text-emerald-800 font-medium";
+              icon = `<span class="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs mr-3 shrink-0"><i class="fa-solid fa-check"></i></span>`;
+            } else if (userAnswer === optIndex) {
+              btnClass = "border-rose-400 bg-rose-50 text-rose-800";
+              icon = `<span class="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs mr-3 shrink-0"><i class="fa-solid fa-xmark"></i></span>`;
+            } else {
+              btnClass = "border-slate-100 bg-slate-50/50 text-slate-400 opacity-60";
+            }
+          }
+
+          optionsHtml += `
+            <button type="button"
+              ${isAnswered ? 'disabled' : ''} 
+              onclick="selectAnswer(${q.id}, ${optIndex})" 
+              class="w-full text-left p-3 rounded-lg flex items-start transition ${btnClass} mb-2.5 cursor-pointer">
+              ${icon}
+              <span class="text-sm leading-relaxed">${escapeHtml(opt)}</span>
+            </button>
+          `;
+        });
+
+        let explanationHtml = '';
+        if (isAnswered) {
+          const isCorrect = userAnswer === q.answer;
+          explanationHtml = `
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs md:text-sm">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2.5 py-0.5 rounded font-bold text-xs ${isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
+                  ${isCorrect ? 'Chính xác! 🎉' : 'Chưa đúng ❌'}
+                </span>
+                <span class="text-slate-500">Đáp án đúng: <strong>${labels[q.answer] || 'A'}</strong></span>
+              </div>
+              <p class="text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                <i class="fa-solid fa-circle-info text-emerald-600 mr-1"></i> ${escapeHtml(q.explanation)}
+              </p>
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="flex justify-between items-start gap-2 mb-3">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-600">${escapeHtml(q.lessonName)}</span>
+              ${q.qType === 'tf_single' ? `<span class="text-xs font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-300">Đúng - Sai</span>` : ''}
+            </div>
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Câu ${q.id}/${totalQ}</span>
+          </div>
+          <h3 class="text-base font-semibold text-slate-800 mb-4 leading-snug flex items-start">
+            ${questionNumberBadge} <span>${escapeHtml(q.question)}</span>
+          </h3>
+          <div class="options-group">${optionsHtml}</div>
+          ${explanationHtml}
+        `;
+        container.appendChild(card);
+      });
+
+      if (window.renderMathInElement) {
+        try {
+          renderMathInElement(container, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false }
+            ],
+            throwOnError: false
+          });
+        } catch (e) {}
+      }
+
+      updateScoreAndProgress();
+    }
+
+    function selectAnswer(questionId, optionIndex) {
+      if (userAnswers[questionId] !== undefined) return;
+      userAnswers[questionId] = optionIndex;
+      renderQuestions();
+      syncCurrentStudentProgress();
+    }
+
+    function selectTrueFalseStatement(questionId, stmtIndex, boolVal) {
+      if (!userAnswers[questionId] || typeof userAnswers[questionId] !== 'object') {
+        userAnswers[questionId] = {};
+      }
+      if (userAnswers[questionId][stmtIndex] !== undefined) return;
+      userAnswers[questionId][stmtIndex] = Boolean(boolVal);
+      renderQuestions();
+      syncCurrentStudentProgress();
+    }
+
+    function filterLesson(lessonKey) {
+      currentFilter = lessonKey;
+
+      const wrongBtn = document.getElementById('btn-view-wrong');
+      const indicator = document.getElementById('view-mode-indicator');
+
+      if (lessonKey === 'wrong') {
+        wrongBtn.className = "text-xs md:text-sm bg-rose-700 text-white px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 shadow-md ring-2 ring-rose-300 cursor-pointer";
+        indicator.innerHTML = `Đang xem: <strong class="text-rose-600">Danh sách các câu làm sai</strong>`;
+      } else {
+        wrongBtn.className = "text-xs md:text-sm bg-rose-500 hover:bg-rose-600 text-white px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer";
+        const names = {
+          all: 'Táº¥t cáº£ cÃ¢u há»i',
+          b1: 'BÃ i 1: CÃ¡ch máº¡ng tÆ° sáº£n',
+          b2: 'BÃ i 2: Sá»± xÃ¡c láº­p CNTB',
+          tf: 'CÃ¡c cÃ¢u há»i ÄÃºng - Sai'
+        };
+        indicator.innerHTML = `Đang xem: <strong class="text-slate-700">${names[lessonKey] || ''}</strong>`;
+      }
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const key = btn.getAttribute('data-lesson');
+        if (key === lessonKey) {
+          btn.className = "tab-btn px-3 py-1 rounded-full font-medium transition bg-emerald-600 text-white";
+        } else if (key === 'tf') {
+          btn.className = "tab-btn px-3 py-1 rounded-full font-medium transition bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200";
+        } else {
+          btn.className = "tab-btn px-3 py-1 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-700";
+        }
+      });
+
+      renderQuestions();
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+    }
+
+    function updateScoreAndProgress() {
+      const totalQ = questionsData.length;
+      let answeredCount = 0;
+      let correctCount = 0;
+      let wrongCount = 0;
+
+      for (const q of questionsData) {
+        if (isQuestionAnswered(q)) {
+          answeredCount++;
+          if (isQuestionCorrect(q)) {
+            correctCount++;
+          }
+        }
+        if (hasAnyWrongInQuestion(q)) {
+          wrongCount++;
+        }
+      }
+
+      const progressPercent = totalQ > 0 ? Math.round((answeredCount / totalQ) * 100) : 0;
+
+      document.getElementById('score-display').textContent = `${correctCount}/${answeredCount}`;
+      document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+      document.getElementById('progress-text').textContent = `Đã làm ${answeredCount}/${totalQ} câu (${progressPercent}%)`;
+      document.getElementById('wrong-count').textContent = wrongCount;
+    }
+
+    function resetQuiz() {
+      userAnswers = {};
+      secondsElapsed = 0;
+      document.getElementById('completed-banner').classList.add('hidden');
+      document.getElementById('timer').textContent = "00:00";
+      document.getElementById('score-display').textContent = "0/0";
+      filterLesson('all');
+      startTimer();
+      renderQuestions();
+      syncCurrentStudentProgress();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    }
+
+    // =========================================================================
+    // 6. MẬT KHẨU ADMIN & DASHBOARD
+    // =========================================================================
+    function promptAdminAuthentication() {
+      if (isHostAdmin) {
+        openAdminDashboard();
+        return;
+      }
+      document.getElementById('admin-pass-input').value = '';
+      document.getElementById('admin-auth-error').classList.add('hidden');
+      openModal('admin-auth-modal');
+      setTimeout(() => {
+        document.getElementById('admin-pass-input').focus();
+      }, 50);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.altKey && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
+        e.preventDefault();
+        promptAdminAuthentication();
+        return;
+      }
+
+      if (e.key && /^[0-9]$/.test(e.key)) {
+        globalKeyBuffer = (globalKeyBuffer + e.key).slice(-6);
+        if (globalKeyBuffer === ADMIN_SECRET_PASS) {
+          globalKeyBuffer = "";
+          checkInstantHostPin(ADMIN_SECRET_PASS);
+        }
+      } else if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt') {
+        globalKeyBuffer = "";
+      }
+    });
+
+    function handleSecretLogoTap() {
+      secretTapCount++;
+      if (secretTapTimer) clearTimeout(secretTapTimer);
+      if (secretTapCount >= 3) {
+        secretTapCount = 0;
+        promptAdminAuthentication();
+        return;
+      }
+      secretTapTimer = setTimeout(() => {
+        secretTapCount = 0;
+      }, 650);
+    }
+
+    function handleAdminAuth(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const val = document.getElementById('admin-pass-input').value.trim();
+      if (val === ADMIN_SECRET_PASS) {
+        closeModal('admin-auth-modal');
+        activateHostAdminRole(true);
+      } else {
+        document.getElementById('admin-auth-error').classList.remove('hidden');
+      }
+    }
+
+    function openAdminDashboard() {
+      syncAdminConfigInputs();
+      updateAdminModifiedBadge();
+      renderAdminTable();
+      renderAdminQuestionsList();
+      openModal('admin-dashboard-modal');
+      loadFirebaseDataForce();
+    }
+
+    function switchAdminTab(tabName) {
+      currentAdminTab = tabName;
+      const tabMonitor = document.getElementById('admin-tab-monitor');
+      const tabQuestions = document.getElementById('admin-tab-questions');
+      const btnMonitor = document.getElementById('admin-tab-btn-monitor');
+      const btnQuestions = document.getElementById('admin-tab-btn-questions');
+
+      if (tabName === 'questions') {
+        tabMonitor.classList.add('hidden');
+        tabQuestions.classList.remove('hidden');
+        btnQuestions.className = "px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-50 text-emerald-700 border-t-2 border-emerald-500";
+        btnMonitor.className = "px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-700/60 text-slate-300 hover:bg-slate-700 hover:text-white";
+        renderAdminQuestionsList();
+      } else {
+        tabQuestions.classList.add('hidden');
+        tabMonitor.classList.remove('hidden');
+        btnMonitor.className = "px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-50 text-emerald-700 border-t-2 border-emerald-500";
+        btnQuestions.className = "px-4 py-2.5 text-xs md:text-sm font-bold rounded-t-xl transition flex items-center gap-2 cursor-pointer bg-slate-700/60 text-slate-300 hover:bg-slate-700 hover:text-white";
+        renderAdminTable();
+      }
+    }
+
+    function showAdminToast(message, isError = false) {
+      const box = document.getElementById('admin-toast-notice');
+      const txt = document.getElementById('admin-toast-text');
+      if (!box || !txt) return;
+      txt.textContent = message;
+      box.className = isError
+        ? "flex text-xs font-semibold text-rose-200 py-1 px-3 rounded-lg bg-rose-950/80 border border-rose-500/50 items-center gap-1.5"
+        : "flex text-xs font-semibold text-emerald-300 py-1 px-3 rounded-lg bg-emerald-950/80 border border-emerald-600/40 items-center gap-1.5";
+      if (adminToastTimeout) clearTimeout(adminToastTimeout);
+      adminToastTimeout = setTimeout(() => {
+        box.classList.add('hidden');
+        box.classList.remove('flex');
+      }, isError ? 8000 : 4000);
+    }
+
+    function updateAdminModifiedBadge() {
+      const badge = document.getElementById('admin-modified-q-badge');
+      if (!badge) return;
+      const modifiedCount = questionsData.filter(q => isQuestionModified(q.id)).length;
+      const deletedCount = Object.keys(sharedState.deletedQuestionIds || {}).length;
+      if (modifiedCount > 0 || deletedCount > 0) {
+        badge.textContent = `${modifiedCount + deletedCount} thay đổi`;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // =========================================================================
+    // 7. QUẢN LÝ CÂU HỎI MỞ RỘNG
+    // =========================================================================
+    function switchNewQuestionType(qType) {
+      currentNewQuestionType = qType;
+      const btnMcq = document.getElementById('btn-qtype-mcq');
+      const btnTfGroup = document.getElementById('btn-qtype-tf-group');
+      const btnTfSingle = document.getElementById('btn-qtype-tf-single');
+
+      const secMcq = document.getElementById('new-q-section-mcq');
+      const secTfGroup = document.getElementById('new-q-section-tf-group');
+      const secTfSingle = document.getElementById('new-q-section-tf-single');
+
+      const activeClass = "px-3 py-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition";
+      const inactiveClass = "px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition";
+
+      btnMcq.className = qType === 'mcq' ? activeClass : inactiveClass;
+      btnTfGroup.className = qType === 'tf_group' ? activeClass : inactiveClass;
+      btnTfSingle.className = qType === 'tf_single' ? activeClass : inactiveClass;
+
+      secMcq.classList.toggle('hidden', qType !== 'mcq');
+      secTfGroup.classList.toggle('hidden', qType !== 'tf_group');
+      secTfSingle.classList.toggle('hidden', qType !== 'tf_single');
+    }
+
+    function openAddQuestionModal(defaultType = 'mcq') {
+      document.getElementById('new-q-text').value = '';
+      document.getElementById('new-q-opt-0').value = '';
+      document.getElementById('new-q-opt-1').value = '';
+      document.getElementById('new-q-opt-2').value = '';
+      document.getElementById('new-q-opt-3').value = '';
+      document.getElementById('new-tf-stmt-0').value = '';
+      document.getElementById('new-tf-stmt-1').value = '';
+      document.getElementById('new-tf-stmt-2').value = '';
+      document.getElementById('new-tf-stmt-3').value = '';
+      document.getElementById('new-q-explanation').value = '';
+      switchNewQuestionType(defaultType);
+      openModal('admin-add-question-modal');
+    }
+
+            function handleCreateNewQuestion(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      try {
+        const lesson = document.getElementById('new-q-lesson').value || 'b1';
+        const questionText = document.getElementById('new-q-text').value.trim();
+        const explanation = document.getElementById('new-q-explanation').value.trim() || "Đáp án đúng theo chuẩn đề cương Lịch Sử 11.";
+
+        if (!questionText) {
+          alert("Vui lòng nhập nội dung câu hỏi!");
+          return;
+        }
+
+        const allKnownIds = [
+          ...defaultQuestionsData.map(q => Number(q.id)),
+          ...questionsData.map(q => Number(q.id)),
+          ...Object.keys(sharedState.questionOverrides || {}).map(Number)
+        ];
+        const nextId = (allKnownIds.length > 0 ? Math.max(...allKnownIds) : 74) + 1;
+        const now = Date.now();
+        let newQuestionObj = null;
+
+        if (currentNewQuestionType === 'tf_group') {
+          const rawStmts = [
+            { key: 'a', text: document.getElementById('new-tf-stmt-0').value.trim(), answer: document.querySelector('input[name="new-tf-ans-0"]:checked')?.value === 'true' },
+            { key: 'b', text: document.getElementById('new-tf-stmt-1').value.trim(), answer: document.querySelector('input[name="new-tf-ans-1"]:checked')?.value === 'true' },
+            { key: 'c', text: document.getElementById('new-tf-stmt-2').value.trim(), answer: document.querySelector('input[name="new-tf-ans-2"]:checked')?.value === 'true' },
+            { key: 'd', text: document.getElementById('new-tf-stmt-3').value.trim(), answer: document.querySelector('input[name="new-tf-ans-3"]:checked')?.value === 'true' }
+          ].filter(s => s.text !== '');
+
+          if (rawStmts.length === 0) {
+            alert("Vui lòng nhập ít nhất 1 mệnh đề cho câu hỏi Đúng - Sai!");
+            return;
+          }
+
+          const keys = ['a', 'b', 'c', 'd'];
+          newQuestionObj = {
+            id: nextId,
+            qType: 'tf_group',
+            lesson,
+            lessonName: LESSON_LABELS[lesson] || "Bài 1: Cách mạng tư sản",
+            question: questionText,
+            options: [],
+            answer: 0,
+            statements: rawStmts.map((s, idx) => ({ key: keys[idx] || String(idx + 1), text: s.text, answer: Boolean(s.answer) })),
+            explanation,
+            updatedAt: now,
+            serverTs: now
+          };
+        } else if (currentNewQuestionType === 'tf_single') {
+          const checkedTf = document.querySelector('input[name="new-tf-single-ans"]:checked');
+          newQuestionObj = {
+            id: nextId,
+            qType: 'tf_single',
+            lesson,
+            lessonName: LESSON_LABELS[lesson] || "Bài 1: Cách mạng tư sản",
+            question: questionText,
+            options: ["Đúng", "Sai"],
+            answer: checkedTf ? Number(checkedTf.value) : 0,
+            explanation,
+            updatedAt: now,
+            serverTs: now
+          };
+        } else {
+          const opt0 = document.getElementById('new-q-opt-0').value.trim();
+          const opt1 = document.getElementById('new-q-opt-1').value.trim();
+          const opt2 = document.getElementById('new-q-opt-2').value.trim();
+          const opt3 = document.getElementById('new-q-opt-3').value.trim();
+          const checkedAns = document.querySelector('input[name="new-q-answer"]:checked');
+
+          if (!opt0 || !opt1 || !opt2 || !opt3) {
+            alert("Vui lòng nhập đầy đủ 4 phương án A, B, C, D!");
+            return;
+          }
+
+          newQuestionObj = {
+            id: nextId,
+            qType: 'mcq',
+            lesson,
+            lessonName: LESSON_LABELS[lesson] || "Bài 1: Cách mạng tư sản",
+            question: questionText,
+            options: [opt0, opt1, opt2, opt3],
+            answer: checkedAns ? Number(checkedAns.value) : 0,
+            explanation,
+            updatedAt: now,
+            serverTs: now
+          };
+        }
+
+        delete sharedState.deletedQuestionIds[nextId];
+        sharedState.questionOverrides[nextId] = newQuestionObj;
+
+        rebuildActiveQuestionsData();
+        
+        const cleanData = sanitizeFirebaseData(newQuestionObj);
+        dbNamespaceRef.child('questionOverrides/' + nextId).set(cleanData);
+        dbNamespaceRef.child('deletedQuestionIds/' + nextId).remove();
+
+        closeModal('admin-add-question-modal');
+        renderAdminQuestionsList();
+        renderQuestions();
+        showAdminToast(`Đã thêm Câu ${nextId} mới và đồng bộ ngay!`);
+      } catch (err) {
+        alert("Lỗi khi thêm câu hỏi mới: " + err.message);
+      }
+    }
+
+    function deleteQuestionById(qId) {
+      if (!confirm(`Bạn có chắc chắn muốn XÓA Câu ${qId} khỏi đề thi?`)) return;
+      try {
+        const now = Date.now();
+        sharedState.deletedQuestionIds[qId] = now;
+        delete sharedState.questionOverrides[qId];
+        if (editingQuestionId === qId) editingQuestionId = null;
+
+        rebuildActiveQuestionsData();
+        
+        dbNamespaceRef.child('deletedQuestionIds/' + qId).set(now);
+        dbNamespaceRef.child('questionOverrides/' + qId).remove();
+
+        renderAdminQuestionsList();
+        renderQuestions();
+        showAdminToast(`Đã xóa Câu ${qId} trên tất cả các máy!`);
+      } catch (err) {}
+    }
+
+    function republishAllQuestionChanges() {
+      const cleanOverrides = sanitizeFirebaseData(sharedState.questionOverrides || {});
+      dbNamespaceRef.child('questionOverrides').set(cleanOverrides);
+      dbNamespaceRef.child('deletedQuestionIds').set(sharedState.deletedQuestionIds || {});
+      showAdminToast("Đã đồng bộ lại toàn bộ câu hỏi lên Firebase!");
+    }
+
+    function saveQuestionChanges(qId) {
+      try {
+        const curQ = questionsData.find(item => item.id === qId);
+        if (!curQ) return;
+        const qTextEl = document.getElementById(`edit-q-text-${qId}`);
+        const expEl = document.getElementById(`edit-q-exp-${qId}`);
+        const lessonEl = document.getElementById(`edit-q-lesson-${qId}`);
+        if (!qTextEl || !expEl) return;
+
+        const newQuestionText = qTextEl.value.trim();
+        const newExplanation = expEl.value.trim();
+        const newLesson = lessonEl ? lessonEl.value : "b1";
+
+        let updatedObj = null;
+        if (curQ.qType === 'tf_group') {
+          const rawStmts = [0, 1, 2, 3].map(idx => ({
+            text: document.getElementById(`edit-tf-stmt-${qId}-${idx}`)?.value.trim() || "",
+            answer: document.querySelector(`input[name="edit-tf-ans-${qId}-${idx}"]:checked`)?.value === 'true'
+          })).filter(s => s.text !== "");
+
+          const keys = ['a', 'b', 'c', 'd'];
+          updatedObj = {
+            id: Number(qId),
+            qType: 'tf_group',
+            lesson: newLesson,
+            lessonName: LESSON_LABELS[newLesson] || "Bài 1: Cách mạng tư sản",
+            question: newQuestionText,
+            options: [],
+            answer: 0,
+            statements: rawStmts.map((s, idx) => ({ key: keys[idx], text: s.text, answer: Boolean(s.answer) })),
+            explanation: newExplanation,
+            updatedAt: Date.now()
+          };
+        } else if (curQ.qType === 'tf_single') {
+          const checkedRadio = document.querySelector(`input[name="edit-q-ans-${qId}"]:checked`);
+          updatedObj = {
+            id: Number(qId),
+            qType: 'tf_single',
+            lesson: newLesson,
+            lessonName: LESSON_LABELS[newLesson] || "Bài 1: Cách mạng tư sản",
+            question: newQuestionText,
+            options: ["Đúng", "Sai"],
+            answer: checkedRadio ? Number(checkedRadio.value) : 0,
+            explanation: newExplanation,
+            updatedAt: Date.now()
+          };
+        } else {
+          const checkedRadio = document.querySelector(`input[name="edit-q-ans-${qId}"]:checked`);
+          const rawOptions = [0, 1, 2, 3].map(idx => document.getElementById(`edit-q-opt-${qId}-${idx}`)?.value.trim() || "");
+          updatedObj = {
+            id: Number(qId),
+            qType: 'mcq',
+            lesson: newLesson,
+            lessonName: LESSON_LABELS[newLesson] || "Bài 1: Cách mạng tư sản",
+            question: newQuestionText,
+            options: rawOptions,
+            answer: checkedRadio ? Number(checkedRadio.value) : 0,
+            explanation: newExplanation,
+            updatedAt: Date.now()
+          };
+        }
+
+        sharedState.questionOverrides[qId] = updatedObj;
+        delete sharedState.deletedQuestionIds[qId];
+        editingQuestionId = null;
+        rebuildActiveQuestionsData();
+
+        const cleanObj = sanitizeFirebaseData(updatedObj);
+        dbNamespaceRef.child('questionOverrides/' + qId).set(cleanObj);
+        dbNamespaceRef.child('deletedQuestionIds/' + qId).remove();
+
+        renderAdminQuestionsList();
+        renderQuestions();
+        showAdminToast(`Đã lưu Câu ${qId} và đồng bộ ngay!`);
+      } catch (err) {
+        alert("Lỗi khi lưu: " + err.message);
+      }
+    }
+
+    function resetAllQuestionsToDefault() {
+      if (!confirm("Khôi phục toàn bộ câu hỏi gốc theo đề cương Lịch Sử 11?")) return;
+      sharedState.questionsResetAt = Date.now();
+      sharedState.questionOverrides = {};
+      sharedState.deletedQuestionIds = {};
+      rebuildActiveQuestionsData();
+      dbNamespaceRef.child('questionOverrides').remove();
+      dbNamespaceRef.child('deletedQuestionIds').remove();
+      dbNamespaceRef.child('questionsResetAt').set(sharedState.questionsResetAt);
+      renderAdminQuestionsList();
+      showAdminToast("Đã khôi phục toàn bộ câu hỏi gốc trên tất cả các máy!");
+    }
+
+    // =========================================================================
+    // 8. CÀI ĐẶT PHÒNG THI & QUẢN LÝ BLACKLIST
+    // =========================================================================
+    function syncAdminConfigInputs() {
+      const lockEl = document.getElementById('toggle-lock-room');
+      const reqEl = document.getElementById('toggle-require-code');
+      const codeEl = document.getElementById('admin-room-code');
+      if (lockEl) lockEl.checked = !!sharedState.config.locked;
+      if (reqEl) reqEl.checked = !!sharedState.config.requireCode;
+      if (codeEl && document.activeElement !== codeEl) {
+        codeEl.value = sharedState.config.roomCode || '';
+      }
+    }
+
+    function saveRoomConfigFromAdmin() {
+      sharedState.config = {
+        locked: document.getElementById('toggle-lock-room').checked,
+        requireCode: document.getElementById('toggle-require-code').checked,
+        roomCode: document.getElementById('admin-room-code').value.trim(),
+        updatedAt: Date.now()
+      };
+      pushStateToFirebase();
+      showAdminToast("Đã lưu cài đặt phòng thi!");
+    }
+
+    function addManualBlacklist(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const input = document.getElementById('input-blacklist-name');
+      const rawName = input.value.trim();
+      if (!rawName) return;
+      input.value = '';
+      setBlacklistStatus(rawName, true);
+    }
+
+    function setBlacklistStatus(displayName, banned) {
+      const norm = normalizeName(displayName);
+      if (!norm) return;
+      sharedState.blacklist[norm] = { name: displayName.trim(), banned: !!banned };
+      pushStateToFirebase();
+    }
+
+    function kickAndBanSession(sessionId) {
+      const s = sharedState.sessions[sessionId];
+      if (s) setBlacklistStatus(s.name, true);
+    }
+
+    function deleteSessionById(sessionId) {
+      if (sharedState.sessions[sessionId]) {
+        delete sharedState.sessions[sessionId];
+        pushStateToFirebase();
+      }
+    }
+
+    function clearAllSessions() {
+      if (!confirm("Xóa toàn bộ danh sách học sinh?")) return;
+      sharedState.sessions = {};
+      pushStateToFirebase();
+    }
+
+    function getActiveSessionsList() {
+      return Object.values(sharedState.sessions).filter(s => s && !s.deleted && s.name && !s.isHost);
+    }
+
+    function isSessionCompleted(s) {
+      const total = Number(s.totalQuestions) || questionsData.length;
+      const answered = Number(s.answeredCount) || 0;
+      return s.status === 'completed' || s.status === 'submitted' || (answered >= total && total > 0);
+    }
+
+    function renderAdminTable() {
+      try {
+        const allSessions = getActiveSessionsList();
+        const bannedEntries = Object.entries(sharedState.blacklist).filter(([, v]) => v && v.banned);
+
+        const totalUsers = allSessions.length;
+        const workingCount = allSessions.filter(s => !isSessionCompleted(s)).length;
+        const completedCount = allSessions.filter(s => isSessionCompleted(s)).length;
+        const avgScore = totalUsers > 0
+          ? (allSessions.reduce((acc, s) => acc + (Number(s.score10) || 0), 0) / totalUsers).toFixed(2)
+          : "0.0";
+
+        document.getElementById('stat-total-users').textContent = totalUsers;
+        document.getElementById('stat-active-users').textContent = `${workingCount} / ${completedCount}`;
+        document.getElementById('stat-avg-score').textContent = avgScore;
+        document.getElementById('stat-banned-count').textContent = bannedEntries.length;
+
+        const tagsContainer = document.getElementById('blacklist-tags');
+        if (tagsContainer) {
+          if (bannedEntries.length === 0) {
+            tagsContainer.innerHTML = `<span class="text-xs text-slate-400 italic">Chưa có ai trong danh sách chặn.</span>`;
+          } else {
+            tagsContainer.innerHTML = bannedEntries.map(([, item]) => `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200">
+                <i class="fa-solid fa-ban text-[10px]"></i> ${escapeHtml(item.name)}
+                <button type="button" onclick="setBlacklistStatus('${escapeJs(item.name)}', false)" class="hover:text-rose-950 ml-1 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+              </span>
+            `).join('');
+          }
+        }
+
+        const keyword = (document.getElementById('admin-search-input')?.value || "").trim().toLowerCase();
+        const sortBy = document.getElementById('admin-sort-select')?.value || 'newest';
+
+        let filtered = allSessions.filter(s => {
+          if (!keyword) return true;
+          return (s.name || "").toLowerCase().includes(keyword) || (s.className || "").toLowerCase().includes(keyword);
+        });
+
+        filtered.sort((a, b) => {
+          if (sortBy === 'score_desc') return (Number(b.score10) || 0) - (Number(a.score10) || 0);
+          if (sortBy === 'progress_desc') return (Number(b.progress) || 0) - (Number(a.progress) || 0);
+          return (b.loginTime || 0) - (a.loginTime || 0);
+        });
+
+        const tbody = document.getElementById('admin-users-tbody');
+        if (!tbody) return;
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="9" class="py-8 text-center text-slate-400">Chưa có học sinh nào đăng nhập.</td></tr>`;
+          return;
+        }
+
+        const now = Date.now();
+        tbody.innerHTML = filtered.map((s, idx) => {
+          const norm = normalizeName(s.name);
+          const banned = (norm && sharedState.blacklist[norm]?.banned) || s.status === 'banned';
+          const answered = Number(s.answeredCount) || 0;
+          const total = Number(s.totalQuestions) || questionsData.length;
+          const completed = isSessionCompleted(s);
+          const isNewRow = newlyJoinedTimestamps[s.id] && (now - newlyJoinedTimestamps[s.id] < 2500);
+
+          let statusBadge = '';
+          if (banned) {
+            statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">Đã chặn</span>`;
+          } else if (completed) {
+            statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Đã xong</span>`;
+          } else {
+            statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Đang làm (${answered}/${total})</span>`;
+          }
+
+          const prog = Number(s.progress) || 0;
+          const score10 = Number(s.score10 || 0).toFixed(2);
+
+          return `
+            <tr class="hover:bg-slate-50 transition ${isNewRow ? 'animate-new-row' : ''}">
+              <td class="py-2.5 px-3 font-medium text-slate-500">${idx + 1}</td>
+              <td class="py-2.5 px-3 font-bold text-slate-800">${escapeHtml(s.name)}</td>
+              <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">${escapeHtml(s.className)}</span></td>
+              <td class="py-2.5 px-3">${statusBadge}</td>
+              <td class="py-2.5 px-3 font-bold text-emerald-700">${score10}đ</td>
+              <td class="py-2.5 px-3 w-36">
+                <div class="flex items-center justify-between text-[11px] mb-1">
+                  <span>${answered}/${total}</span><span class="text-emerald-600 font-bold">${prog}%</span>
+                </div>
+                <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                  <div class="bg-emerald-500 h-1.5 rounded-full" style="width: ${prog}%"></div>
+                </div>
+              </td>
+              <td class="py-2.5 px-3 font-mono text-slate-600">${formatDuration(s.duration || 0)}</td>
+              <td class="py-2.5 px-3 text-slate-500">
+                <div>${formatClock(s.loginTime)}</div>
+                <div class="text-[10px] text-slate-400">${escapeHtml(s.device || '')}</div>
+              </td>
+              <td class="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                ${banned
+                  ? `<button type="button" onclick="setBlacklistStatus('${escapeJs(s.name)}', false)" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold cursor-pointer">Mở</button>`
+                  : `<button type="button" onclick="kickAndBanSession('${escapeJs(s.id)}')" class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 font-semibold cursor-pointer">Chặn</button>`
+                }
+                <button type="button" onclick="deleteSessionById('${escapeJs(s.id)}')" class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 font-semibold cursor-pointer"><i class="fa-solid fa-trash"></i></button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {}
+    }
+
+    function exportCSV() {
+      const list = getActiveSessionsList();
+      const headers = ["STT", "Họ và tên", "Lớp", "Trạng thái", "Điểm (Thang 10)", "Tiến độ (%)", "Thời gian làm", "Giờ vào", "Thiết bị"];
+      const rows = list.map((s, index) => [
+        index + 1, s.name || "", s.className || "", s.status || "", Number(s.score10 || 0).toFixed(2),
+        `${s.progress || 0}%`, formatDuration(s.duration || 0), formatClock(s.loginTime), s.device || ""
+      ]);
+
+      const csvContent = "\uFEFF" + [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Bang_Diem_LichSu_11_${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function downloadUpdatedHTMLFile() {
+      const serialized = JSON.stringify(questionsData, null, 2);
+      const replacement = `/*__QUESTIONS_DATA_START__*/\n    const defaultQuestionsData = ${serialized};\n    /*__QUESTIONS_DATA_END__*/`;
+      let fullHtml = document.documentElement.outerHTML;
+      fullHtml = "<!DOCTYPE html>\n<html lang=\"vi\">\n" + fullHtml.replace(/<html[^>]*>|<\/html>/gi, "") + "\n</html>";
+      fullHtml = fullHtml.replace(/\/\*__QUESTIONS_DATA_START__\*\/[\s\S]*?\/\*__QUESTIONS_DATA_END__\*\//, replacement);
+      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `De_Cuong_LichSu_11_GK1_CapNhat_${Date.now()}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showAdminToast("Đã xuất file HTML đã cập nhật!");
+    }
+
+    function escapeHtml(str) {
+      return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function escapeJs(str) {
+      return String(str || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
+
+    function bypassLoginToView() {
+      document.getElementById('login-gate-modal').classList.add('hidden');
+      renderQuestions();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function openLoginModal() {
+      document.getElementById('login-gate-modal').classList.remove('hidden');
+      const input = document.getElementById('input-fullname');
+      if (input) input.focus();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderQuestions();
+    });
+
+    window.onload = async () => {
+      renderQuestions();
+      initFirebaseSync();
+
+      const bypassed = checkUrlAdminBypass();
+      if (bypassed) {
+        renderQuestions();
+        return;
+      }
+
+      await fetchClientIP();
+      const syncEl = document.getElementById('sync-status-login');
+      if (syncEl && currentClientIP) {
+        syncEl.innerHTML = `<i class="fa-solid fa-wifi text-emerald-500 mr-1"></i>IP: ${currentClientIP}`;
+      }
+
+      function restoreStudentSession(stu, source = "cache") {
+        if (!stu || !stu.id || stu.isHost) return false;
+        if (isStudentBanned(stu.name, stu.id)) return false;
+
+        currentStudent = stu;
+        userAnswers = {};
+        secondsElapsed = Number(stu.duration) || 0;
+
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY_STUDENT);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.student && parsed.student.id === stu.id) {
+              userAnswers = parsed.userAnswers || {};
+              if (parsed.secondsElapsed) secondsElapsed = parsed.secondsElapsed;
+            }
+          }
+        } catch (e) {}
+
+        sharedState.sessions[currentStudent.id] = { ...(sharedState.sessions[currentStudent.id] || {}), ...currentStudent };
+        saveCurrentStudentCache();
+
+        document.getElementById('login-gate-modal').classList.add('hidden');
+        updateStudentHeaderUI();
+        document.getElementById('timer').textContent = formatDuration(secondsElapsed);
+
+        const stats = computeCurrentStudentStats();
+        if (stats.answeredCount < stats.totalQuestions) startTimer();
+        updateCompletionBannerUI();
+        onRealtimeStateUpdated();
+
+        const toast = document.getElementById('student-toast');
+        const toastText = document.getElementById('student-toast-text');
+        if (toast && toastText) {
+          toastText.textContent = source === "ip"
+            ? `Chào mừng trở lại, ${stu.name}! Đã tự động nhận diện theo IP thiết bị.`
+            : `Chào mừng trở lại, ${stu.name}!`;
+          toast.classList.remove('hidden');
+          toast.classList.add('flex');
+          setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 4000);
+        }
+
+        return true;
+      }
+
+      let restored = false;
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_STUDENT);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.student && parsed.student.id && !parsed.student.isHost) {
+            restored = restoreStudentSession(parsed.student, "cache");
+          }
+        }
+      } catch (e) {}
+
+      if (!restored && safeIpKey) {
+        try {
+          const ipSnap = await dbNamespaceRef.child(`ipMappings/${safeIpKey}`).once('value');
+          const ipMap = ipSnap.val();
+          if (ipMap && ipMap.sessionId) {
+            const sessSnap = await dbNamespaceRef.child(`sessions/${ipMap.sessionId}`).once('value');
+            const sessionData = sessSnap.val();
+            if (sessionData && !sessionData.deleted && sessionData.name && !isStudentBanned(sessionData.name, sessionData.id)) {
+              restored = restoreStudentSession(sessionData, "ip");
+            }
+          }
+        } catch (e) {}
+      }
+
+      renderQuestions();
+    };
+
+  </script>
+</body>
+</html>
