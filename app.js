@@ -1743,7 +1743,7 @@ class QuizApp {
         if (!window.dbService) return;
 
         if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Đang tải lịch sử đăng nhập thiết bị...</td></tr>';
-        const list = await window.dbService.getLoginHistory(100);
+        const list = await window.dbService.getLoginHistory(250);
         this.lastFetchedLogins = list || [];
 
         if (badgeCount) badgeCount.textContent = list ? list.length : 0;
@@ -1770,57 +1770,67 @@ class QuizApp {
             const summary = (item.score_summary || "").toLowerCase();
             const combined = status + " " + summary;
 
-            // 1. Nhận diện từ khóa tên môn học
-            if (combined.includes("địa lí") || combined.includes("địa li") || combined.includes("dia li") || combined.includes("môn địa") || combined.includes("mon dia")) {
+            // 1. ƯU TIÊN SỐ 1: MÔN ĐỊA LÍ 11
+            // Chỉ duy nhất đề cương Địa có đúng 67 ý điểm (/67), hoặc có nhãn địa lí
+            if (combined.includes("/67") || combined.includes("địa lí") || combined.includes("địa li") || combined.includes("dia li") || combined.includes("môn địa") || combined.includes("mon dia")) {
                 geographyStudents.push(item);
-            } else if (combined.includes("vật lí") || combined.includes("vật li") || combined.includes("vat li") || combined.includes("môn lí") || combined.includes("mon li")) {
-                physicsStudents.push(item);
-            } else if (combined.includes("lịch sử") || combined.includes("lich su") || combined.includes("môn sử") || combined.includes("mon su")) {
-                historyStudents.push(item);
             }
-            // 2. Nhận diện thông minh qua số câu/ý đặc thù của đề cương:
-            // - Đề cương Địa Lí 11: Đúng 67 ý điểm
-            // - Đề cương Vật Lí 11: Đúng 52 ý điểm hoặc 43 câu
-            // - Đề cương Lịch Sử 11: Đúng 101 ý điểm hoặc 74 câu
-            else if (status.includes("/67") || summary.includes("/67")) {
-                geographyStudents.push(item);
-            } else if (status.includes("/52") || summary.includes("/52") || status.includes("/43") || summary.includes("/43")) {
+            // 2. ƯU TIÊN SỐ 2: MÔN VẬT LÍ 11
+            // Chỉ môn Vật Lí có đúng 52 ý điểm hoặc 43 câu, hoặc từ khóa vật lí
+            else if (combined.includes("/52") || combined.includes("/43") || combined.includes("vật lí") || combined.includes("vật li") || combined.includes("vat li") || combined.includes("môn lí") || combined.includes("mon li")) {
                 physicsStudents.push(item);
-            } else if (status.includes("/101") || summary.includes("/101") || status.includes("/74") || summary.includes("/74")) {
-                historyStudents.push(item);
-            } else {
+            }
+            // 3. CÒN LẠI: MÔN LỊCH SỬ 11
+            else {
                 historyStudents.push(item);
             }
         });
 
-        if (historyCountEl) historyCountEl.textContent = historyStudents.length;
-        if (physicsCountEl) physicsCountEl.textContent = physicsStudents.length;
-        if (geographyCountEl) geographyCountEl.textContent = geographyStudents.length;
+        // Lọc trùng theo Tên + IP để mỗi học sinh xuất hiện 1 card mới nhất, đúng môn đang làm
+        const dedupeStudents = (arr) => {
+            const seen = new Set();
+            return arr.filter(item => {
+                const name = (item.player_name || '').trim().toLowerCase();
+                const ip = (item.ip_address || '').trim();
+                const key = `${name}___${ip}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        };
+
+        const uniqueGeo = dedupeStudents(geographyStudents);
+        const uniquePhys = dedupeStudents(physicsStudents);
+        const uniqueHist = dedupeStudents(historyStudents);
+
+        if (historyCountEl) historyCountEl.textContent = uniqueHist.length;
+        if (physicsCountEl) physicsCountEl.textContent = uniquePhys.length;
+        if (geographyCountEl) geographyCountEl.textContent = uniqueGeo.length;
 
         // 1. Render Cột MÔN SỬ ĐANG CÓ AI
         if (historyListEl) {
-            if (historyStudents.length === 0) {
+            if (uniqueHist.length === 0) {
                 historyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Sử.</p>';
             } else {
-                historyListEl.innerHTML = historyStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Lịch Sử')).join('');
+                historyListEl.innerHTML = uniqueHist.map(st => this._buildStudentCardHTML(st, bannedMap, 'Lịch Sử')).join('');
             }
         }
 
         // 2. Render Cột MÔN LÍ ĐANG CÓ AI
         if (physicsListEl) {
-            if (physicsStudents.length === 0) {
+            if (uniquePhys.length === 0) {
                 physicsListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Lí.</p>';
             } else {
-                physicsListEl.innerHTML = physicsStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Vật Lí')).join('');
+                physicsListEl.innerHTML = uniquePhys.map(st => this._buildStudentCardHTML(st, bannedMap, 'Vật Lí')).join('');
             }
         }
 
         // 3. Render Cột MÔN ĐỊA ĐANG CÓ AI
         if (geographyListEl) {
-            if (geographyStudents.length === 0) {
+            if (uniqueGeo.length === 0) {
                 geographyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Địa.</p>';
             } else {
-                geographyListEl.innerHTML = geographyStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Địa Lí')).join('');
+                geographyListEl.innerHTML = uniqueGeo.map(st => this._buildStudentCardHTML(st, bannedMap, 'Địa Lí')).join('');
             }
         }
 
@@ -1926,9 +1936,16 @@ class QuizApp {
      * Helper tạo card cho danh sách thí sinh từng môn
      */
     _buildStudentCardHTML(item, bannedMap, subjectLabel) {
-        const status = item.status || "Đang làm bài";
+        let status = item.status || "Đang làm bài";
         const isBanned = status.startsWith("BANNED") || !!bannedMap[item.ip_address];
         const banReason = isBanned ? (status.replace(/^BANNED:\s*/, "") || (bannedMap[item.ip_address]?.reason) || "Vi phạm quy chế") : "";
+
+        // Làm sạch hiển thị môn học nếu bị gắn nhãn cũ từ trước
+        if (subjectLabel === 'Địa Lí') {
+            status = status.replace(/Lịch Sử 11/g, 'Địa Lí 11');
+        } else if (subjectLabel === 'Vật Lí') {
+            status = status.replace(/Lịch Sử 11/g, 'Vật Lí 11');
+        }
 
         // Trích xuất % tiến độ
         let percent = 0;
@@ -1939,7 +1956,13 @@ class QuizApp {
             if (tot > 0) percent = Math.min(100, Math.round((cur / tot) * 100));
         }
 
-        const isGeoAllowed = this.allowedGeoIps && this.allowedGeoIps.includes(item.ip_address);
+        // Hiển thị tóm tắt điểm nếu đã nộp bài
+        let displayStatus = status;
+        if (item.score_summary && (displayStatus.includes('Đã nộp bài') || displayStatus.includes('Hoàn thành'))) {
+            displayStatus = `${displayStatus} - ${item.score_summary.replace(/^\[.*?\]\s*/, '')}`;
+        }
+
+        const isGeoAllowed = (this.geoMode === 'PUBLIC') || (this.allowedGeoIps && this.allowedGeoIps.includes(item.ip_address));
 
         return `
             <div class="p-2.5 rounded-xl ${isBanned ? 'bg-rose-950/40 border border-rose-500/40' : 'bg-slate-900/80 border border-slate-700/70'} flex items-center justify-between gap-2 transition hover:border-slate-600">
@@ -1956,7 +1979,7 @@ class QuizApp {
                     <!-- Thanh tiến độ bài làm trực quan -->
                     <div class="mt-1.5">
                         <div class="flex items-center justify-between text-[10px] mb-0.5">
-                            <span class="text-slate-300 font-semibold truncate">${isBanned ? `Lý do: ${this.escapeHtml(banReason)}` : this.escapeHtml(status)}</span>
+                            <span class="text-slate-300 font-semibold truncate">${isBanned ? `Lý do: ${this.escapeHtml(banReason)}` : this.escapeHtml(displayStatus)}</span>
                             ${!isBanned ? `<span class="font-bold text-indigo-400 font-mono">${percent}%</span>` : ''}
                         </div>
                         ${!isBanned ? `

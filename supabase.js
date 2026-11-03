@@ -247,7 +247,7 @@ class DatabaseService {
     /**
      * Lấy danh sách máy & người đăng nhập cho Admin
      */
-    async getLoginHistory(limit = 100) {
+    async getLoginHistory(limit = 250) {
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
