@@ -1,15 +1,19 @@
 /**
- * app.js - Logic điều phối ứng dụng trắc nghiệm Lịch Sử 11
+ * app.js - Logic điều phối ứng dụng trắc nghiệm Đa Môn (Lịch Sử 11 & Vật Lí 11)
  * Chế độ:
- * 1. Tự động nhận diện thiết bị & địa chỉ IP để học sinh không cần nhập lại tên cũ
- * 2. Cuộn dọc liên tục, Phản hồi đáp án tức thì (Instant Feedback), Không xáo trộn đáp án
- * 3. Nút "Làm lại từ đầu" (Reset toàn bộ đáp án và cuộn về đầu trang)
- * 4. Bảng Admin giám sát máy và thí sinh đăng nhập thời gian thực
- * 5. Cập nhật trực tiếp ngân hàng câu hỏi bằng quyền Admin
+ * 1. Hỗ trợ đa môn học: Lịch Sử 11 (74 câu) & Vật Lí 11 (43 câu: Đầy đủ 3 phần trắc nghiệm + Đúng Sai + Điền số)
+ * 2. Tự động nhận diện thiết bị & địa chỉ IP để học sinh không cần nhập lại tên cũ
+ * 3. Cuộn dọc liên tục, Phản hồi đáp án tức thì (Instant Feedback), Không xáo trộn đáp án
+ * 4. Nút "Làm lại từ đầu" (Reset toàn bộ đáp án và cuộn về đầu trang)
+ * 5. Bảng Admin giám sát máy và thí sinh đăng nhập thời gian thực
+ * 6. Cập nhật trực tiếp ngân hàng câu hỏi bằng quyền Admin
  */
 
 class QuizApp {
     constructor() {
+        // Môn học hiện tại
+        this.currentSubject = 'history'; // 'history' hoặc 'physics'
+
         // Thông tin người học & Thiết bị & IP
         this.playerName = "";
         this.clientIp = "Đang nhận diện...";
@@ -22,7 +26,7 @@ class QuizApp {
 
         // Dữ liệu câu hỏi & Trạng thái làm bài
         this.allQuestions = window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : [];
-        this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } }
+        this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
         // Quyền quản trị Admin
@@ -45,8 +49,84 @@ class QuizApp {
         this.displayDeviceInfo();
         this.checkSavedUser();
         this.fetchClientIp();
+        this.renderFilterTabs();
         await this.loadQuestionsFromDb();
         this.updateTotalQuestionDisplay();
+    }
+
+    /**
+     * Chuyển đổi môn học ôn tập (Lịch Sử 11 / Vật Lí 11)
+     */
+    selectSubject(subj) {
+        if (subj === this.currentSubject) return;
+        this.currentSubject = subj;
+
+        const btnHistory = document.getElementById('tab-btn-history');
+        const btnPhysics = document.getElementById('tab-btn-physics');
+        const titleEl = document.getElementById('navbar-subject-title');
+        const subTitleEl = document.getElementById('navbar-subject-subtitle');
+        const badgeEl = document.getElementById('home-subject-badge');
+
+        if (subj === 'physics') {
+            btnHistory?.classList.remove('bg-indigo-600/25', 'border-indigo-500', 'text-white', 'shadow-md', 'shadow-indigo-600/20');
+            btnHistory?.classList.add('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
+            
+            btnPhysics?.classList.remove('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
+            btnPhysics?.classList.add('bg-purple-600/25', 'border-purple-500', 'text-white', 'shadow-md', 'shadow-purple-600/20');
+
+            if (titleEl) titleEl.textContent = "Vật Lí 11";
+            if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (43 câu / 52 ý)";
+            if (badgeEl) badgeEl.textContent = "Vật Lí 11 (43 câu / 52 ý)";
+
+            this.allQuestions = window.PHYSICS_QUESTIONS ? [...window.PHYSICS_QUESTIONS] : [];
+        } else {
+            btnPhysics?.classList.remove('bg-purple-600/25', 'border-purple-500', 'text-white', 'shadow-md', 'shadow-purple-600/20');
+            btnPhysics?.classList.add('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
+
+            btnHistory?.classList.remove('bg-slate-800/80', 'border-slate-700', 'text-slate-300');
+            btnHistory?.classList.add('bg-indigo-600/25', 'border-indigo-500', 'text-white', 'shadow-md', 'shadow-indigo-600/20');
+
+            if (titleEl) titleEl.textContent = "Lịch Sử 11";
+            if (subTitleEl) subTitleEl.textContent = "Đề Cương Ôn Thi Giữa Kì 1 (74 câu / 101 ý)";
+            if (badgeEl) badgeEl.textContent = "Lịch Sử 11 (74 câu / 101 ý)";
+
+            this.allQuestions = window.QUIZ_QUESTIONS ? [...window.QUIZ_QUESTIONS] : [];
+        }
+
+        this.userAnswers = {};
+        this.currentFilter = 'all';
+        this.updateTotalQuestionDisplay();
+        this.renderFilterTabs();
+        this.renderAllQuestions();
+        this.renderAdminQuestionsList();
+    }
+
+    renderFilterTabs() {
+        const container = document.getElementById('quiz-filter-tabs-container');
+        if (!container) return;
+
+        let tabsHtml = '';
+        if (this.currentSubject === 'physics') {
+            tabsHtml = `
+                <span class="text-slate-500 text-[11px] font-semibold mr-1">Lọc:</span>
+                <button onclick="app.filterQuestions('all')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-indigo-600 text-white cursor-pointer" data-filter="all">Tất cả (43)</button>
+                <button onclick="app.filterQuestions('dao_dong')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="dao_dong">Dao động cơ</button>
+                <button onclick="app.filterQuestions('song_co')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="song_co">Sóng cơ</button>
+                <button onclick="app.filterQuestions('mcq')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="mcq">4 lựa chọn (31)</button>
+                <button onclick="app.filterQuestions('tf')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer" data-filter="tf">Đúng - Sai (3)</button>
+                <button onclick="app.filterQuestions('short')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-purple-300 cursor-pointer" data-filter="short">Điền số (9)</button>
+            `;
+        } else {
+            tabsHtml = `
+                <span class="text-slate-500 text-[11px] font-semibold mr-1">Lọc:</span>
+                <button onclick="app.filterQuestions('all')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-indigo-600 text-white cursor-pointer" data-filter="all">Tất cả (74)</button>
+                <button onclick="app.filterQuestions('b1')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="b1">Bài 1: CM Tư Sản (35)</button>
+                <button onclick="app.filterQuestions('b2')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="b2">Bài 2: Sự xác lập CNTB (39)</button>
+                <button onclick="app.filterQuestions('mcq')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="mcq">4 lựa chọn (65)</button>
+                <button onclick="app.filterQuestions('tf')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer" data-filter="tf">Đúng - Sai (9)</button>
+            `;
+        }
+        container.innerHTML = tabsHtml;
     }
 
     /**
@@ -161,7 +241,7 @@ class QuizApp {
      * Tải câu hỏi mới nhất từ Supabase Cloud Database (hoặc LocalStorage)
      */
     async loadQuestionsFromDb() {
-        if (window.dbService) {
+        if (window.dbService && this.currentSubject === 'history') {
             try {
                 const list = await window.dbService.fetchQuestionsOnline();
                 if (list && list.length > 0) {
@@ -209,7 +289,7 @@ class QuizApp {
     }
 
     updateTotalQuestionDisplay() {
-        const count = this.allQuestions ? this.allQuestions.length : 74;
+        const count = this.allQuestions ? this.allQuestions.length : (this.currentSubject === 'physics' ? 43 : 74);
         const qBadge = document.getElementById('admin-badge-q-count');
         if (qBadge) qBadge.textContent = count;
     }
@@ -238,6 +318,8 @@ class QuizApp {
         const headerName = document.getElementById('quiz-header-player-name');
         if (headerName) headerName.textContent = rawName;
 
+        const subjTitle = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+
         // Ghi nhận lượt đăng nhập vào hệ thống Supabase Cloud (để Admin giám sát)
         if (window.dbService) {
             try {
@@ -245,7 +327,7 @@ class QuizApp {
                     playerName: rawName,
                     ipAddress: this.clientIp,
                     deviceInfo: this.deviceInfo,
-                    status: 'Đang làm bài'
+                    status: `Đang làm bài (${subjTitle})`
                 });
             } catch (err) {
                 console.warn("Lỗi ghi nhận đăng nhập:", err);
@@ -290,7 +372,7 @@ class QuizApp {
 
         // Cập nhật trạng thái trong Admin nếu có
         if (window.dbService && this.currentLoginId) {
-            window.dbService.updateLoginStatus(this.currentLoginId, 'Đang làm lại từ đầu', '');
+            window.dbService.updateLoginStatus(this.currentLoginId, `Đang làm lại (${this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11'})`, '');
         }
 
         // 2. Render lại danh sách câu hỏi sạch
@@ -336,15 +418,23 @@ class QuizApp {
         container.innerHTML = '';
         const questions = (this.allQuestions && this.allQuestions.length > 0) 
             ? this.allQuestions 
-            : (window.QUIZ_QUESTIONS || []);
+            : (this.currentSubject === 'physics' ? (window.PHYSICS_QUESTIONS || []) : (window.QUIZ_QUESTIONS || []));
 
         let filtered = questions.filter(q => {
             if (this.currentFilter === 'all') return true;
+            if (this.currentFilter === 'wrong') return this.isQuestionWrong(q);
+            if (this.currentFilter === 'mcq') return q.qType === 'mcq' || (!q.qType && !q.statements);
+            if (this.currentFilter === 'tf') return q.qType === 'tf_group';
+            if (this.currentFilter === 'short') return q.qType === 'short_answer';
+
+            // Lọc môn Lịch Sử
             if (this.currentFilter === 'b1') return (q.category || '').includes('Bài 1');
             if (this.currentFilter === 'b2') return (q.category || '').includes('Bài 2');
-            if (this.currentFilter === 'mcq') return q.qType !== 'tf_group';
-            if (this.currentFilter === 'tf') return q.qType === 'tf_group';
-            if (this.currentFilter === 'wrong') return this.isQuestionWrong(q);
+
+            // Lọc môn Vật Lí
+            if (this.currentFilter === 'dao_dong') return (q.category || '').includes('Dao động') || (q.category || '').includes('lắc');
+            if (this.currentFilter === 'song_co') return (q.category || '').includes('Sóng');
+
             return true;
         });
 
@@ -374,7 +464,9 @@ class QuizApp {
             card.id = `q-card-${q.id}`;
             card.className = "p-5 sm:p-6 rounded-2xl bg-slate-800/70 border border-slate-700/70 shadow-xl transition-all duration-200";
 
-            if (q.qType === 'tf_group' || (Array.isArray(q.statements) && q.statements.length > 0)) {
+            if (q.qType === 'short_answer') {
+                card.innerHTML = this.buildShortAnswerQuestionHTML(q);
+            } else if (q.qType === 'tf_group' || (Array.isArray(q.statements) && q.statements.length > 0)) {
                 card.innerHTML = this.buildTrueFalseQuestionHTML(q);
             } else {
                 card.innerHTML = this.buildMCQQuestionHTML(q);
@@ -464,7 +556,7 @@ class QuizApp {
                     <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-extrabold border border-indigo-500/30">
                         Câu ${q.id}
                     </span>
-                    <span class="text-slate-400 font-medium">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
+                    <span class="text-slate-400 font-medium">${this.escapeHtml(q.category || (this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11'))}</span>
                 </div>
                 ${isAnswered ? `
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isCorrect ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}">
@@ -495,7 +587,7 @@ class QuizApp {
 
         let statementsHtml = '';
         statements.forEach((st, idx) => {
-            const userChoice = ansObj[idx]; // true hoặc false hoặc undefined
+            const userChoice = ansObj[idx];
             const isAnswered = userChoice !== undefined;
             const isCorrectChoice = isAnswered && (Boolean(userChoice) === Boolean(st.answer));
 
@@ -580,6 +672,78 @@ class QuizApp {
     }
 
     /**
+     * Tạo HTML cho câu hỏi trả lời ngắn (Điền số / kết quả)
+     */
+    buildShortAnswerQuestionHTML(q) {
+        const userVal = this.userAnswers[q.id];
+        const isAnswered = userVal !== undefined;
+        const isCorrect = isAnswered && (
+            (q.acceptedValues && q.acceptedValues.some(val => String(val).trim().toLowerCase() === String(userVal).trim().toLowerCase())) ||
+            String(q.correctValue).trim().toLowerCase() === String(userVal).trim().toLowerCase()
+        );
+
+        return `
+            <div class="flex items-center justify-between gap-3 mb-3 pb-2.5 border-b border-slate-700/60 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-extrabold border border-purple-500/30">
+                        Câu ${q.id} (Trả lời ngắn)
+                    </span>
+                    <span class="text-slate-400 font-medium">${this.escapeHtml(q.category || 'Phần III: Trả lời ngắn')}</span>
+                </div>
+                ${isAnswered ? `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isCorrect ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}">
+                        <i class="fa-solid ${isCorrect ? 'fa-check' : 'fa-xmark'}"></i>
+                        ${isCorrect ? 'Chính xác' : 'Chưa đúng'}
+                    </span>
+                ` : '<span class="text-slate-500 text-[11px]">Chưa trả lời</span>'}
+            </div>
+
+            <h3 class="font-medium text-slate-100 text-sm sm:text-base leading-relaxed mb-4">
+                ${this.escapeHtml(q.question)}
+            </h3>
+
+            <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 space-y-2">
+                <div class="flex items-center gap-2">
+                    <input type="text" id="short-input-${q.id}" value="${isAnswered ? this.escapeHtml(userVal) : ''}" ${isAnswered ? 'disabled' : ''} placeholder="Nhập đáp số (VD: 5, 0.5, 2.5...)" 
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();app.submitShortAnswer(${q.id}, this.value);}"
+                        class="flex-1 px-3.5 py-2.5 bg-slate-950 border ${isAnswered ? (isCorrect ? 'border-emerald-500 text-emerald-300 font-bold' : 'border-rose-500 text-rose-300 font-bold') : 'border-slate-700 text-white'} rounded-xl text-xs sm:text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                    <button type="button" ${isAnswered ? 'disabled' : `onclick="app.submitShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)"`} class="px-4 py-2.5 rounded-xl ${isAnswered ? 'bg-slate-800 text-slate-600' : 'bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer shadow'} text-xs transition">
+                        ${isAnswered ? 'Đã kiểm tra' : 'Kiểm tra'}
+                    </button>
+                </div>
+                ${isAnswered ? `
+                    <div class="mt-2 pt-2 border-t border-slate-800 text-xs">
+                        <div class="flex items-center gap-2 font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}">
+                            <i class="fa-solid ${isCorrect ? 'fa-check-circle' : 'fa-circle-xmark'}"></i>
+                            <span>${isCorrect ? 'ĐÁP SỐ CHÍNH XÁC!' : 'ĐÁP SỐ CHƯA ĐÚNG!'}</span>
+                            <span class="text-slate-300 font-normal ml-2">Đáp số chuẩn: <strong class="text-emerald-400 font-bold">${this.escapeHtml(q.correctValue)}</strong></span>
+                        </div>
+                        ${q.explanation ? `<div class="text-slate-300 pt-1 mt-1 border-t border-slate-800"><strong class="text-indigo-300">Lời giải:</strong> ${this.escapeHtml(q.explanation)}</div>` : ''}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    submitShortAnswer(qId, val) {
+        if (!val || !val.trim()) {
+            alert("Vui lòng nhập đáp số của bạn!");
+            return;
+        }
+        if (this.userAnswers[qId] !== undefined) return;
+
+        this.userAnswers[qId] = val.trim();
+
+        const card = document.getElementById(`q-card-${qId}`);
+        const q = this.allQuestions.find(item => item.id === qId);
+        if (card && q) {
+            card.innerHTML = this.buildShortAnswerQuestionHTML(q);
+        }
+
+        this.updateLiveStats();
+    }
+
+    /**
      * Xử lý chọn đáp án MCQ -> Phản hồi tức thì ngay lập tức
      */
     selectMCQOption(qId, optIdx) {
@@ -620,7 +784,13 @@ class QuizApp {
      * Kiểm tra xem câu hỏi này có làm sai không (dành cho bộ lọc "Câu làm sai")
      */
     isQuestionWrong(q) {
-        if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+        if (q.qType === 'short_answer') {
+            const ans = this.userAnswers[q.id];
+            if (ans === undefined) return false;
+            const isMatch = (q.acceptedValues && q.acceptedValues.some(val => String(val).trim().toLowerCase() === String(ans).trim().toLowerCase())) ||
+                String(q.correctValue).trim().toLowerCase() === String(ans).trim().toLowerCase();
+            return !isMatch;
+        } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
             const ansObj = this.userAnswers[q.id];
             if (!ansObj) return false;
             return q.statements.some((st, idx) => {
@@ -644,7 +814,17 @@ class QuizApp {
         let wrongCount = 0;
 
         questions.forEach(q => {
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'short_answer') {
+                totalItems++;
+                const ans = this.userAnswers[q.id];
+                if (ans !== undefined) {
+                    attemptedCount++;
+                    const isMatch = (q.acceptedValues && q.acceptedValues.some(val => String(val).trim().toLowerCase() === String(ans).trim().toLowerCase())) ||
+                        String(q.correctValue).trim().toLowerCase() === String(ans).trim().toLowerCase();
+                    if (isMatch) correctCount++;
+                    else wrongCount++;
+                }
+            } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 const ansObj = this.userAnswers[q.id] || {};
                 let hasWrong = false;
                 q.statements.forEach((st, idx) => {
@@ -726,7 +906,10 @@ class QuizApp {
         let attemptedCount = 0;
 
         questions.forEach(q => {
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'short_answer') {
+                totalItems++;
+                if (this.userAnswers[q.id] !== undefined) attemptedCount++;
+            } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 const ansObj = this.userAnswers[q.id] || {};
                 q.statements.forEach((st, idx) => {
                     totalItems++;
@@ -759,7 +942,15 @@ class QuizApp {
         let correctCount = 0;
 
         questions.forEach(q => {
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'short_answer') {
+                totalItems++;
+                const ans = this.userAnswers[q.id];
+                if (ans !== undefined) {
+                    const isMatch = (q.acceptedValues && q.acceptedValues.some(val => String(val).trim().toLowerCase() === String(ans).trim().toLowerCase())) ||
+                        String(q.correctValue).trim().toLowerCase() === String(ans).trim().toLowerCase();
+                    if (isMatch) correctCount++;
+                }
+            } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 const ansObj = this.userAnswers[q.id] || {};
                 q.statements.forEach((st, idx) => {
                     totalItems++;
@@ -776,10 +967,11 @@ class QuizApp {
         });
 
         const finalScore = totalItems > 0 ? Math.round((correctCount / totalItems) * 100) : 0;
+        const subjTitle = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
 
         // Cập nhật kết quả lên màn hình Result
         const greetingEl = document.getElementById('result-player-greeting');
-        if (greetingEl) greetingEl.textContent = `Chúc mừng ${this.playerName} đã hoàn thành bài thi!`;
+        if (greetingEl) greetingEl.textContent = `Chúc mừng ${this.playerName} đã hoàn thành bài thi ${subjTitle}!`;
 
         const scoreEl = document.getElementById('result-score');
         if (scoreEl) scoreEl.textContent = finalScore;
@@ -796,7 +988,7 @@ class QuizApp {
         if (window.dbService && this.currentLoginId) {
             window.dbService.updateLoginStatus(
                 this.currentLoginId, 
-                'Đã nộp bài', 
+                `Đã nộp bài (${subjTitle})`, 
                 `Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm)`
             );
         }
@@ -822,11 +1014,28 @@ class QuizApp {
         reviewList.innerHTML = '';
         const questions = this.allQuestions || [];
 
-        questions.forEach((q, qIndex) => {
+        questions.forEach((q) => {
             const card = document.createElement('div');
             card.className = "p-4 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs space-y-2";
 
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'short_answer') {
+                const userAns = this.userAnswers[q.id];
+                const isMatch = userAns !== undefined && (
+                    (q.acceptedValues && q.acceptedValues.some(val => String(val).trim().toLowerCase() === String(userAns).trim().toLowerCase())) ||
+                    String(q.correctValue).trim().toLowerCase() === String(userAns).trim().toLowerCase()
+                );
+                card.innerHTML = `
+                    <div class="flex items-center justify-between font-bold">
+                        <span class="text-purple-300">Câu ${q.id} (Trả lời ngắn):</span>
+                        <span class="${isMatch ? 'text-emerald-400' : 'text-rose-400'}">${isMatch ? 'ĐÚNG ✅' : 'CHƯA ĐÚNG ❌'}</span>
+                    </div>
+                    <div class="text-slate-200">${this.escapeHtml(q.question)}</div>
+                    <div class="pt-1 text-slate-300">
+                        Đáp số của bạn: <strong>${userAns !== undefined ? this.escapeHtml(userAns) : '(Chưa làm)'}</strong> | Đáp số chuẩn: <strong class="text-emerald-400">${this.escapeHtml(q.correctValue)}</strong>
+                    </div>
+                    ${q.explanation ? `<div class="text-slate-400 italic pt-1 border-t border-slate-800">Lời giải: ${this.escapeHtml(q.explanation)}</div>` : ''}
+                `;
+            } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 const ansObj = this.userAnswers[q.id] || {};
                 let stRows = '';
                 q.statements.forEach((st, idx) => {
@@ -989,7 +1198,7 @@ class QuizApp {
 
         const questions = (this.allQuestions && this.allQuestions.length > 0) 
             ? this.allQuestions 
-            : (window.QUIZ_QUESTIONS || []);
+            : (this.currentSubject === 'physics' ? (window.PHYSICS_QUESTIONS || []) : (window.QUIZ_QUESTIONS || []));
 
         let filtered = questions.filter(q => {
             const matchesText = !keyword || q.question.toLowerCase().includes(keyword) || (q.explanation && q.explanation.toLowerCase().includes(keyword));
@@ -1011,7 +1220,9 @@ class QuizApp {
 
             const letters = ['A', 'B', 'C', 'D'];
             let answerSnippet = '';
-            if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
+            if (q.qType === 'short_answer') {
+                answerSnippet = `<span class="text-purple-300 font-semibold">[Trả lời ngắn: ${this.escapeHtml(q.correctValue)}]</span>`;
+            } else if (q.qType === 'tf_group' && Array.isArray(q.statements)) {
                 answerSnippet = `<span class="text-amber-300 font-semibold">[Đúng - Sai: ${q.statements.length} ý]</span>`;
             } else {
                 answerSnippet = `<span class="text-emerald-400 font-semibold">Đáp án đúng: ${letters[q.correct] || 'A'}</span>`;
@@ -1022,7 +1233,7 @@ class QuizApp {
                     <div class="flex-1 space-y-1">
                         <div class="flex items-center gap-2">
                             <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[11px]">Câu #${q.id}</span>
-                            <span class="text-slate-400 text-[11px]">${this.escapeHtml(q.category || 'Lịch Sử 11')}</span>
+                            <span class="text-slate-400 text-[11px]">${this.escapeHtml(q.category || (this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11'))}</span>
                             ${answerSnippet}
                         </div>
                         <p class="font-medium text-slate-200 line-clamp-2 leading-relaxed">${this.escapeHtml(q.question)}</p>
@@ -1044,7 +1255,7 @@ class QuizApp {
     openNewQuestionModal() {
         document.getElementById('editor-modal-title').textContent = "Thêm Câu Hỏi Mới";
         document.getElementById('edit-q-id').value = "";
-        document.getElementById('edit-q-category').value = "Bài 1: Cách mạng tư sản";
+        document.getElementById('edit-q-category').value = this.currentSubject === 'physics' ? "Dao động cơ" : "Bài 1: Cách mạng tư sản";
         document.getElementById('edit-q-text').value = "";
         document.getElementById('edit-q-opt-0').value = "";
         document.getElementById('edit-q-opt-1').value = "";
@@ -1068,7 +1279,7 @@ class QuizApp {
 
         document.getElementById('editor-modal-title').textContent = `Chỉnh Sửa Câu Hỏi #${q.id}`;
         document.getElementById('edit-q-id').value = q.id;
-        document.getElementById('edit-q-category').value = q.category || "Bài 1: Cách mạng tư sản";
+        document.getElementById('edit-q-category').value = q.category || (this.currentSubject === 'physics' ? "Dao động cơ" : "Bài 1: Cách mạng tư sản");
         document.getElementById('edit-q-text').value = q.question;
 
         if (Array.isArray(q.options)) {
@@ -1102,7 +1313,6 @@ class QuizApp {
 
     /**
      * LƯU CÂU HỎI TRỰC TIẾP BẰNG QUYỀN ADMIN
-     * Cập nhật ngay lập tức vào bộ nhớ, DOM và đồng bộ lên Supabase Cloud
      */
     async saveQuestionFromEditor() {
         const idInput = document.getElementById('edit-q-id').value;
@@ -1128,10 +1338,11 @@ class QuizApp {
             qId = maxId + 1;
         }
 
-        // Lấy lại các thông tin của câu hỏi cũ nếu là dạng tf_group
         const oldQ = this.allQuestions.find(q => q.id === qId);
         const qType = oldQ ? oldQ.qType : 'mcq';
         const statements = oldQ ? oldQ.statements : [];
+        const correctValue = oldQ ? oldQ.correctValue : undefined;
+        const acceptedValues = oldQ ? oldQ.acceptedValues : undefined;
 
         const newQObj = {
             id: qId,
@@ -1141,10 +1352,12 @@ class QuizApp {
             options: [opt0, opt1, opt2, opt3],
             correct: correctIndex,
             statements: statements,
+            correctValue: correctValue,
+            acceptedValues: acceptedValues,
             explanation: explanation
         };
 
-        // 1. Cập nhật vào mảng allQuestions và window.QUIZ_QUESTIONS
+        // 1. Cập nhật vào mảng allQuestions
         const existingIdx = this.allQuestions.findIndex(q => q.id === qId);
         if (existingIdx !== -1) {
             this.allQuestions[existingIdx] = newQObj;
@@ -1152,42 +1365,54 @@ class QuizApp {
             this.allQuestions.push(newQObj);
         }
 
-        if (Array.isArray(window.QUIZ_QUESTIONS)) {
+        if (this.currentSubject === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
+            const wIdx = window.PHYSICS_QUESTIONS.findIndex(q => q.id === qId);
+            if (wIdx !== -1) window.PHYSICS_QUESTIONS[wIdx] = newQObj;
+            else window.PHYSICS_QUESTIONS.push(newQObj);
+        } else if (Array.isArray(window.QUIZ_QUESTIONS)) {
             const wIdx = window.QUIZ_QUESTIONS.findIndex(q => q.id === qId);
             if (wIdx !== -1) window.QUIZ_QUESTIONS[wIdx] = newQObj;
             else window.QUIZ_QUESTIONS.push(newQObj);
         }
 
-        // 2. Nếu câu hỏi này đã từng được chọn đáp án trước đó, xóa lựa chọn cũ để cập nhật theo đáp án mới
+        // 2. Xóa đáp án cũ của câu này để cập nhật theo đáp án mới
         if (this.userAnswers[qId] !== undefined) {
             delete this.userAnswers[qId];
         }
 
-        // 3. Lưu vào Database (Supabase Cloud & LocalStorage Fallback)
-        if (window.dbService) {
-            await window.dbService.saveQuestion(newQObj);
+        // 3. Lưu vào Database
+        let syncNotice = "";
+        if (window.dbService && this.currentSubject === 'history') {
+            const res = await window.dbService.saveQuestion(newQObj);
+            if (res && res.error) {
+                syncNotice = `\n\n⚠️ Lưu ý: Đã lưu trên máy bạn, máy chủ báo lỗi: ${res.error}`;
+            } else if (res && res.success) {
+                syncNotice = `\n\n✅ Đã đồng bộ trực tiếp lên Supabase Cloud!`;
+            }
         }
 
-        // 4. Cập nhật ngay toàn bộ giao diện làm bài và danh sách Admin
+        // 4. Cập nhật giao diện
         this.updateTotalQuestionDisplay();
         this.renderAdminQuestionsList();
         this.closeQuestionEditor();
         this.renderAllQuestions();
         this.updateLiveStats();
 
-        alert(`Đã lưu Câu #${qId} thành công và cập nhật ngay lập tức!`);
+        alert(`Đã lưu Câu #${qId} thành công!${syncNotice}`);
     }
 
     async deleteQuestion(qId) {
         if (!confirm(`Bạn có chắc chắn muốn xóa Câu #${qId} không?`)) return;
 
         this.allQuestions = this.allQuestions.filter(q => q.id !== qId);
-        if (Array.isArray(window.QUIZ_QUESTIONS)) {
+        if (this.currentSubject === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
+            window.PHYSICS_QUESTIONS = window.PHYSICS_QUESTIONS.filter(q => q.id !== qId);
+        } else if (Array.isArray(window.QUIZ_QUESTIONS)) {
             window.QUIZ_QUESTIONS = window.QUIZ_QUESTIONS.filter(q => q.id !== qId);
         }
         delete this.userAnswers[qId];
 
-        if (window.dbService) {
+        if (window.dbService && this.currentSubject === 'history') {
             await window.dbService.deleteQuestion(qId);
         }
 
@@ -1199,17 +1424,21 @@ class QuizApp {
     }
 
     async seedDefaultQuestionsToCloud() {
-        if (!confirm("Hành động này sẽ tải toàn bộ 74 câu hỏi lên Supabase Cloud Database để mọi máy khác đều được đồng bộ. Bạn muốn tiếp tục?")) {
+        if (!confirm("Hành động này sẽ tải toàn bộ câu hỏi lên Supabase Cloud Database để mọi máy khác đều được đồng bộ. Tiếp tục?")) {
             return;
         }
         if (window.dbService) {
-            await window.dbService.seedInitialQuestions(this.allQuestions);
-            alert("Đã lưu thành công 74 câu hỏi lên Supabase Cloud!");
+            const res = await window.dbService.seedInitialQuestions(this.allQuestions);
+            if (res && res.error) {
+                alert(`⚠️ Lỗi từ máy chủ: ${res.error}`);
+            } else {
+                alert(`✅ Đã lưu thành công ${this.allQuestions.length} câu hỏi lên Supabase Cloud!`);
+            }
         }
     }
 
     /**
-     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC (Thay thế Bảng Xếp Hạng)
+     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC
      */
     async renderAdminStudentsList() {
         const tbody = document.getElementById('admin-students-tbody');

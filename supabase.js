@@ -318,18 +318,27 @@ class DatabaseService {
             updated_at: new Date().toISOString()
         };
 
+        let cloudSuccess = false;
+        let cloudError = null;
+
         if (this.isSupabaseActive && this.client) {
             try {
                 const { error } = await this.client
                     .from('quiz_questions')
                     .upsert([payload], { onConflict: 'id' });
-                if (error) console.error("[DatabaseService] Lỗi upsert câu hỏi:", error);
+                if (error) {
+                    console.error("[DatabaseService] Lỗi upsert câu hỏi:", error);
+                    cloudError = error.message;
+                } else {
+                    cloudSuccess = true;
+                }
             } catch (e) {
-                console.error(e);
+                cloudError = e.message;
             }
         }
 
         this._updateLocalQuestionCache(payload);
+        return { success: cloudSuccess, error: cloudError };
     }
 
     async deleteQuestion(qId) {
@@ -342,7 +351,9 @@ class DatabaseService {
     }
 
     async seedInitialQuestions(questionsList) {
-        if (!this.isSupabaseActive || !this.client || !questionsList || questionsList.length === 0) return;
+        if (!this.isSupabaseActive || !this.client || !questionsList || questionsList.length === 0) {
+            return { success: false, error: "Chưa kết nối Supabase" };
+        }
         try {
             const formatted = questionsList.map(q => ({
                 id: Number(q.id),
@@ -360,10 +371,16 @@ class DatabaseService {
                 .from('quiz_questions')
                 .upsert(formatted, { onConflict: 'id' });
 
-            if (error) console.error("Lỗi seed:", error);
-            else console.log(`%c[DatabaseService] Đã đồng bộ ${questionsList.length} câu hỏi lên Supabase Cloud!`, "color: #10b981; font-weight: bold;");
+            if (error) {
+                console.error("Lỗi seed:", error);
+                return { success: false, error: error.message };
+            }
+            
+            console.log(`%c[DatabaseService] Đã đồng bộ ${questionsList.length} câu hỏi lên Supabase Cloud!`, "color: #10b981; font-weight: bold;");
+            return { success: true };
         } catch (e) {
             console.error("Lỗi seed câu hỏi:", e);
+            return { success: false, error: e.message };
         }
     }
 
