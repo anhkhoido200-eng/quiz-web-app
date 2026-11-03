@@ -135,6 +135,11 @@ class QuizApp {
             topSubjTitle.textContent = this.getSubjectTitle();
         }
 
+        // Cập nhật trạng thái môn học của học sinh lên Supabase ngay khi đổi tab
+        if (window.dbService && this.currentLoginId) {
+            window.dbService.updateLoginStatus(this.currentLoginId, `[${this.getSubjectTitle()}] Đang làm bài`, '');
+        }
+
         this.userAnswers = {};
         this.currentFilter = 'all';
         this.updateTotalQuestionDisplay();
@@ -394,7 +399,7 @@ class QuizApp {
                     playerName: rawName,
                     ipAddress: this.clientIp,
                     deviceInfo: this.deviceInfo,
-                    status: `Đang làm bài (${subjTitle})`
+                    status: `[${subjTitle}] Đang làm bài`
                 });
             } catch (err) {
                 console.warn("Lỗi ghi nhận đăng nhập:", err);
@@ -1110,7 +1115,7 @@ class QuizApp {
      */
     syncProgressToCloud(attempted, total, correct) {
         if (!this.currentLoginId || !window.dbService) return;
-        const subjName = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+        const subjName = this.getSubjectTitle();
         if (this._progressSyncTimeout) clearTimeout(this._progressSyncTimeout);
         this._progressSyncTimeout = setTimeout(() => {
             window.dbService.updateStudentProgress(this.currentLoginId, attempted, total, correct, subjName);
@@ -1217,7 +1222,7 @@ class QuizApp {
         });
 
         const finalScore = totalItems > 0 ? Math.round((correctCount / totalItems) * 100) : 0;
-        const subjTitle = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+        const subjTitle = this.getSubjectTitle();
 
         // Cập nhật kết quả lên màn hình Result
         const greetingEl = document.getElementById('result-player-greeting');
@@ -1238,7 +1243,7 @@ class QuizApp {
         if (window.dbService && this.currentLoginId) {
             window.dbService.updateLoginStatus(
                 this.currentLoginId, 
-                `Đã nộp bài (${subjTitle})`, 
+                `[${subjTitle}] Đã nộp bài`, 
                 `Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm)`
             );
         }
@@ -1761,11 +1766,28 @@ class QuizApp {
         let geographyStudents = [];
 
         list.forEach(item => {
-            const status = item.status || "";
-            if (status.includes("Vật Lí") || status.toLowerCase().includes("lí")) {
-                physicsStudents.push(item);
-            } else if (status.includes("Địa Lí") || status.toLowerCase().includes("địa")) {
+            const status = (item.status || "").toLowerCase();
+            const summary = (item.score_summary || "").toLowerCase();
+            const combined = status + " " + summary;
+
+            // 1. Nhận diện từ khóa tên môn học
+            if (combined.includes("địa lí") || combined.includes("địa li") || combined.includes("dia li") || combined.includes("môn địa") || combined.includes("mon dia")) {
                 geographyStudents.push(item);
+            } else if (combined.includes("vật lí") || combined.includes("vật li") || combined.includes("vat li") || combined.includes("môn lí") || combined.includes("mon li")) {
+                physicsStudents.push(item);
+            } else if (combined.includes("lịch sử") || combined.includes("lich su") || combined.includes("môn sử") || combined.includes("mon su")) {
+                historyStudents.push(item);
+            }
+            // 2. Nhận diện thông minh qua số câu/ý đặc thù của đề cương:
+            // - Đề cương Địa Lí 11: Đúng 67 ý điểm
+            // - Đề cương Vật Lí 11: Đúng 52 ý điểm hoặc 43 câu
+            // - Đề cương Lịch Sử 11: Đúng 101 ý điểm hoặc 74 câu
+            else if (status.includes("/67") || summary.includes("/67")) {
+                geographyStudents.push(item);
+            } else if (status.includes("/52") || summary.includes("/52") || status.includes("/43") || summary.includes("/43")) {
+                physicsStudents.push(item);
+            } else if (status.includes("/101") || summary.includes("/101") || status.includes("/74") || summary.includes("/74")) {
+                historyStudents.push(item);
             } else {
                 historyStudents.push(item);
             }

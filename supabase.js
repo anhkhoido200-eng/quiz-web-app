@@ -460,8 +460,8 @@ class DatabaseService {
         if (!loginId) return;
         const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
         const subj = subjectName || "Đang làm bài";
-        const statusText = `Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`;
-        const scoreText = `Đúng ${correctCount}/${answeredCount} câu đã làm`;
+        const statusText = `[${subj}] Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`;
+        const scoreText = `[${subj}] Đúng ${correctCount}/${answeredCount} câu đã làm`;
         const nowIso = new Date().toISOString();
 
         // 1. Cập nhật LocalStorage
