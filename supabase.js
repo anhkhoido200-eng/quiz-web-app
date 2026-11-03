@@ -10,7 +10,8 @@ const STORAGE_KEYS = {
     SUPABASE_URL: 'quiz_supabase_url',
     SUPABASE_KEY: 'quiz_supabase_key',
     LOCAL_LOGINS: 'quiz_local_logins_history',
-    CUSTOM_QUESTIONS: 'quiz_custom_questions'
+    CUSTOM_QUESTIONS: 'quiz_custom_questions',
+    BANNED_IPS: 'quiz_banned_ips'
 };
 
 // Cấu hình mặc định của dự án Supabase (Đã được điền tự động)
@@ -412,6 +413,182 @@ class DatabaseService {
         }
         list = list.filter(q => q.id !== qId);
         localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(list));
+    }
+
+    // =========================================================================
+    // PHẦN 3: TÍNH NĂNG CHẶN IP TỨC THÌ (REAL-TIME BAN) KÈM LÝ DO & TIẾN ĐỘ LIVE
+    // =========================================================================
+
+    /**
+     * Cập nhật tiến độ làm bài thời gian thực của học sinh lên Supabase
+     * Thay thế chữ "Đang làm bài" tĩnh bằng số câu cụ thể và % hoàn thành
+     */
+    async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName) {
+        if (!loginId) return;
+        const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+        const subj = subjectName || "Đang làm bài";
+        const statusText = `Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`;
+        const scoreText = `Đúng ${correctCount}/${answeredCount} câu đã làm`;
+        const nowIso = new Date().toISOString();
+
+        // 1. Cập nhật LocalStorage
+        try {
+            let localLogs = this._getLocalLogins();
+            const idx = localLogs.findIndex(l => l.id === loginId);
+            if (idx !== -1) {
+                localLogs[idx].status = statusText;
+                localLogs[idx].score_summary = scoreText;
+                localLogs[idx].last_active = nowIso;
+                localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localLogs));
+            }
+        } catch (e) {}
+
+        // 2. Cập nhật Supabase Cloud
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .update({
+                        status: statusText,
+                        score_summary: scoreText,
+                        last_active: nowIso
+                    })
+                    .eq('id', loginId);
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi cập nhật tiến độ:", err);
+            }
+        }
+    }
+
+    /**
+     * Admin chặn IP ngay lập tức kèm lý do cụ thể
+     */
+    async banIp(ipAddress, reason = "Vi phạm quy chế ôn tập") {
+        const cleanIp = (ipAddress || "").trim();
+        if (!cleanIp || cleanIp === "Chưa xác định" || cleanIp === "IP Cục Bộ") {
+            throw new Error("Địa chỉ IP không hợp lệ để chặn.");
+        }
+
+        const banReason = reason.trim() || "Vi phạm quy chế phòng thi / Gian lận";
+        const banStatus = `BANNED: ${banReason}`;
+        const nowIso = new Date().toISOString();
+
+        // 1. Lưu vào danh sách banned của LocalStorage
+        try {
+            let bannedMap = {};
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            if (raw) bannedMap = JSON.parse(raw);
+            bannedMap[cleanIp] = {
+                reason: banReason,
+                bannedAt: nowIso
+            };
+            localStorage.setItem(STORAGE_KEYS.BANNED_IPS, JSON.stringify(bannedMap));
+        } catch (e) {}
+
+        // 2. Cập nhật trên Supabase Cloud để đá văng máy học sinh theo thời gian thực
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .update({
+                        status: banStatus,
+                        last_active: nowIso
+                    })
+                    .eq('ip_address', cleanIp);
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi ban IP trên Supabase:", err);
+            }
+        }
+
+        return { success: true, ip: cleanIp, reason: banReason };
+    }
+
+    /**
+     * Admin mở khóa cho IP
+     */
+    async unbanIp(ipAddress) {
+        const cleanIp = (ipAddress || "").trim();
+        if (!cleanIp) return { success: false };
+
+        // 1. Xóa khỏi LocalStorage
+        try {
+            let bannedMap = {};
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            if (raw) bannedMap = JSON.parse(raw);
+            delete bannedMap[cleanIp];
+            localStorage.setItem(STORAGE_KEYS.BANNED_IPS, JSON.stringify(bannedMap));
+        } catch (e) {}
+
+        // 2. Mở khóa trên Supabase Cloud
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .update({
+                        status: 'Đã mở khóa (Sẵn sàng)',
+                        last_active: new Date().toISOString()
+                    })
+                    .eq('ip_address', cleanIp)
+                    .like('status', 'BANNED%');
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi unban IP trên Supabase:", err);
+            }
+        }
+
+        return { success: true, ip: cleanIp };
+    }
+
+    /**
+     * Kiểm tra xem địa chỉ IP hiện tại có đang bị chặn hay không (dùng cho Heartbeat học sinh)
+     */
+    async checkIsIpBanned(ipAddress) {
+        const cleanIp = (ipAddress || "").trim();
+        if (!cleanIp || cleanIp === "Chưa xác định" || cleanIp === "IP Cục Bộ") {
+            return { isBanned: false };
+        }
+
+        // 1. Kiểm tra cache cục bộ
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            if (raw) {
+                const map = JSON.parse(raw);
+                if (map[cleanIp]) {
+                    return { isBanned: true, reason: map[cleanIp].reason || "Vi phạm quy chế" };
+                }
+            }
+        } catch (e) {}
+
+        // 2. Kiểm tra trực tiếp trên Supabase Cloud
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('status')
+                    .eq('ip_address', cleanIp)
+                    .like('status', 'BANNED%')
+                    .order('last_active', { ascending: false })
+                    .limit(1);
+
+                if (!error && data && data.length > 0) {
+                    const statusStr = data[0].status || "";
+                    const reason = statusStr.replace(/^BANNED:\s*/, "") || "Vi phạm quy chế phòng thi";
+                    return { isBanned: true, reason: reason };
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi kiểm tra ban IP:", err);
+            }
+        }
+
+        return { isBanned: false };
+    }
+
+    getBannedIps() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+            return {};
+        }
     }
 }
 

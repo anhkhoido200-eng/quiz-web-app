@@ -52,6 +52,7 @@ class QuizApp {
         this.renderFilterTabs();
         await this.loadQuestionsFromDb();
         this.updateTotalQuestionDisplay();
+        this.startRealtimeBanChecker();
     }
 
     /**
@@ -406,6 +407,58 @@ class QuizApp {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+    }
+
+    /**
+     * NÚT TRỞ VỀ TRANG CHỦ / ĐỔI MÔN KHÁC:
+     * Cho phép học sinh quay về màn hình chính để chuyển sang ôn tập môn khác
+     */
+    returnToHome() {
+        const answeredCount = Object.keys(this.userAnswers).length;
+        if (answeredCount > 0) {
+            const subjName = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+            if (!confirm(`Bạn đang làm dở môn ${subjName} (${answeredCount} câu đã chọn).\nBạn có chắc muốn quay lại trang chủ để đổi sang môn học khác không?`)) {
+                return;
+            }
+        }
+        this.stopStopwatch();
+        this.switchScreen('home');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /**
+     * HEARTBEAT KIỂM TRA CHẶN IP THỜI GIAN THỰC (Mỗi 3.5 giây)
+     * Nếu Admin chặn IP của thiết bị này, lập tức khóa màn hình và đá ra ngoài
+     */
+    startRealtimeBanChecker() {
+        if (this.banCheckInterval) clearInterval(this.banCheckInterval);
+        this.banCheckInterval = setInterval(async () => {
+            if (!this.clientIp || this.clientIp === "Chưa xác định" || this.clientIp === "IP Cục Bộ") return;
+            if (window.dbService) {
+                try {
+                    const res = await window.dbService.checkIsIpBanned(this.clientIp);
+                    if (res && res.isBanned) {
+                        this.showBlockedScreen(res.reason);
+                    }
+                } catch (e) {}
+            }
+        }, 3500);
+    }
+
+    /**
+     * HIỂN THỊ MÀN HÌNH KHÓA TRUY CẬP (BANNED SCREEN)
+     */
+    showBlockedScreen(reason) {
+        const modal = document.getElementById('blocked-screen');
+        const ipEl = document.getElementById('blocked-ip-text');
+        const reasonEl = document.getElementById('blocked-reason-text');
+        if (ipEl) ipEl.textContent = this.clientIp;
+        if (reasonEl) reasonEl.textContent = reason || "Vi phạm quy chế phòng thi / Gian lận";
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        this.stopStopwatch();
     }
 
     /**
@@ -866,6 +919,21 @@ class QuizApp {
         const percent = totalItems > 0 ? Math.round((attemptedCount / totalItems) * 100) : 0;
         if (progressText) progressText.textContent = `Đã làm ${attemptedCount}/${totalItems} ý (${percent}%)`;
         if (progressBar) progressBar.style.width = `${percent}%`;
+
+        // Đồng bộ tiến độ chi tiết lên Supabase Cloud để Admin nhìn thấy thanh tiến độ
+        this.syncProgressToCloud(attemptedCount, totalItems, correctCount);
+    }
+
+    /**
+     * Đồng bộ tiến độ làm bài lên Cloud Supabase (Debounced 1.2s tránh spam request)
+     */
+    syncProgressToCloud(attempted, total, correct) {
+        if (!this.currentLoginId || !window.dbService) return;
+        const subjName = this.currentSubject === 'physics' ? 'Vật Lí 11' : 'Lịch Sử 11';
+        if (this._progressSyncTimeout) clearTimeout(this._progressSyncTimeout);
+        this._progressSyncTimeout = setTimeout(() => {
+            window.dbService.updateStudentProgress(this.currentLoginId, attempted, total, correct, subjName);
+        }, 1200);
     }
 
     /**
@@ -1438,68 +1506,256 @@ class QuizApp {
     }
 
     /**
-     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC
+     * GIÁM SÁT MÁY & ĐĂNG NHẬP THỜI GIAN THỰC (KÈM CHIA 2 CỘT MÔN SỬ / MÔN LÍ & CHẶN IP TỨC THÌ)
      */
     async renderAdminStudentsList() {
         const tbody = document.getElementById('admin-students-tbody');
         const badgeCount = document.getElementById('admin-badge-login-count');
-        if (!tbody || !window.dbService) return;
+        const historyListEl = document.getElementById('history-students-list');
+        const historyCountEl = document.getElementById('history-active-count');
+        const physicsListEl = document.getElementById('physics-students-list');
+        const physicsCountEl = document.getElementById('physics-active-count');
 
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Đang tải lịch sử đăng nhập thiết bị...</td></tr>';
+        if (!window.dbService) return;
+
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Đang tải lịch sử đăng nhập thiết bị...</td></tr>';
         const list = await window.dbService.getLoginHistory(100);
 
         if (badgeCount) badgeCount.textContent = list ? list.length : 0;
 
         if (!list || list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Chưa có lượt đăng nhập nào được ghi nhận.</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Chưa có thí sinh nào đăng nhập.</td></tr>';
+            if (historyListEl) historyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Chưa có ai đang làm môn Sử.</p>';
+            if (physicsListEl) physicsListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Chưa có ai đang làm môn Lí.</p>';
+            if (historyCountEl) historyCountEl.textContent = '0';
+            if (physicsCountEl) physicsCountEl.textContent = '0';
             return;
         }
 
-        tbody.innerHTML = '';
-        list.forEach((item) => {
-            const tr = document.createElement('tr');
-            tr.className = "hover:bg-slate-800/40 transition";
+        const bannedMap = window.dbService.getBannedIps ? window.dbService.getBannedIps() : {};
 
-            let timeStr = "";
-            try {
-                const d = new Date(item.last_active || item.created_at);
-                timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + d.toLocaleDateString('vi-VN');
-            } catch (e) {
-                timeStr = "Vừa xong";
+        let historyStudents = [];
+        let physicsStudents = [];
+
+        list.forEach(item => {
+            const status = item.status || "";
+            if (status.includes("Vật Lí") || status.toLowerCase().includes("lí")) {
+                physicsStudents.push(item);
+            } else {
+                historyStudents.push(item);
             }
-
-            const status = item.status || "Đang làm bài";
-            const isFinished = status.includes("Đã nộp bài") || status.includes("Hoàn thành");
-
-            tr.innerHTML = `
-                <td class="py-2.5 px-3 font-semibold text-slate-100 flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-md bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-                    <span>${this.escapeHtml(item.player_name || 'Khách')}</span>
-                </td>
-                <td class="py-2.5 px-3 font-mono text-emerald-400 text-xs">
-                    <i class="fa-solid fa-wifi text-[10px] mr-1 text-slate-500"></i>${this.escapeHtml(item.ip_address || 'Chưa rõ')}
-                </td>
-                <td class="py-2.5 px-3 text-slate-300 text-xs">
-                    <i class="fa-solid fa-laptop text-[10px] mr-1 text-indigo-400"></i>${this.escapeHtml(item.device_info || 'Trình duyệt')}
-                </td>
-                <td class="py-2.5 px-3 text-center text-slate-400 text-[11px]">${timeStr}</td>
-                <td class="py-2.5 px-3 text-center">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isFinished ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
-                        ${isFinished ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-spinner animate-spin"></i>'}
-                        ${this.escapeHtml(status)}
-                    </span>
-                    ${item.score_summary ? `<div class="text-[10px] text-slate-400 mt-0.5 font-medium">${this.escapeHtml(item.score_summary)}</div>` : ''}
-                </td>
-                <td class="py-2.5 px-3 text-right">
-                    <button onclick="app.adminDeleteLogin('${item.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer" title="Xóa bản ghi này">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
         });
+
+        if (historyCountEl) historyCountEl.textContent = historyStudents.length;
+        if (physicsCountEl) physicsCountEl.textContent = physicsStudents.length;
+
+        // 1. Render Cột MÔN SỬ ĐANG CÓ AI
+        if (historyListEl) {
+            if (historyStudents.length === 0) {
+                historyListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Sử.</p>';
+            } else {
+                historyListEl.innerHTML = historyStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Lịch Sử')).join('');
+            }
+        }
+
+        // 2. Render Cột MÔN LÍ ĐANG CÓ AI
+        if (physicsListEl) {
+            if (physicsStudents.length === 0) {
+                physicsListEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Hiện chưa có ai đang làm môn Lí.</p>';
+            } else {
+                physicsListEl.innerHTML = physicsStudents.map(st => this._buildStudentCardHTML(st, bannedMap, 'Vật Lí')).join('');
+            }
+        }
+
+        // 3. Render BẢNG CHI TIẾT TOÀN BỘ DANH SÁCH
+        if (tbody) {
+            tbody.innerHTML = '';
+            list.forEach((item) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 transition";
+
+                let timeStr = "";
+                try {
+                    const d = new Date(item.last_active || item.created_at);
+                    timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('vi-VN');
+                } catch (e) {
+                    timeStr = "Vừa xong";
+                }
+
+                const status = item.status || "Đang làm bài";
+                const isBanned = status.startsWith("BANNED") || !!bannedMap[item.ip_address];
+                const banReason = isBanned ? (status.replace(/^BANNED:\s*/, "") || (bannedMap[item.ip_address]?.reason) || "Vi phạm quy chế") : "";
+                const isFinished = status.includes("Đã nộp bài") || status.includes("Hoàn thành");
+
+                // Tính toán thanh tiến độ trực quan (% hoàn thành)
+                let percent = 0;
+                let progressMatch = status.match(/(\d+)\/(\d+)\s*câu/i) || (item.score_summary && item.score_summary.match(/(\d+)\/(\d+)\s*ý/i));
+                if (progressMatch) {
+                    const cur = parseInt(progressMatch[1], 10);
+                    const tot = parseInt(progressMatch[2], 10);
+                    if (tot > 0) percent = Math.min(100, Math.round((cur / tot) * 100));
+                } else if (isFinished) {
+                    percent = 100;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 font-semibold text-slate-100 flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-400'} flex items-center justify-center text-xs shrink-0">
+                            <i class="${isBanned ? 'fa-solid fa-ban text-rose-400' : 'fa-solid fa-user'}"></i>
+                        </div>
+                        <div>
+                            <span class="${isBanned ? 'line-through text-rose-300' : ''}">${this.escapeHtml(item.player_name || 'Khách')}</span>
+                            ${isBanned ? `<span class="ml-1.5 px-1.5 py-0.2 rounded bg-rose-950 text-rose-400 border border-rose-500/50 text-[10px] font-bold">BỊ CHẶN</span>` : ''}
+                        </div>
+                    </td>
+                    <td class="py-2.5 px-3 font-mono text-xs ${isBanned ? 'text-rose-400' : 'text-emerald-400'}">
+                        <i class="fa-solid fa-network-wired text-[10px] mr-1 text-slate-500"></i>${this.escapeHtml(item.ip_address || 'Chưa rõ')}
+                    </td>
+                    <td class="py-2.5 px-3 text-slate-300 text-xs">
+                        <i class="fa-solid fa-laptop text-[10px] mr-1 text-indigo-400"></i>${this.escapeHtml(item.device_info || 'Trình duyệt')}
+                    </td>
+                    <td class="py-2.5 px-3 text-center text-slate-400 text-[11px]">${timeStr}</td>
+                    <td class="py-2.5 px-3">
+                        ${isBanned ? `
+                            <div class="p-1.5 rounded-lg bg-rose-950/60 border border-rose-500/40 text-[11px] text-rose-300">
+                                <span class="font-bold">ĐÃ BỊ CHẶN:</span> ${this.escapeHtml(banReason)}
+                            </div>
+                        ` : `
+                            <div>
+                                <div class="flex items-center justify-between text-[11px] mb-1">
+                                    <span class="font-bold text-slate-200">${this.escapeHtml(status)}</span>
+                                    <span class="font-bold text-indigo-400 font-mono">${percent}%</span>
+                                </div>
+                                <div class="w-full bg-slate-700/80 rounded-full h-1.5 overflow-hidden">
+                                    <div class="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-full rounded-full transition-all duration-300" style="width: ${percent}%"></div>
+                                </div>
+                                ${item.score_summary ? `<div class="text-[10px] text-emerald-300 mt-1 font-semibold flex items-center gap-1"><i class="fa-solid fa-check text-[9px]"></i> ${this.escapeHtml(item.score_summary)}</div>` : ''}
+                            </div>
+                        `}
+                    </td>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1.5">
+                            ${isBanned ? `
+                                <button onclick="app.adminUnbanIp('${item.ip_address}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Mở khóa IP này">
+                                    <i class="fa-solid fa-lock-open text-[10px]"></i> Mở Khóa
+                                </button>
+                            ` : `
+                                <button onclick="app.adminBanIp('${item.ip_address}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/40 text-rose-300 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Chặn IP này ngay lập tức kèm lý do">
+                                    <i class="fa-solid fa-ban text-[10px]"></i> Chặn IP
+                                </button>
+                            `}
+                            <button onclick="app.adminDeleteLogin('${item.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer" title="Xóa bản ghi này">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    /**
+     * Helper tạo card cho danh sách thí sinh từng môn
+     */
+    _buildStudentCardHTML(item, bannedMap, subjectLabel) {
+        const status = item.status || "Đang làm bài";
+        const isBanned = status.startsWith("BANNED") || !!bannedMap[item.ip_address];
+        const banReason = isBanned ? (status.replace(/^BANNED:\s*/, "") || (bannedMap[item.ip_address]?.reason) || "Vi phạm quy chế") : "";
+
+        // Trích xuất % tiến độ
+        let percent = 0;
+        let progressMatch = status.match(/(\d+)\/(\d+)\s*câu/i) || (item.score_summary && item.score_summary.match(/(\d+)\/(\d+)\s*ý/i));
+        if (progressMatch) {
+            const cur = parseInt(progressMatch[1], 10);
+            const tot = parseInt(progressMatch[2], 10);
+            if (tot > 0) percent = Math.min(100, Math.round((cur / tot) * 100));
+        }
+
+        return `
+            <div class="p-2.5 rounded-xl ${isBanned ? 'bg-rose-950/40 border border-rose-500/40' : 'bg-slate-900/80 border border-slate-700/70'} flex items-center justify-between gap-2 transition hover:border-slate-600">
+                <div class="overflow-hidden flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-bold text-xs ${isBanned ? 'line-through text-rose-300' : 'text-white'} truncate">${this.escapeHtml(item.player_name || 'Học sinh')}</span>
+                        ${isBanned ? `<span class="px-1 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold uppercase">Bị chặn</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
+                        <span>IP: ${this.escapeHtml(item.ip_address || 'Chưa rõ')}</span>
+                        <span>•</span>
+                        <span class="truncate">${this.escapeHtml(item.device_info || 'Trình duyệt')}</span>
+                    </div>
+                    <!-- Thanh tiến độ bài làm trực quan -->
+                    <div class="mt-1.5">
+                        <div class="flex items-center justify-between text-[10px] mb-0.5">
+                            <span class="text-slate-300 font-semibold truncate">${isBanned ? `Lý do: ${this.escapeHtml(banReason)}` : this.escapeHtml(status)}</span>
+                            ${!isBanned ? `<span class="font-bold text-indigo-400 font-mono">${percent}%</span>` : ''}
+                        </div>
+                        ${!isBanned ? `
+                            <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                                <div class="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full rounded-full" style="width: ${percent}%"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="shrink-0 flex items-center gap-1">
+                    ${isBanned ? `
+                        <button onclick="app.adminUnbanIp('${item.ip_address}')" class="px-2 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/50 text-[10px] font-bold cursor-pointer transition" title="Mở khóa">
+                            <i class="fa-solid fa-lock-open mr-1"></i> Mở
+                        </button>
+                    ` : `
+                        <button onclick="app.adminBanIp('${item.ip_address}')" class="px-2 py-1 rounded-lg bg-rose-600/30 hover:bg-rose-600 text-rose-200 border border-rose-500/50 text-[10px] font-bold cursor-pointer transition" title="Chặn IP ngay">
+                            <i class="fa-solid fa-ban mr-1"></i> Chặn
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Admin chặn IP thủ công từ ô nhập input
+     */
+    async adminBanManualIp() {
+        const input = document.getElementById('admin-ban-ip-input');
+        const ip = input ? input.value.trim() : "";
+        if (!ip) {
+            alert("Vui lòng nhập địa chỉ IP cần chặn!");
+            return;
+        }
+        await this.adminBanIp(ip);
+        if (input) input.value = '';
+    }
+
+    /**
+     * Admin chặn IP kèm lý do
+     */
+    async adminBanIp(ipAddress) {
+        if (!ipAddress) return;
+        const reason = prompt(`Nhập lý do chặn IP [${ipAddress}]:\n(Lý do này sẽ hiển thị trực tiếp lên màn hình của học sinh bị chặn)`, "Vi phạm quy chế phòng thi / Gian lận");
+        if (reason === null) return; // Người dùng ấn Hủy
+
+        const cleanReason = reason.trim() || "Vi phạm quy chế phòng thi / Gian lận";
+        try {
+            await window.dbService.banIp(ipAddress, cleanReason);
+            alert(`Đã CHẶN IP ${ipAddress} thành công!\nLý do: "${cleanReason}"\nThiết bị này sẽ bị khóa và đá văng ngay lập tức.`);
+            await this.renderAdminStudentsList();
+        } catch (err) {
+            alert("Lỗi khi chặn IP: " + err.message);
+        }
+    }
+
+    /**
+     * Admin mở khóa cho IP
+     */
+    async adminUnbanIp(ipAddress) {
+        if (!confirm(`Bạn có chắc muốn MỞ KHÓA cho địa chỉ IP [${ipAddress}] không?`)) return;
+        try {
+            await window.dbService.unbanIp(ipAddress);
+            alert(`Đã MỞ KHÓA cho IP ${ipAddress} thành công! Thí sinh có thể truy cập lại.`);
+            await this.renderAdminStudentsList();
+        } catch (err) {
+            alert("Lỗi khi mở khóa IP: " + err.message);
+        }
     }
 
     async adminDeleteLogin(loginId) {
