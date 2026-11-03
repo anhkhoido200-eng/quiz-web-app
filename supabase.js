@@ -1,18 +1,16 @@
 /**
- * supabase.js - Module quản lý kết nối cơ sở dữ liệu Supabase & LocalStorage Fallback
- * 
- * Hỗ trợ 2 chế độ:
- * 1. Supabase Mode (Cloud Database): Đồng bộ điểm số qua mạng cho mọi người dùng
- * 2. LocalStorage Mode: Tự động kích hoạt khi chưa có key Supabase để kiểm thử offline mượt mà
+ * supabase.js - Quản lý kết nối Supabase Cloud & LocalStorage Fallback
+ * Hỗ trợ lưu trữ điểm số và Quản lý ngân hàng câu hỏi trực tuyến (Admin CRUD)
  */
 
 const STORAGE_KEYS = {
     SUPABASE_URL: 'quiz_supabase_url',
     SUPABASE_KEY: 'quiz_supabase_key',
-    LOCAL_LEADERBOARD: 'quiz_local_leaderboard'
+    LOCAL_LEADERBOARD: 'quiz_local_leaderboard',
+    CUSTOM_QUESTIONS: 'quiz_custom_questions'
 };
 
-// Cấu hình mặc định của dự án Supabase
+// Cấu hình mặc định của dự án Supabase (Đã được điền tự động)
 const DEFAULT_SUPABASE_CONFIG = {
     url: "https://qotfikuiwmruicsvsbgq.supabase.co",
     anonKey: "sb_publishable_KtAmEX6Jj97BNElniBrX6w_wVyCeQYs"
@@ -30,9 +28,6 @@ class DatabaseService {
         this.init();
     }
 
-    /**
-     * Khởi tạo kết nối Supabase từ LocalStorage hoặc hằng số mặc định
-     */
     init() {
         let storedUrl = localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url;
         const storedKey = localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey;
@@ -45,20 +40,16 @@ class DatabaseService {
                 this.isSupabaseActive = true;
                 console.log("%c[DatabaseService] Đã kích hoạt kết nối Supabase Cloud!", "color: #10b981; font-weight: bold;");
             } catch (err) {
-                console.warn("[DatabaseService] Lỗi khởi tạo Supabase client, chuyển về chế độ LocalStorage:", err);
+                console.warn("[DatabaseService] Lỗi kết nối Supabase, fallback về Local:", err);
                 this.client = null;
                 this.isSupabaseActive = false;
             }
         } else {
             this.client = null;
             this.isSupabaseActive = false;
-            console.log("%c[DatabaseService] Đang chạy chế độ lưu trữ trình duyệt (LocalStorage)", "color: #f59e0b;");
         }
     }
 
-    /**
-     * Lưu cấu hình URL và Anon Key mới vào LocalStorage
-     */
     saveConfig(url, anonKey) {
         if (!url || !anonKey) {
             throw new Error("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
@@ -68,18 +59,12 @@ class DatabaseService {
         this.init();
     }
 
-    /**
-     * Xóa cấu hình Supabase để quay lại dùng LocalStorage
-     */
     clearConfig() {
         localStorage.removeItem(STORAGE_KEYS.SUPABASE_URL);
         localStorage.removeItem(STORAGE_KEYS.SUPABASE_KEY);
         this.init();
     }
 
-    /**
-     * Lấy thông tin cấu hình hiện tại
-     */
     getConfig() {
         return {
             url: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url,
@@ -88,10 +73,9 @@ class DatabaseService {
         };
     }
 
-    /**
-     * Lưu kết quả làm bài của thí sinh
-     * @param {Object} resultData - { playerName, score, correctCount, totalQuestions, timeSpentSeconds }
-     */
+    // ==========================================
+    // PHẦN 1: QUẢN LÝ ĐIỂM SỐ & BẢNG XẾP HẠNG
+    // ==========================================
     async saveResult(resultData) {
         const payload = {
             player_name: resultData.playerName.trim(),
@@ -102,7 +86,6 @@ class DatabaseService {
             created_at: new Date().toISOString()
         };
 
-        // Nếu có Supabase
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -112,27 +95,20 @@ class DatabaseService {
 
                 if (error) {
                     console.error("[DatabaseService] Lỗi khi lưu lên Supabase:", error);
-                    // Lưu dự phòng vào LocalStorage
                     this._saveToLocalStorage(payload);
                     return { success: false, fallback: true, error: error.message };
                 }
                 return { success: true, data: data[0] };
             } catch (error) {
-                console.error("[DatabaseService] Ngoại lệ khi đẩy dữ liệu lên Supabase:", error);
                 this._saveToLocalStorage(payload);
                 return { success: false, fallback: true, error: error.message };
             }
         } else {
-            // Chế độ LocalStorage
             this._saveToLocalStorage(payload);
             return { success: true, local: true };
         }
     }
 
-    /**
-     * Lấy danh sách bảng xếp hạng (Top điểm cao nhất, nếu bằng điểm thì ưu tiên thời gian ít hơn)
-     * @param {number} limit - Số lượng thí sinh hiển thị tối đa (mặc định 50)
-     */
     async getLeaderboard(limit = 50) {
         if (this.isSupabaseActive && this.client) {
             try {
@@ -143,51 +119,177 @@ class DatabaseService {
                     .order('time_spent_seconds', { ascending: true })
                     .limit(limit);
 
-                if (error) {
-                    console.warn("[DatabaseService] Không thể đọc bảng xếp hạng từ Supabase, chuyển sang đọc LocalStorage:", error);
-                    return this._getFromLocalStorage();
-                }
+                if (error) return this._getFromLocalStorage();
                 return data || [];
             } catch (err) {
-                console.warn("[DatabaseService] Lỗi mạng khi gọi Supabase:", err);
                 return this._getFromLocalStorage();
             }
-        } else {
-            return this._getFromLocalStorage();
+        }
+        return this._getFromLocalStorage();
+    }
+
+    async deleteResult(resultId) {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client.from('quiz_results').delete().eq('id', resultId);
+            } catch (e) {}
+        }
+        let list = this._getFromLocalStorage().filter(item => item.id !== resultId);
+        localStorage.setItem(STORAGE_KEYS.LOCAL_LEADERBOARD, JSON.stringify(list));
+    }
+
+    async clearAllResults() {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client.from('quiz_results').delete().neq('score', -999);
+            } catch (e) {}
+        }
+        localStorage.removeItem(STORAGE_KEYS.LOCAL_LEADERBOARD);
+    }
+
+    // ==========================================
+    // PHẦN 2: QUẢN LÝ CÂU HỎI TRỰC TUYẾN (ADMIN)
+    // ==========================================
+    async fetchQuestionsOnline() {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_questions')
+                    .select('*')
+                    .order('id', { ascending: true });
+
+                if (!error && data && data.length > 0) {
+                    // Chuẩn hóa dữ liệu từ Supabase
+                    return data.map(q => ({
+                        id: Number(q.id),
+                        category: q.category,
+                        question: q.question,
+                        options: Array.isArray(q.options) ? q.options : JSON.parse(q.options || "[]"),
+                        correct: Number(q.correct),
+                        isMultiple: false,
+                        explanation: q.explanation || ""
+                    }));
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi khi tải câu hỏi từ Supabase:", err);
+            }
+        }
+        // Fallback: Đọc từ local cache nếu có
+        try {
+            const cached = localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS);
+            if (cached) return JSON.parse(cached);
+        } catch (e) {}
+
+        // Mặc định trả về từ file questions.js
+        return window.QUIZ_QUESTIONS || [];
+    }
+
+    async saveQuestion(qObj) {
+        const payload = {
+            id: Number(qObj.id),
+            category: qObj.category || 'Lịch Sử 11',
+            question: qObj.question.trim(),
+            options: qObj.options,
+            correct: Number(qObj.correct),
+            explanation: qObj.explanation ? qObj.explanation.trim() : "",
+            updated_at: new Date().toISOString()
+        };
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { error } = await this.client
+                    .from('quiz_questions')
+                    .upsert([payload], { onConflict: 'id' });
+                if (error) console.error("[DatabaseService] Lỗi upsert câu hỏi:", error);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Đồng bộ vào local cache
+        this._updateLocalQuestionCache(payload);
+    }
+
+    async deleteQuestion(qId) {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client.from('quiz_questions').delete().eq('id', qId);
+            } catch (e) {}
+        }
+        this._deleteFromLocalQuestionCache(qId);
+    }
+
+    async seedInitialQuestions(questionsList) {
+        if (!this.isSupabaseActive || !this.client || !questionsList || questionsList.length === 0) return;
+        try {
+            const formatted = questionsList.map(q => ({
+                id: Number(q.id),
+                category: q.category || 'Lịch Sử 11',
+                question: q.question,
+                options: q.options,
+                correct: Number(q.correct),
+                explanation: q.explanation || "",
+                updated_at: new Date().toISOString()
+            }));
+
+            const { error } = await this.client
+                .from('quiz_questions')
+                .upsert(formatted, { onConflict: 'id' });
+
+            if (error) console.error("Lỗi seed:", error);
+            else console.log(`%c[DatabaseService] Đã đồng bộ ${questionsList.length} câu hỏi lên Supabase Cloud!`, "color: #10b981; font-weight: bold;");
+        } catch (e) {
+            console.error("Lỗi seed câu hỏi:", e);
         }
     }
 
-    /**
-     * Helper: Lưu vào LocalStorage
-     */
+    // Helper nội bộ
     _saveToLocalStorage(item) {
         const list = this._getFromLocalStorage();
-        // Gán id giả lập ngẫu nhiên
         item.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
         list.push(item);
-        // Sắp xếp: Điểm cao trước, thời gian ngắn trước
-        list.sort((a, b) => {
-            if (b.score !== a.score) {
-                return b.score - a.score;
-            }
-            return a.time_spent_seconds - b.time_spent_seconds;
-        });
+        list.sort((a, b) => b.score !== a.score ? b.score - a.score : a.time_spent_seconds - b.time_spent_seconds);
         localStorage.setItem(STORAGE_KEYS.LOCAL_LEADERBOARD, JSON.stringify(list.slice(0, 100)));
     }
 
-    /**
-     * Helper: Lấy danh sách từ LocalStorage
-     */
     _getFromLocalStorage() {
         try {
             const raw = localStorage.getItem(STORAGE_KEYS.LOCAL_LEADERBOARD);
-            if (!raw) return [];
-            return JSON.parse(raw);
+            return raw ? JSON.parse(raw) : [];
         } catch (e) {
             return [];
         }
     }
+
+    _updateLocalQuestionCache(item) {
+        let list = [];
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS);
+            list = raw ? JSON.parse(raw) : [...(window.QUIZ_QUESTIONS || [])];
+        } catch (e) {
+            list = [...(window.QUIZ_QUESTIONS || [])];
+        }
+
+        const idx = list.findIndex(q => q.id === item.id);
+        if (idx !== -1) {
+            list[idx] = { ...list[idx], ...item };
+        } else {
+            list.push(item);
+        }
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(list));
+    }
+
+    _deleteFromLocalQuestionCache(qId) {
+        let list = [];
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS);
+            list = raw ? JSON.parse(raw) : [...(window.QUIZ_QUESTIONS || [])];
+        } catch (e) {
+            list = [...(window.QUIZ_QUESTIONS || [])];
+        }
+        list = list.filter(q => q.id !== qId);
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(list));
+    }
 }
 
-// Khởi tạo đối tượng dùng chung
 window.dbService = new DatabaseService();

@@ -1,11 +1,11 @@
 /**
  * questions.js - Đề cương ôn tập trắc nghiệm Lịch Sử 11 - Giữa Kì 1
- * Trọn bộ 65 câu hỏi trắc nghiệm chuẩn kiến thức theo phân phối chương trình:
- * - Bài 1: Một số vấn đề chung về cách mạng tư sản (31 câu)
- * - Bài 2: Sự xác lập và phát triển của chủ nghĩa tư bản (34 câu)
+ * Trọn bộ 74 câu hỏi chuẩn đề cương:
+ * - PHẦN I: 65 câu trắc nghiệm nhiều lựa chọn (A, B, C, D)
+ * - PHẦN II: 9 câu trắc nghiệm Đúng - Sai (gồm 36 mệnh đề a, b, c, d kèm tư liệu lịch sử)
  */
 
-const rawQuestions = [
+const rawMCQ = [
     { id: 1, lesson: "b1", qNum: "Câu 1", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân.", "xóa bỏ tình trạng phong kiến cát cứ."], answer: 3, explanation: "Xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường dân tộc là một trong những nhiệm vụ dân tộc hàng đầu của cách mạng tư sản." },
     { id: 2, lesson: "b1", qNum: "Câu 2", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["hình thành thị trường dân tộc thống nhất.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Hình thành thị trường dân tộc thống nhất là nhiệm vụ dân tộc quan trọng nhằm mở đường cho kinh tế tư bản phát triển." },
     { id: 3, lesson: "b1", qNum: "Câu 3", question: "Một trong những nhiệm vụ của các cuộc cách mạng TS từ giữa thế kỉ XVI đến đầu thế kỉ XX) là", options: ["xóa bỏ chế độ phong kiến chuyên chế.", "đưa giai cấp công nhân lên nắm quyền.", "xóa bỏ triệt để mâu thuẫn trong xã hội.", "xác lập sự thống trị của chủ nghĩa thực dân."], answer: 0, explanation: "Xóa bỏ chế độ phong kiến chuyên chế, xác lập nền dân chủ tư sản là nhiệm vụ dân chủ của cách mạng tư sản." },
@@ -73,16 +73,170 @@ const rawQuestions = [
     { id: 65, lesson: "b2", qNum: "Câu 34", question: "Nội dung nào sau đây không phải là thách thức mà chủ nghĩa tư bản hiện đại đang phải đối mặt?", options: ["Khủng hoảng kinh tế, tài chính.", "Sự chênh lệch giàu nghèo.", "Tốc độ phát triển kinh tế toàn cầu.", "Tệ nạn xã hội, phân biệt chủng tộc."], answer: 2, explanation: "Tốc độ tăng trưởng kinh tế toàn cầu là xu thế phát triển chung, không phải là vấn đề thách thức tiêu cực mang tính hệ thống của CNTB." }
 ];
 
-// Chuyển đổi định dạng phù hợp với QuizMaster
-const QUIZ_QUESTIONS = rawQuestions.map(q => ({
-    id: q.id,
-    category: q.lesson === 'b1' ? 'Bài 1: Cách mạng tư sản' : 'Bài 2: Sự xác lập CNTB',
-    question: q.question,
-    options: q.options,
-    correct: q.answer,
-    isMultiple: false,
-    explanation: q.explanation
-}));
+const rawTrueFalse = [
+    // BÀI 1: CÂU HỎI ĐÚNG - SAI
+    {
+        id: 66,
+        lesson: "b1",
+        category: "Bài 1: Cách mạng tư sản (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Đọc đoạn tư liệu sau đây:
+Tư liệu 1: “Tất cả mọi người sinh ra có quyền bình đẳng. Tạo hóa cho họ những quyền không ai có thể xâm phạm được; trong những quyền ấy, có quyền được sống, quyền tự do và quyền mưu cầu hạnh phúc”. (Tuyên ngôn Độc lập (Mĩ), năm 1776)
+Tư liệu 2: “Điều 1. Con người sinh ra đều có quyền tự do và bình đẳng. Những sự phân biệt xã hội chỉ có thể dựa trên lợi ích chung. Điều 17. Quyền tư hữu là quyền bất khả xâm phạm và thiêng liêng không ai có thể bị tước bỏ” (Tuyên ngôn Nhân quyền và Dân quyền (Pháp), năm 1789)`,
+        statements: [
+            { key: "a", text: "Bản Tuyên ngôn Nhân quyền và Dân quyền ra đời từ cuộc cách mạng tư sản Pháp cuối thế kỉ XVIII.", answer: true, explanation: "Đúng. Tuyên ngôn Nhân quyền và Dân quyền được thông qua năm 1789 trong Cách mạng Pháp." },
+            { key: "b", text: "Điểm chung của Tuyên ngôn Độc lập của nước Mĩ và Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp là đề cao quyền con người và quyền công dân.", answer: true, explanation: "Đúng. Cả hai bản tuyên ngôn đều khẳng định quyền tự do, bình đẳng thiêng liêng của con người." },
+            { key: "c", text: "Bản Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp năm 1789 không đề cao quyền tư hữu cá nhân vì đó là biểu hiện cho sự phân biệt giàu – nghèo trong xã hội.", answer: false, explanation: "Sai. Điều 17 khẳng định quyền tư hữu là bất khả xâm phạm và thiêng liêng." },
+            { key: "d", text: "Trong Tuyên ngôn độc lập của nước Việt Nam dân chủ cộng hòa (2/9/1945), chủ tịch Hồ Chí Minh đã trích dẫn những câu nói nổi tiếng trong bản tuyên ngôn Độc lập của nước Mĩ và Tuyên ngôn Nhân quyền và Dân quyền của nước Pháp.", answer: true, explanation: "Đúng. Chủ tịch Hồ Chí Minh đã trích dẫn mở đầu Tuyên ngôn Độc lập 1945 từ 2 văn kiện này." }
+        ]
+    },
+    {
+        id: 67,
+        lesson: "b1",
+        category: "Bài 1: Cách mạng tư sản (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Đọc đoạn trích sau đây:
+“Ở Pháp, vương quyền là đỉnh cao của lâu đài phong kiến và chuyên chế. Nhà vua luôn có quyền hành chuyên chế và vô hạn; … quyết định mọi công việc đối nội và đối ngoại của quốc gia. Triều vua Lu-I XVI là một sự chuyên chế cao độ. Theo những “mật lệnh có ấn vua” nhằm khủng bố nhân dân, hàng trăm người bị bắt, bị tù đày ở các nơi trong nước”. (A. Man-phờ-rét, Đại Cách mạng Pháp 1789, NXB Khoa học, 1965, tr.18-19).`,
+        statements: [
+            { key: "a", text: "Chính sách cai trị của nhà nước phong kiến chuyên chế gây bất mãn cho nhân dân.", answer: true, explanation: "Đúng. Sự hà khắc và chuyên chế của chế độ phong kiến gây bất mãn sâu sắc." },
+            { key: "b", text: "Sự tồn tại của nhà nước quân chủ lập hiến gây bất mãn cho tầng lớp quý tộc mới.", answer: false, explanation: "Sai. Nước Pháp lúc bấy giờ theo chế độ phong kiến chuyên chế cao độ, chưa có quân chủ lập hiến." },
+            { key: "c", text: "Mâu thuẫn giữa đẳng cấp thứ ba với đẳng cấp tăng lữ và quý tộc ngày càng sâu sắc.", answer: true, explanation: "Đúng. Đẳng cấp thứ ba bị bóc lột nặng nề, đối kháng gay gắt với đẳng cấp tăng lữ và quý tộc." },
+            { key: "d", text: "Tình hình chính trị ở Pháp dưới triều vua Lu-I XVI khủng hoảng trầm trọng.", answer: true, explanation: "Đúng. Nước Pháp rơi vào khủng hoảng chính trị sâu sắc trước thềm cách mạng." }
+        ]
+    },
+    {
+        id: 68,
+        lesson: "b1",
+        category: "Bài 1: Cách mạng tư sản (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Cho bảng dữ kiện về một số mục tiêu của các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại:
+• Anh: Tầng lớp quý tộc mới và tư sản đấu tranh chống chế độ phong kiến lập nhà nước mới, mở đường kinh tế tư bản chủ nghĩa phát triển.
+• 13 thuộc địa Anh ở Bắc Mĩ: Nhân dân 13 thuộc địa hướng đến mục tiêu giải phóng dân tộc, lập nên quốc gia mới thống nhất thị trường dân tộc.
+• Pháp: Nhân dân Pháp mong muốn lật đổ chế độ quân chủ chuyên chế xây dựng nhà nước dân chủ tư sản, phát triển kinh tế tư bản chủ nghĩa.`,
+        statements: [
+            { key: "a", text: "Ở Anh tầng lớp quý tộc và tư sản đã liên kết đấu tranh chống chế độ phong kiến để xác lập nhà nước do dân bầu ra.", answer: false, explanation: "Sai. Cách mạng Anh thiết lập chế độ quân chủ lập hiến, quý tộc mới và tư sản nắm quyền, không phải nhà nước do dân bầu ra." },
+            { key: "b", text: "Ở Tây Âu và Bắc Mỹ có mục tiêu đấu tranh chung là lật đổ chế độ quân chủ chuyên chế, gạt bỏ những trở ngại trên con đường xác lập và phát triển của chủ nghĩa tư bản.", answer: false, explanation: "Sai. 13 thuộc địa Bắc Mĩ hướng tới lật đổ ách thống trị thực dân Anh để giải phóng dân tộc, không phải lật đổ phong kiến trong nước." },
+            { key: "c", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mĩ đều hướng đến thành lập nhà nước dân chủ tư sản với tầng lớp quý tộc mới và tư sản thay nhau cầm quyền.", answer: false, explanation: "Sai. Quý tộc mới chỉ đóng vai trò lãnh đạo ở Cách mạng tư sản Anh." },
+            { key: "d", text: "Ở Tây Âu và Bắc Mỹ hướng đến mục tiêu đấu tranh để mở rộng sự phát triển kinh tế hàng hóa, cải tiến kỹ thuật.", answer: true, explanation: "Đúng. Mục tiêu chung là giải phóng sức sản xuất và phát triển kinh tế hàng hóa TBCN." }
+        ]
+    },
+    {
+        id: 69,
+        lesson: "b1",
+        category: "Bài 1: Cách mạng tư sản (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Cho bảng dữ kiện về một số nhiệm vụ của các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại:
+• Cách mạng tư sản Anh: xóa bỏ tính chuyên chế phong kiến, thống nhất thị trường dân tộc; xác lập nền dân chủ tư sản.
+• Chiến tranh giành độc lập của 13 thuộc địa Anh ở Bắc Mỹ: giành độc lập dân tộc, thống nhất thị trường dân tộc, hình thành quốc gia dân tộc; xác lập nền dân chủ tư sản, đảm bảo các quyền tự do chính trị, tự do kinh doanh và tư hữu tài sản.
+• Cách mạng tư sản Pháp: hình thành thị trường dân tộc thống nhất; Chống ngoại xâm và nội phản, bảo vệ độc lập dân tộc và chính quyền cách mạng; xác lập nền dân chủ tư sản; xóa bỏ chế độ đẳng cấp, ban hành các quyền tự do, bình đẳng; đảm bảo quyền tư hữu về ruộng đất cho nông dân.`,
+        statements: [
+            { key: "a", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại chỉ thực hiện một nhiệm vụ chung là nhiệm vụ dân tộc điển hình.", answer: false, explanation: "Sai. Các cuộc cách mạng tư sản luôn thực hiện song song cả nhiệm vụ dân tộc và nhiệm vụ dân chủ." },
+            { key: "b", text: "Giành độc lập dân tộc, xóa bỏ tình trạng phong kiến cát cứ, thống nhất thị trường và hình thành quốc gia dân tộc là nhiệm vụ dân tộc của các cuộc cách mạng tư sản cận đại.", answer: true, explanation: "Đúng. Đây là toàn bộ nội dung của nhiệm vụ dân tộc." },
+            { key: "c", text: "Xóa bỏ tính chất chuyên chế phong kiến, xác lập nền dân chủ tư sản, ban bố các quyền dân chủ tư sản là nhiệm vụ dân chủ chung của cách mạng tư sản ở Tây Âu và Bắc Mĩ.", answer: true, explanation: "Đúng. Đây là nội dung cốt lõi của nhiệm vụ dân chủ." },
+            { key: "d", text: "Các cuộc cách mạng tư sản ở Tây Âu và Bắc Mỹ thời cận đại chỉ thực hiện một nhiệm vụ chung là nhiệm vụ dân chủ điển hình.", answer: false, explanation: "Sai. Cách mạng luôn thực hiện cả nhiệm vụ dân tộc và dân chủ." }
+        ]
+    },
+
+    // BÀI 2: CÂU HỎI ĐÚNG - SAI
+    {
+        id: 70,
+        lesson: "b2",
+        category: "Bài 2: Sự xác lập CNTB (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Quan sát sơ đồ về các đặc điểm của chủ nghĩa tư bản hiện đại:
+1. Độc quyền nhà nước.
+2. Có sức sản xuất phát triển cao.
+3. Lực lượng lao động có những chuyển biến quan trọng về cơ cấu, trình độ chuyên môn, nghiệp vụ.
+4. Không ngừng tự điều chỉnh, thích ứng để tồn tại và phát triển trong bối cảnh mới.
+5. Là một hệ thống thế giới và ngày càng mang tính toàn cầu.`,
+        statements: [
+            { key: "a", text: "Chủ nghĩa tư bản hiện đại là chủ nghĩa tư bản độc quyền nhà nước, thể hiện sự kết hợp giữa tiềm lực kinh tế của các tổ chức độc quyền tư nhân với sức mạnh chính trị của nhà nước tư sản.", answer: true, explanation: "Đúng. Thể hiện sự liên minh chặt chẽ giữa độc quyền tư nhân và quyền lực nhà nước tư sản." },
+            { key: "b", text: "“Chủ nghĩa tư bản hiện đại” là thuật ngữ để chỉ giai đoạn đầu của chủ nghĩa tư bản độc quyền.", answer: false, explanation: "Sai. Chủ nghĩa tư bản hiện đại là giai đoạn phát triển từ sau Chiến tranh thế giới thứ hai đến nay." },
+            { key: "c", text: "Chủ nghĩa tư bản hiện đại có sức sản xuất phát triển cao trên cơ sở những thành tựu của cách mạng khoa học – công nghệ hiện đại.", answer: true, explanation: "Đúng. Sức sản xuất bứt phá vượt bậc nhờ ứng dụng thành tựu khoa học - công nghệ." },
+            { key: "d", text: "Sau chiến tranh thế giới thứ nhất, chủ nghĩa tư bản chuyển sang thời kì mới gọi là chủ nghĩa tư bản hiện đại.", answer: false, explanation: "Sai. Giai đoạn CNTB hiện đại tính từ sau Chiến tranh thế giới thứ hai, không phải thứ nhất." }
+        ]
+    },
+    {
+        id: 71,
+        lesson: "b2",
+        category: "Bài 2: Sự xác lập CNTB (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Đọc đoạn tư liệu sau đây:
+“- Sự tập trung sản xuất và tư bản đạt tới một mức độ phát triển cao khiến nó tạo ra những tổ chức độc quyền có một vai trò quyết định trong sinh hoạt kinh tế.
+- Sự hợp nhất tư bản ngân hàng với tư bản công nghiệp và trên cơ sở “tư bản tài chính” đó, xuất hiện một bọn đầu sỏ tài chính.
+- Việc xuất khẩu tư bản, khác với việc xuất khẩu hàng hoá, đã có một ý nghĩa quan trọng đặc biệt.
+- Sự hình thành những liên minh độc quyền quốc tế của bọn tư bản chia nhau thế giới.
+- Việc các cường quốc tư bản chủ nghĩa lớn nhất đã chia nhau xong đất đai trên thế giới”.
+(Lê-nin, Toàn tập, Tập 27, NXB Sự thật, Hà Nội, 1961, tr.402).`,
+        statements: [
+            { key: "a", text: "Một trong những đặc điểm của chủ nghĩa tư bản độc quyền là xuất hiện các tổ chức độc quyền.", answer: true, explanation: "Đúng. Tập trung sản xuất và tích tụ tư bản cao độ làm xuất hiện các tổ chức độc quyền." },
+            { key: "b", text: "Tổ chức độc quyền là sự liên minh giữa các giai cấp tư sản và chủ nô để thu lợi nhuận cao.", answer: false, explanation: "Sai. Tổ chức độc quyền là liên minh giữa các nhà tư bản lớn, không liên quan đến giai cấp chủ nô." },
+            { key: "c", text: "Sự hợp nhất tư bản ngân hàng với tư bản công nghiệp tạo nên “tư bản tài chính”.", answer: true, explanation: "Đúng. Theo Lê-nin, sự dung hợp giữa tư bản ngân hàng và công nghiệp hình thành tư bản tài chính." },
+            { key: "d", text: "Các cường quốc tư bản chủ nghĩa bắt đầu xâm lược, phân chia thuộc địa trên thế giới.", answer: false, explanation: "Sai. Đoạn trích nêu rõ các cường quốc tư bản chủ nghĩa lớn nhất 'đã chia nhau xong đất đai trên thế giới'." }
+        ]
+    },
+    {
+        id: 72,
+        lesson: "b2",
+        category: "Bài 2: Sự xác lập CNTB (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Đọc đoạn tư liệu sau đây:
+“Chủ nghĩa tư bản hiện đại là chủ nghĩa tư bản văn minh, đề cao tính nhân văn, là chủ nghĩa tư bản có ý thức (khác hẳn với CNTB tự do cạnh tranh); trong đó, ngoài mục tiêu tìm kiếm lợi nhuận, còn có cơ chế để giải quyết hài hòa lợi ích của các bên có liên quan như nhà nước, nhà tư bản, người lao động, xã hội”.
+(Chủ nghĩa tư bản hiện đại và Cục diện thế giới hiện nay, Trung tâm bồi dưỡng đại biểu dân cử, 2022).`,
+        statements: [
+            { key: "a", text: "Chủ nghĩa tư bản hiện đại mang bản chất khác hẳn với Chủ nghĩa tư bản thời kì tự do cạnh tranh.", answer: true, explanation: "Đúng. CNTB hiện đại có cơ chế điều chỉnh hài hòa lợi ích các bên, khác với tự do cạnh tranh trước đây." },
+            { key: "b", text: "Chủ nghĩa tư bản không hướng tới việc tìm kiếm lợi nhuận cá nhân của nhà tư bản, mà nó hướng tới những yếu tố nhân văn, đặt quyền lợi người lao động lên trên hết.", answer: false, explanation: "Sai. Mục tiêu tối thượng của các nhà tư bản vẫn là theo đuổi lợi nhuận, quyền lợi người lao động không bao giờ đặt lên trên hết." },
+            { key: "c", text: "Chủ nghĩa tư bản hiện đại vẫn chú trọng việc tìm kiếm lợi nhuận cho các nhà tư bản. Bên cạnh đó nó còn giải quyết hài hoà lợi ích cho người lao động và xã hội.", answer: true, explanation: "Đúng. Vừa đảm bảo lợi nhuận, vừa giải quyết hài hòa lợi ích xã hội để duy trì ổn định." },
+            { key: "d", text: "Chủ nghĩa tư bản có nhiều tiềm năng, ngày càng tự điều chỉnh để thích nghi theo hướng tích cực, văn minh.", answer: true, explanation: "Đúng. CNTB có khả năng tự điều chỉnh để thích ứng bối cảnh mới." }
+        ]
+    },
+    {
+        id: 73,
+        lesson: "b2",
+        category: "Bài 2: Sự xác lập CNTB (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Đọc đoạn tư liệu sau đây:
+Khi phân tích về chủ nghĩa tư bản, C. Mác và Ph. Ăng-ghen khẳng định: “Chủ nghĩa tư bản, với tư cách là phương thức sản xuất được hình thành và thay thế phương thức sản xuất phong kiến trong lịch sử, là chế độ kinh tế - xã hội tiến bộ hơn nhiều so với các chế độ kinh tế - xã hội trước đó. Đặc biệt, nhờ vận dụng hiệu quả quy luật của kinh tế thị trường, giai cấp tư sản trong quá trình thống trị chưa đầy một thế kỷ “đã tạo ra những lực lượng sản xuất nhiều hơn và đồ sộ hơn lực lượng sản xuất của tất cả các thế hệ trước kia gộp lại”. (C. Mác và Ph. Ăng-ghen: Toàn tập, t. 4, tr. 603).`,
+        statements: [
+            { key: "a", text: "Chủ nghĩa tư bản là phương thức sản xuất tiến bộ, đã đem lại lực lượng sản xuất to lớn chưa từng có trong lịch sử.", answer: true, explanation: "Đúng. C. Mác và Ph. Ăng-ghen khẳng định CNTB tạo ra lực lượng sản xuất đồ sộ hơn tất cả thế hệ trước gộp lại." },
+            { key: "b", text: "Chủ nghĩa tư bản là phương thức sản xuất kế tiếp, thay thế cho xã hội nguyên thuỷ.", answer: false, explanation: "Sai. Chủ nghĩa tư bản thay thế cho phương thức sản xuất phong kiến." },
+            { key: "c", text: "Một trong những kinh nghiệm, bài học thành công của Chủ nghĩa tư bản là vận dụng hiệu quả quy luật của kinh tế thị trường.", answer: true, explanation: "Đúng. Việc vận dụng triệt để quy luật thị trường đã kích thích mạnh mẽ năng lực sản xuất." },
+            { key: "d", text: "Trong xã hội Chủ nghĩa tư bản, không có giai cấp thống trị, mọi hoạt động kinh tế, sản xuất và hưởng thụ đều mang tính công bằng, dân chủ.", answer: false, explanation: "Sai. Xã hội tư bản vẫn duy trì sự thống trị của giai cấp tư sản." }
+        ]
+    },
+    {
+        id: 74,
+        lesson: "b2",
+        category: "Bài 2: Sự xác lập CNTB (Đúng - Sai)",
+        qType: "tf_group",
+        question: `Quan sát bảng số liệu về sự thay đổi của các chỉ số kinh tế từ 1929 đến 1932 ở các nước tư bản:
+• Sản xuất công nghiệp: Hoa Kỳ: -46%, Đức: -41%, Pháp: -24%, Anh: -23%
+• Giá sỉ: Pháp: -34%, Anh: -33%, Hoa Kỳ: -32%, Đức: -29%
+• Ngoại thương: Hoa Kỳ: -70%, Đức: -61%, Anh: -60%, Pháp: -54%
+• Thất nghiệp: Hoa Kỳ: +607%, Đức: +232%, Pháp: +214%, Anh: +129%`,
+        statements: [
+            { key: "a", text: "Với sự ra đời của máy móc thay thế sức lao động của con người, từ 1929- 1933, tình trạng thất nghiệp của các nước tư bản tăng nhanh.", answer: false, explanation: "Sai. Tỷ lệ thất nghiệp tăng vọt là do khủng hoảng kinh tế thừa chu kỳ, không phải do máy móc thay thế con người." },
+            { key: "b", text: "Từ 1929 - 1933, nền kinh tế của các nước tư bản, trong đó điển hình là Mỹ, Anh, Pháp, Đức lâm vào khủng hoảng trầm trọng.", answer: true, explanation: "Đúng. Cả 4 cường quốc đều có sản xuất và ngoại thương sụt giảm nghiêm trọng." },
+            { key: "c", text: "Đức là quốc gia chịu ảnh hưởng nặng nề nhất từ khủng hoảng kinh tế 1929 - 1933.", answer: false, explanation: "Sai. Hoa Kỳ mới là nước gánh chịu hậu quả nặng nề nhất (công nghiệp -46%, ngoại thương -70%, thất nghiệp +607%)." },
+            { key: "d", text: "Thời điểm đó, Mỹ là nước có nền kinh tế lớn nhất thế giới, và cũng là quốc gia chịu ảnh hưởng nặng nề nhất của cuộc đại khủng hoảng.", answer: true, explanation: "Đúng. Mỹ là tâm chấn và gánh chịu mức độ sụt giảm kinh tế lớn nhất toàn cầu." }
+        ]
+    }
+];
+
+// Định dạng danh sách câu hỏi chuẩn
+const QUIZ_QUESTIONS = [
+    ...rawMCQ.map(q => ({
+        id: q.id,
+        qType: 'mcq',
+        category: q.lesson === 'b1' ? 'Bài 1: Cách mạng tư sản' : 'Bài 2: Sự xác lập CNTB',
+        question: q.question,
+        options: q.options,
+        correct: q.answer,
+        isMultiple: false,
+        explanation: q.explanation
+    })),
+    ...rawTrueFalse
+];
 
 if (typeof window !== 'undefined') {
     window.QUIZ_QUESTIONS = QUIZ_QUESTIONS;
