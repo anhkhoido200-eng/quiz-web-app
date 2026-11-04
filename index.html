@@ -273,22 +273,17 @@
 
                 <!-- KHU VỰC CHỌN MÔN HỌC ĐỘNG (DYNAMIC SUBJECTS HUB) -->
                 <div class="mb-5 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-700/80">
-                    <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center justify-between mb-2.5">
                         <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                             <i class="fa-solid fa-layer-group text-indigo-400"></i>
-                            <span>Chọn Môn Thi & Đợt Kiểm Tra</span>
+                            <span>Chọn Môn Ôn Tập</span>
                         </label>
                         <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Đang tải...</span>
                     </div>
 
-                    <!-- Filter Tabs: Gộp theo Kì Thi / Đợt Kiểm Tra (15 Phút, Giữa Kì 1, Cuối Kì 1...) -->
-                    <div id="home-semester-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2.5 scrollbar-thin">
-                        <!-- Render bởi app.js: [🌟 Tất Cả] [⚡ KT 15 Phút] [📚 Giữa Kì 1] [🎯 Cuối Kì 1]... -->
-                    </div>
-
-                    <!-- Danh sách môn học động theo nhóm -->
-                    <div id="home-subjects-grid" class="space-y-4">
-                        <!-- Render bởi app.js qua renderSubjectsGrid() -->
+                    <!-- Lưới môn học gọn gàng cho học sinh -->
+                    <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5">
+                        <!-- Render bởi app.js qua renderHomeSubjects() -->
                     </div>
 
                     <!-- Nút quản lý môn nhanh dành cho Admin -->

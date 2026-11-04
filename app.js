@@ -109,7 +109,7 @@ class QuizApp {
                 semester: 'Giữa Kì 1',
                 icon: 'fa-earth-americas',
                 gradient: 'emerald',
-                visibility: 'PRIVATE',
+                visibility: 'PUBLIC',
                 count: 52
             }
         ];
@@ -136,6 +136,11 @@ class QuizApp {
             loaded = this.getDefaultSubjects();
         }
 
+        // Đảm bảo mọi môn đều có thuộc tính visibility chuẩn (mặc định là PUBLIC)
+        loaded.forEach(s => {
+            if (!s.visibility) s.visibility = 'PUBLIC';
+        });
+
         this.dynamicSubjects = loaded;
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(loaded));
 
@@ -143,185 +148,79 @@ class QuizApp {
         this.populateSubjectDropdowns();
     }
 
-    setSemesterFilter(sem) {
-        this.selectedSemesterFilter = sem;
-        this.renderHomeSubjects();
-    }
-
-    createSubjectCard(sub) {
-        const isPrivate = sub.visibility === 'PRIVATE';
-        const isSelected = this.currentSubject === sub.key;
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.onclick = () => this.selectSubject(sub.key);
-
-        let bgClass = "bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300";
-        let iconBg = "bg-slate-700/60 text-slate-300";
-
-        if (isSelected) {
-            if (sub.gradient === 'purple') {
-                bgClass = "bg-purple-600/25 border-purple-500 text-white shadow-lg shadow-purple-600/20";
-                iconBg = "bg-purple-600 text-white";
-            } else if (sub.gradient === 'emerald') {
-                bgClass = "bg-emerald-600/25 border-emerald-500 text-white shadow-lg shadow-emerald-600/20";
-                iconBg = "bg-emerald-600 text-white";
-            } else if (sub.gradient === 'rose') {
-                bgClass = "bg-rose-600/25 border-rose-500 text-white shadow-lg shadow-rose-600/20";
-                iconBg = "bg-rose-600 text-white";
-            } else if (sub.gradient === 'amber') {
-                bgClass = "bg-amber-600/25 border-amber-500 text-white shadow-lg shadow-amber-600/20";
-                iconBg = "bg-amber-600 text-white";
-            } else {
-                bgClass = "bg-indigo-600/25 border-indigo-500 text-white shadow-lg shadow-indigo-600/20";
-                iconBg = "bg-indigo-600 text-white";
-            }
-        }
-
-        card.className = `p-3 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${bgClass}`;
-        card.innerHTML = `
-            <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center text-lg shrink-0 shadow">
-                <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
-            </div>
-            <div class="overflow-hidden flex-1">
-                <div class="flex items-center justify-between gap-1">
-                    <p class="font-bold text-xs sm:text-sm truncate text-white">${sub.name}</p>
-                    ${isPrivate ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Riêng tư</span>' : ''}
-                </div>
-                <p class="text-[10px] text-slate-400 mt-0.5 truncate">${sub.semester || 'Đề cương'} • ${sub.count || 0} câu</p>
-            </div>
-        `;
-        return card;
-    }
-
     renderHomeSubjects() {
         const grid = document.getElementById('home-subjects-grid');
-        const tabsContainer = document.getElementById('home-semester-tabs');
         if (!grid) return;
+        grid.innerHTML = '';
 
-        // 1. Lọc các môn học được phép hiển thị cho người dùng hiện tại
-        const authorized = this.dynamicSubjects.filter(sub => {
-            const isPrivate = sub.visibility === 'PRIVATE';
-            return !isPrivate || this.isAdminAuthenticated || this.allowedGeoIps.includes(this.clientIp);
+        // Học sinh chỉ thấy những môn được Admin để CÔNG KHAI (PUBLIC).
+        // Admin (khi đã đăng nhập) sẽ thấy toàn bộ để kiểm tra đề, kèm nhãn [Ẩn với HS] cho môn Private.
+        const visibleSubjects = this.dynamicSubjects.filter(sub => {
+            if (this.isAdminAuthenticated) return true;
+            return sub.visibility === 'PUBLIC';
         });
 
-        // 2. Render Tabs Đợt Thi / Phân loại kì thi
-        if (tabsContainer) {
-            tabsContainer.innerHTML = '';
-            const standardOrder = ['Kiểm Tra 15 Phút', 'Kiểm Tra 1 Tiết', 'Giữa Kì 1', 'Cuối Kì 1', 'Giữa Kì 2', 'Cuối Kì 2', 'Ôn Tập Tự Do'];
-            const semSet = new Set();
-            authorized.forEach(s => semSet.add(s.semester || 'Ôn Tập Tự Do'));
-
-            const sortedSemesters = Array.from(semSet).sort((a, b) => {
-                let ia = standardOrder.indexOf(a);
-                let ib = standardOrder.indexOf(b);
-                if (ia === -1) ia = 99;
-                if (ib === -1) ib = 99;
-                return ia - ib;
-            });
-
-            // Tab [Tất Cả]
-            const isAll = this.selectedSemesterFilter === 'all';
-            const allBtn = document.createElement('button');
-            allBtn.type = 'button';
-            allBtn.onclick = () => this.setSemesterFilter('all');
-            allBtn.className = `px-3 py-1.5 rounded-xl border text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${isAll ? 'bg-indigo-600 text-white border-indigo-500 shadow-md' : 'bg-slate-800/80 text-slate-300 border-slate-700/80 hover:border-slate-600'}`;
-            allBtn.innerHTML = `<i class="fa-solid fa-sparkles text-amber-300"></i> Tất Cả (${authorized.length})`;
-            tabsContainer.appendChild(allBtn);
-
-            // Từng Tab đợt thi
-            sortedSemesters.forEach(sem => {
-                const count = authorized.filter(s => (s.semester || 'Ôn Tập Tự Do') === sem).length;
-                const isSelected = this.selectedSemesterFilter === sem;
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.onclick = () => this.setSemesterFilter(sem);
-
-                let icon = 'fa-bookmark';
-                if (sem.includes('15')) icon = 'fa-bolt text-amber-400';
-                else if (sem.includes('Tiết') || sem.includes('tiết')) icon = 'fa-pen-clip text-sky-400';
-                else if (sem.includes('Giữa')) icon = 'fa-book-open text-indigo-400';
-                else if (sem.includes('Cuối')) icon = 'fa-flag-checkered text-emerald-400';
-                else if (sem.includes('Tự Do') || sem.includes('tự do')) icon = 'fa-lightbulb text-purple-400';
-
-                btn.className = `px-3 py-1.5 rounded-xl border text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${isSelected ? 'bg-indigo-600 text-white border-indigo-500 shadow-md' : 'bg-slate-800/80 text-slate-300 border-slate-700/80 hover:border-slate-600'}`;
-                btn.innerHTML = `<i class="fa-solid ${icon}"></i> ${sem} (${count})`;
-                tabsContainer.appendChild(btn);
-            });
-        }
-
-        // 3. Render Grid môn học
-        grid.innerHTML = '';
-        if (authorized.length === 0) {
-            grid.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs italic">Chưa có môn học nào được mở cho thiết bị của bạn.</div>';
+        if (visibleSubjects.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full p-8 text-center text-slate-400 text-xs italic bg-slate-900/60 rounded-2xl border border-slate-800 space-y-1.5">
+                    <i class="fa-solid fa-lock text-amber-400 text-lg block"></i>
+                    <p class="font-bold text-white text-sm">Hiện chưa có môn thi nào được mở công khai.</p>
+                    <p class="text-slate-400 text-[11px]">Vui lòng đợi giáo viên kích hoạt môn thi hoặc quay lại sau!</p>
+                </div>
+            `;
             return;
         }
 
-        if (this.selectedSemesterFilter === 'all') {
-            // Gộp theo từng nhóm đợt thi
-            const standardOrder = ['Kiểm Tra 15 Phút', 'Kiểm Tra 1 Tiết', 'Giữa Kì 1', 'Cuối Kì 1', 'Giữa Kì 2', 'Cuối Kì 2', 'Ôn Tập Tự Do'];
-            const groups = {};
-            authorized.forEach(sub => {
-                const sem = sub.semester || 'Ôn Tập Tự Do';
-                if (!groups[sem]) groups[sem] = [];
-                groups[sem].push(sub);
-            });
-
-            const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
-                let ia = standardOrder.indexOf(a);
-                let ib = standardOrder.indexOf(b);
-                if (ia === -1) ia = 99;
-                if (ib === -1) ib = 99;
-                return ia - ib;
-            });
-
-            sortedGroupKeys.forEach(semName => {
-                const subList = groups[semName];
-                const groupWrapper = document.createElement('div');
-                groupWrapper.className = 'p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-700/80 shadow-md space-y-3';
-
-                let icon = 'fa-folder-open text-indigo-400';
-                if (semName.includes('15')) icon = 'fa-bolt text-amber-400';
-                else if (semName.includes('Tiết') || semName.includes('tiết')) icon = 'fa-pen-clip text-sky-400';
-                else if (semName.includes('Giữa')) icon = 'fa-book-open text-indigo-400';
-                else if (semName.includes('Cuối')) icon = 'fa-flag-checkered text-emerald-400';
-
-                groupWrapper.innerHTML = `
-                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-sm shadow">
-                                <i class="fa-solid ${icon}"></i>
-                            </div>
-                            <div>
-                                <h4 class="font-bold text-white text-sm sm:text-base tracking-tight">${semName}</h4>
-                                <p class="text-[10px] text-slate-400">Tệp gồm ${subList.length} môn: <span class="text-slate-300 font-medium">${subList.map(s => s.name).join(', ')}</span></p>
-                            </div>
-                        </div>
-                        <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-slate-700">
-                            ${subList.length} môn
-                        </span>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5"></div>
-                `;
-                const subGrid = groupWrapper.querySelector('.grid');
-                subList.forEach(sub => {
-                    subGrid.appendChild(this.createSubjectCard(sub));
-                });
-                grid.appendChild(groupWrapper);
-            });
-        } else {
-            // Hiển thị các môn thuộc tab được chọn
-            const filtered = authorized.filter(sub => (sub.semester || 'Ôn Tập Tự Do') === this.selectedSemesterFilter);
-            if (filtered.length === 0) {
-                grid.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs italic">Chưa có môn học nào trong đợt kiểm tra "${this.selectedSemesterFilter}".</div>`;
-                return;
-            }
-            const subGrid = document.createElement('div');
-            subGrid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5';
-            filtered.forEach(sub => {
-                subGrid.appendChild(this.createSubjectCard(sub));
-            });
-            grid.appendChild(subGrid);
+        // Đảm bảo môn đang chọn hợp lệ
+        if (!visibleSubjects.some(s => s.key === this.currentSubject)) {
+            this.currentSubject = visibleSubjects[0].key;
+            this.loadQuestionsForCurrentSubject();
         }
+
+        visibleSubjects.forEach(sub => {
+            const isPrivate = sub.visibility === 'PRIVATE';
+            const isSelected = this.currentSubject === sub.key;
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.onclick = () => this.selectSubject(sub.key);
+
+            let bgClass = "bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300";
+            let iconBg = "bg-slate-700/60 text-slate-300";
+
+            if (isSelected) {
+                if (sub.gradient === 'purple') {
+                    bgClass = "bg-purple-600/25 border-purple-500 text-white shadow-lg shadow-purple-600/20";
+                    iconBg = "bg-purple-600 text-white";
+                } else if (sub.gradient === 'emerald') {
+                    bgClass = "bg-emerald-600/25 border-emerald-500 text-white shadow-lg shadow-emerald-600/20";
+                    iconBg = "bg-emerald-600 text-white";
+                } else if (sub.gradient === 'rose') {
+                    bgClass = "bg-rose-600/25 border-rose-500 text-white shadow-lg shadow-rose-600/20";
+                    iconBg = "bg-rose-600 text-white";
+                } else if (sub.gradient === 'amber') {
+                    bgClass = "bg-amber-600/25 border-amber-500 text-white shadow-lg shadow-amber-600/20";
+                    iconBg = "bg-amber-600 text-white";
+                } else {
+                    bgClass = "bg-indigo-600/25 border-indigo-500 text-white shadow-lg shadow-indigo-600/20";
+                    iconBg = "bg-indigo-600 text-white";
+                }
+            }
+
+            card.className = `p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${bgClass}`;
+            card.innerHTML = `
+                <div class="w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center text-xl shrink-0 shadow">
+                    <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
+                </div>
+                <div class="overflow-hidden flex-1">
+                    <div class="flex items-center justify-between gap-1">
+                        <p class="font-bold text-xs sm:text-sm truncate text-white">${sub.name}</p>
+                        ${(isPrivate && this.isAdminAuthenticated) ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Ẩn với HS</span>' : ''}
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-0.5 truncate">${sub.semester || 'Đề cương'} • ${sub.count || 0} câu</p>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
 
         this.updateNavbarAndBadge();
     }
@@ -1454,9 +1353,10 @@ Giải thích: Biên độ A = 5 cm.`;
                                             <p class="text-[10px] text-slate-400 font-mono truncate">key: ${sub.key}</p>
                                         </div>
                                     </div>
-                                    <span class="px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${isPrivate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
-                                        ${isPrivate ? '🔒 Riêng tư' : '🌍 Công khai'}
-                                    </span>
+                                    <button type="button" onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${isPrivate ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'}" title="${isPrivate ? 'Môn đang ẨN. Bấm để MỞ CÔNG KHAI cho học sinh' : 'Môn đang MỞ CÔNG KHAI. Bấm để ẨN KHỎI học sinh'}">
+                                        <i class="fa-solid ${isPrivate ? 'fa-lock' : 'fa-globe'}"></i>
+                                        <span>${isPrivate ? '🔒 Đang Ẩn (Riêng tư)' : '🌍 Đang Mở (Công khai)'}</span>
+                                    </button>
                                 </div>
 
                                 <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-700/60">
@@ -1502,6 +1402,36 @@ Giải thích: Biên độ A = 5 cm.`;
                 if (customBox) customBox.classList.add('hidden');
             }
         }
+    }
+
+    async adminToggleSubjectVisibility(key) {
+        const sub = this.dynamicSubjects.find(s => s.key === key);
+        if (!sub) return;
+
+        const isCurrentlyPrivate = sub.visibility === 'PRIVATE';
+        sub.visibility = isCurrentlyPrivate ? 'PUBLIC' : 'PRIVATE';
+
+        // 1. Lưu localStorage
+        localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
+
+        // 2. Lưu Cloud Supabase
+        try {
+            if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
+                await window.dbService.saveDynamicSubjects(this.dynamicSubjects);
+            }
+        } catch (e) {
+            console.warn("Lưu Supabase:", e);
+        }
+
+        // 3. Render lại tức thì
+        this.renderAdminSubjectsList();
+        this.renderHomeSubjects();
+
+        const isNowPublic = sub.visibility === 'PUBLIC';
+        const msg = isNowPublic
+            ? `✅ ĐÃ MỞ CÔNG KHAI MÔN [${sub.name}]!\n\nHọc sinh vào trang web sẽ nhìn thấy và làm bài được ngay.`
+            : `🔒 ĐÃ KHÓA / ẨN MÔN [${sub.name}]!\n\nHọc sinh bình thường sẽ không thấy môn này nữa (chỉ Admin mới thấy để quản lý/soạn đề).`;
+        alert(msg);
     }
 
     onSemesterSelectChange(val) {
@@ -1561,6 +1491,10 @@ Giải thích: Biên độ A = 5 cm.`;
                 keyInput.disabled = false;
             }
             targetSem = 'Giữa Kì 1';
+            const radios = document.getElementsByName('edit-sub-visibility');
+            radios.forEach(r => {
+                if (r.value === 'PUBLIC') r.checked = true;
+            });
         }
 
         if (semInput) semInput.value = targetSem;
