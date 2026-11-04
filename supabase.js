@@ -558,6 +558,10 @@ class DatabaseService {
      * Lưu/Cập nhật 1 câu hỏi lên Supabase
      */
     async saveQuestion(qObj, subjectKey = 'history') {
+        if (!qObj || !qObj.question) {
+            return { success: false, error: "Nội dung câu hỏi không được để trống." };
+        }
+
         let correctInt = 0;
         const rawCorrect = qObj.correct !== undefined ? qObj.correct : (qObj.answer !== undefined ? qObj.answer : qObj.correctAnswer);
         if (typeof rawCorrect === 'number') {
@@ -570,7 +574,11 @@ class DatabaseService {
             else correctInt = 0;
         }
 
-        const cleanOptions = Array.isArray(qObj.options) ? qObj.options.map(opt => {
+        let rawOptions = qObj.options;
+        if (rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions)) {
+            rawOptions = [rawOptions.A || '', rawOptions.B || '', rawOptions.C || '', rawOptions.D || ''];
+        }
+        const cleanOptions = Array.isArray(rawOptions) ? rawOptions.map(opt => {
             if (typeof opt !== 'string') return String(opt || '');
             return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
         }) : [];
@@ -674,7 +682,11 @@ class DatabaseService {
                 else correctInt = 0;
             }
 
-            const cleanOptions = Array.isArray(q.options) ? q.options.map(opt => {
+            let rawOptions = q.options;
+            if (rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions)) {
+                rawOptions = [rawOptions.A || '', rawOptions.B || '', rawOptions.C || '', rawOptions.D || ''];
+            }
+            const cleanOptions = Array.isArray(rawOptions) ? rawOptions.map(opt => {
                 if (typeof opt !== 'string') return String(opt || '');
                 return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
             }) : [];
@@ -1302,14 +1314,16 @@ class DatabaseService {
                                 allowedIps = parsed;
                             } else if (parsed && typeof parsed === 'object') {
                                 masterIp = parsed.masterIp || "";
-                                allowedIps = Array.isArray(parsed.allowedIps) ? parsed.allowedIps : [];
+                                allowedIps = Array.isArray(parsed.allowedIps) ? parsed.allowedIps : (Array.isArray(parsed.ips) ? parsed.ips.map(ip => ({ ip, name: 'Admin', isMaster: ip === masterIp })) : []);
                             }
                         } catch (e) {}
                     }
+                    // Đồng nhất cấu trúc
+                    const ips = allowedIps.map(x => typeof x === 'string' ? x : x.ip).filter(Boolean);
                     try {
-                        localStorage.setItem(STORAGE_KEYS.ADMIN_IPS_CONFIG, JSON.stringify({ masterIp, allowedIps }));
+                        localStorage.setItem(STORAGE_KEYS.ADMIN_IPS_CONFIG, JSON.stringify({ masterIp, allowedIps, ips }));
                     } catch (e) {}
-                    return { masterIp, allowedIps };
+                    return { masterIp, allowedIps, ips };
                 }
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi tải cấu hình Admin IPs:", e);
@@ -1318,10 +1332,17 @@ class DatabaseService {
 
         try {
             const raw = localStorage.getItem(STORAGE_KEYS.ADMIN_IPS_CONFIG);
-            if (raw) return JSON.parse(raw);
+            if (raw) {
+                const cached = JSON.parse(raw);
+                if (cached) {
+                    const ips = Array.isArray(cached.ips) ? cached.ips : (Array.isArray(cached.allowedIps) ? cached.allowedIps.map(x => typeof x === 'string' ? x : x.ip).filter(Boolean) : []);
+                    return { masterIp: cached.masterIp || "", allowedIps: cached.allowedIps || [], ips };
+                }
+            }
         } catch (e) {}
 
-        return { masterIp, allowedIps };
+        const ips = allowedIps.map(x => typeof x === 'string' ? x : x.ip).filter(Boolean);
+        return { masterIp, allowedIps, ips };
     }
 
     /**
@@ -1329,8 +1350,14 @@ class DatabaseService {
      */
     async saveAdminIpsConfig(config) {
         const masterIp = (config && config.masterIp) ? String(config.masterIp).trim() : "";
-        const allowedIps = (config && Array.isArray(config.allowedIps)) ? config.allowedIps : [];
-        const payloadStr = JSON.stringify({ masterIp, allowedIps });
+        let allowedIps = [];
+        if (config && Array.isArray(config.allowedIps)) {
+            allowedIps = config.allowedIps;
+        } else if (config && Array.isArray(config.ips)) {
+            allowedIps = config.ips.map(ip => typeof ip === 'string' ? { ip, name: 'Admin', isMaster: ip === masterIp } : ip);
+        }
+        const ips = allowedIps.map(x => typeof x === 'string' ? x : x.ip).filter(Boolean);
+        const payloadStr = JSON.stringify({ masterIp, allowedIps, ips });
         const nowIso = new Date().toISOString();
 
         try {
@@ -1355,7 +1382,7 @@ class DatabaseService {
             }
         }
 
-        return { masterIp, allowedIps };
+        return { masterIp, allowedIps, ips };
     }
 
     /**
@@ -1366,11 +1393,13 @@ class DatabaseService {
         if (!cleanIp || cleanIp === "Chưa xác định") return false;
 
         const config = await this.fetchAdminIpsConfig();
-        const existingIdx = config.allowedIps.findIndex(item => item.ip === cleanIp);
+        const existingIdx = config.allowedIps.findIndex(item => (typeof item === 'string' ? item : item.ip) === cleanIp);
 
         if (existingIdx !== -1) {
-            config.allowedIps[existingIdx].name = name || config.allowedIps[existingIdx].name;
-            if (isMaster) config.allowedIps[existingIdx].isMaster = true;
+            if (typeof config.allowedIps[existingIdx] === 'object') {
+                config.allowedIps[existingIdx].name = name || config.allowedIps[existingIdx].name;
+                if (isMaster) config.allowedIps[existingIdx].isMaster = true;
+            }
         } else {
             config.allowedIps.push({
                 ip: cleanIp,
@@ -1401,7 +1430,7 @@ class DatabaseService {
             throw new Error("Không thể thu hồi quyền của Master Admin chính!");
         }
 
-        config.allowedIps = config.allowedIps.filter(item => item.ip !== cleanIp);
+        config.allowedIps = config.allowedIps.filter(item => (typeof item === 'string' ? item : item.ip) !== cleanIp);
         await this.saveAdminIpsConfig(config);
         return config;
     }
@@ -1415,7 +1444,8 @@ class DatabaseService {
 
         const config = await this.fetchAdminIpsConfig();
         if (config.masterIp && config.masterIp === cleanIp) return true;
-        return config.allowedIps.some(item => item.ip === cleanIp);
+        if (Array.isArray(config.ips) && config.ips.includes(cleanIp)) return true;
+        return config.allowedIps.some(item => (typeof item === 'string' ? item : item.ip) === cleanIp);
     }
 
     // =========================================================================

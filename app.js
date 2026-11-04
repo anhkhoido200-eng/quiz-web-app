@@ -58,6 +58,34 @@ class QuizApp {
         // Dữ liệu bóc tách từ bộ nạp đề
         this.parsedImportQuestions = [];
 
+        // Tiện ích Debounce tối ưu hiệu năng chống giật lag
+        this.debouncedSearchAdminQuestions = this.debounce(() => {
+            this.renderAdminQuestionsList();
+        }, 300);
+
+        this.debouncedCacheLocalQuestions = this.debounce(() => {
+            try {
+                localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+            } catch (ce) {}
+        }, 400);
+
+        this.debouncedSaveSingleQuestion = this.debounce(async (q) => {
+            try {
+                if (window.dbService && typeof window.dbService.saveQuestion === 'function') {
+                    await window.dbService.saveQuestion(q, this.currentSubject);
+                }
+            } catch (e) {
+                console.warn("Lỗi lưu đơn lẻ câu hỏi:", e);
+            }
+        }, 300);
+
+        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-2.5-flash (chống lỗi 404 deprecated)
+        const savedModel = localStorage.getItem('gemini_model');
+        if (!savedModel || savedModel.includes('1.5')) {
+            localStorage.setItem('gemini_model', 'gemini-2.5-flash');
+        }
+        this.selectedGeminiModel = 'gemini-2.5-flash';
+
         // Cache màn hình
         this.screens = {
             home: document.getElementById('screen-home'),
@@ -66,6 +94,18 @@ class QuizApp {
         };
 
         this.init();
+    }
+
+    /**
+     * Tiện ích Debounce tối ưu hiệu năng
+     */
+    debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), wait);
+        };
     }
 
     /**
@@ -364,9 +404,13 @@ class QuizApp {
                 item.question = item.question.trim();
             }
 
-            // 3. Chuẩn hóa 4 phương án options: Tách riêng phần chữ, bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
-            if (Array.isArray(item.options)) {
-                item.options = item.options.map(opt => {
+            // 3. Chuẩn hóa 4 phương án options: Hỗ trợ cả mảng và object { A, B, C, D }, loại bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
+            let rawOpts = item.options;
+            if (rawOpts && typeof rawOpts === 'object' && !Array.isArray(rawOpts)) {
+                rawOpts = [rawOpts.A || '', rawOpts.B || '', rawOpts.C || '', rawOpts.D || ''];
+            }
+            if (Array.isArray(rawOpts)) {
+                item.options = rawOpts.map(opt => {
                     if (typeof opt !== 'string') return String(opt || '');
                     return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
                 });
@@ -452,7 +496,10 @@ class QuizApp {
         try {
             if (window.dbService && typeof window.dbService.fetchAdminIpsConfig === 'function') {
                 const cfg = await window.dbService.fetchAdminIpsConfig();
-                this.allowedAdminIps = Array.isArray(cfg.ips) ? cfg.ips : [];
+                let ips = [];
+                if (Array.isArray(cfg.ips)) ips = cfg.ips;
+                else if (Array.isArray(cfg.allowedIps)) ips = cfg.allowedIps.map(x => typeof x === 'string' ? x : x.ip);
+                this.allowedAdminIps = ips.filter(Boolean);
                 this.masterAdminIp = cfg.masterIp || '';
             }
         } catch (e) {
@@ -461,12 +508,20 @@ class QuizApp {
 
         // Kiểm tra xem thiết bị đã ghi nhớ quyền Admin hoặc IP hiện tại nằm trong Whitelist
         const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
-        const isWhitelisted = this.allowedAdminIps.includes(this.clientIp) || (this.masterAdminIp && this.masterAdminIp === this.clientIp);
+        const isWhitelisted = this.clientIp && (this.allowedAdminIps.includes(this.clientIp) || (this.masterAdminIp && this.masterAdminIp === this.clientIp));
 
         if (isSavedAdmin || isWhitelisted) {
             this.isAdminAuthenticated = true;
             localStorage.setItem('quiz_is_admin', 'true');
             localStorage.setItem('quiz_admin_authenticated', 'true');
+            if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== '127.0.0.1') {
+                localStorage.setItem('quiz_admin_saved_ip', this.clientIp);
+                // Tự động ghi nhớ IP máy này làm Admin vĩnh viễn trên Supabase nếu chưa có
+                if (!this.allowedAdminIps.includes(this.clientIp) && window.dbService && typeof window.dbService.addAdminIp === 'function') {
+                    window.dbService.addAdminIp(this.clientIp, 'Admin Máy Hiện Tại', true).catch(() => {});
+                    this.allowedAdminIps.push(this.clientIp);
+                }
+            }
         }
 
         this.updateAdminUIVisibility();
@@ -1253,6 +1308,9 @@ Giải thích: Biên độ A = 5 cm.`;
                 } catch (err) {
                     console.error("Lỗi đọc file Word .docx:", err);
                     alert("Lỗi đọc file Word (.docx): " + err.message);
+                } finally {
+                    // Giải phóng bộ nhớ RAM tránh tụt FPS khi file chứa nhiều ảnh Base64
+                    if (event && event.target) event.target.value = '';
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -1693,13 +1751,13 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (JSON Array):
   "category": "Ôn tập",
   "qType": "mcq", // "mcq" (Trắc nghiệm chọn 1 đáp án), "tf_group" (Đúng/Sai nhiều ý con a,b,c,d), hoặc "short_answer" (trả lời ngắn/điền số)
   "question": "Nội dung câu hỏi đầy đủ (không chứa chữ 'Câu 1:' ở đầu)...",
-  "options": [
-    "Nội dung phương án A (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'A.' ở đầu)",
-    "Nội dung phương án B (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'B.' ở đầu)",
-    "Nội dung phương án C (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'C.' ở đầu)",
-    "Nội dung phương án D (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'D.' ở đầu)"
-  ],
-  "correctAnswer": "A", // BẮT BUỘC: Nhận chính xác 1 trong 4 chuỗi: "A", "B", "C", hoặc "D"
+  "options": {
+    "A": "Nội dung phương án A (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'A.' ở đầu)",
+    "B": "Nội dung phương án B (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'B.' ở đầu)",
+    "C": "Nội dung phương án C (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'C.' ở đầu)",
+    "D": "Nội dung phương án D (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'D.' ở đầu)"
+  },
+  "correctAnswer": "A", // BẮT BUỘC: Nhận chính xác 1 trong 4 chữ cái: "A", "B", "C", hoặc "D"
   "correct": 0, // BẮT BUỘC: 0 cho A, 1 cho B, 2 cho C, 3 cho D
   "statements": [ // Dành cho qType = "tf_group"
     {"text": "Ý mệnh đề a...", "answer": true},
@@ -1708,7 +1766,7 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (JSON Array):
     {"text": "Ý mệnh đề d...", "answer": false}
   ],
   "correctValue": "12.5", // Chuỗi đáp án đối với qType = "short_answer"
-  "explanation": "Lời giải thích ngắn gọn, súc tích vì sao đáp án đúng..."
+  "explanation": "Lời giải thích ngắn gọn, súc tích từng bước vì sao đáp án đúng..."
 }
 
 QUY TẮC BẮT BUỘC VỀ ĐÁP ÁN (TỰ ĐỘNG GIẢI ĐỀ):
@@ -1719,7 +1777,7 @@ QUY TẮC BẮT BUỘC VỀ ĐÁP ÁN (TỰ ĐỘNG GIẢI ĐỀ):
    - Đánh giá từng mệnh đề con a, b, c, d là Đúng (answer: true) hay Sai (answer: false).
 3. ĐỐI VỚI CÂU ĐIỀN SỐ / TRẢ LỜI NGẮN (short_answer):
    - Tính toán ra kết quả số chính xác vào trường correctValue.
-4. LỜI GIẢI THÍCH CHI TIẾT (explanation):
+4. LỜI GIẢI CHI TIẾT (explanation):
    - MỌI CÂU HỎI ĐỀU BẮT BUỘC PHẢI CÓ LỜI GIẢI THÍCH ngắn gọn 1-3 câu.
 5. CÔNG THỨC TOÁN / LÝ / HÓA:
    - Kẹp công thức giữa cặp dấu $ (ví dụ $v = \\omega A$, $x^2$).
@@ -1729,11 +1787,10 @@ ${rawText}`;
 
         try {
             const candidateModels = [
+                'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-1.5-flash',
-                'gemini-1.5-flash-8b',
                 'gemini-2.0-flash-lite',
-                'gemini-1.5-pro'
+                'gemini-2.5-pro'
             ];
 
             let res = null;
@@ -1923,16 +1980,25 @@ ${rawText}`;
                 </div>
             ` : '';
 
+            // Khung Lời giải chi tiết hoàn chỉnh như đề cương
+            const explanationPreview = q.explanation ? `
+                <div class="mt-2 p-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200/90 leading-relaxed flex items-start gap-1.5 shadow-sm">
+                    <span class="text-amber-400 font-bold shrink-0">💡 Lời giải:</span>
+                    <span>${q.explanation}</span>
+                </div>
+            ` : '';
+
             tr.innerHTML = `
-                <td class="py-2.5 px-3 text-center font-bold text-slate-400">${idx + 1}</td>
-                <td class="py-2.5 px-3">${typeBadge}</td>
-                <td class="py-2.5 px-3 font-medium text-white max-w-sm">
-                    <div class="truncate font-semibold text-slate-100">${q.question}</div>
+                <td class="py-2.5 px-3 text-center font-bold text-slate-400 align-top">${idx + 1}</td>
+                <td class="py-2.5 px-3 align-top">${typeBadge}</td>
+                <td class="py-2.5 px-3 font-medium text-white max-w-sm align-top">
+                    <div class="font-semibold text-slate-100 text-xs sm:text-sm leading-snug">${q.question}</div>
                     ${imgBadge}
                     ${optionsPreview}
+                    ${explanationPreview}
                 </td>
-                <td class="py-2.5 px-3">${ansDisplay}</td>
-                <td class="py-2.5 px-3 text-slate-400 italic max-w-xs truncate">${q.explanation || '—'}</td>
+                <td class="py-2.5 px-3 align-top">${ansDisplay}</td>
+                <td class="py-2.5 px-3 text-slate-400 italic max-w-xs text-xs align-top">${q.explanation || '—'}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -1996,6 +2062,11 @@ ${rawText}`;
             // Đồng bộ môn học hiện tại sang môn vừa lưu
             this.currentSubject = targetSubject;
             localStorage.setItem('quiz_last_selected_subject', targetSubject);
+
+            // Lưu cache ngoại tuyến ngay lập tức
+            try {
+                localStorage.setItem(`quiz_cache_${targetSubject}`, JSON.stringify(cleanQuestions));
+            } catch (e) {}
 
             // Nạp lại dữ liệu câu hỏi vào State của môn này
             await this.loadQuestionsForCurrentSubject();
@@ -2112,6 +2183,7 @@ ${rawText}`;
 
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
+            card.id = `admin-q-card-${q.id}`;
             card.className = "p-4 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-2";
 
             const optChars = ['A', 'B', 'C', 'D'];
@@ -2124,7 +2196,7 @@ ${rawText}`;
                     ${q.options.map((opt, oIdx) => {
                     const isCorrect = oIdx === correctIdx;
                     return `
-                        <button type="button" onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 ${isCorrect ? 'border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm' : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80'}" title="Nhấp vào để chọn làm đáp án đúng">
+                        <button type="button" onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="admin-opt-btn w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 ${isCorrect ? 'border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm' : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80'}" title="Nhấp vào để chọn làm đáp án đúng">
                             <strong class="${isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-400'}">${optChars[oIdx]}.</strong>
                             <span class="flex-1">${opt}</span>
                         </button>
@@ -2147,7 +2219,7 @@ ${rawText}`;
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px] border border-emerald-500/30">Câu ${idx + 1}</span>
                         <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-medium text-[11px]">${q.category || 'Ôn tập'}</span>
-                        <span class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px] border border-emerald-500/30">Đáp án đúng: ${correctLetter}</span>
+                        <span class="admin-q-badge-ans px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px] border border-emerald-500/30">Đáp án đúng: ${correctLetter}</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <button onclick="app.openEditQuestionModal(${q.id})" class="px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 text-emerald-400 font-bold text-xs transition cursor-pointer flex items-center gap-1 border border-emerald-500/40" title="Sửa câu hỏi">
@@ -2177,24 +2249,38 @@ ${rawText}`;
         const q = this.allQuestions.find(item => item.id === qId);
         if (!q) return;
 
+        const optChars = ['A', 'B', 'C', 'D'];
+        const optLetter = optChars[newCorrectIdx] || 'A';
         q.correct = newCorrectIdx;
         q.answer = newCorrectIdx;
+        q.correctAnswer = optLetter;
 
-        try {
-            if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
-                await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
-            }
-        } catch (e) {
-            console.warn("Lỗi lưu đáp án trực tiếp:", e);
+        // Cập nhật DOM cục bộ NGAY LẬP TỨC (0ms lag, không vẽ lại toàn bộ danh sách)
+        const card = document.getElementById(`admin-q-card-${qId}`);
+        if (card) {
+            const badgeAns = card.querySelector('.admin-q-badge-ans');
+            if (badgeAns) badgeAns.textContent = `Đáp án đúng: ${optLetter}`;
+
+            const optButtons = card.querySelectorAll('.admin-opt-btn');
+            optButtons.forEach((btn, idx) => {
+                const isSelected = idx === newCorrectIdx;
+                if (isSelected) {
+                    btn.className = "admin-opt-btn w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm";
+                    const strong = btn.querySelector('strong');
+                    if (strong) strong.className = "text-emerald-400 font-bold";
+                } else {
+                    btn.className = "admin-opt-btn w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80";
+                    const strong = btn.querySelector('strong');
+                    if (strong) strong.className = "text-slate-400";
+                }
+            });
         }
 
-        try {
-            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
-        } catch (ce) {}
+        // Lưu đơn lẻ lên Supabase Cloud và cache ngầm bằng Debounce (mượt mà 100%)
+        this.debouncedSaveSingleQuestion(q);
+        this.debouncedCacheLocalQuestions();
 
-        this.renderAdminQuestionsList();
-        const optLetter = ['A', 'B', 'C', 'D'][newCorrectIdx];
-        this.showToastNotification(`✅ Đã đổi đáp án đúng của câu #${q.id} thành [${optLetter}]!`);
+        this.showToastNotification(`✅ Đã đổi đáp án câu #${q.id} thành [${optLetter}]!`);
     }
 
     /* ============================================================== */
@@ -4046,13 +4132,18 @@ ${rawText}`;
         }
     }
 
-    async saveQuestionFromEditor() {
+    async saveQuestionFromEditor(event) {
+        if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+        }
         const idInput = document.getElementById('edit-q-id');
+        const subjSelect = document.getElementById('edit-q-subject');
         const catInput = document.getElementById('edit-q-category');
         const textInput = document.getElementById('edit-q-text');
         const imgInput = document.getElementById('edit-q-image');
         const expInput = document.getElementById('edit-q-explanation');
 
+        const targetSubject = (subjSelect && subjSelect.value) ? subjSelect.value : this.currentSubject;
         const qId = idInput && idInput.value ? parseInt(idInput.value, 10) : null;
         const questionText = textInput ? textInput.value.trim() : '';
 
@@ -4068,9 +4159,11 @@ ${rawText}`;
         }
 
         let correct = this._editorSelectedCorrect !== undefined ? this._editorSelectedCorrect : 0;
+        const optLetter = ['A', 'B', 'C', 'D'][correct];
 
         const newQ = {
             id: qId || (this.allQuestions.length + 1),
+            subjectKey: targetSubject,
             qType: 'mcq',
             category: catInput ? catInput.value.trim() : 'Ôn tập',
             question: questionText,
@@ -4078,30 +4171,37 @@ ${rawText}`;
             options: options,
             correct: correct,
             answer: correct,
+            correctAnswer: optLetter,
             explanation: expInput ? expInput.value.trim() : ''
         };
 
-        if (qId) {
-            const idx = this.allQuestions.findIndex(item => String(item.id) === String(qId));
-            if (idx >= 0) this.allQuestions[idx] = newQ;
-        } else {
-            this.allQuestions.push(newQ);
+        if (targetSubject === this.currentSubject) {
+            if (qId) {
+                const idx = this.allQuestions.findIndex(item => String(item.id) === String(qId));
+                if (idx >= 0) this.allQuestions[idx] = newQ;
+                else this.allQuestions.push(newQ);
+            } else {
+                this.allQuestions.push(newQ);
+            }
+            try {
+                localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+            } catch (ce) { }
         }
 
-        // Tự động lưu lên Supabase nếu có kết nối
+        // Lưu đơn lẻ nguyên tử lên Supabase Cloud (Không xóa nhầm dữ liệu cũ)
         try {
-            if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
-                await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
+            if (window.dbService && typeof window.dbService.saveQuestion === 'function') {
+                await window.dbService.saveQuestion(newQ, targetSubject);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.warn("Lỗi lưu câu hỏi lên Cloud:", e);
+        }
 
-        try {
-            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
-        } catch (ce) { }
-
-        const sub = this.dynamicSubjects.find(s => s.key === this.currentSubject);
+        const sub = this.dynamicSubjects.find(s => s.key === targetSubject);
         if (sub) {
-            sub.count = this.allQuestions.length;
+            if (targetSubject === this.currentSubject) {
+                sub.count = this.allQuestions.length;
+            }
             if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
                 window.dbService.saveDynamicSubjects(this.dynamicSubjects);
             }
@@ -4111,7 +4211,7 @@ ${rawText}`;
         this.renderAdminQuestionsList();
         this.renderHomeSubjects();
         this.updateNavbarAndBadge();
-        alert("✅ Đã lưu câu hỏi thành công!");
+        this.showToastNotification("✅ Đã lưu câu hỏi thành công!");
     }
 
     async adminDeleteQuestion(qId) {
@@ -4346,11 +4446,10 @@ YÊU CẦU:
 
         try {
             const candidateModels = [
+                'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-1.5-flash',
-                'gemini-1.5-flash-8b',
                 'gemini-2.0-flash-lite',
-                'gemini-1.5-pro'
+                'gemini-2.5-pro'
             ];
 
             let res = null;

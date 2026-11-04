@@ -706,7 +706,7 @@
                         </select>
                         <div class="relative flex-1 max-w-sm">
                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
-                            <input type="text" id="admin-search-q-input" oninput="app.renderAdminQuestionsList()" placeholder="Tìm câu hỏi theo từ khóa..." 
+                            <input type="text" id="admin-search-q-input" oninput="app.debouncedSearchAdminQuestions()" placeholder="Tìm câu hỏi theo từ khóa..." 
                                 class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
                         </div>
                         <select id="admin-filter-category" onchange="app.renderAdminQuestionsList()" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-300 outline-none">
@@ -1541,6 +1541,9 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <p class="text-slate-300 leading-relaxed">
                     Nhập <strong>Google Gemini API Key</strong> một lần duy nhất. Hệ thống sẽ lưu lên Supabase Cloud để <strong class="text-emerald-300">TẤT CẢ học sinh khi vào web đều được dùng Trợ lý AI miễn phí</strong> mà không cần phải tự nhập!
                 </p>
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
+                    <i class="fa-solid fa-bolt"></i> Model Chuẩn: <code>gemini-2.5-flash</code> (Tự động giải đề trắc nghiệm & bóc tách đề cương)
+                </div>
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
                         <span>Google Gemini API Key:</span>
