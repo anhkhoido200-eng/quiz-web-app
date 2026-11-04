@@ -261,6 +261,26 @@ class DatabaseService {
             } catch (e) {}
         }
 
+        // Cập nhật Cloud Supabase
+        if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
+            if (!navigator.onLine) {
+                this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
+            } else {
+                try {
+                    await this.client
+                        .from('quiz_logins')
+                        .update({
+                            status: status,
+                            score_summary: scoreSummary,
+                            last_active: nowIso
+                        })
+                        .eq('id', loginId);
+                } catch (e) {
+                    this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
+                }
+            }
+        }
+
         // Cập nhật Local
         try {
             let list = this._getLocalLogins();
@@ -272,6 +292,73 @@ class DatabaseService {
                 localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(list));
             }
         } catch (e) {}
+    }
+
+    /**
+     * Thêm hành động vào hàng đợi ngoại tuyến (Offline Sync Queue)
+     */
+    enqueueOfflineSync(actionType, payload) {
+        try {
+            const raw = localStorage.getItem('quiz_offline_sync_queue');
+            let queue = raw ? JSON.parse(raw) : [];
+            queue.push({
+                type: actionType,
+                payload: payload,
+                queuedAt: new Date().toISOString()
+            });
+            if (queue.length > 60) queue = queue.slice(-60);
+            localStorage.setItem('quiz_offline_sync_queue', JSON.stringify(queue));
+        } catch (e) {
+            console.warn("[OfflineSync] Lỗi lưu queue:", e);
+        }
+    }
+
+    /**
+     * Tự động gửi bù dữ liệu tồn đọng khi có mạng trở lại (Auto Network Sync)
+     */
+    async syncPendingOfflineData() {
+        if (!navigator.onLine || !this.isSupabaseActive || !this.client) return 0;
+        try {
+            const raw = localStorage.getItem('quiz_offline_sync_queue');
+            if (!raw) return 0;
+            const queue = JSON.parse(raw);
+            if (!Array.isArray(queue) || queue.length === 0) return 0;
+
+            let syncedCount = 0;
+            for (const item of queue) {
+                try {
+                    if (item.type === 'updateProgress' && item.payload) {
+                        const { loginId, statusText, scoreText, last_active } = item.payload;
+                        if (loginId && !String(loginId).startsWith('local_')) {
+                            await this.client.from('quiz_logins').update({
+                                status: statusText,
+                                score_summary: scoreText,
+                                last_active: last_active || new Date().toISOString()
+                            }).eq('id', loginId);
+                            syncedCount++;
+                        }
+                    } else if (item.type === 'updateStatus' && item.payload) {
+                        const { loginId, status, scoreSummary, last_active } = item.payload;
+                        if (loginId && !String(loginId).startsWith('local_')) {
+                            await this.client.from('quiz_logins').update({
+                                status: status,
+                                score_summary: scoreSummary,
+                                last_active: last_active || new Date().toISOString()
+                            }).eq('id', loginId);
+                            syncedCount++;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("[OfflineSync] Lỗi sync item:", err);
+                }
+            }
+
+            localStorage.removeItem('quiz_offline_sync_queue');
+            return syncedCount;
+        } catch (e) {
+            console.warn("[OfflineSync] Lỗi syncPendingOfflineData:", e);
+            return 0;
+        }
     }
 
     /**
@@ -297,16 +384,22 @@ class DatabaseService {
         } catch (e) {}
 
         if (this.isSupabaseActive && this.client && !String(loginId).startsWith('local_')) {
-            try {
-                await this.client
-                    .from('quiz_logins')
-                    .update({
-                        status: statusText,
-                        score_summary: scoreText,
-                        last_active: nowIso
-                    })
-                    .eq('id', loginId);
-            } catch (e) {}
+            if (!navigator.onLine) {
+                this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
+            } else {
+                try {
+                    await this.client
+                        .from('quiz_logins')
+                        .update({
+                            status: statusText,
+                            score_summary: scoreText,
+                            last_active: nowIso
+                        })
+                        .eq('id', loginId);
+                } catch (e) {
+                    this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
+                }
+            }
         }
     }
 

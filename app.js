@@ -66,6 +66,8 @@ class QuizApp {
      * Khởi tạo toàn bộ ứng dụng
      */
     async init() {
+        this.initTheme();
+        this.initNetworkListeners();
         this.initEventListeners();
         this.updateSoundIcons();
         this.checkSavedUser();
@@ -148,11 +150,13 @@ class QuizApp {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
 
-        grid.innerHTML = '';
+        // Tối ưu DOM: Sử dụng DocumentFragment để tránh reflow nhiều lần
+        const fragment = document.createDocumentFragment();
+
         this.dynamicSubjects.forEach(sub => {
-            // Kiểm tra hiển thị môn riêng tư (PRIVATE)
-            const isPrivate = sub.visibility === 'PRIVATE';
-            const isAuthorized = !isPrivate || this.isAdminAuthenticated || this.allowedGeoIps.includes(this.clientIp);
+            // Học viên trên trang chủ chỉ thấy môn Công khai (PUBLIC)
+            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false;
+            const isAuthorized = !isPrivate || this.isAdminAuthenticated;
 
             if (!isAuthorized) return;
 
@@ -161,44 +165,35 @@ class QuizApp {
             card.type = 'button';
             card.onclick = () => this.selectSubject(sub.key);
 
-            let bgClass = "bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-300";
-            let iconBg = "bg-slate-700/60 text-slate-300";
+            let grad = sub.gradient || 'indigo';
+            let iconColorClass = "bg-indigo-600/30 text-indigo-300 border-indigo-500/30";
+            if (grad === 'purple') iconColorClass = "bg-purple-600/30 text-purple-300 border-purple-500/30";
+            else if (grad === 'emerald') iconColorClass = "bg-emerald-600/30 text-emerald-300 border-emerald-500/30";
+            else if (grad === 'rose') iconColorClass = "bg-rose-600/30 text-rose-300 border-rose-500/30";
+            else if (grad === 'amber') iconColorClass = "bg-amber-600/30 text-amber-300 border-amber-500/30";
 
-            if (isSelected) {
-                if (sub.gradient === 'purple') {
-                    bgClass = "bg-purple-600/25 border-purple-500 text-white shadow-lg shadow-purple-600/20";
-                    iconBg = "bg-purple-600 text-white";
-                } else if (sub.gradient === 'emerald') {
-                    bgClass = "bg-emerald-600/25 border-emerald-500 text-white shadow-lg shadow-emerald-600/20";
-                    iconBg = "bg-emerald-600 text-white";
-                } else if (sub.gradient === 'rose') {
-                    bgClass = "bg-rose-600/25 border-rose-500 text-white shadow-lg shadow-rose-600/20";
-                    iconBg = "bg-rose-600 text-white";
-                } else if (sub.gradient === 'amber') {
-                    bgClass = "bg-amber-600/25 border-amber-500 text-white shadow-lg shadow-amber-600/20";
-                    iconBg = "bg-amber-600 text-white";
-                } else {
-                    bgClass = "bg-indigo-600/25 border-indigo-500 text-white shadow-lg shadow-indigo-600/20";
-                    iconBg = "bg-indigo-600 text-white";
-                }
-            }
-
-            card.className = `p-3 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${bgClass}`;
+            card.className = `p-3.5 rounded-2xl text-left flex items-center gap-3.5 cursor-pointer subject-card-interactive ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
             card.innerHTML = `
-                <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center text-lg shrink-0 shadow">
+                <div class="w-12 h-12 rounded-2xl ${iconColorClass} border flex items-center justify-center text-xl shrink-0 shadow-md">
                     <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                 </div>
                 <div class="overflow-hidden flex-1">
-                    <div class="flex items-center justify-between gap-1">
-                        <p class="font-bold text-xs sm:text-sm truncate text-white">${sub.name}</p>
-                        ${isPrivate ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Riêng tư</span>' : ''}
+                    <div class="flex items-center justify-between gap-1.5 mb-0.5">
+                        <p class="font-heading font-extrabold text-sm sm:text-base truncate text-white">${sub.name}</p>
+                        ${isSelected ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
+                        ${(!isSelected && isPrivate) ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold shrink-0">🔒 Riêng tư</span>' : ''}
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-0.5 truncate">${sub.semester || 'Đề cương'} • ${sub.count || 0} câu</p>
+                    <div class="flex items-center gap-2 text-[11px] text-slate-400">
+                        <span class="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">${sub.semester || 'Đề cương'}</span>
+                        <span class="text-indigo-400 font-semibold"><i class="fa-solid fa-bolt text-[10px] mr-0.5 text-amber-400"></i>${sub.count || 0} câu</span>
+                    </div>
                 </div>
             `;
-            grid.appendChild(card);
+            fragment.appendChild(card);
         });
 
+        grid.innerHTML = '';
+        grid.appendChild(fragment);
         this.updateNavbarAndBadge();
     }
 
@@ -253,19 +248,38 @@ class QuizApp {
     async loadQuestionsForCurrentSubject() {
         let questions = [];
 
-        // 1. Thử lấy từ Supabase Cloud
-        try {
-            if (window.dbService && typeof window.dbService.fetchQuestionsBySubject === 'function') {
-                const cloudQuestions = await window.dbService.fetchQuestionsBySubject(this.currentSubject);
-                if (Array.isArray(cloudQuestions) && cloudQuestions.length > 0) {
-                    questions = cloudQuestions;
+        // 1. Thử lấy từ Supabase Cloud nếu Online
+        if (navigator.onLine) {
+            try {
+                if (window.dbService && typeof window.dbService.fetchQuestionsBySubject === 'function') {
+                    const cloudQuestions = await window.dbService.fetchQuestionsBySubject(this.currentSubject);
+                    if (Array.isArray(cloudQuestions) && cloudQuestions.length > 0) {
+                        questions = cloudQuestions;
+                        // Lưu cache ngoại tuyến vào localStorage
+                        try {
+                            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(questions));
+                        } catch (ce) { }
+                    }
                 }
+            } catch (e) {
+                console.warn("Lỗi tải câu hỏi từ Supabase, chuyển sang cache:", e);
             }
-        } catch (e) {
-            console.warn("Lỗi tải câu hỏi từ Supabase:", e);
         }
 
-        // 2. Dự phòng: Dữ liệu biến toàn cục đã nhúng trong file JS
+        // 2. Dự phòng 1: Nạp từ bộ nhớ Offline Cache (khi mất mạng)
+        if (questions.length === 0) {
+            try {
+                const cachedRaw = localStorage.getItem(`quiz_cache_${this.currentSubject}`);
+                if (cachedRaw) {
+                    const parsedCache = JSON.parse(cachedRaw);
+                    if (Array.isArray(parsedCache) && parsedCache.length > 0) {
+                        questions = parsedCache;
+                    }
+                }
+            } catch (ce) { }
+        }
+
+        // 3. Dự phòng 2: Dữ liệu biến toàn cục đã nhúng trong file JS
         if (questions.length === 0) {
             if (this.currentSubject === 'history' && Array.isArray(window.QUIZ_QUESTIONS)) {
                 questions = [...window.QUIZ_QUESTIONS];
@@ -1270,7 +1284,10 @@ Giải thích: Biên độ A = 5 cm.`;
                     <span>Thẻ: <strong class="text-slate-200">${sub.semester || 'Học kỳ'}</strong></span>
                     <span>Đề: <strong class="text-indigo-400">${sub.count || 0} câu</strong></span>
                 </div>
-                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60 flex-wrap">
+                    <button onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1.5 rounded-lg ${isPrivate ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white' : 'bg-amber-600/20 text-amber-300 border border-amber-500/40 hover:bg-amber-600 hover:text-white'} text-xs font-semibold transition cursor-pointer" title="Bấm để chuyển đổi Công khai / Riêng tư">
+                        <i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isPrivate ? 'Công khai' : 'Riêng tư'}
+                    </button>
                     <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer">
                         <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
                     </button>
@@ -1818,16 +1835,32 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
+        const fragment = document.createDocumentFragment();
+
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            card.className = "bg-slate-800/80 backdrop-blur-xl border border-slate-700/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
+            card.className = "glass-card-pro rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
 
             // Render hình ảnh đính kèm nếu có
             const imgHtml = q.image_url ? `
                 <div class="my-3 rounded-xl overflow-hidden border border-slate-700 max-w-md mx-auto">
                     <img src="${q.image_url}" alt="Hình minh họa" class="w-full object-contain max-h-64">
                 </div>
+            ` : '';
+
+            // Nút Hỏi AI dùng chung cho chế độ Luyện tập
+            const aiButtonHtml = !this.isExamMode ? `
+                <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
+                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-${q.id}" class="btn-3d px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                        <span>✨ Hỏi AI giải thích thêm</span>
+                    </button>
+                    <button type="button" onclick="app.openAiSettingsModal()" class="text-[11px] text-slate-400 hover:text-indigo-300 transition flex items-center gap-1 cursor-pointer" title="Cài đặt API Key Gemini">
+                        <i class="fa-solid fa-key text-[10px]"></i> Cài API Key
+                    </button>
+                </div>
+                <div id="ai-explanation-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             ` : '';
 
             // 1. Dạng Trắc Nghiệm 4 Đáp Án (MCQ)
@@ -1849,12 +1882,10 @@ Giải thích: Biên độ A = 5 cm.`;
                     let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
 
                     if (this.isExamMode) {
-                        // Trong chế độ Thi Thử: Chỉ highlight phương án đã chọn, không lộ Đúng/Sai
                         if (selected === oIdx) {
                             optStyle = "bg-indigo-600/30 border-indigo-500 text-white font-bold ring-2 ring-indigo-500/50";
                         }
                     } else {
-                        // Trong chế độ Luyện Tập: Lộ ngay kết quả Đúng (Xanh) / Sai (Đỏ)
                         if (isAnswered) {
                             if (oIdx === correctIdx) {
                                 optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
@@ -1865,7 +1896,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     }
 
                     return `
-                                <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
                                     <span class="w-6 h-6 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">${optChars[oIdx]}</span>
                                     <span class="text-xs sm:text-sm font-medium flex-1 pt-0.5">${opt}</span>
                                 </button>
@@ -1878,6 +1909,7 @@ Giải thích: Biên độ A = 5 cm.`;
                             <p>${q.explanation}</p>
                         </div>
                     ` : ''}
+                    ${aiButtonHtml}
                 `;
             }
 
@@ -1922,10 +1954,10 @@ Giải thích: Biên độ A = 5 cm.`;
                                         <span class="text-slate-200 font-medium">${st.text}</span>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" class="px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${trueBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" class="btn-3d px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, false)" class="px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${falseBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, false)" class="btn-3d px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -1933,6 +1965,7 @@ Giải thích: Biên độ A = 5 cm.`;
                             `;
                 }).join('')}
                     </div>
+                    ${aiButtonHtml}
                 `;
             }
 
@@ -1948,15 +1981,18 @@ Giải thích: Biên độ A = 5 cm.`;
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
                         <input type="text" id="short-input-${q.id}" value="${userVal}" onchange="app.saveShortAnswer(${q.id}, this.value)" placeholder="Nhập đáp án của bạn..." class="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono">
-                        <button type="button" onclick="app.saveShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer">
+                        <button type="button" onclick="app.saveShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">
                             Ghi nhận
                         </button>
                     </div>
+                    ${aiButtonHtml}
                 `;
             }
 
-            container.appendChild(card);
+            fragment.appendChild(card);
         });
+
+        container.appendChild(fragment);
 
         this.renderMath(container);
     }
@@ -2217,9 +2253,29 @@ Giải thích: Biên độ A = 5 cm.`;
         // Xóa tiến độ autosave
         this.clearAutoSaveProgress();
 
-        // Bắn pháo hoa ăn mừng
-        if (typeof confetti === 'function') {
-            confetti({ particleCount: 120, spread: 75, origin: { y: 0.6 } });
+        // Lưu vào Nhật Ký Ôn Tập Cá Nhân (10 bài gần nhất)
+        this.saveToPersonalHistory({
+            id: 'hist_' + Date.now(),
+            subjectTitle: subjTitle,
+            score: finalScore,
+            correctCount: correctCount,
+            totalCount: totalItems,
+            timeSpent: timeStr,
+            submittedAt: new Date().toISOString(),
+            mode: this.isExamMode ? 'Thi thử' : 'Luyện tập'
+        });
+
+        // Bắn pháo hoa ăn mừng & Phát âm thanh chiến thắng
+        if (finalScore >= 90) {
+            this.playFanfareSound();
+            this.fireDoubleConfetti();
+        } else if (finalScore >= 50) {
+            this.playTingSound();
+            if (typeof confetti === 'function') {
+                confetti({ particleCount: 120, spread: 75, origin: { y: 0.6 } });
+            }
+        } else {
+            this.playBeepSound();
         }
 
         this.renderReviewList();
@@ -2237,7 +2293,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         questions.forEach((q, idx) => {
             const card = document.createElement('div');
-            card.className = "p-4 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs space-y-2";
+            card.className = "p-4 sm:p-5 rounded-2xl glass-card-pro border border-slate-700/80 text-xs space-y-3";
 
             let ansReview = '';
             if (q.qType === 'short_answer') {
@@ -2247,20 +2303,20 @@ Giải thích: Biên độ A = 5 cm.`;
                     String(q.correctValue).trim().toLowerCase() === String(userVal).trim().toLowerCase()
                 );
                 ansReview = `
-                    <div class="p-2 rounded-lg ${isMatch ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'} font-bold">
+                    <div class="p-2.5 rounded-xl ${isMatch ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-bold">
                         Đáp án của bạn: ${userVal || 'Chưa trả lời'} • Đáp án đúng: ${q.correctValue}
                     </div>
                 `;
             } else if (q.qType === 'tf_group') {
                 const ansObj = this.userAnswers[q.id] || {};
-                ansReview = `<div class="space-y-1">
+                ansReview = `<div class="space-y-1.5">
                     ${(q.statements || []).map((st, sIdx) => {
                     const val = ansObj[sIdx];
                     const isCorrect = val !== undefined && Boolean(val) === Boolean(st.answer);
                     return `
-                            <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60">
-                                <span>${String.fromCharCode(97 + sIdx)}) ${st.text}</span>
-                                <span class="font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}">
+                            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800">
+                                <span class="font-medium text-slate-200">${String.fromCharCode(97 + sIdx)}) ${st.text}</span>
+                                <span class="font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'} shrink-0 ml-2">
                                     Bạn chọn: ${val === true ? 'ĐÚNG' : (val === false ? 'SAI' : '—')} • Đáp án: ${st.answer ? 'ĐÚNG' : 'SAI'}
                                 </span>
                             </div>
@@ -2272,7 +2328,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 const correctIdx = q.correct !== undefined ? q.correct : q.answer;
                 const isCorrect = sel === correctIdx;
                 ansReview = `
-                    <div class="p-2 rounded-lg ${isCorrect ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'} font-semibold">
+                    <div class="p-2.5 rounded-xl ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-semibold">
                         Bạn chọn: <strong>${sel !== undefined ? optChars[sel] : 'Chưa chọn'}</strong> • Đáp án đúng: <strong>${optChars[correctIdx]}</strong>
                     </div>
                 `;
@@ -2283,7 +2339,17 @@ Giải thích: Biên độ A = 5 cm.`;
                     <span>Câu ${idx + 1}: ${q.question}</span>
                 </div>
                 ${ansReview}
-                ${q.explanation ? `<p class="text-[11px] text-slate-400 italic"><strong class="text-amber-400">Giải thích:</strong> ${q.explanation}</p>` : ''}
+                ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${q.explanation}</p>` : ''}
+                <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
+                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-review-${q.id}" class="btn-3d px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                        <span>✨ Hỏi AI giải thích thêm</span>
+                    </button>
+                    <button type="button" onclick="app.openAiSettingsModal()" class="text-[11px] text-slate-400 hover:text-indigo-300 transition flex items-center gap-1 cursor-pointer" title="Cài đặt Gemini API Key">
+                        <i class="fa-solid fa-key text-[10px]"></i> Cài API Key
+                    </button>
+                </div>
+                <div id="ai-explanation-review-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             `;
             reviewContainer.appendChild(card);
         });
@@ -2387,14 +2453,22 @@ Giải thích: Biên độ A = 5 cm.`;
     detectDevice() {
         if (typeof navigator === 'undefined') return "Trình duyệt Web";
         const ua = navigator.userAgent || '';
-        if (/android/i.test(ua)) return "Android Phone";
-        if (/iphone/i.test(ua)) return "iPhone";
-        if (/ipad/i.test(ua)) return "iPad";
-        if (/windows/i.test(ua)) return "Windows PC";
-        if (/macintosh|mac os x/i.test(ua)) return "MacBook / Mac";
-        if (/cros/i.test(ua)) return "Chromebook";
-        if (/linux/i.test(ua)) return "Linux PC";
-        return "Trình duyệt Web";
+        let os = "Máy tính / ĐT";
+        if (/android/i.test(ua)) os = "Android";
+        else if (/iphone/i.test(ua)) os = "iPhone";
+        else if (/ipad/i.test(ua)) os = "iPad";
+        else if (/windows/i.test(ua)) os = "Windows PC";
+        else if (/macintosh|mac os x/i.test(ua)) os = "MacBook / Mac";
+        else if (/cros/i.test(ua)) os = "Chromebook";
+        else if (/linux/i.test(ua)) os = "Linux PC";
+
+        let browser = "Web";
+        if (/edg/i.test(ua)) browser = "Edge";
+        else if (/chrome/i.test(ua)) browser = "Chrome";
+        else if (/safari/i.test(ua)) browser = "Safari";
+        else if (/firefox/i.test(ua)) browser = "Firefox";
+
+        return `${os} • ${browser}`;
     }
 
     async recordVisitorPresence(statusText = 'Đang xem trang chủ') {
@@ -2588,9 +2662,11 @@ Giải thích: Biên độ A = 5 cm.`;
 
             let rowsHtml = '';
             list.forEach(student => {
-                const ip = student.ip_address || student.client_ip || 'Chưa xác định';
+                const rawIp = student.ip_address || student.client_ip || '';
+                const ip = (rawIp && rawIp !== '-' && rawIp !== 'Chưa xác định') ? rawIp : '127.0.0.1';
                 const name = (student.player_name && student.player_name.trim()) ? student.player_name.trim() : 'Khách truy cập';
-                const device = student.device_info || 'Trình duyệt Web';
+                const rawDev = student.device_info || '';
+                const device = (rawDev && rawDev !== '-' && rawDev !== 'Chưa rõ') ? rawDev : 'Trình duyệt Web';
                 const timeStr = student.last_active
                     ? new Date(student.last_active).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : (student.created_at ? new Date(student.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
@@ -2922,6 +2998,479 @@ Giải thích: Biên độ A = 5 cm.`;
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
+    }
+
+    /* ============================================================== */
+    /* 14. TRỢ LÝ AI GEMINI (GEMINI 2.5 FLASH API INTEGRATION)        */
+    /* ============================================================== */
+
+    openAiSettingsModal() {
+        const modal = document.getElementById('modal-ai-settings');
+        const input = document.getElementById('gemini-api-key-input');
+        if (input) input.value = localStorage.getItem('gemini_api_key') || '';
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+    }
+
+    closeAiSettingsModal() {
+        const modal = document.getElementById('modal-ai-settings');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    }
+
+    saveAiApiKey() {
+        const input = document.getElementById('gemini-api-key-input');
+        const key = (input ? input.value : '').trim();
+        if (!key) {
+            alert("Vui lòng dán mã Google Gemini API Key để lưu.");
+            return;
+        }
+        localStorage.setItem('gemini_api_key', key);
+        this.geminiApiKey = key;
+        alert("✅ Đã lưu khóa Gemini API Key thành công! Giờ bạn có thể thoải mái hỏi AI giải thích mọi câu hỏi.");
+        this.closeAiSettingsModal();
+    }
+
+    clearAiApiKey() {
+        if (!confirm("Bạn có chắc muốn xóa API Key khỏi trình duyệt này?")) return;
+        localStorage.removeItem('gemini_api_key');
+        this.geminiApiKey = '';
+        const input = document.getElementById('gemini-api-key-input');
+        if (input) input.value = '';
+        alert("Đã xóa API Key.");
+    }
+
+    async askAiExplanation(qId) {
+        const apiKey = localStorage.getItem('gemini_api_key') || this.geminiApiKey;
+        if (!apiKey) {
+            alert("✨ Để kích hoạt Trợ lý AI giải thích chi tiết, vui lòng nhập Google Gemini API Key (hoàn toàn miễn phí).");
+            this.openAiSettingsModal();
+            return;
+        }
+
+        const q = (this.allQuestions || []).find(item => item.id == qId);
+        if (!q) {
+            alert("Không tìm thấy dữ liệu câu hỏi.");
+            return;
+        }
+
+        const targetDiv = document.getElementById(`ai-explanation-${qId}`) || document.getElementById(`ai-explanation-review-${qId}`);
+        const btn = document.getElementById(`ai-btn-${qId}`) || document.getElementById(`ai-btn-review-${qId}`);
+
+        if (!targetDiv) return;
+
+        targetDiv.classList.remove('hidden');
+        targetDiv.innerHTML = `
+            <div class="flex items-center gap-2.5 text-purple-300 font-bold py-2">
+                <i class="fa-solid fa-spinner fa-spin text-base text-amber-400"></i>
+                <span>Trợ lý AI đang phân tích câu hỏi & biên soạn lời giải thích sư phạm chi tiết...</span>
+            </div>
+        `;
+
+        if (btn) btn.disabled = true;
+
+        let optionsText = "";
+        let correctText = "";
+        let studentAnswerText = "";
+
+        if (q.qType === 'short_answer') {
+            correctText = q.correctValue || (q.acceptedValues ? q.acceptedValues.join(', ') : '');
+            studentAnswerText = this.userAnswers[q.id] || "Chưa trả lời";
+        } else if (q.qType === 'tf_group') {
+            const ansObj = this.userAnswers[q.id] || {};
+            optionsText = (q.statements || []).map((st, i) => `${String.fromCharCode(97 + i)}) ${st.text} [Đáp án: ${st.answer ? 'Đúng' : 'Sai'}]`).join('\n');
+            studentAnswerText = (q.statements || []).map((st, i) => `${String.fromCharCode(97 + i)}) ${ansObj[i] === true ? 'Đúng' : (ansObj[i] === false ? 'Sai' : 'Chưa chọn')}`).join(', ');
+            correctText = "Đã liệt kê theo từng ý.";
+        } else {
+            const optChars = ['A', 'B', 'C', 'D'];
+            optionsText = (q.options || []).map((opt, i) => `${optChars[i]}. ${opt}`).join('\n');
+            const cIdx = q.correct !== undefined ? q.correct : q.answer;
+            correctText = `${optChars[cIdx]}. ${(q.options && q.options[cIdx]) || ''}`;
+            const sIdx = this.userAnswers[q.id];
+            studentAnswerText = (sIdx !== undefined && q.options) ? `${optChars[sIdx]}. ${q.options[sIdx]}` : "Chưa chọn đáp án";
+        }
+
+        const prompt = `Bạn là một giáo viên chuyên môn giàu kinh nghiệm giảng dạy học sinh THPT tại Việt Nam.
+Hãy giải thích ngắn gọn, súc tích, chuẩn mực sư phạm và dễ hiểu nhất cho câu hỏi sau:
+
+- Môn học: ${this.getSubjectTitle()}
+- Câu hỏi: ${q.question}
+${optionsText ? `- Các phương án:\n${optionsText}` : ''}
+- Đáp án đúng: ${correctText}
+- Đáp án học sinh đã chọn: ${studentAnswerText}
+
+YÊU CẦU TRẢ LỜI:
+1. **Lý do đáp án đúng**: Giải thích vì sao đáp án đúng lại chính xác dựa trên kiến thức trọng tâm SGK.
+2. **Phân tích bẫy / Phương án sai**: Chỉ ra học sinh hay nhầm lẫn ở điểm nào (đặc biệt nếu đáp án học sinh chọn bị sai).
+3. **Mẹo ghi nhớ cốt lõi**: Đúc kết 1 câu ngắn gọn giúp học sinh nhớ lâu kiến thức này khi đi thi.
+4. Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).
+5. Dùng ngôn ngữ thân thiện, khích lệ học sinh, ngắt đoạn rõ ràng bằng gạch đầu dòng.`;
+
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData?.error?.message || `Lỗi ${res.status}: Không thể gọi Gemini API.`);
+            }
+
+            const data = await res.json();
+            const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Không nhận được phản hồi từ AI.";
+
+            let formattedHtml = replyText
+                .replace(/^### (.*$)/gim, '<h4 class="font-bold text-amber-300 mt-2 mb-1">$1</h4>')
+                .replace(/^## (.*$)/gim, '<h3 class="font-bold text-purple-300 mt-2 mb-1 text-sm">$1</h3>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-300 font-bold">$1</strong>')
+                .replace(/^\* (.*$)/gim, '<li class="ml-4 list-disc text-slate-200">$1</li>')
+                .replace(/\n\n/g, '<p class="mt-1.5"></p>')
+                .replace(/\n/g, '<br>');
+
+            targetDiv.innerHTML = `
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-500/30">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                        <span class="font-heading font-bold text-white text-xs">Lời Giải Thích Chi Tiết Từ Trợ Lý AI (Gemini)</span>
+                    </div>
+                    <button onclick="app.copyAiText(this)" class="px-2 py-0.5 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-[10px] font-semibold transition cursor-pointer flex items-center gap-1">
+                        <i class="fa-regular fa-copy"></i> Sao chép
+                    </button>
+                </div>
+                <div class="ai-content-body text-xs leading-relaxed text-slate-200">
+                    ${formattedHtml}
+                </div>
+            `;
+
+            this.renderMath(targetDiv);
+        } catch (err) {
+            targetDiv.innerHTML = `
+                <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs space-y-1">
+                    <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> Không thể tải lời giải thích AI:</p>
+                    <p class="text-[11px]">${err.message}</p>
+                    <p class="text-[10px] text-slate-400">Mẹo: Kiểm tra lại API Key trong nút [Cài API Key] hoặc mạng Internet.</p>
+                </div>
+            `;
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    copyAiText(btnEl) {
+        const body = btnEl.closest('.ai-explanation-box')?.querySelector('.ai-content-body');
+        if (!body) return;
+        const text = body.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            const original = btnEl.innerHTML;
+            btnEl.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Đã chép!';
+            setTimeout(() => { btnEl.innerHTML = original; }, 2000);
+        });
+    }
+
+    /* ============================================================== */
+    /* 15. CHẾ ĐỘ NỀN SÁNG / TỐI (DARK / LIGHT MODE TOGGLE)           */
+    /* ============================================================== */
+
+    initTheme() {
+        const theme = localStorage.getItem('quiz_theme') || 'dark';
+        this.applyTheme(theme);
+    }
+
+    toggleTheme() {
+        const current = localStorage.getItem('quiz_theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        this.applyTheme(next);
+    }
+
+    applyTheme(theme) {
+        localStorage.setItem('quiz_theme', theme);
+        const icon = document.getElementById('theme-toggle-icon');
+        if (theme === 'light') {
+            document.body.classList.add('light-theme');
+            if (icon) icon.className = 'fa-solid fa-sun text-amber-400';
+        } else {
+            document.body.classList.remove('light-theme');
+            if (icon) icon.className = 'fa-solid fa-moon text-amber-300';
+        }
+    }
+
+    /* ============================================================== */
+    /* 16. BỘ PHÁT ÂM THANH CHIẾN THẮNG (CELEBRATION FANFARE SOUND)   */
+    /* ============================================================== */
+
+    playFanfareSound() {
+        if (!this.soundEnabled) return;
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioCtx();
+            if (ctx.state === 'suspended') ctx.resume();
+
+            // Chuỗi nốt khải hoàn C5 -> E5 -> G5 -> Hợp âm C6 ngân vang
+            const notes = [
+                { freq: 523.25, time: 0.00, dur: 0.12 }, // C5
+                { freq: 659.25, time: 0.12, dur: 0.12 }, // E5
+                { freq: 783.99, time: 0.24, dur: 0.14 }, // G5
+                { freq: 1046.50, time: 0.38, dur: 1.10 } // C6 ngân dài
+            ];
+
+            notes.forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(n.freq, ctx.currentTime + n.time);
+
+                gain.gain.setValueAtTime(0.22, ctx.currentTime + n.time);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + n.time + n.dur);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(ctx.currentTime + n.time);
+                osc.stop(ctx.currentTime + n.time + n.dur);
+            });
+
+            // Hợp âm vang phụ họa C5, E5, G5
+            setTimeout(() => {
+                try {
+                    const chordFreqs = [523.25, 659.25, 783.99];
+                    chordFreqs.forEach(cf => {
+                        const osc2 = ctx.createOscillator();
+                        const gain2 = ctx.createGain();
+                        osc2.type = 'sine';
+                        osc2.frequency.setValueAtTime(cf, ctx.currentTime);
+                        gain2.gain.setValueAtTime(0.10, ctx.currentTime);
+                        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
+                        osc2.connect(gain2);
+                        gain2.connect(ctx.destination);
+                        osc2.start(ctx.currentTime);
+                        osc2.stop(ctx.currentTime + 0.9);
+                    });
+                } catch (e) {}
+            }, 380);
+
+        } catch (e) {
+            console.warn("Không thể phát âm thanh fanfare:", e);
+        }
+    }
+
+    fireDoubleConfetti() {
+        if (typeof confetti !== 'function') return;
+        confetti({ particleCount: 100, spread: 60, origin: { x: 0.2, y: 0.6 } });
+        setTimeout(() => {
+            confetti({ particleCount: 120, spread: 80, origin: { x: 0.8, y: 0.6 } });
+        }, 250);
+    }
+
+    /* ============================================================== */
+    /* 17. LỊCH SỬ BÀI LÀM CÁ NHÂN (MY HISTORY MODAL)                 */
+    /* ============================================================== */
+
+    getPersonalHistory() {
+        try {
+            const raw = localStorage.getItem('quiz_my_history');
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    saveToPersonalHistory(record) {
+        try {
+            let list = this.getPersonalHistory();
+            list.unshift(record);
+            if (list.length > 10) list = list.slice(0, 10);
+            localStorage.setItem('quiz_my_history', JSON.stringify(list));
+        } catch (e) {
+            console.warn("Lỗi lưu lịch sử cá nhân:", e);
+        }
+    }
+
+    clearPersonalHistory() {
+        if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ 10 bài làm gần nhất trong lịch sử cá nhân?")) return;
+        localStorage.removeItem('quiz_my_history');
+        this.renderMyHistoryModal();
+    }
+
+    openMyHistoryModal() {
+        const modal = document.getElementById('modal-my-history');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            this.renderMyHistoryModal();
+        }
+    }
+
+    closeMyHistoryModal() {
+        const modal = document.getElementById('modal-my-history');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    }
+
+    renderMyHistoryModal() {
+        const list = this.getPersonalHistory();
+        const tbody = document.getElementById('my-history-tbody');
+        const countEl = document.getElementById('history-total-count');
+        const avgScoreEl = document.getElementById('history-avg-score');
+        const avgRatioEl = document.getElementById('history-avg-ratio');
+
+        const totalTests = list.length;
+        let sumScore = 0;
+        let sumCorrect = 0;
+        let sumTotalItems = 0;
+
+        list.forEach(item => {
+            sumScore += (item.score || 0);
+            sumCorrect += (item.correctCount || 0);
+            sumTotalItems += (item.totalCount || 0);
+        });
+
+        const avgScore = totalTests > 0 ? (sumScore / totalTests).toFixed(1) : "0";
+        const avgRatio = sumTotalItems > 0 ? Math.round((sumCorrect / sumTotalItems) * 100) : 0;
+
+        if (countEl) countEl.textContent = totalTests;
+        if (avgScoreEl) avgScoreEl.textContent = `${avgScore} đ`;
+        if (avgRatioEl) avgRatioEl.textContent = `${avgRatio}%`;
+
+        if (!tbody) return;
+
+        if (totalTests === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-8 text-center text-slate-500 italic">
+                        Bạn chưa có bài thi nào trong lịch sử. Hãy bắt đầu làm bài ôn tập ngay!
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = list.map(item => {
+            const timeDate = item.submittedAt ? new Date(item.submittedAt).toLocaleString('vi-VN', {
+                month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+            }) : '—';
+
+            let scoreBadgeClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+            if (item.score < 50) scoreBadgeClass = "bg-rose-500/20 text-rose-300 border-rose-500/30";
+            else if (item.score < 80) scoreBadgeClass = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+
+            return `
+                <tr class="hover:bg-slate-800/40 transition">
+                    <td class="py-2.5 px-3 font-mono text-[11px] text-slate-400">${timeDate}</td>
+                    <td class="py-2.5 px-3 font-bold text-white">${item.subjectTitle || 'Chung'}</td>
+                    <td class="py-2.5 px-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                            ${item.mode || 'Luyện tập'}
+                        </span>
+                    </td>
+                    <td class="py-2.5 px-3 text-center">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-black border ${scoreBadgeClass}">
+                            ${item.score} đ
+                        </span>
+                    </td>
+                    <td class="py-2.5 px-3 text-center font-mono text-slate-300">
+                        ${item.correctCount}/${item.totalCount}
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono text-indigo-300">
+                        ${item.timeSpent || '—'}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    /* ============================================================== */
+    /* 18. CHẾ ĐỘ NGOẠI TUYẾN & TỰ ĐỘNG ĐỒNG BỘ (OFFLINE AUTO-SYNC)   */
+    /* ============================================================== */
+
+    initNetworkListeners() {
+        window.addEventListener('online', () => this.handleNetworkOnline());
+        window.addEventListener('offline', () => this.handleNetworkOffline());
+        this.updateNetworkStatusBanner(navigator.onLine);
+    }
+
+    handleNetworkOnline() {
+        this.updateNetworkStatusBanner(true);
+        if (window.dbService && typeof window.dbService.syncPendingOfflineData === 'function') {
+            window.dbService.syncPendingOfflineData().then(count => {
+                if (count > 0) {
+                    this.showNetworkToast(`✅ Đã đồng bộ thành công ${count} bản ghi lên Supabase Cloud!`, 'success');
+                }
+            });
+        }
+    }
+
+    handleNetworkOffline() {
+        this.updateNetworkStatusBanner(false);
+    }
+
+    updateNetworkStatusBanner(isOnline) {
+        const banner = document.getElementById('network-status-banner');
+        const icon = document.getElementById('network-status-icon');
+        const text = document.getElementById('network-status-text');
+        if (!banner || !icon || !text) return;
+
+        if (isOnline) {
+            banner.className = "fixed top-2 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300 bg-emerald-600/90 text-white border border-emerald-400";
+            icon.className = "fa-solid fa-wifi text-emerald-200";
+            text.textContent = "Đã kết nối Internet. Sẵn sàng đồng bộ!";
+            setTimeout(() => {
+                banner.classList.add('hidden');
+                banner.classList.remove('flex');
+            }, 3500);
+        } else {
+            banner.className = "fixed top-2 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300 bg-amber-600/95 text-white border border-amber-300 animate-pulse";
+            icon.className = "fa-solid fa-triangle-exclamation text-amber-200 text-sm";
+            text.textContent = "⚠️ Đang mất kết nối Internet! Bài làm vẫn được lưu an toàn trên máy, đừng đóng tab.";
+            banner.classList.remove('hidden');
+        }
+    }
+
+    showNetworkToast(msg, type = 'info') {
+        const banner = document.getElementById('network-status-banner');
+        const icon = document.getElementById('network-status-icon');
+        const text = document.getElementById('network-status-text');
+        if (!banner || !icon || !text) return;
+
+        banner.className = `fixed top-2 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300 ${type === 'success' ? 'bg-emerald-600/90 text-white border border-emerald-400' : 'bg-slate-900/95 text-indigo-300 border border-indigo-500'}`;
+        icon.className = type === 'success' ? "fa-solid fa-circle-check text-emerald-200" : "fa-solid fa-info-circle text-indigo-300";
+        text.textContent = msg;
+        banner.classList.remove('hidden');
+        setTimeout(() => {
+            banner.classList.add('hidden');
+            banner.classList.remove('flex');
+        }, 4000);
+    }
+
+    async adminToggleSubjectVisibility(key) {
+        const sub = this.dynamicSubjects.find(s => s.key === key);
+        if (!sub) return;
+        const currentVis = sub.visibility || 'PUBLIC';
+        const nextVis = currentVis === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC';
+        sub.visibility = nextVis;
+
+        try {
+            if (window.dbService && typeof window.dbService.saveDynamicSubject === 'function') {
+                await window.dbService.saveDynamicSubject(sub);
+            }
+        } catch (e) {
+            console.warn("Lỗi lưu môn lên Supabase:", e);
+        }
+
+        localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
+        this.renderAdminSubjectsList();
+        this.renderHomeSubjects();
+        this.populateSubjectDropdowns();
+        alert(`Đã đổi môn [${sub.name}] sang trạng thái: ${nextVis === 'PUBLIC' ? 'CÔNG KHAI' : 'RIÊNG TƯ'}`);
     }
 
     initEventListeners() {

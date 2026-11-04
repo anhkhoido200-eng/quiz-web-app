@@ -8,10 +8,10 @@
     <meta property="og:title" content="QuizMaster Pro v4.0 - Hệ Thống Ôn Thi Trực Tuyến Toàn Diện">
     <meta property="og:description" content="Ôn luyện trắc nghiệm thông minh: Đa môn học, nhận diện tự động, chế độ thi thử đếm ngược, xếp hạng Top 10 và xuất bảng điểm Excel!">
 
-    <!-- Google Fonts: Inter & Outfit -->
+    <!-- Google Fonts: Plus Jakarta Sans & Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,8 +21,8 @@
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        heading: ['Outfit', 'sans-serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        heading: ['"Outfit"', 'sans-serif'],
                     },
                     colors: {
                         brand: {
@@ -194,6 +194,12 @@
         <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl"></div>
     </div>
 
+    <!-- BANNER CHỈ BÁO KẾT NỐI MẠNG THỜI GIAN THỰC (OFFLINE / AUTO-SYNC TOAST) -->
+    <div id="network-status-banner" class="fixed top-2 left-1/2 -translate-x-1/2 z-[100000] hidden items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300">
+        <span id="network-status-icon"></span>
+        <span id="network-status-text"></span>
+    </div>
+
     <!-- ============================================================== -->
     <!-- HEADER / NAVBAR CHÍNH                                          -->
     <!-- ============================================================== -->
@@ -201,26 +207,42 @@
         <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3 select-none">
                 <!-- ICON CHIẾC MŨ TỐT NGHIỆP: Mở Admin bí mật hoặc vào thẳng nếu IP Whitelisted -->
-                <div onclick="app.promptAdminAuth()" class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 active:scale-90 transition-transform cursor-pointer" title="Quản trị viên">
+                <div onclick="app.promptAdminAuth()" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 active:scale-95 transition-transform cursor-pointer" title="Quản trị viên">
                     <i class="fa-solid fa-graduation-cap text-lg"></i>
                 </div>
                 <div class="cursor-pointer" onclick="app.showHome()">
-                    <h1 id="navbar-subject-title" class="font-heading font-extrabold text-lg tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
-                        QuizMaster Pro v4.0
+                    <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+                        QuizMaster Pro
                     </h1>
-                    <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Hệ Thống Ôn Thi Trực Tuyến Toàn Diện</p>
+                    <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Ôn Luyện Thông Minh • Trợ Lý AI</p>
                 </div>
             </div>
 
             <!-- Các nút điều hướng góc phải header -->
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-1.5 sm:space-x-2">
+                <!-- Nút chuyển đổi Dark / Light Mode -->
+                <button id="theme-toggle-btn" onclick="app.toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối">
+                    <i id="theme-toggle-icon" class="fa-solid fa-moon text-amber-300"></i>
+                </button>
+
                 <!-- Nút bật/tắt âm thanh Ting/Bíp -->
                 <button id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng">
                     <i id="header-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                 </button>
 
+                <!-- Nút Cài đặt Trợ lý AI Gemini -->
+                <button onclick="app.openAiSettingsModal()" class="w-9 h-9 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Cài đặt Trợ lý AI Gemini">
+                    <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
+                </button>
+
+                <!-- Nút Nhật ký Ôn tập cá nhân (10 bài gần nhất) -->
+                <button onclick="app.openMyHistoryModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Lịch sử bài làm cá nhân">
+                    <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i>
+                    <span class="hidden sm:inline">Lịch Sử</span>
+                </button>
+
                 <!-- Nút mở Bảng Xếp Hạng Top 10 -->
-                <button onclick="app.openLeaderboardModal()" class="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                <button onclick="app.openLeaderboardModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-trophy text-amber-400"></i>
                     <span class="hidden sm:inline">Top 10</span>
                 </button>
@@ -243,21 +265,21 @@
         <!-- MÀN HÌNH 1: MÀN HÌNH CHÀO MỪNG (HOME/START) -->
         <!-- ========================================== -->
         <section id="screen-home" class="screen-view transition-all duration-300">
-            <div class="max-w-xl mx-auto bg-slate-800/60 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            <div class="max-w-xl mx-auto glass-panel-pro rounded-3xl p-6 sm:p-9 shadow-2xl relative overflow-hidden">
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-2.5">
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-pink-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold mb-3 shadow-sm">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Cổng Ôn Thi Trực Tuyến
+                        ⚡ Đề Cương Trắc Nghiệm Chuẩn THPT
                     </div>
-                    <h2 class="font-heading text-2xl sm:text-3xl font-extrabold text-white mb-2 tracking-tight">Ôn Luyện Trắc Nghiệm</h2>
-                    <p class="text-slate-400 text-xs sm:text-sm leading-relaxed">Chọn môn thi bên dưới và nhập họ tên để bắt đầu làm bài</p>
+                    <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn Luyện Siêu Cấp</h2>
+                    <p class="text-slate-400 text-xs sm:text-sm">Chinh phục điểm 10 • Giải thích bằng AI • Thách thức Top 10 Bảng Vàng</p>
                 </div>
 
                 <!-- Thẻ ghi nhớ thí sinh đã đăng nhập -->
                 <div id="saved-user-banner" class="hidden mb-5 p-4 rounded-2xl bg-gradient-to-r from-indigo-950/90 via-slate-900 to-purple-950/90 border border-indigo-500/40 shadow-xl transition-all">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-lg">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-lg shadow">
                                 <i class="fa-solid fa-user-check"></i>
                             </div>
                             <div>
@@ -265,16 +287,16 @@
                                 <p class="text-[11px] text-slate-300">Hệ thống đã ghi nhớ tài khoản trên thiết bị này.</p>
                             </div>
                         </div>
-                        <button type="button" onclick="app.clearSavedUser()" class="px-2.5 py-1 text-[11px] font-semibold text-slate-300 hover:text-rose-300 bg-slate-800/80 hover:bg-slate-800 rounded-lg border border-slate-700 transition cursor-pointer" title="Đổi sang tên học sinh khác">
+                        <button type="button" onclick="app.clearSavedUser()" class="btn-3d btn-3d-slate px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:text-rose-300 rounded-xl transition cursor-pointer" title="Đổi sang tên học sinh khác">
                             <i class="fa-solid fa-user-pen mr-1"></i> Đổi tên
                         </button>
                     </div>
                 </div>
 
                 <!-- KHU VỰC CHỌN MÔN HỌC ĐỘNG (DYNAMIC SUBJECTS HUB) -->
-                <div class="mb-5 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-700/80">
-                    <div class="flex items-center justify-between mb-2.5">
-                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <div class="mb-5 p-4 rounded-2xl glass-card-pro">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="text-xs font-heading font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                             <i class="fa-solid fa-layer-group text-indigo-400"></i>
                             <span>Chọn Môn Ôn Tập</span>
                         </label>
@@ -285,16 +307,16 @@
                     <div id="home-semester-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 scrollbar-none"></div>
 
                     <!-- Lưới môn học gọn gàng cho học sinh -->
-                    <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5">
+                    <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                         <!-- Render bởi app.js qua renderHomeSubjects() -->
                     </div>
 
                     <!-- Nút quản lý môn nhanh dành cho Admin -->
                     <div id="home-admin-subject-actions" class="hidden mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs">
-                        <span class="text-amber-400 text-[11px] flex items-center gap-1">
+                        <span class="text-amber-400 text-[11px] font-bold flex items-center gap-1">
                             <i class="fa-solid fa-shield-halved"></i> Quản lý môn học (Admin)
                         </span>
-                        <button onclick="app.openSubjectEditor()" class="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
+                        <button onclick="app.openSubjectEditor()" class="btn-3d btn-3d-amber px-3 py-1.5 rounded-xl text-slate-950 font-heading font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
                             <i class="fa-solid fa-plus"></i> + Thêm môn học mới
                         </button>
                     </div>
@@ -303,42 +325,58 @@
                 <!-- FORM THÔNG TIN NGƯỜI THAM GIA -->
                 <div class="space-y-4">
                     <div>
-                        <label for="player-name-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                        <label for="player-name-input" class="block text-xs font-heading font-bold uppercase tracking-wider text-slate-300 mb-1.5">
                             Họ và Tên học sinh <span class="text-rose-400">*</span>
                         </label>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                                <i class="fa-regular fa-user"></i>
+                                <i class="fa-regular fa-user text-indigo-400"></i>
                             </span>
                             <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
-                                class="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                                class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-inner">
                         </div>
-                        <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1">
+                        <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1 font-medium">
                             <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
                         </p>
                     </div>
 
-                    <!-- Lưu ý làm bài tóm tắt -->
-                    <div class="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 text-slate-400">
-                        <div class="flex items-center gap-2 text-slate-300 font-medium">
-                            <i class="fa-solid fa-circle-info text-indigo-400"></i>
-                            <span id="home-rules-count-text">Nội dung gồm các câu hỏi trắc nghiệm bám sát đề cương.</span>
+                    <!-- 4 TIỆN ÍCH NỔI BẬT DÀNH CHO HỌC SINH (GEN Z HUBS) -->
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2.5">
+                            <i class="fa-solid fa-bolt text-amber-400 text-sm shrink-0"></i>
+                            <div class="leading-tight">
+                                <strong class="text-slate-200 block text-[11px]">Tự lưu tiến độ</strong>
+                                <span class="text-[10px] text-slate-400">Không lo mất mạng</span>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-floppy-disk text-emerald-400"></i>
-                            <span>Hệ thống tự động lưu bài làm khi chọn đáp án (tải lại trang không mất tiến độ).</span>
+                        <div class="p-2.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center gap-2.5">
+                            <i class="fa-solid fa-square-root-variable text-purple-400 text-sm shrink-0"></i>
+                            <div class="leading-tight">
+                                <strong class="text-slate-200 block text-[11px]">KaTeX chuẩn xịn</strong>
+                                <span class="text-[10px] text-slate-400">Toán Lí Hóa chuẩn nét</span>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-circle-check text-amber-400"></i>
-                            <span>Biết ngay kết quả đúng/sai, có giải thích chi tiết và bảng tổng kết khi nộp bài.</span>
+                        <div class="p-2.5 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center gap-2.5">
+                            <i class="fa-solid fa-wand-magic-sparkles text-pink-400 text-sm shrink-0"></i>
+                            <div class="leading-tight">
+                                <strong class="text-slate-200 block text-[11px]">Trợ lý AI 24/7</strong>
+                                <span class="text-[10px] text-slate-400">Giải thích cặn kẽ</span>
+                            </div>
+                        </div>
+                        <div class="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2.5">
+                            <i class="fa-solid fa-trophy text-emerald-400 text-sm shrink-0"></i>
+                            <div class="leading-tight">
+                                <strong class="text-slate-200 block text-[11px]">Bảng Vàng Top 10</strong>
+                                <span class="text-[10px] text-slate-400">Vinh danh điểm cao</span>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Nút bắt đầu làm bài -->
                     <div class="pt-2">
-                        <button id="btn-start-quiz" onclick="app.startQuiz()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 transition-all duration-200 flex items-center justify-center gap-2 group cursor-pointer">
-                            <span>Bắt Đầu Làm Bài</span>
-                            <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                        <button id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer">
+                            <span>Bắt Đầu Làm Bài Ngay</span>
+                            <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
                         </button>
                     </div>
                 </div>
@@ -350,70 +388,70 @@
         <!-- ========================================== -->
         <section id="screen-quiz" class="screen-view hidden transition-all duration-300 w-full">
             <!-- THANH ĐIỀU HÀNH BÀI THI: DÍNH SÁT MÉP TRÊN CÙNG (TOP-0) -->
-            <div class="fixed top-0 left-0 right-0 z-40 w-full bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-xl transition-all">
+            <div class="fixed top-0 left-0 right-0 z-40 w-full bg-slate-950/85 backdrop-blur-2xl border-b border-white/10 shadow-2xl transition-all">
                 <!-- Dòng 1: Thông tin học sinh, Điểm số, Đồng hồ & Các nút thao tác -->
-                <div class="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-2.5">
+                <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
                         <!-- Icon Admin ẩn -->
-                        <div onclick="app.promptAdminAuth()" class="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow cursor-pointer active:scale-95 transition shrink-0" title="Quản trị">
+                        <div onclick="app.promptAdminAuth()" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md cursor-pointer active:scale-95 transition shrink-0" title="Quản trị">
                             <i class="fa-solid fa-graduation-cap text-xs"></i>
                         </div>
-                        <span id="quiz-top-subject-title" class="font-extrabold text-sm sm:text-base text-white hidden sm:inline-block">Lịch Sử 11</span>
-                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
+                        <span id="quiz-top-subject-title" class="font-heading font-extrabold text-sm sm:text-base text-white hidden sm:inline-block">Lịch Sử 11</span>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs font-semibold text-slate-300 shadow-sm">
                             <i class="fa-solid fa-user text-indigo-400 text-[11px]"></i>
-                            <span id="quiz-header-player-name" class="text-white max-w-[110px] truncate">Học sinh</span>
+                            <span id="quiz-header-player-name" class="text-white font-bold max-w-[110px] truncate">Học sinh</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
-                            <i class="fa-solid fa-check text-emerald-400 text-[11px]"></i>
-                            <span>Đúng: <strong id="quiz-live-score" class="text-emerald-400">0</strong>/<span id="quiz-attempted-count">0</span></span>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs font-semibold text-slate-300 shadow-sm">
+                            <i class="fa-solid fa-check text-emerald-400 text-xs"></i>
+                            <span>Đúng: <strong id="quiz-live-score" class="text-emerald-400 font-extrabold text-sm">0</strong>/<span id="quiz-attempted-count">0</span></span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-amber-400">
-                            <i class="fa-regular fa-clock text-[11px]"></i>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs font-mono font-bold text-amber-400 shadow-sm">
+                            <i class="fa-regular fa-clock text-xs"></i>
                             <span id="timer-display">00:00</span>
                         </div>
                         <!-- Badge chế độ thi -->
-                        <span id="quiz-mode-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block">
+                        <span id="quiz-mode-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block">
                             Luyện tập
                         </span>
                     </div>
 
                     <div class="flex items-center gap-1.5 sm:gap-2">
                         <!-- Bật/Tắt âm thanh trong phòng thi -->
-                        <button id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
+                        <button id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
                             <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                         </button>
-                        <button onclick="app.returnToHome()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 hover:text-sky-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
+                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-sky-400 hover:text-sky-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
                             <i class="fa-solid fa-house text-[11px]"></i>
                             <span class="hidden sm:inline">Đổi môn</span>
                         </button>
-                        <button onclick="app.resetCurrentQuiz()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="Làm lại từ đầu">
+                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-amber-400 hover:text-amber-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Làm lại từ đầu">
                             <i class="fa-solid fa-rotate-left text-[11px]"></i>
                             <span>Làm lại</span>
                         </button>
-                        <button onclick="app.filterQuestions('wrong')" id="btn-filter-wrong" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                        <button onclick="app.filterQuestions('wrong')" id="btn-filter-wrong" class="btn-3d px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark text-[11px]"></i>
                             <span>Sai (<span id="wrong-count-badge">0</span>)</span>
                         </button>
-                        <button onclick="app.confirmSubmit()" class="px-3 sm:px-4 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow transition flex items-center gap-1 cursor-pointer">
-                            <i class="fa-solid fa-check text-[11px]"></i>
+                        <button onclick="app.confirmSubmit()" class="btn-3d btn-3d-emerald px-3.5 sm:px-4 py-2 rounded-xl text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-check text-xs"></i>
                             <span>Nộp Bài</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- Dòng 2: Tabs lọc danh mục & Tiến độ làm bài -->
-                <div class="bg-slate-950/60 border-t border-slate-800/80 px-4 py-1.5">
+                <div class="bg-slate-950/80 border-t border-white/5 px-4 py-2">
                     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
                         <div id="quiz-filter-tabs-container" class="flex flex-wrap items-center gap-1.5">
                             <!-- Render động theo môn -->
                         </div>
-                        <span id="quiz-progress-text" class="text-[11px] text-slate-400 font-medium whitespace-nowrap">Đã làm 0 câu (0%)</span>
+                        <span id="quiz-progress-text" class="text-[11px] text-slate-300 font-semibold whitespace-nowrap">Đã làm 0 câu (0%)</span>
                     </div>
                 </div>
 
-                <!-- Dưới cùng: Đường line tiến độ mỏng chạy suốt toàn màn hình -->
-                <div class="w-full bg-slate-800 h-1 overflow-hidden">
-                    <div id="quiz-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
+                <!-- Dưới cùng: Đường line tiến độ chạy suốt toàn màn hình có hào quang -->
+                <div class="w-full bg-slate-900 h-1.5 overflow-hidden">
+                    <div id="quiz-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-300 shadow-[0_0_12px_rgba(99,102,241,0.6)]" style="width: 0%"></div>
                 </div>
             </div>
 
@@ -429,56 +467,56 @@
         <section id="screen-result" class="screen-view hidden transition-all duration-300">
             <div class="max-w-2xl mx-auto space-y-6">
                 <!-- Thẻ điểm vinh danh chính -->
-                <div class="bg-slate-800/70 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
-                    <div id="result-badge-container" class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-600 mx-auto flex items-center justify-center text-slate-950 text-3xl shadow-xl shadow-amber-500/20 mb-4 animate-bounce">
+                <div class="glass-panel-pro rounded-3xl p-6 sm:p-9 text-center shadow-2xl relative overflow-hidden">
+                    <div id="result-badge-container" class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-600 mx-auto flex items-center justify-center text-slate-950 text-3xl shadow-xl shadow-amber-500/30 mb-4 animate-bounce">
                         <i class="fa-solid fa-award"></i>
                     </div>
 
-                    <h2 class="font-heading text-2xl sm:text-3xl font-extrabold text-white mb-1" id="result-title">
+                    <h2 class="font-heading text-3xl sm:text-4xl font-extrabold text-white mb-1.5 tracking-tight" id="result-title">
                         Hoàn Thành Bài Thi!
                     </h2>
-                    <p class="text-slate-400 text-sm mb-6" id="result-player-greeting">
-                        Chúc mừng bạn đã hoàn thành bài thi trắc nghiệm.
+                    <p class="text-slate-300 text-sm mb-6" id="result-player-greeting">
+                        Chúc mừng bạn đã hoàn thành xuất sắc bài thi trắc nghiệm.
                     </p>
 
                     <!-- Chỉ số điểm số -->
-                    <div class="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800 mb-6">
+                    <div class="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5 mb-6 shadow-inner">
                         <div class="text-center p-2">
                             <span class="block text-slate-400 text-xs mb-1">Điểm số</span>
-                            <span class="font-heading text-2xl sm:text-3xl font-extrabold text-indigo-400" id="result-score">0</span>
-                            <span class="text-[11px] text-slate-500">/ 100 điểm</span>
+                            <span class="font-heading text-3xl sm:text-4xl font-extrabold gradient-text-hero" id="result-score">0</span>
+                            <span class="text-[11px] text-slate-400">/ 100 điểm</span>
                         </div>
                         <div class="text-center p-2 border-x border-slate-800">
                             <span class="block text-slate-400 text-xs mb-1">Đúng / Tổng ý</span>
-                            <span class="font-heading text-2xl sm:text-3xl font-extrabold text-emerald-400" id="result-correct-ratio">0/0</span>
-                            <span class="text-[11px] text-slate-500">ý hỏi</span>
+                            <span class="font-heading text-3xl sm:text-4xl font-extrabold text-emerald-400" id="result-correct-ratio">0/0</span>
+                            <span class="text-[11px] text-slate-400">ý hỏi</span>
                         </div>
                         <div class="text-center p-2">
                             <span class="block text-slate-400 text-xs mb-1">Thời gian</span>
-                            <span class="font-heading text-2xl sm:text-3xl font-extrabold text-amber-400" id="result-time-spent">00:00</span>
-                            <span class="text-[11px] text-slate-500">phút:giây</span>
+                            <span class="font-heading text-3xl sm:text-4xl font-extrabold text-amber-400 font-mono" id="result-time-spent">00:00</span>
+                            <span class="text-[11px] text-slate-400">phút:giây</span>
                         </div>
                     </div>
 
                     <!-- Nút thao tác sau khi xong bài -->
                     <div class="flex flex-wrap items-center justify-center gap-3">
-                        <button onclick="app.openLeaderboardModal()" class="px-5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-semibold text-amber-300 transition flex items-center gap-2 cursor-pointer shadow-md">
-                            <i class="fa-solid fa-trophy text-amber-400"></i>
+                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
+                            <i class="fa-solid fa-trophy text-slate-950"></i>
                             <span>Xem Bảng Xếp Hạng</span>
                         </button>
-                        <button onclick="app.returnToHome()" class="px-5 py-2.5 rounded-xl bg-sky-600/30 hover:bg-sky-600/50 border border-sky-500/50 text-xs font-semibold text-sky-200 transition flex items-center gap-2 cursor-pointer shadow-md">
+                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-house"></i>
                             <span>Chọn môn khác</span>
                         </button>
-                        <button onclick="app.resetCurrentQuiz()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
                         </button>
-                        <button onclick="app.filterQuestions('wrong')" class="px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-semibold text-rose-300 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.filterQuestions('wrong')" class="btn-3d px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark"></i>
                             <span>Xem các câu làm sai</span>
                         </button>
-                        <button onclick="app.switchUser()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-300 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.switchUser()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-user-pen"></i>
                             <span>Đổi người thi</span>
                         </button>
@@ -1357,6 +1395,126 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             <div class="p-3 bg-slate-800/80 border-t border-slate-700 flex justify-end">
                 <button onclick="app.closeGeographyEssayModal()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition cursor-pointer">
                     Đã hiểu, quay lại làm trắc nghiệm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 9: CÀI ĐẶT TRỢ LÝ AI GEMINI                       -->
+    <!-- ======================================================= -->
+    <div id="modal-ai-settings" class="fixed inset-0 z-[100003] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-purple-500/30 animate-fade-in">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center text-sm shadow">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-heading font-extrabold text-white text-base">Cài Đặt Trợ Lý AI Gemini</h3>
+                        <p class="text-[11px] text-purple-300">Google Gemini 2.5 Flash API</p>
+                    </div>
+                </div>
+                <button onclick="app.closeAiSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <p class="text-slate-300 leading-relaxed">
+                    Nhập <strong>Gemini API Key</strong> để kích hoạt tính năng <span class="text-amber-300 font-bold">✨ Hỏi AI giải thích chi tiết</span> ở từng câu hỏi:
+                </p>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>Google Gemini API Key:</span>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-normal flex items-center gap-1">
+                            Lấy key miễn phí <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                        </a>
+                    </label>
+                    <input type="password" id="gemini-api-key-input" placeholder="Dán mã key AIzaSy..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
+                </div>
+
+                <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 space-y-1">
+                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Hoàn toàn miễn phí từ Google:</p>
+                    <p>API Key được lưu an toàn tại trình duyệt (localStorage), không gửi về máy chủ thứ ba nào khác.</p>
+                </div>
+
+                <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
+                    <button onclick="app.clearAiApiKey()" class="text-rose-400 hover:text-rose-300 transition text-xs font-semibold cursor-pointer">
+                        <i class="fa-solid fa-trash-can mr-1"></i> Xóa Key
+                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="app.closeAiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Đóng</button>
+                        <button onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu Khóa API</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 10: NHẬT KÝ ÔN TẬP CÁ NHÂN (10 BÀI GẦN NHẤT)       -->
+    <!-- ======================================================= -->
+    <div id="modal-my-history" class="fixed inset-0 z-[100004] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4 overflow-hidden">
+        <div class="glass-panel-pro rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto border border-cyan-500/30 animate-fade-in">
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-cyan-950/60 via-slate-900 to-indigo-950/60 border-b border-cyan-500/30 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center justify-center text-lg shadow">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-heading font-extrabold text-white text-base sm:text-lg">Nhật Ký Ôn Tập Cá Nhân</h3>
+                        <p class="text-[11px] text-cyan-300">Lưu lại tối đa 10 bài thi gần nhất trên thiết bị này</p>
+                    </div>
+                </div>
+                <button onclick="app.closeMyHistoryModal()" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Bảng tóm tắt thống kê nhanh -->
+            <div class="p-4 sm:p-5 grid grid-cols-3 gap-3 border-b border-slate-800 shrink-0">
+                <div class="p-3 rounded-2xl bg-slate-900/80 border border-cyan-500/20 text-center">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tổng Số Đề Đã Làm</span>
+                    <span id="history-total-count" class="font-heading font-extrabold text-xl text-cyan-300">0</span>
+                </div>
+                <div class="p-3 rounded-2xl bg-slate-900/80 border border-amber-500/20 text-center">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Điểm Trung Bình</span>
+                    <span id="history-avg-score" class="font-heading font-extrabold text-xl text-amber-300">0</span>
+                </div>
+                <div class="p-3 rounded-2xl bg-slate-900/80 border border-emerald-500/20 text-center">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tỉ Lệ Đúng TB</span>
+                    <span id="history-avg-ratio" class="font-heading font-extrabold text-xl text-emerald-300">0%</span>
+                </div>
+            </div>
+
+            <!-- Danh sách 10 bài thi -->
+            <div class="p-4 sm:p-5 overflow-y-auto flex-1">
+                <div class="overflow-x-auto rounded-2xl border border-slate-800">
+                    <table class="w-full text-left text-xs min-w-[550px]">
+                        <thead class="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700">
+                            <tr>
+                                <th class="py-2.5 px-3">Thời Gian</th>
+                                <th class="py-2.5 px-3">Môn Học</th>
+                                <th class="py-2.5 px-3">Chế Độ</th>
+                                <th class="py-2.5 px-3 text-center">Điểm Số</th>
+                                <th class="py-2.5 px-3 text-center">Đúng / Tổng</th>
+                                <th class="py-2.5 px-3 text-right">Thời Lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody id="my-history-tbody" class="divide-y divide-slate-800 text-slate-300">
+                            <!-- Render bởi app.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="p-3.5 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between shrink-0">
+                <button onclick="app.clearPersonalHistory()" class="px-3.5 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition cursor-pointer">
+                    <i class="fa-solid fa-trash-can mr-1"></i> Xóa Lịch Sử
+                </button>
+                <button onclick="app.closeMyHistoryModal()" class="btn-3d btn-3d-slate px-5 py-2 rounded-xl text-slate-200 font-bold text-xs cursor-pointer">
+                    Đóng
                 </button>
             </div>
         </div>

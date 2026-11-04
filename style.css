@@ -1,14 +1,39 @@
-/* style.css - QuizMaster Pro v4.0 Ultimate Stylesheet */
+/* style.css - QuizMaster Pro v4.0 Gen Z Cyber Aurora Edition */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
-/* --- Hiệu ứng chuyển động mượt mà cho các màn hình --- */
-.screen-view {
-    animation: screenFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+:root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-@keyframes screenFadeIn {
+body {
+    font-family: var(--font-sans);
+    background-color: #080c16;
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.10) 0px, transparent 50%);
+    background-attachment: fixed;
+    color: #f1f5f9;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, .font-heading {
+    font-family: var(--font-heading);
+}
+
+/* --- Tối ưu hóa GPU & Chuyển cảnh mượt mà 60/120fps --- */
+.screen-view {
+    animation: screenEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+}
+
+@keyframes screenEnter {
     from {
         opacity: 0;
-        transform: translateY(10px) scale(0.99);
+        transform: translateY(14px) scale(0.99);
     }
     to {
         opacity: 1;
@@ -16,26 +41,22 @@
     }
 }
 
-/* --- Tùy chỉnh thanh cuộn hiện đại (Modern Scrollbar) --- */
+/* --- Tùy chỉnh thanh cuộn siêu mỏng & mượt mà --- */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(11, 15, 25, 0.8);
 }
-
 ::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.45);
+    background: rgba(99, 102, 241, 0.35);
     border-radius: 9999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(129, 140, 248, 0.8);
+    background: rgba(129, 140, 248, 0.7);
 }
 
-/* Ẩn hoàn toàn thanh cuộn mà vẫn cuộn mượt */
 .no-scrollbar::-webkit-scrollbar {
     display: none;
     width: 0 !important;
@@ -46,46 +67,187 @@
     scrollbar-width: none;
 }
 
-/* --- Glassmorphism UI Panels --- */
-.glass-panel {
-    background: rgba(30, 41, 59, 0.7);
+/* --- Thẻ Kính Mờ Frosted Glass Pro --- */
+.glass-panel-pro {
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 
+        0 20px 40px -15px rgba(0, 0, 0, 0.5),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-card-pro {
+    background: rgba(17, 24, 39, 0.7);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 
+        0 10px 25px -5px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                box-shadow 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                border-color 0.22s ease;
 }
 
-.glass-card-hover {
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.glass-card-hover:hover {
+.glass-card-pro:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 30px -10px rgba(99, 102, 241, 0.25);
-    border-color: rgba(129, 140, 248, 0.35);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 
+        0 18px 35px -8px rgba(99, 102, 241, 0.2),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
 }
 
-/* --- Tương tác nút bấm & Active transforms --- */
-button:active, .interactive-btn:active {
-    transform: scale(0.97);
+/* --- Nút bấm 3D Tactile Buttons (Bấm cực sướng tay kiểu Gen Z) --- */
+.btn-3d {
+    position: relative;
+    transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform: translateZ(0);
 }
 
-/* Hiệu ứng hào quang cho đáp án trắc nghiệm */
+.btn-3d:hover {
+    transform: translateY(-1.5px);
+}
+
+.btn-3d:active {
+    transform: translateY(2px) scale(0.985);
+}
+
+.btn-3d-indigo {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    box-shadow: 0 4px 0 #3730a3, 0 8px 20px -4px rgba(99, 102, 241, 0.5);
+}
+.btn-3d-indigo:active {
+    box-shadow: 0 1px 0 #3730a3, 0 4px 10px -2px rgba(99, 102, 241, 0.4);
+}
+
+.btn-3d-emerald {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 0 #047857, 0 8px 20px -4px rgba(16, 185, 129, 0.45);
+}
+.btn-3d-emerald:active {
+    box-shadow: 0 1px 0 #047857, 0 4px 10px -2px rgba(16, 185, 129, 0.35);
+}
+
+.btn-3d-amber {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 4px 0 #b45309, 0 8px 20px -4px rgba(245, 158, 11, 0.45);
+}
+.btn-3d-amber:active {
+    box-shadow: 0 1px 0 #b45309, 0 4px 10px -2px rgba(245, 158, 11, 0.35);
+}
+
+.btn-3d-slate {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 3px 0 #0f172a, 0 6px 15px -3px rgba(0, 0, 0, 0.3);
+}
+.btn-3d-slate:active {
+    box-shadow: 0 1px 0 #0f172a;
+}
+
+/* --- Thẻ bài môn học 3D Interactive (Subject Cards) --- */
+.subject-card-interactive {
+    position: relative;
+    border-radius: 1.25rem;
+    transition: all 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+    background: rgba(17, 24, 39, 0.65);
+    border: 1.5px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.3);
+    will-change: transform, border-color, box-shadow;
+}
+
+.subject-card-interactive:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 14px 30px -6px rgba(0, 0, 0, 0.5);
+}
+
+.subject-card-interactive.selected-indigo {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(79, 70, 229, 0.12));
+    border-color: #818cf8;
+    box-shadow: 0 0 25px -4px rgba(99, 102, 241, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.subject-card-interactive.selected-purple {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(147, 51, 234, 0.12));
+    border-color: #c084fc;
+    box-shadow: 0 0 25px -4px rgba(168, 85, 247, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.subject-card-interactive.selected-emerald {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(5, 150, 105, 0.12));
+    border-color: #34d399;
+    box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.subject-card-interactive.selected-rose {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.22), rgba(225, 29, 72, 0.12));
+    border-color: #fb7185;
+    box-shadow: 0 0 25px -4px rgba(244, 63, 94, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.subject-card-interactive.selected-amber {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.12));
+    border-color: #fbbf24;
+    box-shadow: 0 0 25px -4px rgba(245, 158, 11, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* --- Tùy chỉnh ô chọn đáp án trắc nghiệm A, B, C, D --- */
+.quiz-option-tile {
+    position: relative;
+    border-radius: 1rem;
+    padding: 0.85rem 1.1rem;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1.5px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.quiz-option-tile:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(129, 140, 248, 0.5);
+    box-shadow: 0 6px 15px -3px rgba(99, 102, 241, 0.2);
+}
+
+.quiz-option-tile:active:not(:disabled) {
+    transform: translateY(1px) scale(0.99);
+}
+
+/* Hiệu ứng khi chọn ĐÚNG / SAI trong chế độ Luyện tập */
 .option-selected-correct {
-    background: rgba(16, 185, 129, 0.15) !important;
-    border-color: rgba(16, 185, 129, 0.8) !important;
-    box-shadow: 0 0 20px -3px rgba(16, 185, 129, 0.35);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
+    border-color: #34d399 !important;
+    color: #ecfdf5 !important;
+    box-shadow: 0 0 25px -3px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
 .option-selected-wrong {
-    background: rgba(244, 63, 94, 0.15) !important;
-    border-color: rgba(244, 63, 94, 0.8) !important;
-    box-shadow: 0 0 20px -3px rgba(244, 63, 94, 0.35);
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.25), rgba(225, 29, 72, 0.15)) !important;
+    border-color: #fb7185 !important;
+    color: #fff1f2 !important;
+    box-shadow: 0 0 25px -3px rgba(244, 63, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
-/* --- Huy hiệu Bảng Xếp Hạng Podium Top 3 (Vàng, Bạc, Đồng) --- */
+/* --- Chữ Gradient thời thượng (Trendy Gradient Text) --- */
+.gradient-text-hero {
+    background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 50%, #f472b6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-gold {
+    background: linear-gradient(135deg, #fde047 0%, #f59e0b 50%, #d97706 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* --- Bục vinh danh Podium Top 3 lộng lẫy --- */
 .podium-gold {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.1));
-    border: 2px solid rgba(245, 158, 11, 0.7);
-    box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.4);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(180, 83, 9, 0.15));
+    border: 2px solid #fbbf24;
+    box-shadow: 0 0 30px -5px rgba(245, 158, 11, 0.5);
     position: relative;
     overflow: hidden;
 }
@@ -96,8 +258,8 @@ button:active, .interactive-btn:active {
     left: -50%;
     width: 200%;
     height: 200%;
-    background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.2) 50%, transparent 60%);
-    animation: goldShimmer 3.5s infinite;
+    background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.25) 50%, transparent 60%);
+    animation: goldShimmer 3s infinite;
 }
 
 @keyframes goldShimmer {
@@ -106,40 +268,188 @@ button:active, .interactive-btn:active {
 }
 
 .podium-silver {
-    background: linear-gradient(135deg, rgba(148, 163, 184, 0.25), rgba(100, 116, 139, 0.1));
-    border: 2px solid rgba(203, 213, 225, 0.6);
-    box-shadow: 0 0 20px -5px rgba(148, 163, 184, 0.3);
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.3), rgba(71, 85, 105, 0.15));
+    border: 2px solid #cbd5e1;
+    box-shadow: 0 0 20px -5px rgba(148, 163, 184, 0.4);
 }
 
 .podium-bronze {
-    background: linear-gradient(135deg, rgba(217, 119, 6, 0.2), rgba(180, 83, 9, 0.1));
-    border: 2px solid rgba(217, 119, 6, 0.6);
-    box-shadow: 0 0 20px -5px rgba(217, 119, 6, 0.3);
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.25), rgba(146, 64, 14, 0.15));
+    border: 2px solid #f97316;
+    box-shadow: 0 0 20px -5px rgba(217, 119, 6, 0.35);
 }
 
-/* --- Hỗ trợ công thức Toán/Lí KaTeX --- */
+/* --- Hỗ trợ công thức KaTeX sắc nét, có padding thoáng --- */
 .katex-display {
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0.5rem 0;
-    margin: 0.5rem 0 !important;
+    padding: 0.6rem 0.8rem;
+    margin: 0.6rem 0 !important;
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .katex {
-    font-size: 1.05em !important;
-    text-rendering: auto;
+    font-size: 1.08em !important;
+    text-rendering: optimizeLegibility;
 }
 
-/* --- Pulse Glow Animation cho nút Admin --- */
+/* --- Hiệu ứng nhấp nháy phát sáng cho nút vương miện Admin --- */
 @keyframes adminPulseGlow {
     0%, 100% {
-        box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+        box-shadow: 0 0 15px rgba(245, 158, 11, 0.45);
+        transform: scale(1);
     }
     50% {
-        box-shadow: 0 0 30px rgba(245, 158, 11, 0.7);
+        box-shadow: 0 0 30px rgba(245, 158, 11, 0.85);
+        transform: scale(1.03);
     }
 }
 
 .admin-floating-glow {
-    animation: adminPulseGlow 2.5s infinite;
+    animation: adminPulseGlow 2.5s infinite ease-in-out;
 }
+
+/* ============================================================== */
+/* AI EXPLANATION BOX (GEMINI 2.5 FLASH)                          */
+/* ============================================================== */
+.ai-explanation-box {
+    background: linear-gradient(135deg, rgba(88, 28, 135, 0.25), rgba(30, 27, 75, 0.45));
+    border: 1.5px solid rgba(168, 85, 247, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(147, 51, 234, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-radius: 1.25rem;
+    transition: all 0.3s ease;
+}
+
+.ai-explanation-box p {
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+}
+
+.ai-explanation-box strong {
+    color: #fde047;
+}
+
+.ai-explanation-box ul {
+    list-style-type: disc;
+    padding-left: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.ai-explanation-box li {
+    margin-bottom: 0.25rem;
+}
+
+/* ============================================================== */
+/* LIGHT THEME (CHẾ ĐỘ SÁNG THỜI TRANG & SẮC NÉT)                 */
+/* ============================================================== */
+body.light-theme {
+    background-color: #f8fafc;
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.06) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
+    color: #0f172a;
+}
+
+body.light-theme .glass-panel-pro {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(203, 213, 225, 0.8);
+    box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .glass-card-pro {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(226, 232, 240, 0.9);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme header,
+body.light-theme #screen-quiz > div:first-child {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-bottom-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+body.light-theme .text-white,
+body.light-theme .text-slate-100,
+body.light-theme .text-slate-200 {
+    color: #0f172a !important;
+}
+
+body.light-theme .text-slate-300 {
+    color: #334155 !important;
+}
+
+body.light-theme .text-slate-400 {
+    color: #64748b !important;
+}
+
+body.light-theme .bg-slate-900,
+body.light-theme .bg-slate-950 {
+    background-color: rgba(248, 250, 252, 0.95) !important;
+}
+
+body.light-theme .bg-slate-800 {
+    background-color: rgba(241, 245, 249, 0.9) !important;
+}
+
+body.light-theme .border-slate-700,
+body.light-theme .border-slate-800 {
+    border-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+body.light-theme .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+body.light-theme input,
+body.light-theme select,
+body.light-theme textarea {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+}
+
+body.light-theme input::placeholder,
+body.light-theme textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+body.light-theme .quiz-option-tile {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1.5px solid rgba(203, 213, 225, 0.9);
+    color: #0f172a;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme .quiz-option-tile:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: rgba(99, 102, 241, 0.6);
+}
+
+body.light-theme .subject-card-interactive {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1.5px solid rgba(226, 232, 240, 0.9);
+}
+
+body.light-theme .subject-card-interactive:hover {
+    background: #f8fafc;
+}
+
+body.light-theme .ai-explanation-box {
+    background: linear-gradient(135deg, rgba(243, 232, 255, 0.9), rgba(238, 242, 255, 0.95));
+    border-color: rgba(168, 85, 247, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.15);
+    color: #1e1b4b;
+}
+
+body.light-theme .ai-explanation-box strong {
+    color: #6b21a8;
+}
+
+body.light-theme footer {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    border-top-color: rgba(226, 232, 240, 0.8) !important;
+}
+
