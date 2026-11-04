@@ -79,12 +79,12 @@ class QuizApp {
             }
         }, 300);
 
-        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-2.5-flash (chống lỗi 404 deprecated)
+        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-3.1-pro-preview (khắc phục lỗi deprecated gemini-2.5-pro / gemini-1.5)
         const savedModel = localStorage.getItem('gemini_model');
-        if (!savedModel || savedModel.includes('1.5')) {
-            localStorage.setItem('gemini_model', 'gemini-2.5-flash');
+        if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.5-pro') || savedModel === 'gemini-2.5-pro') {
+            localStorage.setItem('gemini_model', 'gemini-3.1-pro-preview');
         }
-        this.selectedGeminiModel = 'gemini-2.5-flash';
+        this.selectedGeminiModel = 'gemini-3.1-pro-preview';
 
         // Cache màn hình
         this.screens = {
@@ -1787,10 +1787,10 @@ ${rawText}`;
 
         try {
             const candidateModels = [
+                'gemini-3.1-pro-preview',
                 'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
-                'gemini-2.5-pro'
+                'gemini-2.0-flash-lite'
             ];
 
             let res = null;
@@ -1816,17 +1816,23 @@ ${rawText}`;
                     } else {
                         const errData = await callResp.json().catch(() => ({}));
                         lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
-                        if (callResp.status === 404 || callResp.status === 503 || callResp.status === 429) {
-                            if (callResp.status === 503 || callResp.status === 429) {
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                            }
-                            continue;
-                        } else {
+                        console.warn(`[QuizMaster AI] Model ${model} gặp lỗi (${callResp.status}):`, lastErrMsg);
+
+                        // Dừng lặp chỉ khi API Key sai định dạng hoàn toàn
+                        const isApiKeyInvalid = callResp.status === 400 && (lastErrMsg.includes('API_KEY_INVALID') || lastErrMsg.includes('API key not valid'));
+                        if (isApiKeyInvalid) {
                             break;
                         }
+
+                        // Nếu gặp lỗi quá tải/quota (503, 429), chờ nhẹ rồi tự động fallback sang model tiếp theo
+                        if (callResp.status === 503 || callResp.status === 429) {
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                        }
+                        continue;
                     }
                 } catch (netErr) {
                     lastErrMsg = netErr.message;
+                    console.warn(`[QuizMaster AI] Lỗi mạng khi gọi ${model}:`, netErr);
                 }
             }
 
@@ -4446,10 +4452,10 @@ YÊU CẦU:
 
         try {
             const candidateModels = [
+                'gemini-3.1-pro-preview',
                 'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
-                'gemini-2.5-pro'
+                'gemini-2.0-flash-lite'
             ];
 
             let res = null;
@@ -4471,17 +4477,19 @@ YÊU CẦU:
                     } else {
                         const errData = await callResp.json().catch(() => ({}));
                         lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
-                        console.warn(`[QuizMaster AI] Model ${model} không khả dụng (${callResp.status}):`, lastErrMsg);
-                        // Nếu do lỗi model deprecated (404), server bận/quá tải (503), quota (429), tự động thử model tiếp theo
-                        if (callResp.status === 404 || callResp.status === 503 || callResp.status === 429) {
-                            if (callResp.status === 503 || callResp.status === 429) {
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                            }
-                            continue;
-                        } else {
-                            // Nếu sai API key (400, 403), dừng lặp
+                        console.warn(`[QuizMaster AI] Model ${model} gặp lỗi (${callResp.status}):`, lastErrMsg);
+
+                        // Dừng lặp chỉ khi API Key sai định dạng hoàn toàn
+                        const isApiKeyInvalid = callResp.status === 400 && (lastErrMsg.includes('API_KEY_INVALID') || lastErrMsg.includes('API key not valid'));
+                        if (isApiKeyInvalid) {
                             break;
                         }
+
+                        // Nếu do lỗi server bận/quá tải (503), quota (429), chờ nhẹ rồi fallback
+                        if (callResp.status === 503 || callResp.status === 429) {
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                        }
+                        continue;
                     }
                 } catch (netErr) {
                     lastErrMsg = netErr.message;
