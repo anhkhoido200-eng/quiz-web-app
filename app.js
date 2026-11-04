@@ -277,7 +277,7 @@ class QuizApp {
             sortedGroupKeys.forEach(semName => {
                 const subList = groups[semName];
                 const groupWrapper = document.createElement('div');
-                groupWrapper.className = 'space-y-2';
+                groupWrapper.className = 'p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-700/80 shadow-md space-y-3';
 
                 let icon = 'fa-folder-open text-indigo-400';
                 if (semName.includes('15')) icon = 'fa-bolt text-amber-400';
@@ -286,12 +286,19 @@ class QuizApp {
                 else if (semName.includes('Cuối')) icon = 'fa-flag-checkered text-emerald-400';
 
                 groupWrapper.innerHTML = `
-                    <div class="flex items-center gap-2 pt-1">
-                        <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-slate-800/90 text-slate-200 border border-slate-700/80 flex items-center gap-1.5 shadow-sm">
-                            <i class="fa-solid ${icon}"></i> ${semName}
-                            <span class="text-[10px] text-slate-400 font-normal">(${subList.length} môn)</span>
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-sm shadow">
+                                <i class="fa-solid ${icon}"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-white text-sm sm:text-base tracking-tight">${semName}</h4>
+                                <p class="text-[10px] text-slate-400">Tệp gồm ${subList.length} môn: <span class="text-slate-300 font-medium">${subList.map(s => s.name).join(', ')}</span></p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-slate-700">
+                            ${subList.length} môn
                         </span>
-                        <div class="flex-1 h-px bg-slate-800/80"></div>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5"></div>
                 `;
@@ -1364,40 +1371,137 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!container) return;
         container.innerHTML = '';
 
-        this.dynamicSubjects.forEach(sub => {
-            const isPrivate = sub.visibility === 'PRIVATE';
-            const card = document.createElement('div');
-            card.className = "p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-md flex flex-col justify-between space-y-3";
-            card.innerHTML = `
-                <div class="flex items-start justify-between gap-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center text-lg">
-                            <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
-                        </div>
-                        <div>
-                            <h4 class="font-bold text-white text-sm">${sub.name}</h4>
-                            <p class="text-[11px] text-slate-400 font-mono">key: ${sub.key}</p>
-                        </div>
-                    </div>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isPrivate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
-                        ${isPrivate ? '🔒 Riêng tư' : '🌍 Công khai'}
-                    </span>
-                </div>
-                <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-700/60">
-                    <span>Thẻ: <strong class="text-slate-200">${sub.semester || 'Học kỳ'}</strong></span>
-                    <span>Đề: <strong class="text-indigo-400">${sub.count || 0} câu</strong></span>
-                </div>
-                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
-                    <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer">
-                        <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
-                    </button>
-                    <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
-                        <i class="fa-solid fa-trash-can mr-1"></i> Xóa
-                    </button>
+        if (this.dynamicSubjects.length === 0) {
+            container.innerHTML = `
+                <div class="p-8 text-center text-slate-500 italic bg-slate-900/60 rounded-2xl border border-slate-800">
+                    Chưa có môn học nào trong hệ thống. Hãy bấm <strong>"+ Thêm Môn Học Mới"</strong> để khởi tạo.
                 </div>
             `;
-            container.appendChild(card);
+            return;
+        }
+
+        // 1. Gom các môn học theo từng Tệp đợt thi (Giữa Kì 1, Cuối Kì 1, KT 15 Phút...)
+        const standardOrder = ['Kiểm Tra 15 Phút', 'Kiểm Tra 1 Tiết', 'Giữa Kì 1', 'Cuối Kì 1', 'Giữa Kì 2', 'Cuối Kì 2', 'Ôn Tập Tự Do'];
+        const groups = {};
+        this.dynamicSubjects.forEach(sub => {
+            const sem = sub.semester || 'Ôn Tập Tự Do';
+            if (!groups[sem]) groups[sem] = [];
+            groups[sem].push(sub);
         });
+
+        const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+            let ia = standardOrder.indexOf(a);
+            let ib = standardOrder.indexOf(b);
+            if (ia === -1) ia = 99;
+            if (ib === -1) ib = 99;
+            return ia - ib;
+        });
+
+        // 2. Render từng Tệp gom chung
+        sortedGroupKeys.forEach(semName => {
+            const subList = groups[semName];
+            const folderBox = document.createElement('div');
+            folderBox.className = "p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-xl space-y-3.5";
+
+            let iconColor = "from-indigo-600/30 to-purple-600/30 border-indigo-500/40 text-indigo-400";
+            let folderIcon = "fa-folder-open";
+            if (semName.includes('15')) {
+                iconColor = "from-amber-600/30 to-orange-600/30 border-amber-500/40 text-amber-400";
+                folderIcon = "fa-bolt";
+            } else if (semName.includes('Tiết') || semName.includes('tiết')) {
+                iconColor = "from-sky-600/30 to-cyan-600/30 border-sky-500/40 text-sky-400";
+                folderIcon = "fa-pen-clip";
+            } else if (semName.includes('Cuối')) {
+                iconColor = "from-emerald-600/30 to-teal-600/30 border-emerald-500/40 text-emerald-400";
+                folderIcon = "fa-flag-checkered";
+            }
+
+            folderBox.innerHTML = `
+                <!-- Tiêu đề Tệp Gom Môn -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr ${iconColor} border flex items-center justify-center text-lg shadow">
+                            <i class="fa-solid ${folderIcon}"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-heading font-extrabold text-white text-base tracking-tight">${semName}</h4>
+                                <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-[10px] border border-indigo-500/30">
+                                    ${subList.length} môn học
+                                </span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Tệp gom các môn: <span class="text-slate-300 font-medium">${subList.map(s => s.name).join(', ')}</span></p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="app.openSubjectEditorForSemester('${semName}')" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-plus"></i> + Thêm môn vào tệp ${semName}
+                    </button>
+                </div>
+
+                <!-- Lưới các môn học trong Tệp này -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    ${subList.map(sub => {
+                        const isPrivate = sub.visibility === 'PRIVATE';
+                        return `
+                            <div class="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 hover:border-slate-600 transition shadow flex flex-col justify-between space-y-2.5">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex items-center gap-2.5">
+                                        <div class="w-9 h-9 rounded-lg bg-slate-700/80 text-white flex items-center justify-center text-base shrink-0">
+                                            <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
+                                        </div>
+                                        <div class="overflow-hidden">
+                                            <h5 class="font-bold text-white text-xs sm:text-sm truncate">${sub.name}</h5>
+                                            <p class="text-[10px] text-slate-400 font-mono truncate">key: ${sub.key}</p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${isPrivate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
+                                        ${isPrivate ? '🔒 Riêng tư' : '🌍 Công khai'}
+                                    </span>
+                                </div>
+
+                                <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-700/60">
+                                    <span>Đề thi: <strong class="text-indigo-400 font-bold">${sub.count || 0} câu</strong></span>
+                                    <div class="flex items-center gap-1.5">
+                                        <button onclick="app.openSubjectEditor('${sub.key}')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-semibold transition cursor-pointer" title="Chỉnh sửa môn">
+                                            <i class="fa-solid fa-pen-to-square mr-0.5"></i> Sửa
+                                        </button>
+                                        <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-semibold transition cursor-pointer" title="Xóa môn">
+                                            <i class="fa-solid fa-trash-can mr-0.5"></i> Xóa
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            container.appendChild(folderBox);
+        });
+    }
+
+    openSubjectEditorForSemester(semesterName) {
+        this.openSubjectEditor();
+        const semInput = document.getElementById('edit-sub-semester');
+        const semSelect = document.getElementById('edit-sub-semester-select');
+        const customBox = document.getElementById('edit-sub-custom-semester-box');
+
+        if (semInput) semInput.value = semesterName;
+        if (semSelect) {
+            let matched = false;
+            for (let i = 0; i < semSelect.options.length; i++) {
+                if (semSelect.options[i].value === semesterName) {
+                    semSelect.selectedIndex = i;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                semSelect.value = '__CUSTOM__';
+                if (customBox) customBox.classList.remove('hidden');
+            } else {
+                if (customBox) customBox.classList.add('hidden');
+            }
+        }
     }
 
     onSemesterSelectChange(val) {
