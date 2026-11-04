@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS public.quiz_questions (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- TỰ ĐỘNG BỔ SUNG CỘT CHO BẢNG CŨ (SỬA TRIỆT ĐỂ LỖI THIẾU CỘT subject_key)
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFAULT 'history';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+UPDATE public.quiz_questions SET subject_key = 'history' WHERE subject_key IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_quiz_questions_subject ON public.quiz_questions(subject_key);
 CREATE INDEX IF NOT EXISTS idx_quiz_questions_category ON public.quiz_questions(category);
 
@@ -119,6 +127,34 @@ VALUES (
     '__DYNAMIC_SUBJECTS__',
     'SYSTEM',
     'DYNAMIC_HUB',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 5: Cấu hình Khóa AI Toàn Hệ Thống (ID: 00000000-0000-0000-0000-000000000005)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000005',
+    '__GEMINI_CONFIG__',
+    'SYSTEM',
+    'GEMINI_AI_1_5_FLASH',
+    'ACTIVE',
+    '',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 6: Phân Quyền Danh Sách IP Sử Dụng AI (ID: 00000000-0000-0000-0000-000000000006)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000006',
+    '__AI_IPS_CONFIG__',
+    'SYSTEM',
+    'AI_IP_WHITELIST',
     'ACTIVE',
     '[]',
     NOW(),

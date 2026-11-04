@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizMaster Pro v4.0 - Hệ Thống Ôn Thi Trực Tuyến Toàn Diện</title>
-    <meta name="description" content="Hệ thống ôn luyện đề cương trắc nghiệm thông minh, đa môn học, tự động hóa toàn diện với Supabase Cloud.">
-    <meta property="og:title" content="QuizMaster Pro v4.0 - Hệ Thống Ôn Thi Trực Tuyến Toàn Diện">
+    <title>Ôn tập</title>
+    <meta name="description" content="Hệ thống ôn luyện trắc nghiệm thông minh, đa môn học.">
+    <meta property="og:title" content="Ôn tập">
     <meta property="og:description" content="Ôn luyện trắc nghiệm thông minh: Đa môn học, nhận diện tự động, xếp hạng Top 10 và xuất bảng điểm Excel!">
 
     <!-- Google Fonts: Plus Jakarta Sans & Outfit -->
@@ -216,9 +216,9 @@
                 </div>
                 <div class="cursor-pointer" onclick="app.showHome()">
                     <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
-                        QuizMaster Pro
+                        Ôn tập
                     </h1>
-                    <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Ôn Luyện Thông Minh • Trợ Lý AI</p>
+                    <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Hệ Thống Ôn Luyện Thông Minh</p>
                 </div>
             </div>
 
@@ -268,10 +268,10 @@
                 <div class="text-center mb-6">
                     <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-pink-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold mb-3 shadow-sm">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        ⚡ Đề Cương Ôn Tập Trắc Nghiệm
+                        ⚡ Ôn tập trắc nghiệm
                     </div>
-                    <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn Luyện Siêu Cấp</h2>
-                    <p class="text-slate-400 text-xs sm:text-sm">Chinh phục điểm 10 • Giải thích bằng AI • Thách thức Top 10 Bảng Vàng</p>
+                    <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn tập</h2>
+                    <p class="text-slate-400 text-xs sm:text-sm">Hệ thống ôn luyện trắc nghiệm trực tuyến</p>
                 </div>
 
                 <!-- Thẻ ghi nhớ thí sinh đã đăng nhập -->
@@ -576,7 +576,7 @@
 
     <!-- Footer -->
     <footer class="relative z-10 border-t border-slate-800/80 bg-slate-900/60 backdrop-blur-md py-4 text-center text-xs text-slate-500">
-        <p>QuizMaster Pro v4.0 • Hệ Thống Ôn Thi Trực Tuyến Toàn Diện • <span onclick="app.promptAdminAuth()" class="cursor-pointer text-slate-600 hover:text-slate-400 transition" title="Quản trị"><i class="fa-solid fa-lock text-[10px]"></i></span></p>
+        <p>Ôn tập • Hệ Thống Trắc Nghiệm Thông Minh • <span onclick="app.promptAdminAuth()" class="cursor-pointer text-slate-600 hover:text-slate-400 transition" title="Quản trị"><i class="fa-solid fa-lock text-[10px]"></i></span></p>
     </footer>
 
     <!-- ======================================================= -->
@@ -1353,86 +1353,86 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- ======================================================= -->
     <!-- MODAL 6: TRÌNH SOẠN THẢO / SỬA CÂU HỎI TRỰC TIẾP       -->
     <!-- ======================================================= -->
-    <div id="modal-question-editor" class="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
-        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
-            <div class="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
-                <h3 class="font-heading font-bold text-white text-sm sm:text-base flex items-center gap-2">
-                    <i class="fa-solid fa-pen-to-square text-amber-400"></i>
-                    <span id="editor-modal-title">Chỉnh Sửa Câu Hỏi</span>
-                </h3>
-                <button onclick="app.closeQuestionEditor()" class="text-slate-400 hover:text-white cursor-pointer">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+    <div id="modal-question-editor" class="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-emerald-500/40 rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+            <!-- Header Modal -->
+            <div class="px-5 py-4 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <span id="editor-modal-badge" class="px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-extrabold text-xs border border-emerald-500/30">
+                        Đang sửa Câu 1
+                    </span>
+                    <input type="text" id="edit-q-category" placeholder="Bài 1: Cân bằng hoá học" class="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs outline-none focus:border-emerald-500 transition">
+                    <select id="edit-q-subject" class="hidden"></select>
+                </div>
+                <button onclick="app.closeQuestionEditor()" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
 
-            <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+            <!-- Body Modal -->
+            <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1 custom-scrollbar">
                 <input type="hidden" id="edit-q-id">
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-semibold text-slate-400 uppercase mb-1">Môn học</label>
-                        <select id="edit-q-subject" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white outline-none">
-                            <!-- Render bởi app.js -->
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block font-semibold text-slate-400 uppercase mb-1">Chủ đề / Bài học</label>
-                        <input type="text" id="edit-q-category" placeholder="Ví dụ: Bài 1, Dao động điều hòa..." class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white outline-none">
-                    </div>
-                </div>
-
                 <div>
-                    <label class="block font-semibold text-slate-400 uppercase mb-1">Nội dung câu hỏi <span class="text-rose-400">*</span></label>
-                    <textarea id="edit-q-text" rows="3" placeholder="Nhập nội dung câu hỏi (hỗ trợ công thức $...$ hoặc $$...$$)..." class="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:ring-1 focus:ring-amber-500"></textarea>
+                    <label class="block font-bold text-slate-300 text-xs mb-1.5">Nội dung câu hỏi:</label>
+                    <textarea id="edit-q-text" rows="3" placeholder="Nhập nội dung câu hỏi..." class="w-full p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition leading-relaxed"></textarea>
                 </div>
 
-                <!-- Link ảnh đính kèm (nếu có) -->
+                <!-- URL Hình ảnh đính kèm (nếu có) -->
                 <div>
-                    <label class="block font-semibold text-slate-400 uppercase mb-1">URL Hình ảnh đính kèm (Tùy chọn)</label>
-                    <input type="text" id="edit-q-image" placeholder="https://..." class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white outline-none font-mono">
+                    <label class="block font-bold text-slate-400 text-[11px] mb-1">URL Hình ảnh đính kèm (Tùy chọn):</label>
+                    <input type="text" id="edit-q-image" placeholder="https://..." class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 outline-none font-mono text-xs focus:border-emerald-500">
                 </div>
 
-                <!-- 4 Phương án MCQ -->
-                <div id="editor-mcq-options-container">
-                    <label class="block font-semibold text-slate-400 uppercase mb-2">4 Phương án & Tích chọn đáp án đúng <span class="text-rose-400">*</span></label>
+                <!-- 4 Phương án MCQ & Chọn đáp án đúng -->
+                <div>
+                    <label class="block font-bold text-slate-300 text-xs mb-2">Các phương án lựa chọn & Chọn đáp án đúng:</label>
                     <div class="space-y-2">
-                        <div class="flex items-center gap-2 bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                            <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 font-bold cursor-pointer">
-                                <input type="radio" name="edit-q-correct" value="0" class="accent-indigo-500"> A
-                            </label>
-                            <input type="text" id="edit-q-opt-0" placeholder="Phương án A..." class="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none">
+                        <!-- Đáp án A -->
+                        <div class="flex items-center gap-2.5">
+                            <button type="button" onclick="app.setEditorCorrectAnswer(0)" id="btn-edit-ans-0" class="px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border border-emerald-500 bg-emerald-500/20 text-emerald-300 cursor-pointer">
+                                <i class="fa-solid fa-circle-dot text-emerald-400"></i> <span>Đáp án A</span>
+                            </button>
+                            <input type="text" id="edit-q-opt-0" placeholder="Phương án A..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 transition">
                         </div>
-                        <div class="flex items-center gap-2 bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                            <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 font-bold cursor-pointer">
-                                <input type="radio" name="edit-q-correct" value="1" class="accent-indigo-500"> B
-                            </label>
-                            <input type="text" id="edit-q-opt-1" placeholder="Phương án B..." class="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none">
+
+                        <!-- Đáp án B -->
+                        <div class="flex items-center gap-2.5">
+                            <button type="button" onclick="app.setEditorCorrectAnswer(1)" id="btn-edit-ans-1" class="px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border border-slate-800 bg-slate-950 text-slate-400 cursor-pointer">
+                                <i class="fa-regular fa-circle text-slate-500"></i> <span>Đáp án B</span>
+                            </button>
+                            <input type="text" id="edit-q-opt-1" placeholder="Phương án B..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 transition">
                         </div>
-                        <div class="flex items-center gap-2 bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                            <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 font-bold cursor-pointer">
-                                <input type="radio" name="edit-q-correct" value="2" class="accent-indigo-500"> C
-                            </label>
-                            <input type="text" id="edit-q-opt-2" placeholder="Phương án C..." class="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none">
+
+                        <!-- Đáp án C -->
+                        <div class="flex items-center gap-2.5">
+                            <button type="button" onclick="app.setEditorCorrectAnswer(2)" id="btn-edit-ans-2" class="px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border border-slate-800 bg-slate-950 text-slate-400 cursor-pointer">
+                                <i class="fa-regular fa-circle text-slate-500"></i> <span>Đáp án C</span>
+                            </button>
+                            <input type="text" id="edit-q-opt-2" placeholder="Phương án C..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 transition">
                         </div>
-                        <div class="flex items-center gap-2 bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                            <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 font-bold cursor-pointer">
-                                <input type="radio" name="edit-q-correct" value="3" class="accent-indigo-500"> D
-                            </label>
-                            <input type="text" id="edit-q-opt-3" placeholder="Phương án D..." class="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none">
+
+                        <!-- Đáp án D -->
+                        <div class="flex items-center gap-2.5">
+                            <button type="button" onclick="app.setEditorCorrectAnswer(3)" id="btn-edit-ans-3" class="px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border border-slate-800 bg-slate-950 text-slate-400 cursor-pointer">
+                                <i class="fa-regular fa-circle text-slate-500"></i> <span>Đáp án D</span>
+                            </button>
+                            <input type="text" id="edit-q-opt-3" placeholder="Phương án D..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 transition">
                         </div>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-slate-400 uppercase mb-1">Lời giải thích chi tiết</label>
-                    <textarea id="edit-q-explanation" rows="2" placeholder="Nhập lời giải thích khi thí sinh xem lại bài..." class="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:ring-1 focus:ring-amber-500"></textarea>
+                    <label class="block font-bold text-slate-300 text-xs mb-1.5">Lời giải chi tiết:</label>
+                    <textarea id="edit-q-explanation" rows="2.5" placeholder="Lời giải chi tiết..." class="w-full p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition leading-relaxed"></textarea>
                 </div>
             </div>
 
-            <div class="p-4 bg-slate-800/80 border-t border-slate-700 flex justify-end gap-2">
-                <button onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy</button>
-                <button onclick="app.saveQuestionFromEditor()" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center gap-1.5 cursor-pointer">
-                    <i class="fa-solid fa-floppy-disk"></i> Lưu & Cập Nhật Tức Thì
+            <!-- Footer Modal -->
+            <div class="p-4 bg-slate-950/80 border-t border-slate-800 flex justify-end gap-2.5 shrink-0">
+                <button onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Hủy</button>
+                <button onclick="app.saveQuestionFromEditor()" class="px-6 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer">
+                    <span>Lưu thay đổi</span>
                 </button>
             </div>
         </div>
