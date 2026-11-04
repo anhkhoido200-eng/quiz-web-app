@@ -550,7 +550,7 @@ class DatabaseService {
             answer: qObj.correct !== undefined ? qObj.correct : (qObj.answer || 0),
             correct_value: qObj.correctValue || '',
             explanation: qObj.explanation || '',
-            image_url: qObj.imageUrl || '',
+            image_url: qObj.image_url || qObj.imageUrl || '',
             updated_at: new Date().toISOString()
         };
 
@@ -613,7 +613,7 @@ class DatabaseService {
             answer: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
             correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
             explanation: q.explanation || '',
-            image_url: q.imageUrl || '',
+            image_url: q.image_url || q.imageUrl || '',
             updated_at: new Date().toISOString()
         }));
 

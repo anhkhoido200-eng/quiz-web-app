@@ -45,6 +45,8 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <!-- SheetJS CDN (Xuất Bảng Điểm Excel .xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Mammoth.js CDN (Bóc tách file Word .docx tự động trích xuất ảnh thật Base64) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
     <!-- KaTeX CDN (Hiển thị công thức Toán, Lí, Hóa) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
@@ -1058,18 +1060,22 @@ D. Cần Thơ
 Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 font-mono text-[11px] outline-none focus:border-indigo-500 resize-none flex-1"></textarea>
                     </div>
 
-                    <!-- Cột 2: Tải lên file Excel (.xlsx) / JSON hoặc xem định dạng hỗ trợ -->
+                    <!-- Cột 2: Tải lên file Word (.docx) / Excel (.xlsx) / JSON hoặc xem định dạng hỗ trợ -->
                     <div class="space-y-3 flex flex-col justify-between">
                         <div class="space-y-2">
                             <label class="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
-                                <i class="fa-solid fa-file-excel text-emerald-400"></i> Hoặc Tải Tệp Excel / JSON:
+                                <i class="fa-solid fa-file-word text-sky-400"></i> Hoặc Tải Tệp Word (.docx) / Excel / JSON:
                             </label>
-                            <div class="p-4 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl text-center cursor-pointer transition bg-slate-950/40 relative">
-                                <input type="file" id="importer-file-input" accept=".xlsx, .xls, .json" onchange="app.handleImporterFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                            <div class="p-4 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl text-center cursor-pointer transition bg-slate-950/40 relative group">
+                                <input type="file" id="importer-file-input" accept=".docx, .xlsx, .xls, .json" onchange="app.handleImporterFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
                                 <div class="space-y-1 pointer-events-none">
-                                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-400"></i>
-                                    <p class="text-xs font-semibold text-slate-300">Nhấp để chọn tệp Excel hoặc JSON</p>
-                                    <p class="text-[10px] text-slate-500">Hỗ trợ các định dạng .xlsx, .xls, .json</p>
+                                    <div class="flex items-center justify-center gap-2 text-2xl mb-1 text-slate-400 group-hover:scale-105 transition-transform">
+                                        <i class="fa-solid fa-file-word text-sky-400"></i>
+                                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                                        <i class="fa-solid fa-image text-amber-400"></i>
+                                    </div>
+                                    <p class="text-xs font-semibold text-slate-200">Nhấp hoặc Kéo thả file Word (.docx), Excel, JSON</p>
+                                    <p class="text-[10px] text-amber-300 font-semibold">⚡ Tự động trích xuất CHỮ & HÌNH ẢNH THẬT 100% đính kèm trong file Word</p>
                                 </div>
                             </div>
                         </div>
@@ -1082,13 +1088,20 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             <p>• <strong>Trắc nghiệm 4 đáp án:</strong> <code>A. ... B. ... C. ... D. ... Đáp án: A</code></p>
                             <p>• <strong>Đúng/Sai nhiều ý:</strong> <code>a) ... b) ... c) ... d) ... Đáp án: a-Đ, b-S, c-Đ, d-S</code></p>
                             <p>• <strong>Câu trả lời ngắn:</strong> <code>Đáp án: 12.5</code></p>
-                            <p>• <strong>Giải thích chi tiết:</strong> Dòng <code>Giải thích: ...</code></p>
+                            <p>• <strong>Hình ảnh minh họa:</strong> Tự động nhúng ảnh thật từ Word hoặc chèn thẻ <code>&lt;img&gt;</code></p>
                         </div>
 
-                        <button onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>Phân Tích & Bóc Tách Câu Hỏi</span>
-                        </button>
+                        <!-- 2 LỰA CHỌN BÓC TÁCH: SIÊU TỐC HOẶC BẰNG AI GEMINI -->
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <button id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="flex-1 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-bolt text-amber-300"></i>
+                                <span>Bóc Tách Siêu Tốc</span>
+                            </button>
+                            <button id="btn-importer-parse-gemini" onclick="app.parseImporterWithGemini()" class="flex-1 py-2.5 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer" title="Sử dụng Trí Tuệ Nhân Tạo Gemini AI để bóc tách thông minh mọi dạng câu hỏi">
+                                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                                <span>Bóc Tách Bằng AI Gemini</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 

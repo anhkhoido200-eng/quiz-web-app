@@ -159,16 +159,36 @@ class QuizApp {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
 
-        // Tối ưu DOM: Sử dụng DocumentFragment để tránh reflow nhiều lần
+        // Chỉ hiển thị các môn CÔNG KHAI (PUBLIC). Môn ẩn / Riêng tư (PRIVATE) tuyệt đối không đưa lên đây!
+        const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
+            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
+            return !isPrivate;
+        });
+
+        // Nếu môn đang chọn hiện tại bị ẩn, tự động chuyển sang môn công khai đầu tiên
+        if (visibleSubjects.length > 0 && !visibleSubjects.some(s => s.key === this.currentSubject)) {
+            this.currentSubject = visibleSubjects[0].key;
+            this.loadQuestionsForCurrentSubject();
+        }
+
+        // Nếu tất cả các môn đều bị ẩn -> Hiện thông báo "Không có bài nào gần đây"
+        if (visibleSubjects.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full py-8 px-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-800/80 text-slate-400 flex items-center justify-center mx-auto text-xl border border-slate-700 shadow-sm">
+                        <i class="fa-solid fa-folder-open"></i>
+                    </div>
+                    <p class="font-bold text-slate-200 text-sm">Không có bài nào gần đây</p>
+                    <p class="text-xs text-slate-400 max-w-sm mx-auto">Hiện tại chưa có đề cương ôn tập nào được mở công khai. Vui lòng quay lại sau!</p>
+                </div>
+            `;
+            this.updateNavbarAndBadge();
+            return;
+        }
+
         const fragment = document.createDocumentFragment();
 
-        this.dynamicSubjects.forEach(sub => {
-            // Học viên trên trang chủ chỉ thấy môn Công khai (PUBLIC)
-            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false;
-            const isAuthorized = !isPrivate || this.isAdminAuthenticated;
-
-            if (!isAuthorized) return;
-
+        visibleSubjects.forEach(sub => {
             const isSelected = this.currentSubject === sub.key;
             const subName = sub.name || (sub.key === 'physics' ? 'Vật Lí 11' : (sub.key === 'geography' ? 'Địa Lí 11' : 'Lịch Sử 11'));
             const card = document.createElement('button');
@@ -184,19 +204,18 @@ class QuizApp {
 
             card.className = `p-3.5 rounded-2xl text-left flex flex-col justify-between cursor-pointer subject-card-interactive transition-all relative min-h-[118px] ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
             card.innerHTML = `
-                <!-- Hàng 1: Icon môn học và Badge trạng thái (không bị đè) -->
+                <!-- Hàng 1: Icon môn học và Badge trạng thái -->
                 <div class="flex items-center justify-between gap-2 mb-2 w-full">
                     <div class="w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
                         <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                     </div>
                     ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
-                    ${(!isSelected && isPrivate) ? '<span class="text-[10px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">🔒 Riêng tư</span>' : ''}
                 </div>
-                <!-- Hàng 2: Tên môn học và số lớp (11) hiển thị đầy đủ, không bị co rút -->
+                <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
                     <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${subName}</p>
                 </div>
-                <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi sắc nét, không bị che khuất -->
+                <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
                     <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${sub.semester || 'Đề cương'}</span>
                     <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 0} câu</span>
@@ -228,15 +247,27 @@ class QuizApp {
     }
 
     updateNavbarAndBadge() {
-        const sub = this.dynamicSubjects.find(s => s.key === this.currentSubject);
-        const name = sub ? sub.name : this.getSubjectTitle();
-        const count = this.allQuestions ? this.allQuestions.length : 0;
-        const semester = sub ? sub.semester : 'Giữa Kì 1';
+        const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
+            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
+            return !isPrivate;
+        });
 
         const navTitle = document.getElementById('navbar-subject-title');
         const navSub = document.getElementById('navbar-subject-subtitle');
         const badge = document.getElementById('home-subject-badge');
         const topTitle = document.getElementById('quiz-top-subject-title');
+
+        if (visibleSubjects.length === 0) {
+            if (badge) badge.textContent = 'Không có bài nào gần đây';
+            if (navTitle) navTitle.textContent = 'Đề Cương Ôn Tập';
+            if (navSub) navSub.textContent = 'Hiện chưa có bài ôn tập nào được mở';
+            return;
+        }
+
+        const sub = visibleSubjects.find(s => s.key === this.currentSubject) || visibleSubjects[0];
+        const name = sub ? sub.name : this.getSubjectTitle();
+        const count = this.allQuestions ? this.allQuestions.length : 0;
+        const semester = sub ? sub.semester : 'Giữa Kì 1';
 
         if (navTitle) navTitle.textContent = name;
         if (navSub) navSub.textContent = `Hệ Thống Ôn Tập Đề Cương ${semester}`;
@@ -1044,6 +1075,46 @@ Giải thích: Biên độ A = 5 cm.`;
                 }
             };
             reader.readAsText(file);
+        } else if (fileName.endsWith('.docx')) {
+            if (typeof mammoth === 'undefined') {
+                alert("Thư viện bóc tách Word Mammoth chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
+                return;
+            }
+
+            const countBadge = document.getElementById('importer-preview-count');
+            if (countBadge) countBadge.textContent = "⏳ Đang bóc tách Word và trích xuất ảnh thật...";
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const arrayBuffer = e.target.result;
+                    // Dùng mammoth convertToHtml với options convertImage để xuất ảnh Base64 thật 100%
+                    const options = {
+                        convertImage: mammoth.images.imgElement((image) => {
+                            return image.read("base64").then((imageBuffer) => {
+                                return {
+                                    src: "data:" + image.contentType + ";base64," + imageBuffer
+                                };
+                            });
+                        })
+                    };
+                    const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
+                    const html = result.value || '';
+
+                    // Trích xuất cả text thuần để điền vào textarea cho người dùng xem và AI phân tích
+                    const textResult = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    const rawText = textResult.value || '';
+                    const textarea = document.getElementById('importer-text-input');
+                    if (textarea) textarea.value = rawText;
+
+                    // Bóc tách câu hỏi và hình ảnh từ cấu trúc HTML
+                    this.parseDocxHtmlToQuestions(html, rawText);
+                } catch (err) {
+                    console.error("Lỗi đọc file Word .docx:", err);
+                    alert("Lỗi đọc file Word (.docx): " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
         } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
             if (typeof XLSX === 'undefined') {
                 alert("Thư viện SheetJS chưa sẵn sàng, vui lòng tải lại trang.");
@@ -1063,6 +1134,181 @@ Giải thích: Biên độ A = 5 cm.`;
                 }
             };
             reader.readAsArrayBuffer(file);
+        } else {
+            alert("Định dạng file không được hỗ trợ. Vui lòng chọn file Word (.docx), Excel (.xlsx/.xls) hoặc JSON (.json).");
+        }
+    }
+
+    parseDocxHtmlToQuestions(html, rawText) {
+        if (!html) {
+            this.parseImporterInput();
+            return;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const elements = Array.from(doc.body.children);
+
+            const questionRegex = /^(?:câu|bài|question)\s*(\d+)[\s.:]/i;
+            const questions = [];
+            let currentQ = null;
+            let currentQNum = 0;
+
+            // Thu thập toàn bộ ảnh trong doc kèm thứ tự
+            const docImages = Array.from(doc.querySelectorAll('img')).map(img => img.src);
+            this._docxExtractedImages = docImages;
+            this._docxQuestionImages = {};
+
+            const saveCurrent = () => {
+                if (currentQ && (currentQ.question || currentQ.image_url)) {
+                    if (currentQ.statements && currentQ.statements.length > 0) {
+                        currentQ.qType = 'tf_group';
+                    } else if (currentQ.options && currentQ.options.length >= 2) {
+                        currentQ.qType = 'mcq';
+                    } else if (currentQ.correctValue !== undefined) {
+                        currentQ.qType = 'short_answer';
+                    } else {
+                        currentQ.qType = 'mcq';
+                        if (!currentQ.options || currentQ.options.length === 0) {
+                            currentQ.options = ["Đúng", "Sai"];
+                        }
+                    }
+                    currentQ.id = questions.length + 1;
+                    questions.push(currentQ);
+                }
+                currentQ = null;
+            };
+
+            for (const el of elements) {
+                const text = (el.textContent || '').trim();
+                const imgs = Array.from(el.querySelectorAll('img')).map(img => img.src);
+                if (el.tagName && el.tagName.toLowerCase() === 'img' && el.src) {
+                    imgs.push(el.src);
+                }
+
+                // Kiểm tra xem đoạn này có phải mở đầu câu hỏi mới không
+                if (questionRegex.test(text)) {
+                    saveCurrent();
+                    const matchQ = text.match(questionRegex);
+                    currentQNum = matchQ ? parseInt(matchQ[1], 10) : questions.length + 1;
+                    const foundImg = imgs.length > 0 ? imgs[0] : '';
+                    if (foundImg) {
+                        this._docxQuestionImages[currentQNum] = foundImg;
+                    }
+
+                    currentQ = {
+                        category: 'Đề cương Word',
+                        question: text.replace(questionRegex, '').trim(),
+                        options: [],
+                        statements: [],
+                        explanation: '',
+                        image_url: foundImg
+                    };
+                    continue;
+                }
+
+                if (!currentQ) {
+                    if (text.length > 0 || imgs.length > 0) {
+                        const foundImg = imgs.length > 0 ? imgs[0] : '';
+                        currentQNum = questions.length + 1;
+                        if (foundImg) {
+                            this._docxQuestionImages[currentQNum] = foundImg;
+                        }
+                        currentQ = {
+                            category: 'Đề cương Word',
+                            question: text,
+                            options: [],
+                            statements: [],
+                            explanation: '',
+                            image_url: foundImg
+                        };
+                    }
+                    continue;
+                }
+
+                // Nếu câu hiện tại chưa có ảnh và đoạn này có ảnh -> gắn ảnh vào câu hiện tại
+                if (!currentQ.image_url && imgs.length > 0) {
+                    currentQ.image_url = imgs[0];
+                    if (currentQNum) {
+                        this._docxQuestionImages[currentQNum] = imgs[0];
+                    }
+                }
+
+                // Nhận diện dòng chứa nhiều phương án A, B, C, D cùng hàng (ví dụ: A. ...   B. ...   C. ...   D. ...)
+                const inlineMatches = Array.from(text.matchAll(/\b([A-D])[\s.):-]\s*([^A-D\n\r]+?)(?=(?:\s+[A-D][\s.):-]|\s*$))/gi));
+                if (inlineMatches.length >= 2) {
+                    inlineMatches.forEach(m => {
+                        currentQ.options.push(m[2].trim());
+                    });
+                    continue;
+                }
+
+                // Nhận diện 4 phương án A, B, C, D từng dòng riêng biệt
+                const mcqMatch = text.match(/^([A-D])[\s.):-]\s*(.*)$/i);
+                if (mcqMatch) {
+                    currentQ.options.push(mcqMatch[2].trim());
+                    continue;
+                }
+
+                // Nhận diện Đúng/Sai nhiều ý a), b), c), d)
+                const tfMatch = text.match(/^([a-d])[\s.):-]\s*(.*)$/);
+                if (tfMatch) {
+                    currentQ.statements.push({
+                        text: tfMatch[2].trim(),
+                        answer: true
+                    });
+                    continue;
+                }
+
+                // Nhận diện dòng Đáp án
+                if (/^(?:đáp án|answer)[\s.:]/i.test(text)) {
+                    const ansStr = text.replace(/^(?:đáp án|answer)[\s.:]/i, '').trim();
+                    if (/a\s*[-:=]\s*[đds]/i.test(ansStr)) {
+                        const parts = ansStr.split(/[,;\s]+/);
+                        parts.forEach((p, sIdx) => {
+                            const m = p.match(/([a-d])\s*[-:=]\s*([đdsStTfF])/i);
+                            if (m && currentQ.statements && currentQ.statements[sIdx]) {
+                                const val = m[2].toUpperCase();
+                                currentQ.statements[sIdx].answer = (val === 'Đ' || val === 'D' || val === 'T');
+                            }
+                        });
+                    } else if (/^[A-D]$/i.test(ansStr)) {
+                        const char = ansStr.toUpperCase();
+                        currentQ.correct = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
+                        currentQ.answer = currentQ.correct;
+                    } else {
+                        currentQ.correctValue = ansStr;
+                    }
+                    continue;
+                }
+
+                // Nhận diện dòng Giải thích
+                if (/^(?:giải thích|lời giải|explanation)[\s.:]/i.test(text)) {
+                    currentQ.explanation = text.replace(/^(?:giải thích|lời giải|explanation)[\s.:]/i, '').trim();
+                    continue;
+                }
+
+                // Dòng nối tiếp của câu hỏi hoặc phương án
+                if (text) {
+                    if (currentQ.options.length > 0) {
+                        currentQ.options[currentQ.options.length - 1] += ' ' + text;
+                    } else {
+                        currentQ.question += (currentQ.question ? ' ' : '') + text;
+                    }
+                }
+            }
+            saveCurrent();
+
+            if (questions.length > 0) {
+                this.parsedImportQuestions = questions;
+                this.renderImporterPreview();
+            } else {
+                this.parseImporterInput();
+            }
+        } catch (e) {
+            console.warn("Lỗi phân tích DOM Word, chuyển sang text thông thường:", e);
+            this.parseImporterInput();
         }
     }
 
@@ -1107,6 +1353,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
         const questions = [];
         let currentQ = null;
+        let currentQNum = 0;
 
         const saveCurrentQ = () => {
             if (currentQ && currentQ.question) {
@@ -1134,24 +1381,41 @@ Giải thích: Biên độ A = 5 cm.`;
 
             if (questionRegex.test(line)) {
                 saveCurrentQ();
+                const matchQ = line.match(questionRegex);
+                currentQNum = matchQ ? parseInt(matchQ[1], 10) : questions.length + 1;
+                const preservedImg = (this._docxQuestionImages && this._docxQuestionImages[currentQNum]) || '';
+
                 currentQ = {
                     category: 'Đề cương',
                     question: line.replace(questionRegex, '').trim(),
                     options: [],
                     statements: [],
-                    explanation: ''
+                    explanation: '',
+                    image_url: preservedImg
                 };
                 continue;
             }
 
             if (!currentQ) {
+                currentQNum = questions.length + 1;
+                const preservedImg = (this._docxQuestionImages && this._docxQuestionImages[currentQNum]) || '';
                 currentQ = {
                     category: 'Đề cương',
                     question: line,
                     options: [],
                     statements: [],
-                    explanation: ''
+                    explanation: '',
+                    image_url: preservedImg
                 };
+                continue;
+            }
+
+            // Nhận diện dòng chứa nhiều phương án A, B, C, D cùng hàng
+            const inlineMatches = Array.from(line.matchAll(/\b([A-D])[\s.):-]\s*([^A-D\n\r]+?)(?=(?:\s+[A-D][\s.):-]|\s*$))/gi));
+            if (inlineMatches.length >= 2) {
+                inlineMatches.forEach(m => {
+                    currentQ.options.push(m[2].trim());
+                });
                 continue;
             }
 
@@ -1215,6 +1479,173 @@ Giải thích: Biên độ A = 5 cm.`;
         this.renderImporterPreview();
     }
 
+    async parseImporterWithGemini() {
+        let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
+        if (!apiKey) {
+            apiKey = await this.loadGlobalGeminiApiKey();
+        }
+
+        if (!apiKey) {
+            alert("⚠️ Chưa có mã Google Gemini API Key. Vui lòng vào Bảng Admin -> Cài đặt Gemini để nhập API Key!");
+            if (typeof this.openGeminiApiKeyModal === 'function') {
+                this.openGeminiApiKeyModal();
+            }
+            return;
+        }
+
+        const textarea = document.getElementById('importer-text-input');
+        const rawText = textarea ? textarea.value.trim() : '';
+
+        if (!rawText) {
+            alert("⚠️ Vui lòng dán đề thi vào ô văn bản hoặc tải file Word (.docx) lên trước khi bóc tách bằng AI Gemini.");
+            return;
+        }
+
+        const parseBtn = document.getElementById('btn-importer-parse-gemini');
+        const originalBtnHtml = parseBtn ? parseBtn.innerHTML : '';
+        const countBadge = document.getElementById('importer-preview-count');
+
+        if (parseBtn) {
+            parseBtn.disabled = true;
+            parseBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-amber-300"></i> <span>Gemini Đang Bóc Tách...</span>`;
+        }
+        if (countBadge) {
+            countBadge.textContent = "AI Gemini đang phân tích và chuẩn hóa đề thi...";
+        }
+
+        const prompt = `Bạn là hệ thống AI chuyên gia bóc tách và số hóa đề cương thi trắc nghiệm học đường Việt Nam (THCS, THPT, Đại học).
+Nhiệm vụ của bạn là đọc toàn bộ văn bản đề thi dưới đây và chuyển đổi thành một mảng JSON các câu hỏi chuẩn xác 100%.
+
+YÊU CẦU ĐỊNH DẠNG ĐẦU RA:
+- Trả về DUY NHẤT một chuỗi JSON hợp lệ (bắt đầu bằng [ và kết thúc bằng ]), không viết thêm lời dẫn chào hỏi, không dùng markdown nếu không cần thiết (nếu có dùng markdown bọc \`\`\`json thì chỉ chứa JSON bên trong).
+- Mỗi câu hỏi trong mảng có cấu trúc sau:
+{
+  "category": "Đề cương ôn tập",
+  "qType": "mcq", // "mcq" (Trắc nghiệm chọn 1 đáp án), "tf_group" (Đúng/Sai nhiều ý con a,b,c,d), hoặc "short_answer" (trả lời ngắn/điền số)
+  "question": "Nội dung câu hỏi đầy đủ...",
+  "options": ["Nội dung phương án A", "Nội dung phương án B", "Nội dung phương án C", "Nội dung phương án D"], // Bắt buộc đối với qType = "mcq"
+  "correct": 0, // Chỉ số của đáp án đúng (0 cho A, 1 cho B, 2 cho C, 3 cho D)
+  "statements": [ // Bắt buộc đối với qType = "tf_group"
+    {"text": "Ý mệnh đề a...", "answer": true},
+    {"text": "Ý mệnh đề b...", "answer": false},
+    {"text": "Ý mệnh đề c...", "answer": true},
+    {"text": "Ý mệnh đề d...", "answer": false}
+  ],
+  "correctValue": "12.5", // Chuỗi đáp án đối với qType = "short_answer"
+  "explanation": "Lời giải thích ngắn gọn, súc tích vì sao đáp án đúng..."
+}
+
+LƯU Ý CỰC KỲ QUAN TRỌNG:
+1. Giữ nguyên toàn bộ nội dung học thuật, công thức toán lý hóa (dùng ký hiệu chuẩn hoặc kẹp LaTeX $...$).
+2. Nếu đề có đáp án ghi rõ (ví dụ "Đáp án: A" hay "Lời giải: C"), hãy điền chính xác trường correct/answer. Nếu đề không ghi đáp án, bạn hãy tự suy luận đáp án chính xác nhất.
+3. Luôn tạo trường "explanation" ngắn gọn 1-2 câu giải thích cốt lõi cho mỗi câu hỏi.
+
+NỘI DUNG VĂN BẢN ĐỀ CƯƠNG CẦN BÓC TÁCH:
+${rawText}`;
+
+        try {
+            const candidateModels = [
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
+                'gemini-1.5-flash',
+                'gemini-3.5-flash',
+                'gemini-flash-latest'
+            ];
+
+            let res = null;
+            let lastErrMsg = '';
+
+            for (const model of candidateModels) {
+                try {
+                    const callResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                temperature: 0.1
+                            }
+                        })
+                    });
+
+                    if (callResp.ok) {
+                        res = callResp;
+                        break;
+                    } else {
+                        const errData = await callResp.json().catch(() => ({}));
+                        lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
+                        if (callResp.status === 404 || callResp.status === 503 || callResp.status === 429) {
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                } catch (netErr) {
+                    lastErrMsg = netErr.message;
+                }
+            }
+
+            if (!res || !res.ok) {
+                throw new Error(lastErrMsg || "Không thể kết nối đến máy chủ Google Gemini.");
+            }
+
+            const data = await res.json();
+            const textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (!textResponse) {
+                throw new Error("AI Gemini không trả về dữ liệu.");
+            }
+
+            // Xử lý làm sạch chuỗi JSON trả về
+            let cleaned = textResponse.trim();
+            if (cleaned.startsWith('```json')) {
+                cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+            } else if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+
+            const firstBracket = cleaned.indexOf('[');
+            const lastBracket = cleaned.lastIndexOf(']');
+            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+                cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+            }
+
+            const parsed = JSON.parse(cleaned);
+            if (!Array.isArray(parsed) || parsed.length === 0) {
+                throw new Error("Dữ liệu Gemini trả về không phải là mảng câu hỏi hợp lệ.");
+            }
+
+            // Chuẩn hóa câu hỏi
+            const normalized = this.normalizeQuestions(parsed);
+
+            // Ghép lại hình ảnh thật 100% nếu trước đó đã bóc tách từ file Word
+            if (this._docxQuestionImages && Object.keys(this._docxQuestionImages).length > 0) {
+                normalized.forEach((q, idx) => {
+                    if (!q.image_url && this._docxQuestionImages[idx + 1]) {
+                        q.image_url = this._docxQuestionImages[idx + 1];
+                    }
+                });
+            } else if (Array.isArray(this._docxExtractedImages) && this._docxExtractedImages.length > 0) {
+                normalized.forEach((q, idx) => {
+                    if (!q.image_url && this._docxExtractedImages[idx]) {
+                        q.image_url = this._docxExtractedImages[idx];
+                    }
+                });
+            }
+
+            this.parsedImportQuestions = normalized;
+            this.renderImporterPreview();
+            alert(`✅ AI Gemini đã bóc tách thành công ${normalized.length} câu hỏi chuẩn xác!`);
+        } catch (err) {
+            console.error("Lỗi bóc tách bằng Gemini:", err);
+            alert("⚠️ Lỗi khi bóc tách bằng AI Gemini: " + err.message + "\n\nBạn có thể thử bấm nút [Bóc Tách Siêu Tốc] để bóc tách bằng regex tự động.");
+        } finally {
+            if (parseBtn) {
+                parseBtn.disabled = false;
+                parseBtn.innerHTML = originalBtnHtml;
+            }
+        }
+    }
+
     renderImporterPreview() {
         const tbody = document.getElementById('importer-preview-tbody');
         const countBadge = document.getElementById('importer-preview-count');
@@ -1248,10 +1679,23 @@ Giải thích: Biên độ A = 5 cm.`;
                 ansDisplay = optChars[q.correct || 0] || 'A';
             }
 
+            const imgUrl = q.image_url || q.imageUrl;
+            const imgBadge = imgUrl ? `
+                <div class="mt-1 flex items-center gap-1.5">
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30" title="Đã đính kèm ảnh gốc thật 100% từ đề Word">
+                        <i class="fa-solid fa-image"></i> Có ảnh
+                    </span>
+                    <img src="${imgUrl}" class="w-7 h-7 object-cover rounded border border-slate-700 inline-block cursor-pointer hover:scale-150 transition-transform bg-slate-800" onclick="window.open('${imgUrl}')" title="Nhấp để xem ảnh gốc">
+                </div>
+            ` : '';
+
             tr.innerHTML = `
                 <td class="py-2.5 px-3 text-center font-bold text-slate-400">${idx + 1}</td>
                 <td class="py-2.5 px-3">${typeBadge}</td>
-                <td class="py-2.5 px-3 font-medium text-white max-w-sm truncate">${q.question}</td>
+                <td class="py-2.5 px-3 font-medium text-white max-w-sm">
+                    <div class="truncate">${q.question}</div>
+                    ${imgBadge}
+                </td>
                 <td class="py-2.5 px-3 font-mono font-bold text-amber-300">${ansDisplay}</td>
                 <td class="py-2.5 px-3 text-slate-400 italic max-w-xs truncate">${q.explanation || '—'}</td>
             `;
