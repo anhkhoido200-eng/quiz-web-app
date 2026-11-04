@@ -558,15 +558,32 @@ class DatabaseService {
      * Lưu/Cập nhật 1 câu hỏi lên Supabase
      */
     async saveQuestion(qObj, subjectKey = 'history') {
+        let correctInt = 0;
+        const rawCorrect = qObj.correct !== undefined ? qObj.correct : (qObj.answer !== undefined ? qObj.answer : qObj.correctAnswer);
+        if (typeof rawCorrect === 'number') {
+            correctInt = Math.max(0, Math.min(3, Math.floor(rawCorrect)));
+        } else if (typeof rawCorrect === 'string') {
+            const ch = rawCorrect.trim().toUpperCase();
+            if (ch === 'B' || ch === '1') correctInt = 1;
+            else if (ch === 'C' || ch === '2') correctInt = 2;
+            else if (ch === 'D' || ch === '3') correctInt = 3;
+            else correctInt = 0;
+        }
+
+        const cleanOptions = Array.isArray(qObj.options) ? qObj.options.map(opt => {
+            if (typeof opt !== 'string') return String(opt || '');
+            return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+        }) : [];
+
         const record = {
             subject_key: qObj.subjectKey || subjectKey || 'history',
             category: qObj.category || 'Bài học',
             q_type: qObj.qType || 'mcq',
             question: qObj.question,
-            options: qObj.options || [],
+            options: cleanOptions,
             statements: qObj.statements || [],
-            correct: qObj.correct !== undefined ? qObj.correct : (qObj.answer || 0),
-            answer: qObj.correct !== undefined ? qObj.correct : (qObj.answer || 0),
+            correct: correctInt,
+            answer: correctInt,
             correct_value: qObj.correctValue || '',
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
@@ -644,16 +661,34 @@ class DatabaseService {
             currentMaxId++;
             const qId = currentMaxId;
             q.id = qId;
+
+            let correctInt = 0;
+            const rawCorrect = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : q.correctAnswer);
+            if (typeof rawCorrect === 'number') {
+                correctInt = Math.max(0, Math.min(3, Math.floor(rawCorrect)));
+            } else if (typeof rawCorrect === 'string') {
+                const ch = rawCorrect.trim().toUpperCase();
+                if (ch === 'B' || ch === '1') correctInt = 1;
+                else if (ch === 'C' || ch === '2') correctInt = 2;
+                else if (ch === 'D' || ch === '3') correctInt = 3;
+                else correctInt = 0;
+            }
+
+            const cleanOptions = Array.isArray(q.options) ? q.options.map(opt => {
+                if (typeof opt !== 'string') return String(opt || '');
+                return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+            }) : [];
+
             return {
                 id: qId,
                 subject_key: cleanSubject,
                 category: q.category || 'Bài tập',
                 q_type: q.qType || q.type || 'mcq',
                 question: q.question,
-                options: q.options || [],
+                options: cleanOptions,
                 statements: q.statements || [],
-                correct: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
-                answer: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
+                correct: correctInt,
+                answer: correctInt,
                 correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
                 explanation: q.explanation || '',
                 image_url: q.image_url || q.imageUrl || '',

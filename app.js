@@ -353,13 +353,69 @@ class QuizApp {
     normalizeQuestions(list) {
         if (!Array.isArray(list)) return [];
         return list.map((q, idx) => {
-            if (!q.id) q.id = idx + 1;
-            if (q.qType !== 'short_answer' && q.qType !== 'tf_group' && q.qType !== 'essay') {
-                const c = q.correct !== undefined ? q.correct : q.answer;
-                q.correct = c;
-                q.answer = c;
+            const item = { ...q };
+            if (!item.id) item.id = idx + 1;
+
+            // 1. Chuẩn hóa dạng câu hỏi
+            item.qType = item.qType || item.type || 'mcq';
+
+            // 2. Chuẩn hóa nội dung câu hỏi
+            if (typeof item.question === 'string') {
+                item.question = item.question.trim();
             }
-            return q;
+
+            // 3. Chuẩn hóa 4 phương án options: Tách riêng phần chữ, bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
+            if (Array.isArray(item.options)) {
+                item.options = item.options.map(opt => {
+                    if (typeof opt !== 'string') return String(opt || '');
+                    return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+                });
+            } else {
+                item.options = [];
+            }
+
+            // 4. Chuẩn hóa và ràng buộc chặt chẽ đáp án đúng (A, B, C, D -> 0, 1, 2, 3)
+            if (item.qType === 'short_answer') {
+                item.correctValue = String(item.correctValue !== undefined ? item.correctValue : (item.correct || item.answer || '')).trim();
+                item.correct = 0;
+                item.answer = 0;
+                item.correctAnswer = item.correctValue;
+            } else if (item.qType === 'tf_group') {
+                if (!Array.isArray(item.statements)) item.statements = [];
+                item.correct = 0;
+                item.answer = 0;
+            } else {
+                // MCQ: Hỗ trợ mọi kiểu định dạng mà Gemini hoặc Regex có thể trả về:
+                // correctAnswer: "A", correct: "A", correct: 0, answer: "A", dapAn: "A", "Đáp án A"
+                let rawAns = item.correctAnswer !== undefined ? item.correctAnswer : (item.correct !== undefined ? item.correct : item.answer);
+                let correctIdx = 0;
+
+                if (typeof rawAns === 'number') {
+                    correctIdx = Math.max(0, Math.min(3, Math.floor(rawAns)));
+                } else if (typeof rawAns === 'string') {
+                    const cleaned = rawAns.trim().toUpperCase();
+                    const matchLetter = cleaned.match(/\b([A-D])\b/) || cleaned.match(/([A-D])/);
+                    if (matchLetter) {
+                        const char = matchLetter[1];
+                        correctIdx = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
+                    } else if (/^[0-3]$/.test(cleaned)) {
+                        correctIdx = parseInt(cleaned, 10);
+                    } else {
+                        correctIdx = 0;
+                    }
+                } else {
+                    correctIdx = 0;
+                }
+
+                item.correct = correctIdx;
+                item.answer = correctIdx;
+                item.correctAnswer = ['A', 'B', 'C', 'D'][correctIdx];
+            }
+
+            // 5. Chuẩn hóa giải thích
+            item.explanation = typeof item.explanation === 'string' ? item.explanation.trim() : '';
+
+            return item;
         });
     }
 
@@ -1390,12 +1446,16 @@ Giải thích: Biên độ A = 5 cm.`;
                                 currentQ.statements[sIdx].answer = (val === 'Đ' || val === 'D' || val === 'T');
                             }
                         });
-                    } else if (/^[A-D]$/i.test(ansStr)) {
-                        const char = ansStr.toUpperCase();
-                        currentQ.correct = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
-                        currentQ.answer = currentQ.correct;
                     } else {
-                        currentQ.correctValue = ansStr;
+                        const letterMatch = ansStr.match(/\b([A-D])\b/i) || ansStr.match(/^([A-D])[\s.:-]?/i);
+                        if (letterMatch) {
+                            const char = letterMatch[1].toUpperCase();
+                            currentQ.correct = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
+                            currentQ.answer = currentQ.correct;
+                            currentQ.correctAnswer = char;
+                        } else {
+                            currentQ.correctValue = ansStr;
+                        }
                     }
                     continue;
                 }
@@ -1558,12 +1618,16 @@ Giải thích: Biên độ A = 5 cm.`;
                             currentQ.statements[sIdx].answer = (val === 'Đ' || val === 'D' || val === 'T');
                         }
                     });
-                } else if (/^[A-D]$/i.test(ansStr)) {
-                    const char = ansStr.toUpperCase();
-                    currentQ.correct = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
-                    currentQ.answer = currentQ.correct;
                 } else {
-                    currentQ.correctValue = ansStr;
+                    const letterMatch = ansStr.match(/\b([A-D])\b/i) || ansStr.match(/^([A-D])[\s.:-]?/i);
+                    if (letterMatch) {
+                        const char = letterMatch[1].toUpperCase();
+                        currentQ.correct = char === 'A' ? 0 : (char === 'B' ? 1 : (char === 'C' ? 2 : 3));
+                        currentQ.answer = currentQ.correct;
+                        currentQ.correctAnswer = char;
+                    } else {
+                        currentQ.correctValue = ansStr;
+                    }
                 }
                 continue;
             }
@@ -1619,19 +1683,25 @@ Giải thích: Biên độ A = 5 cm.`;
             countBadge.textContent = "AI Gemini đang phân tích và chuẩn hóa đề thi...";
         }
 
-        const prompt = `Bạn là Chuyên gia Học thuật, Giáo viên Giỏi và Hệ thống AI bóc tách đề cương thi trắc nghiệm học đường Việt Nam (THCS, THPT, Đại học).
+        const prompt = `Bạn là Chuyên gia Học thuật và Hệ thống AI bóc tách đề cương thi trắc nghiệm học đường Việt Nam.
 Nhiệm vụ của bạn là đọc toàn bộ văn bản đề thi dưới đây, CHUYỂN ĐỔI THÀNH MẢNG JSON, ĐỒNG THỜI TỰ ĐỘNG GIẢI TOÀN BỘ CÂU HỎI VÀ ĐIỀN ĐÁP ÁN ĐÚNG CHÍNH XÁC 100%.
 
-YÊU CẦU ĐỊNH DẠNG ĐẦU RA:
-- Trả về DUY NHẤT một chuỗi JSON hợp lệ (bắt đầu bằng [ và kết thúc bằng ]), không viết thêm lời dẫn chào hỏi, không dùng markdown bọc ngoài nếu không cần thiết (hoặc bọc \`\`\`json).
-- Mỗi câu hỏi trong mảng có cấu trúc sau:
+YÊU CẦU ĐỊNH DẠNG ĐẦU RA (JSON Array):
+- Trả về DUY NHẤT một chuỗi JSON hợp lệ (bắt đầu bằng [ và kết thúc bằng ]), không viết thêm lời dẫn chào hỏi.
+- Mỗi phần tử trong mảng đại diện cho một câu hỏi có cấu trúc:
 {
-  "category": "Đề cương ôn tập",
+  "category": "Ôn tập",
   "qType": "mcq", // "mcq" (Trắc nghiệm chọn 1 đáp án), "tf_group" (Đúng/Sai nhiều ý con a,b,c,d), hoặc "short_answer" (trả lời ngắn/điền số)
-  "question": "Nội dung câu hỏi đầy đủ...",
-  "options": ["Nội dung phương án A", "Nội dung phương án B", "Nội dung phương án C", "Nội dung phương án D"], // Bắt buộc đối với qType = "mcq"
-  "correct": 0, // BẮT BUỘC: Chỉ số của đáp án đúng (0 cho A, 1 cho B, 2 cho C, 3 cho D)
-  "statements": [ // Bắt buộc đối với qType = "tf_group"
+  "question": "Nội dung câu hỏi đầy đủ (không chứa chữ 'Câu 1:' ở đầu)...",
+  "options": [
+    "Nội dung phương án A (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'A.' ở đầu)",
+    "Nội dung phương án B (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'B.' ở đầu)",
+    "Nội dung phương án C (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'C.' ở đầu)",
+    "Nội dung phương án D (tách riêng phần chữ, tuyệt đối KHÔNG chứa tiền tố 'D.' ở đầu)"
+  ],
+  "correctAnswer": "A", // BẮT BUỘC: Nhận chính xác 1 trong 4 chuỗi: "A", "B", "C", hoặc "D"
+  "correct": 0, // BẮT BUỘC: 0 cho A, 1 cho B, 2 cho C, 3 cho D
+  "statements": [ // Dành cho qType = "tf_group"
     {"text": "Ý mệnh đề a...", "answer": true},
     {"text": "Ý mệnh đề b...", "answer": false},
     {"text": "Ý mệnh đề c...", "answer": true},
@@ -1642,15 +1712,15 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA:
 }
 
 QUY TẮC BẮT BUỘC VỀ ĐÁP ÁN (TỰ ĐỘNG GIẢI ĐỀ):
-1. TẤT CẢ CÁC CÂU ĐỀU BẮT BUỘC PHẢI CÓ ĐÁP ÁN ĐÚNG CHUẨN XÁC:
-   - Nếu trong đề thi ĐÃ CÓ sẵn đáp án (ví dụ "Đáp án: A", "Lời giải: C"), hãy điền chính xác trường correct (0 cho A, 1 cho B, 2 cho C, 3 cho D) hoặc answer.
-   - NẾU ĐỀ THI KHÔNG GHI SẴN ĐÁP ÁN: Bạn là Giáo Viên Giỏi, bạn BẮT BUỘC PHẢI TỰ SUY LUẬN, TÍNH TOÁN, GIẢI CHI TIẾT TỪNG CÂU VÀ CHỌN RA ĐÁP ÁN ĐÚNG NHẤT 100%. Tuyệt đối KHÔNG ĐƯỢC để trống trường correct/answer, không được mặc định luôn chọn A!
+1. TẤT CẢ CÁC CÂU BẮT BUỘC PHẢI CÓ correctAnswer ("A", "B", "C" hoặc "D") VÀ correct (0, 1, 2, 3):
+   - Nếu trong đề thi ĐÃ CÓ sẵn đáp án, điền chính xác đáp án đó.
+   - NẾU ĐỀ THI KHÔNG GHI SẴN ĐÁP ÁN: Bạn là Giáo Viên Giỏi, bạn BẮT BUỘC PHẢI TỰ SUY LUẬN, TÍNH TOÁN VÀ CHỌN RA ĐÁP ÁN ĐÚNG NHẤT. Tuyệt đối KHÔNG ĐƯỢC để trống trường correctAnswer/correct, không được mặc định luôn chọn A!
 2. ĐỐI VỚI CÂU HỎI ĐÚNG / SAI (tf_group):
-   - Đánh giá từng mệnh đề con a, b, c, d là Đúng (answer: true) hay Sai (answer: false) dựa trên kiến thức chuẩn sách giáo khoa.
+   - Đánh giá từng mệnh đề con a, b, c, d là Đúng (answer: true) hay Sai (answer: false).
 3. ĐỐI VỚI CÂU ĐIỀN SỐ / TRẢ LỜI NGẮN (short_answer):
-   - Tính toán ra kết quả số chính xác vào trường correctValue (ví dụ: "12.5").
+   - Tính toán ra kết quả số chính xác vào trường correctValue.
 4. LỜI GIẢI THÍCH CHI TIẾT (explanation):
-   - MỌI CÂU HỎI ĐỀU BẮT BUỘC PHẢI CÓ LỜI GIẢI THÍCH (explanation) ngắn gọn 1-3 câu nêu rõ lý do, công thức hoặc kiến thức cốt lõi vì sao đáp án đó đúng.
+   - MỌI CÂU HỎI ĐỀU BẮT BUỘC PHẢI CÓ LỜI GIẢI THÍCH ngắn gọn 1-3 câu.
 5. CÔNG THỨC TOÁN / LÝ / HÓA:
    - Kẹp công thức giữa cặp dấu $ (ví dụ $v = \\omega A$, $x^2$).
 
@@ -1677,6 +1747,7 @@ ${rawText}`;
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
                             generationConfig: {
+                                responseMimeType: "application/json",
                                 temperature: 0.1
                             }
                         })
@@ -1784,10 +1855,25 @@ ${rawText}`;
             return;
         }
 
+        const optChars = ['A', 'B', 'C', 'D'];
+
         this.parsedImportQuestions.forEach((q, idx) => {
             const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-900/60 transition";
             let typeBadge = '<span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">MCQ (4 đáp án)</span>';
             let ansDisplay = '';
+
+            // Xác định chính xác index đáp án đúng (0, 1, 2, hoặc 3)
+            let curIdx = 0;
+            if (typeof q.correct === 'number') curIdx = q.correct;
+            else if (typeof q.answer === 'number') curIdx = q.answer;
+            else if (typeof q.correctAnswer === 'string') {
+                const ch = q.correctAnswer.trim().toUpperCase();
+                curIdx = ch === 'B' ? 1 : (ch === 'C' ? 2 : (ch === 'D' ? 3 : 0));
+            } else if (typeof q.correct === 'string') {
+                const ch = q.correct.trim().toUpperCase();
+                curIdx = (ch === 'B' || ch === '1') ? 1 : ((ch === 'C' || ch === '2') ? 2 : ((ch === 'D' || ch === '3') ? 3 : 0));
+            }
 
             if (q.qType === 'tf_group') {
                 typeBadge = '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-[10px]">Đúng/Sai (Ý)</span>';
@@ -1796,14 +1882,20 @@ ${rawText}`;
                 typeBadge = '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">Trả lời ngắn</span>';
                 ansDisplay = String(q.correctValue || '');
             } else {
-                const cur = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
+                // Nhóm 4 nút bấm A, B, C, D trực quan, đáp án đúng nổi bật bằng viền & màu xanh ngọc
                 ansDisplay = `
-                    <select onchange="app.changeImporterAnswer(${idx}, this.value)" class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs outline-none cursor-pointer hover:border-amber-500" title="Bấm để sửa đáp án trực tiếp">
-                        <option value="0" ${cur === 0 ? 'selected' : ''}>A</option>
-                        <option value="1" ${cur === 1 ? 'selected' : ''}>B</option>
-                        <option value="2" ${cur === 2 ? 'selected' : ''}>C</option>
-                        <option value="3" ${cur === 3 ? 'selected' : ''}>D</option>
-                    </select>
+                    <div class="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
+                        ${[0, 1, 2, 3].map(oIdx => {
+                            const isSel = oIdx === curIdx;
+                            return `
+                                <button type="button" onclick="app.changeImporterAnswer(${idx}, ${oIdx})" 
+                                    class="w-7 h-7 rounded-lg text-xs font-black transition cursor-pointer flex items-center justify-center ${isSel ? 'bg-emerald-500 text-slate-950 shadow-md ring-2 ring-emerald-400 scale-105' : 'text-slate-400 hover:text-white hover:bg-slate-800'}" 
+                                    title="Chọn đáp án đúng là ${optChars[oIdx]}">
+                                    ${optChars[oIdx]}
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
                 `;
             }
 
@@ -1817,12 +1909,27 @@ ${rawText}`;
                 </div>
             ` : '';
 
+            // Danh sách 4 phương án hiển thị bên dưới câu hỏi để giáo viên kiểm tra ngay
+            const optionsPreview = (q.options && q.options.length >= 2) ? `
+                <div class="text-[11px] text-slate-400 mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1">
+                    ${q.options.map((opt, oIdx) => {
+                        const isChosen = oIdx === curIdx;
+                        return `
+                            <span class="${isChosen ? 'text-emerald-400 font-bold' : ''}">
+                                <strong class="${isChosen ? 'text-emerald-300' : 'text-slate-500'}">${optChars[oIdx]}.</strong> ${opt}
+                            </span>
+                        `;
+                    }).join('')}
+                </div>
+            ` : '';
+
             tr.innerHTML = `
                 <td class="py-2.5 px-3 text-center font-bold text-slate-400">${idx + 1}</td>
                 <td class="py-2.5 px-3">${typeBadge}</td>
                 <td class="py-2.5 px-3 font-medium text-white max-w-sm">
-                    <div class="truncate">${q.question}</div>
+                    <div class="truncate font-semibold text-slate-100">${q.question}</div>
                     ${imgBadge}
+                    ${optionsPreview}
                 </td>
                 <td class="py-2.5 px-3">${ansDisplay}</td>
                 <td class="py-2.5 px-3 text-slate-400 italic max-w-xs truncate">${q.explanation || '—'}</td>
@@ -1833,13 +1940,24 @@ ${rawText}`;
 
     changeImporterAnswer(idx, val) {
         if (this.parsedImportQuestions && this.parsedImportQuestions[idx]) {
-            const num = parseInt(val, 10);
+            let num = 0;
+            if (typeof val === 'number') num = val;
+            else if (typeof val === 'string') {
+                const ch = val.trim().toUpperCase();
+                num = (ch === 'B' || ch === '1') ? 1 : ((ch === 'C' || ch === '2') ? 2 : ((ch === 'D' || ch === '3') ? 3 : 0));
+            }
             this.parsedImportQuestions[idx].correct = num;
             this.parsedImportQuestions[idx].answer = num;
+            this.parsedImportQuestions[idx].correctAnswer = ['A', 'B', 'C', 'D'][num];
+            this.renderImporterPreview();
         }
     }
 
-    async saveParsedQuestionsToSubject() {
+    async saveParsedQuestionsToSubject(event) {
+        if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+        }
+
         if (!this.parsedImportQuestions || this.parsedImportQuestions.length === 0) {
             alert("Không có câu hỏi nào để lưu.");
             return;
@@ -1847,35 +1965,73 @@ ${rawText}`;
 
         const select = document.getElementById('importer-subject-select');
         const replaceCheckbox = document.getElementById('importer-replace-checkbox');
-        const targetSubject = select ? select.value : this.currentSubject;
+        const targetSubject = (select && select.value) ? select.value : this.currentSubject;
         const replaceAll = replaceCheckbox ? replaceCheckbox.checked : false;
 
-        const count = this.parsedImportQuestions.length;
+        // Chuẩn hóa toàn bộ câu hỏi trước khi lưu
+        const cleanQuestions = this.normalizeQuestions(this.parsedImportQuestions);
+        const count = cleanQuestions.length;
+
         if (!confirm(`Bạn có chắc chắn muốn lưu ${count} câu hỏi vào môn [${targetSubject}]?`)) return;
+
+        const saveBtn = document.getElementById('btn-importer-save');
+        const originalText = saveBtn ? saveBtn.innerHTML : '';
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang lưu ${count} câu...</span>`;
+        }
 
         try {
             let cloudOk = true;
+            let errMsg = '';
             if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
-                const res = await window.dbService.saveQuestionsBulk(targetSubject, this.parsedImportQuestions, replaceAll);
+                const res = await window.dbService.saveQuestionsBulk(targetSubject, cleanQuestions, replaceAll);
                 if (res && res.success === false) {
                     cloudOk = false;
+                    errMsg = res.error || 'Lỗi lưu trữ Cloud';
                     console.error("Lỗi Supabase khi lưu đề:", res.error);
-                    alert(`⚠️ Cảnh báo: Supabase chưa lưu được vào Cloud (${res.error}).\n\n👉 Bạn hãy chạy lệnh SQL tạo cột subject_key trong Supabase SQL Editor để câu hỏi đồng bộ sang mọi thiết bị!`);
                 }
             }
 
-            // Nếu đang chọn môn hiện tại thì nạp lại vào bộ nhớ
-            if (targetSubject === this.currentSubject) {
-                await this.loadQuestionsForCurrentSubject();
+            // Đồng bộ môn học hiện tại sang môn vừa lưu
+            this.currentSubject = targetSubject;
+            localStorage.setItem('quiz_last_selected_subject', targetSubject);
+
+            // Nạp lại dữ liệu câu hỏi vào State của môn này
+            await this.loadQuestionsForCurrentSubject();
+
+            // Cập nhật số lượng câu hỏi trong dynamicSubjects và lưu lên Cloud
+            const subObj = this.dynamicSubjects.find(s => s.key === targetSubject);
+            if (subObj) {
+                subObj.count = this.allQuestions.length;
+                if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
+                    await window.dbService.saveDynamicSubjects(this.dynamicSubjects);
+                }
+                try {
+                    localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
+                } catch (e) { }
             }
 
-            if (cloudOk) {
-                alert(`✅ Đã lưu thành công ${count} câu hỏi vào môn [${targetSubject}] lên toàn hệ thống!`);
-            }
+            // Đóng Modal và Re-render toàn bộ giao diện ngay lập tức
             this.closeSmartImporter();
+            this.updateNavbarAndBadge();
+            this.renderHomeSubjects();
             this.renderAdminQuestionsList();
+            this.renderAdminSubjectsList();
+
+            if (cloudOk) {
+                alert(`✅ Đã lưu thành công ${count} câu hỏi vào môn [${targetSubject}] lên toàn hệ thống Cloud & mọi thiết bị!`);
+            } else {
+                alert(`⚠️ Đã lưu ${count} câu hỏi vào máy này thành công.\nLưu ý Cloud báo: ${errMsg}`);
+            }
         } catch (e) {
+            console.error("Lỗi khi lưu câu hỏi:", e);
             alert("Lỗi khi lưu câu hỏi vào cơ sở dữ liệu: " + e.message);
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
         }
     }
 
@@ -3939,8 +4095,21 @@ ${rawText}`;
             }
         } catch (e) { }
 
+        try {
+            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+        } catch (ce) { }
+
+        const sub = this.dynamicSubjects.find(s => s.key === this.currentSubject);
+        if (sub) {
+            sub.count = this.allQuestions.length;
+            if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
+                window.dbService.saveDynamicSubjects(this.dynamicSubjects);
+            }
+        }
+
         this.closeQuestionEditor();
         this.renderAdminQuestionsList();
+        this.renderHomeSubjects();
         this.updateNavbarAndBadge();
         alert("✅ Đã lưu câu hỏi thành công!");
     }
@@ -3953,7 +4122,21 @@ ${rawText}`;
                 await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
             }
         } catch (e) { }
+
+        try {
+            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+        } catch (ce) { }
+
+        const sub = this.dynamicSubjects.find(s => s.key === this.currentSubject);
+        if (sub) {
+            sub.count = this.allQuestions.length;
+            if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
+                window.dbService.saveDynamicSubjects(this.dynamicSubjects);
+            }
+        }
+
         this.renderAdminQuestionsList();
+        this.renderHomeSubjects();
         this.updateNavbarAndBadge();
     }
 
