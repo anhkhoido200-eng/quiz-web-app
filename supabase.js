@@ -58,6 +58,8 @@ class DatabaseService {
         const storedKey = localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey;
 
         storedUrl = formatSupabaseUrl(storedUrl);
+        this.url = storedUrl;
+        this.anonKey = storedKey;
 
         if (storedUrl && storedKey && window.supabase) {
             try {
@@ -824,6 +826,67 @@ class DatabaseService {
         } catch (e) {
             return {};
         }
+    }
+
+    /**
+     * Tải toàn bộ danh sách IP đang bị chặn từ Supabase Cloud và LocalStorage
+     */
+    async fetchBannedIpsList() {
+        const bannedList = [];
+        const seenIps = new Set();
+
+        // 1. Tải từ Supabase Cloud
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                    .like('status', 'BANNED%')
+                    .order('last_active', { ascending: false });
+
+                if (!error && Array.isArray(data)) {
+                    data.forEach(item => {
+                        const ip = (item.ip_address || '').trim();
+                        if (ip && !seenIps.has(ip)) {
+                            seenIps.add(ip);
+                            const reason = item.score_summary || (item.status ? item.status.replace(/^BANNED:\s*/, "") : "Vi phạm quy chế");
+                            bannedList.push({
+                                ip: ip,
+                                playerName: item.player_name === '__BANNED_IP__' ? 'Chặn thủ công' : item.player_name,
+                                reason: reason || "Vi phạm quy chế",
+                                bannedAt: item.last_active || item.created_at || new Date().toISOString(),
+                                deviceInfo: item.device_info || 'Không rõ'
+                            });
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi khi tải danh sách IP bị chặn từ Supabase:", err);
+            }
+        }
+
+        // 2. Hợp nhất với LocalStorage fallback
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.BANNED_IPS);
+            if (raw) {
+                const map = JSON.parse(raw);
+                for (const [ip, info] of Object.entries(map)) {
+                    const cleanIp = (ip || '').trim();
+                    if (cleanIp && !seenIps.has(cleanIp)) {
+                        seenIps.add(cleanIp);
+                        bannedList.push({
+                            ip: cleanIp,
+                            playerName: 'Chặn cục bộ',
+                            reason: (info && info.reason) || "Vi phạm quy chế",
+                            bannedAt: (info && info.bannedAt) || new Date().toISOString(),
+                            deviceInfo: 'Thiết bị lưu trữ'
+                        });
+                    }
+                }
+            }
+        } catch (e) {}
+
+        return bannedList;
     }
 
     // =========================================================================

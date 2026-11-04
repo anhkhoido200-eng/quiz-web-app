@@ -24,20 +24,21 @@ h1, h2, h3, h4, .font-heading {
     font-family: var(--font-heading);
 }
 
-/* --- Tối ưu hóa GPU & Chuyển cảnh mượt mà 60/120fps --- */
-.screen-view {
-    animation: screenEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: transform, opacity;
+/* --- Chuyển cảnh mượt mà không làm vỡ position: fixed / sticky --- */
+html {
+    scroll-padding-top: 125px;
 }
 
-@keyframes screenEnter {
+.screen-view {
+    animation: screenFadeEnter 0.22s ease-out;
+}
+
+@keyframes screenFadeEnter {
     from {
         opacity: 0;
-        transform: translateY(14px) scale(0.99);
     }
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
     }
 }
 

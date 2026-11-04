@@ -230,11 +230,6 @@
                     <i id="header-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                 </button>
 
-                <!-- Nút Cài đặt Trợ lý AI Gemini -->
-                <button onclick="app.openAiSettingsModal()" class="w-9 h-9 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Cài đặt Trợ lý AI Gemini">
-                    <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
-                </button>
-
                 <!-- Nút Nhật ký Ôn tập cá nhân (10 bài gần nhất) -->
                 <button onclick="app.openMyHistoryModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Lịch sử bài làm cá nhân">
                     <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i>
@@ -389,9 +384,9 @@
         <!-- ========================================== -->
         <!-- MÀN HÌNH 2: GIAO DIỆN LÀM BÀI TRẮC NGHIỆM  -->
         <!-- ========================================== -->
-        <section id="screen-quiz" class="screen-view hidden transition-all duration-300 w-full">
-            <!-- THANH ĐIỀU HÀNH BÀI THI: DÍNH SÁT MÉP TRÊN CÙNG (TOP-0) -->
-            <div class="fixed top-0 left-0 right-0 z-40 w-full bg-slate-950/85 backdrop-blur-2xl border-b border-white/10 shadow-2xl transition-all">
+        <section id="screen-quiz" class="screen-view hidden w-full">
+            <!-- THANH ĐIỀU HÀNH BÀI THI: CỐ ĐỊNH CHẶT MÉP TRÊN CÙNG (FIXED TOP-0) -->
+            <div id="quiz-sticky-header" class="fixed top-0 left-0 right-0 z-50 w-full bg-slate-950/95 backdrop-blur-2xl border-b border-white/10 shadow-2xl">
                 <!-- Dòng 1: Thông tin học sinh, Điểm số, Đồng hồ & Các nút thao tác -->
                 <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -422,6 +417,10 @@
                         <!-- Bật/Tắt âm thanh trong phòng thi -->
                         <button id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
                             <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
+                        </button>
+                        <!-- Nút Dark/Light Mode -->
+                        <button onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối">
+                            <i class="fa-solid fa-moon text-amber-300"></i>
                         </button>
                         <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-sky-400 hover:text-sky-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
                             <i class="fa-solid fa-house text-[11px]"></i>
@@ -459,7 +458,7 @@
             </div>
 
             <!-- Danh sách cuộn dọc câu hỏi -->
-            <div id="questions-container" class="space-y-6 max-w-4xl mx-auto pt-24 sm:pt-28 pb-16">
+            <div id="questions-container" class="space-y-6 max-w-4xl mx-auto pt-28 sm:pt-32 pb-16">
                 <!-- Render động bởi app.js -->
             </div>
         </section>
@@ -590,6 +589,10 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
+                        <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
+                        <span class="hidden sm:inline">Cài Đặt API Key</span>
+                    </button>
                     <button onclick="app.openSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer" title="Cấu hình Supabase Cloud">
                         <i class="fa-solid fa-gear text-sm"></i>
                     </button>
@@ -751,6 +754,22 @@
                         <button onclick="app.adminBanManualIp()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer shrink-0">
                             <i class="fa-solid fa-ban"></i> Chặn Liền
                         </button>
+                    </div>
+                </div>
+
+                <!-- DANH SÁCH ĐỊA CHỈ IP ĐANG BỊ CHẶN (BANNED IPS LIST) -->
+                <div class="p-4 rounded-2xl bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border border-rose-500/40 shadow-md space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div class="flex items-center gap-2 text-xs font-bold text-rose-300">
+                            <i class="fa-solid fa-shield-halved text-rose-400"></i>
+                            <span>Danh Sách Địa Chỉ IP Đang Bị Chặn (<span id="admin-banned-ips-count" class="text-rose-400 font-bold font-mono">0</span> IP):</span>
+                        </div>
+                        <button onclick="app.loadBannedIpsList().then(() => app.renderAdminBannedIpsList())" class="text-slate-400 hover:text-white text-xs flex items-center gap-1 transition cursor-pointer">
+                            <i class="fa-solid fa-rotate"></i> Làm mới
+                        </button>
+                    </div>
+                    <div id="admin-banned-ips-list-container" class="space-y-2">
+                        <!-- Render bởi app.js -->
                     </div>
                 </div>
 
@@ -1379,10 +1398,11 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <div id="modal-settings" class="fixed inset-0 z-[100002] bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
-                <h3 class="font-heading font-bold text-white text-base flex items-center gap-2">
+                <div class="flex items-center gap-2">
                     <i class="fa-solid fa-cloud text-indigo-400"></i>
-                    <span>Cấu Hình Supabase Cloud</span>
-                </h3>
+                    <h3 class="font-heading font-bold text-white text-base">Cấu Hình Supabase Cloud</h3>
+                    <div id="supabase-modal-status-badge"></div>
+                </div>
                 <button onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -1391,15 +1411,23 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             <div class="space-y-4 text-xs">
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">Project URL</label>
-                    <input type="text" id="supabase-url-input" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px]">
+                    <input type="text" id="supabase-url-input" placeholder="https://your-project.supabase.co" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">Anon Public Key</label>
-                    <input type="password" id="supabase-key-input" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px]">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block font-semibold text-slate-300">Anon Public Key</label>
+                        <button type="button" onclick="const k = document.getElementById('supabase-key-input'); k.type = k.type === 'password' ? 'text' : 'password';" class="text-indigo-400 hover:text-indigo-300 text-[11px] cursor-pointer">
+                            <i class="fa-solid fa-eye mr-0.5"></i> Hiện/Ẩn mã
+                        </button>
+                    </div>
+                    <input type="password" id="supabase-key-input" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
-                    <button onclick="app.clearSupabaseConfig()" class="text-rose-400 hover:underline cursor-pointer">Xóa kết nối</button>
+                    <button onclick="app.clearSupabaseConfig()" class="text-rose-400 hover:text-rose-300 hover:underline cursor-pointer flex items-center gap-1" title="Khôi phục thông số kết nối mặc định của hệ thống">
+                        <i class="fa-solid fa-arrow-rotate-left text-[10px]"></i>
+                        <span>Khôi phục mặc định</span>
+                    </button>
                     <div class="flex gap-2">
                         <button onclick="app.closeSettingsModal()" class="px-3 py-1.5 text-slate-400 hover:text-white cursor-pointer">Đóng</button>
                         <button onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
@@ -1450,8 +1478,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </div>
                     <div>
-                        <h3 class="font-heading font-extrabold text-white text-base">Cấu Hình Trợ Lý AI Toàn Hệ Thống</h3>
-                        <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Dùng chung cho tất cả học sinh</p>
+                        <h3 class="font-heading font-extrabold text-white text-base">Cấu Hình Trợ Lý AI (Quản Trị Viên)</h3>
+                        <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Cấp khóa API dùng chung cho toàn bộ học sinh</p>
                     </div>
                 </div>
                 <button onclick="app.closeAiSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">

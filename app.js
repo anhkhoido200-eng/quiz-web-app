@@ -41,6 +41,9 @@ class QuizApp {
         // Phân quyền sử dụng Trợ lý AI theo địa chỉ IP
         this.allowedAiIps = [];
 
+        // Danh sách các IP đang bị chặn (Banned IPs)
+        this.bannedIpsList = [];
+
         // Phân quyền môn Địa Lí (hoặc các môn Private)
         this.allowedGeoIps = [];
         this.geoMode = 'PRIVATE';
@@ -76,6 +79,7 @@ class QuizApp {
         this.checkSavedUser();
         await this.loadGlobalGeminiApiKey();
         await this.loadAiIpsConfig();
+        await this.loadBannedIpsList();
         await this.loadDynamicSubjects();
         await this.fetchClientIp();
         await this.loadQuestionsForCurrentSubject();
@@ -800,6 +804,9 @@ class QuizApp {
         if (tabName === 'questions') {
             this.renderAdminQuestionsList();
         } else if (tabName === 'students') {
+            this.loadBannedIpsList().then(() => {
+                this.renderAdminBannedIpsList();
+            });
             this.renderAdminStudentsList();
         } else if (tabName === 'admin-ips') {
             this.renderAdminIpsTab();
@@ -2515,6 +2522,15 @@ Giải thích: Biên độ A = 5 cm.`;
     /* ============================================================== */
 
     switchScreen(screenName) {
+        const mainHeader = document.getElementById('main-header');
+        if (mainHeader) {
+            if (screenName === 'quiz') {
+                mainHeader.classList.add('hidden');
+            } else {
+                mainHeader.classList.remove('hidden');
+            }
+        }
+
         Object.keys(this.screens).forEach(key => {
             const el = this.screens[key];
             if (el) {
@@ -2835,6 +2851,14 @@ Giải thích: Biên độ A = 5 cm.`;
                          <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Nghỉ
                        </span>`;
 
+                const isBanned = (this.bannedIpsList || []).some(x => x.ip === ip) || (student.status && student.status.startsWith('BANNED'));
+
+                const displayBadge = isBanned
+                    ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/40 shrink-0">
+                         <i class="fa-solid fa-ban text-rose-400"></i> Bị chặn
+                       </span>`
+                    : statusBadge;
+
                 const scoreInfo = student.score_summary || student.status || 'Đang ôn tập';
 
                 const isAiGranted = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip) || this.allowedAdminIps.includes(ip) || ip === this.masterAdminIp;
@@ -2843,7 +2867,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     <tr class="hover:bg-slate-800/40 transition">
                         <td class="py-2.5 px-3">
                             <div class="flex items-center gap-2">
-                                ${statusBadge}
+                                ${displayBadge}
                                 <span class="font-bold text-white text-xs truncate max-w-[150px]" title="${name}">${name}</span>
                             </div>
                         </td>
@@ -2851,7 +2875,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         <td class="py-2.5 px-3 text-slate-300 text-xs">${device}</td>
                         <td class="py-2.5 px-3 text-center text-slate-400 text-xs font-mono">${timeStr}</td>
                         <td class="py-2.5 px-3 text-center">
-                            <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${scoreInfo}">
+                            <span class="px-2.5 py-1 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-200 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/30'} font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${scoreInfo}">
                                 ${scoreInfo}
                             </span>
                         </td>
@@ -2860,15 +2884,22 @@ Giải thích: Biên độ A = 5 cm.`;
                                 <button onclick="app.adminToggleStudentAiRole('${ip}', '${name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-purple-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
                                     <i class="fa-solid fa-wand-magic-sparkles mr-1 ${isAiGranted ? 'text-amber-300' : 'text-slate-400'}"></i> ${isAiGranted ? 'Đã có AI' : 'Cấp AI'}
                                 </button>
-                                <button onclick="app.adminBanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer">
-                                    <i class="fa-solid fa-ban mr-1"></i> Chặn IP
-                                </button>
+                                ${isBanned ? `
+                                    <button onclick="app.adminUnbanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để mở chặn cho IP này">
+                                        <i class="fa-solid fa-lock-open mr-1"></i> Mở Chặn
+                                    </button>
+                                ` : `
+                                    <button onclick="app.adminBanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để chặn ngay IP này">
+                                        <i class="fa-solid fa-ban mr-1"></i> Chặn IP
+                                    </button>
+                                `}
                             </div>
                         </td>
                     </tr>
                 `;
             });
             tbody.innerHTML = rowsHtml;
+            this.renderAdminBannedIpsList();
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-400">Lỗi tải danh sách: ${e.message}</td></tr>`;
         }
@@ -2925,11 +2956,88 @@ Giải thích: Biên độ A = 5 cm.`;
             if (window.dbService && typeof window.dbService.banIp === 'function') {
                 await window.dbService.banIp(ip, "Gian lận / Vi phạm quy chế phòng thi");
                 alert(`Đã kích hoạt lệnh chặn đối với IP: ${ip}!`);
+                await this.loadBannedIpsList();
                 this.renderAdminStudentsList();
+                this.renderAdminBannedIpsList();
             }
         } catch (e) {
             alert("Lỗi chặn IP: " + e.message);
         }
+    }
+
+    async adminUnbanStudentIp(ip) {
+        if (!confirm(`Bạn có chắc chắn muốn MỞ CHẶN cho địa chỉ IP: ${ip}?`)) return;
+        try {
+            if (window.dbService && typeof window.dbService.unbanIp === 'function') {
+                await window.dbService.unbanIp(ip);
+                alert(`✅ Đã mở chặn thành công cho IP: ${ip}!`);
+                await this.loadBannedIpsList();
+                this.renderAdminStudentsList();
+                this.renderAdminBannedIpsList();
+            }
+        } catch (e) {
+            alert("Lỗi mở chặn IP: " + e.message);
+        }
+    }
+
+    async loadBannedIpsList() {
+        try {
+            if (window.dbService && typeof window.dbService.fetchBannedIpsList === 'function') {
+                this.bannedIpsList = await window.dbService.fetchBannedIpsList();
+            } else if (window.dbService && typeof window.dbService.getBannedIps === 'function') {
+                const map = window.dbService.getBannedIps();
+                this.bannedIpsList = Object.keys(map).map(k => ({ ip: k, reason: map[k].reason, bannedAt: map[k].bannedAt }));
+            }
+        } catch (e) {
+            console.warn("Lỗi loadBannedIpsList:", e);
+            this.bannedIpsList = [];
+        }
+    }
+
+    renderAdminBannedIpsList() {
+        const container = document.getElementById('admin-banned-ips-list-container');
+        const countBadge = document.getElementById('admin-banned-ips-count');
+        if (!container) return;
+
+        const list = this.bannedIpsList || [];
+        if (countBadge) countBadge.textContent = list.length;
+
+        if (list.length === 0) {
+            container.innerHTML = `
+                <div class="py-3 px-4 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    <i class="fa-solid fa-circle-check text-emerald-400 mr-1.5"></i>
+                    Hiện không có địa chỉ IP nào bị chặn. Toàn bộ thí sinh truy cập bình thường.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = list.map(item => {
+            const timeStr = item.bannedAt ? new Date(item.bannedAt).toLocaleString('vi-VN') : '—';
+            const name = item.playerName || 'Không rõ';
+            const reason = item.reason || 'Vi phạm quy chế';
+            return `
+                <div class="p-2.5 rounded-xl bg-slate-950/80 border border-rose-500/30 flex flex-wrap items-center justify-between gap-2.5">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-7 h-7 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center text-xs shrink-0">
+                            <i class="fa-solid fa-ban"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-mono font-bold text-rose-300 text-xs">${item.ip}</span>
+                                <span class="text-[11px] text-slate-300 font-semibold">(${name})</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800">${reason}</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Thời gian chặn: ${timeStr} • Thiết bị: ${item.deviceInfo || '—'}</p>
+                        </div>
+                    </div>
+                    <button onclick="app.adminUnbanStudentIp('${item.ip}')" class="px-3 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ml-auto shrink-0" title="Bỏ chặn IP này để thí sinh vào lại">
+                        <i class="fa-solid fa-lock-open text-[11px]"></i>
+                        <span>Mở Khóa IP</span>
+                    </button>
+                </div>
+            `;
+        }).join('');
     }
 
     async adminEmergencyUnban() {
@@ -2957,9 +3065,24 @@ Giải thích: Biên độ A = 5 cm.`;
         const modal = document.getElementById('modal-settings');
         const urlInput = document.getElementById('supabase-url-input');
         const keyInput = document.getElementById('supabase-key-input');
+        const statusBadge = document.getElementById('supabase-modal-status-badge');
 
-        if (urlInput && window.dbService) urlInput.value = window.dbService.url || '';
-        if (keyInput && window.dbService) keyInput.value = window.dbService.anonKey || '';
+        const cfg = (window.dbService && typeof window.dbService.getConfig === 'function')
+            ? window.dbService.getConfig()
+            : { url: '', anonKey: '', isActive: false };
+
+        const fallbackUrl = cfg.url || (window.dbService ? window.dbService.url : '') || localStorage.getItem('quiz_supabase_url') || 'https://qotfikuiwmruicsvsbgq.supabase.co';
+        const fallbackKey = cfg.anonKey || (window.dbService ? window.dbService.anonKey : '') || localStorage.getItem('quiz_supabase_key') || 'sb_publishable_KtAmEX6Jj97BNElniBrX6w_wVyCeQYs';
+
+        if (urlInput) urlInput.value = fallbackUrl;
+        if (keyInput) keyInput.value = fallbackKey;
+
+        if (statusBadge) {
+            const isOnline = window.dbService && window.dbService.isSupabaseActive;
+            statusBadge.innerHTML = isOnline
+                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">🟢 Đã Kết Nối Cloud</span>`
+                : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">🟡 Đang Đồng Bộ</span>`;
+        }
 
         if (modal) {
             modal.classList.remove('hidden');
@@ -2981,20 +3104,43 @@ Giải thích: Biên độ A = 5 cm.`;
         const url = urlInput ? urlInput.value.trim() : '';
         const key = keyInput ? keyInput.value.trim() : '';
 
-        if (url && key && window.dbService) {
-            window.dbService.init(url, key);
-            localStorage.setItem('supabase_url', url);
-            localStorage.setItem('supabase_key', key);
-            alert("Đã lưu kết nối Supabase Cloud thành công!");
+        if (!url || !key) {
+            alert("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
+            return;
+        }
+
+        try {
+            if (window.dbService && typeof window.dbService.saveConfig === 'function') {
+                window.dbService.saveConfig(url, key);
+            } else {
+                localStorage.setItem('quiz_supabase_url', url);
+                localStorage.setItem('quiz_supabase_key', key);
+                if (window.dbService) {
+                    window.dbService.url = url;
+                    window.dbService.anonKey = key;
+                    if (window.supabase) {
+                        window.dbService.client = window.supabase.createClient(url, key);
+                        window.dbService.isSupabaseActive = true;
+                    }
+                }
+            }
+            alert("✅ Đã lưu kết nối Supabase Cloud thành công!");
             this.closeSettingsModal();
+        } catch (e) {
+            alert("Lỗi lưu cấu hình: " + e.message);
         }
     }
 
     clearSupabaseConfig() {
-        if (!confirm("Bạn có chắc chắn muốn xóa cấu hình Supabase?")) return;
+        if (!confirm("Bạn có chắc chắn muốn khôi phục về cấu hình Supabase Cloud mặc định của hệ thống?")) return;
+        localStorage.removeItem('quiz_supabase_url');
+        localStorage.removeItem('quiz_supabase_key');
         localStorage.removeItem('supabase_url');
         localStorage.removeItem('supabase_key');
-        alert("Đã xóa cấu hình. Hệ thống sẽ tải lại trang.");
+        if (window.dbService && typeof window.dbService.clearConfig === 'function') {
+            window.dbService.clearConfig();
+        }
+        alert("✅ Đã khôi phục cài đặt gốc! Đang tải lại trang...");
         location.reload();
     }
 
@@ -3179,6 +3325,10 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     openAiSettingsModal() {
+        if (!this.isAdminAuthenticated) {
+            alert("🔒 Tính năng cấu hình Gemini API Key chỉ dành riêng cho Quản trị viên (Admin).");
+            return;
+        }
         const modal = document.getElementById('modal-ai-settings');
         const input = document.getElementById('gemini-api-key-input');
         if (input) input.value = this.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
