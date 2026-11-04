@@ -309,6 +309,13 @@ class DatabaseService {
     }
 
     /**
+     * Alias cho fetchActiveLogins (tương thích toàn bộ lời gọi hàm trong Admin)
+     */
+    async fetchActiveLogins(limit = 300) {
+        return await this.getLoginHistory(limit);
+    }
+
+    /**
      * Xóa 1 bản ghi đăng nhập
      */
     async deleteLoginRecord(loginId) {

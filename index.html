@@ -245,12 +245,12 @@
         <section id="screen-home" class="screen-view transition-all duration-300">
             <div class="max-w-xl mx-auto bg-slate-800/60 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-3">
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-2.5">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Hệ Thống Ôn Luyện Đề Cương Trắc Nghiệm Thông Minh
+                        Cổng Ôn Thi Trực Tuyến
                     </div>
-                    <h2 class="font-heading text-2xl sm:text-3xl font-extrabold text-white mb-2">QuizMaster Pro v4.0</h2>
-                    <p class="text-slate-400 text-xs sm:text-sm leading-relaxed">Đa môn học linh hoạt • Tự động lưu tiến độ • Nhận diện kết quả tức thì • Vinh danh Top 10</p>
+                    <h2 class="font-heading text-2xl sm:text-3xl font-extrabold text-white mb-2 tracking-tight">Ôn Luyện Trắc Nghiệm</h2>
+                    <p class="text-slate-400 text-xs sm:text-sm leading-relaxed">Chọn môn thi bên dưới và nhập họ tên để bắt đầu làm bài</p>
                 </div>
 
                 <!-- Thẻ ghi nhớ thí sinh đã đăng nhập -->
@@ -273,16 +273,21 @@
 
                 <!-- KHU VỰC CHỌN MÔN HỌC ĐỘNG (DYNAMIC SUBJECTS HUB) -->
                 <div class="mb-5 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-700/80">
-                    <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center justify-between mb-2">
                         <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                             <i class="fa-solid fa-layer-group text-indigo-400"></i>
-                            <span>Chọn Môn Ôn Tập</span>
+                            <span>Chọn Môn Thi & Đợt Kiểm Tra</span>
                         </label>
-                        <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Đang tải môn học...</span>
+                        <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Đang tải...</span>
                     </div>
 
-                    <!-- Grid render danh sách môn học động hoàn toàn -->
-                    <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5">
+                    <!-- Filter Tabs: Gộp theo Kì Thi / Đợt Kiểm Tra (15 Phút, Giữa Kì 1, Cuối Kì 1...) -->
+                    <div id="home-semester-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2.5 scrollbar-thin">
+                        <!-- Render bởi app.js: [🌟 Tất Cả] [⚡ KT 15 Phút] [📚 Giữa Kì 1] [🎯 Cuối Kì 1]... -->
+                    </div>
+
+                    <!-- Danh sách môn học động theo nhóm -->
+                    <div id="home-subjects-grid" class="space-y-4">
                         <!-- Render bởi app.js qua renderSubjectsGrid() -->
                     </div>
 
@@ -293,33 +298,6 @@
                         </span>
                         <button onclick="app.openSubjectEditor()" class="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
                             <i class="fa-solid fa-plus"></i> + Thêm môn học mới
-                        </button>
-                    </div>
-                </div>
-
-                <!-- CHỌN CHẾ ĐỘ THI: LUYỆN TẬP VS THI THẬT (ĐẾM NGƯỢC) -->
-                <div class="mb-5 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-700/80">
-                    <div class="flex items-center justify-between mb-2">
-                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                            <i class="fa-solid fa-sliders text-indigo-400"></i>
-                            <span>Chế Độ Làm Bài</span>
-                        </label>
-                        <span id="exam-mode-indicator-text" class="text-[11px] font-bold text-emerald-400">Chế độ Luyện Tập</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <button type="button" id="btn-mode-practice" onclick="app.setExamMode(false)" class="p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md">
-                            <i class="fa-solid fa-graduation-cap text-indigo-400 text-base"></i>
-                            <div class="text-left overflow-hidden">
-                                <p class="font-bold truncate">Luyện Tập</p>
-                                <p class="text-[10px] text-slate-400 truncate">Xem đáp án ngay</p>
-                            </div>
-                        </button>
-                        <button type="button" id="btn-mode-exam" onclick="app.setExamMode(true)" class="p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-400">
-                            <i class="fa-solid fa-stopwatch text-amber-400 text-base"></i>
-                            <div class="text-left overflow-hidden">
-                                <p class="font-bold truncate">Thi Thử</p>
-                                <p class="text-[10px] text-slate-400 truncate">Đếm ngược giờ</p>
-                            </div>
                         </button>
                     </div>
                 </div>
@@ -342,23 +320,19 @@
                         </p>
                     </div>
 
-                    <!-- Quy định làm bài tóm tắt -->
-                    <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 text-slate-400">
+                    <!-- Lưu ý làm bài tóm tắt -->
+                    <div class="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 text-slate-400">
                         <div class="flex items-center gap-2 text-slate-300 font-medium">
-                            <i class="fa-solid fa-list-check text-indigo-400"></i>
-                            <span id="home-rules-count-text">Nội dung câu hỏi bám sát đề cương kiến thức.</span>
+                            <i class="fa-solid fa-circle-info text-indigo-400"></i>
+                            <span id="home-rules-count-text">Nội dung gồm các câu hỏi trắc nghiệm bám sát đề cương.</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-bolt text-amber-400"></i>
-                            <span>Tự động lưu tiến độ: Mất mạng hoặc tải lại trang vẫn tiếp tục được.</span>
+                            <i class="fa-solid fa-floppy-disk text-emerald-400"></i>
+                            <span>Hệ thống tự động lưu bài làm khi chọn đáp án (tải lại trang không mất tiến độ).</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-square-root-variable text-emerald-400"></i>
-                            <span>Hỗ trợ công thức Toán, Lí, Hóa chuẩn KaTeX và hình ảnh minh họa sinh động.</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>Hoàn thành bài thi để được vinh danh trên Bảng Vàng Top 10!</span>
+                            <i class="fa-solid fa-circle-check text-amber-400"></i>
+                            <span>Biết ngay kết quả đúng/sai, có giải thích chi tiết và bảng tổng kết khi nộp bài.</span>
                         </div>
                     </div>
 
@@ -1096,8 +1070,20 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <input type="text" id="edit-sub-key" placeholder="Ví dụ: chemistry, english..." class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono outline-none focus:border-emerald-400">
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">Thẻ Học Kỳ (Badge)</label>
-                        <input type="text" id="edit-sub-semester" placeholder="Ví dụ: Giữa Kì 2, Cuối Kì 1..." class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
+                        <label class="block font-semibold text-slate-300 mb-1">Kỳ Thi / Đợt Kiểm Tra <span class="text-emerald-400">*</span></label>
+                        <select id="edit-sub-semester-select" onchange="app.onSemesterSelectChange(this.value)" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
+                            <option value="Giữa Kì 1">📚 Giữa Kì 1</option>
+                            <option value="Cuối Kì 1">🎯 Cuối Kì 1</option>
+                            <option value="Giữa Kì 2">📚 Giữa Kì 2</option>
+                            <option value="Cuối Kì 2">🎯 Cuối Kì 2</option>
+                            <option value="Kiểm Tra 15 Phút">⚡ Kiểm Tra 15 Phút</option>
+                            <option value="Kiểm Tra 1 Tiết">📝 Kiểm Tra 1 Tiết</option>
+                            <option value="Ôn Tập Tự Do">💡 Ôn Tập Tự Do</option>
+                            <option value="__CUSTOM__">✏️ Tự nhập kỳ thi khác...</option>
+                        </select>
+                        <div id="edit-sub-custom-semester-box" class="hidden mt-1.5">
+                            <input type="text" id="edit-sub-semester" placeholder="Nhập tên đợt thi khác..." class="w-full px-3.5 py-2 bg-slate-950 border border-emerald-500/50 rounded-xl text-white outline-none">
+                        </div>
                     </div>
                 </div>
 
