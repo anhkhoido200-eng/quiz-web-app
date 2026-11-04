@@ -249,20 +249,7 @@ class DatabaseService {
     async updateLoginStatus(loginId, status, scoreSummary = "") {
         const nowIso = new Date().toISOString();
 
-        if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
-            try {
-                await this.client
-                    .from('quiz_logins')
-                    .update({
-                        status: status,
-                        score_summary: scoreSummary,
-                        last_active: nowIso
-                    })
-                    .eq('id', loginId);
-            } catch (e) {}
-        }
-
-        // Cập nhật Cloud Supabase
+        // Cập nhật Cloud Supabase (kèm hàng đợi khi offline)
         if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
             if (!navigator.onLine) {
                 this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
@@ -1357,7 +1344,7 @@ class DatabaseService {
     }
 
     async addDynamicSubject(subjectObj) {
-        if (!subjectObj || !subjectObj.key || !subjectObj.title) {
+        if (!subjectObj || !subjectObj.key || (!subjectObj.name && !subjectObj.title)) {
             throw new Error("Thông tin môn học phải có mã key và tiêu đề môn.");
         }
         const subjects = await this.fetchDynamicSubjects();
@@ -1368,6 +1355,10 @@ class DatabaseService {
             subjects.push(subjectObj);
         }
         return await this.saveDynamicSubjects(subjects);
+    }
+
+    async saveDynamicSubject(subjectObj) {
+        return await this.addDynamicSubject(subjectObj);
     }
 
     async deleteDynamicSubject(subjectKey) {
@@ -1624,7 +1615,7 @@ class DatabaseService {
                         id: SYSTEM_RECORDS.GEMINI_CONFIG,
                         player_name: '__GEMINI_CONFIG__',
                         ip_address: 'SYSTEM',
-                        device_info: 'GEMINI_AI_2_5_FLASH',
+                        device_info: 'GEMINI_AI_1_5_FLASH',
                         status: 'ACTIVE',
                         score_summary: cleanKey,
                         last_active: nowIso

@@ -1307,7 +1307,9 @@ Giải thích: Biên độ A = 5 cm.`;
         const idInput = document.getElementById('edit-sub-id');
         const nameInput = document.getElementById('edit-sub-name');
         const keyInput = document.getElementById('edit-sub-key');
+        const semSelect = document.getElementById('edit-sub-semester-select');
         const semInput = document.getElementById('edit-sub-semester');
+        const customBox = document.getElementById('edit-sub-custom-semester-box');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
 
@@ -1321,7 +1323,18 @@ Giải thích: Biên độ A = 5 cm.`;
                     keyInput.value = sub.key;
                     keyInput.disabled = true;
                 }
-                if (semInput) semInput.value = sub.semester || '';
+                const semesterVal = sub.semester || 'Giữa Kì 1';
+                if (semInput) semInput.value = semesterVal;
+                if (semSelect) {
+                    const optExists = Array.from(semSelect.options).some(o => o.value === semesterVal);
+                    if (optExists) {
+                        semSelect.value = semesterVal;
+                        if (customBox) customBox.classList.add('hidden');
+                    } else {
+                        semSelect.value = '__CUSTOM__';
+                        if (customBox) customBox.classList.remove('hidden');
+                    }
+                }
                 if (iconSelect) iconSelect.value = sub.icon || 'fa-book';
                 if (gradSelect) gradSelect.value = sub.gradient || 'indigo';
 
@@ -1339,11 +1352,25 @@ Giải thích: Biên độ A = 5 cm.`;
                 keyInput.disabled = false;
             }
             if (semInput) semInput.value = 'Giữa Kì 2';
+            if (semSelect) semSelect.value = 'Giữa Kì 2';
+            if (customBox) customBox.classList.add('hidden');
         }
 
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+        }
+    }
+
+    onSemesterSelectChange(val) {
+        const customBox = document.getElementById('edit-sub-custom-semester-box');
+        const customInput = document.getElementById('edit-sub-semester');
+        if (val === '__CUSTOM__') {
+            if (customBox) customBox.classList.remove('hidden');
+            if (customInput) customInput.focus();
+        } else {
+            if (customBox) customBox.classList.add('hidden');
+            if (customInput) customInput.value = val;
         }
     }
 
@@ -1359,13 +1386,17 @@ Giải thích: Biên độ A = 5 cm.`;
         const idInput = document.getElementById('edit-sub-id');
         const nameInput = document.getElementById('edit-sub-name');
         const keyInput = document.getElementById('edit-sub-key');
+        const semSelect = document.getElementById('edit-sub-semester-select');
         const semInput = document.getElementById('edit-sub-semester');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
 
         const name = nameInput ? nameInput.value.trim() : '';
         const key = keyInput ? keyInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') : '';
-        const semester = semInput ? semInput.value.trim() : 'Đề cương';
+        let semester = semInput ? semInput.value.trim() : 'Đề cương';
+        if (semSelect && semSelect.value && semSelect.value !== '__CUSTOM__') {
+            semester = semSelect.value;
+        }
         const icon = iconSelect ? iconSelect.value : 'fa-book';
         const gradient = gradSelect ? gradSelect.value : 'indigo';
 
@@ -3098,8 +3129,14 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        const targetDiv = document.getElementById(`ai-explanation-${qId}`) || document.getElementById(`ai-explanation-review-${qId}`);
-        const btn = document.getElementById(`ai-btn-${qId}`) || document.getElementById(`ai-btn-review-${qId}`);
+        const isResultVisible = this.screens.result && !this.screens.result.classList.contains('hidden');
+        const reviewDiv = document.getElementById(`ai-explanation-review-${qId}`);
+        const quizDiv = document.getElementById(`ai-explanation-${qId}`);
+        const targetDiv = isResultVisible ? (reviewDiv || quizDiv) : (quizDiv || reviewDiv);
+
+        const reviewBtn = document.getElementById(`ai-btn-review-${qId}`);
+        const quizBtn = document.getElementById(`ai-btn-${qId}`);
+        const btn = isResultVisible ? (reviewBtn || quizBtn) : (quizBtn || reviewBtn);
 
         if (!targetDiv) return;
 
@@ -3151,17 +3188,52 @@ YÊU CẦU TRẢ LỜI:
 5. Dùng ngôn ngữ thân thiện, khích lệ học sinh, ngắt đoạn rõ ràng bằng gạch đầu dòng.`;
 
         try {
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
+            const candidateModels = [
+                'gemini-3.5-flash',
+                'gemini-3.8-flash',
+                'gemini-3.7-flash',
+                'gemini-flash-latest',
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
+                'gemini-1.5-flash'
+            ];
 
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData?.error?.message || `Lỗi ${res.status}: Không thể gọi Gemini API.`);
+            let res = null;
+            let lastErrMsg = "";
+
+            for (const model of candidateModels) {
+                try {
+                    const callResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
+                    });
+
+                    if (callResp.ok) {
+                        res = callResp;
+                        break;
+                    } else {
+                        const errData = await callResp.json().catch(() => ({}));
+                        lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
+                        console.warn(`[QuizMaster AI] Model ${model} không khả dụng (${callResp.status}):`, lastErrMsg);
+                        // Nếu do lỗi model deprecated (404), server bận/quá tải (503), quota (429), tự động thử model tiếp theo
+                        if (callResp.status === 404 || callResp.status === 503 || callResp.status === 429) {
+                            continue;
+                        } else {
+                            // Nếu sai API key (400, 403), dừng lặp
+                            break;
+                        }
+                    }
+                } catch (netErr) {
+                    lastErrMsg = netErr.message;
+                    console.warn(`[QuizMaster AI] Lỗi mạng khi gọi ${model}:`, netErr);
+                }
+            }
+
+            if (!res || !res.ok) {
+                throw new Error(lastErrMsg || "Không thể kết nối đến máy chủ Google Gemini.");
             }
 
             const data = await res.json();
@@ -3501,6 +3573,8 @@ YÊU CẦU TRẢ LỜI:
         try {
             if (window.dbService && typeof window.dbService.saveDynamicSubject === 'function') {
                 await window.dbService.saveDynamicSubject(sub);
+            } else if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
+                await window.dbService.saveDynamicSubjects(this.dynamicSubjects);
             }
         } catch (e) {
             console.warn("Lỗi lưu môn lên Supabase:", e);
