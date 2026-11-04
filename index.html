@@ -47,6 +47,8 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Mammoth.js CDN (Bóc tách file Word .docx tự động trích xuất ảnh thật Base64) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+    <!-- PDF.js CDN (Bóc tách file PDF đề cương trích xuất văn bản) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- KaTeX CDN (Hiển thị công thức Toán, Lí, Hóa) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
@@ -308,14 +310,44 @@
                         <!-- Render bởi app.js qua renderHomeSubjects() -->
                     </div>
 
-                    <!-- Nút quản lý môn nhanh dành cho Admin -->
-                    <div id="home-admin-subject-actions" class="hidden mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs">
-                        <span class="text-amber-400 text-[11px] font-bold flex items-center gap-1">
-                            <i class="fa-solid fa-shield-halved"></i> Quản lý môn học (Admin)
-                        </span>
-                        <button onclick="app.openSubjectEditor()" class="btn-3d btn-3d-amber px-3 py-1.5 rounded-xl text-slate-950 font-heading font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
-                            <i class="fa-solid fa-plus"></i> + Thêm môn học mới
-                        </button>
+                    <!-- Bảng công cụ Admin nhanh: Thêm Môn, Thêm Câu Hỏi & Nạp Đề Trực Tiếp -->
+                    <div id="home-admin-subject-actions" class="hidden mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+                        <div class="flex items-center justify-between text-xs flex-wrap gap-2">
+                            <span class="text-amber-400 text-[11px] font-bold flex items-center gap-1.5">
+                                <i class="fa-solid fa-shield-halved"></i> Quản lý Đề & Môn (Admin)
+                            </span>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <button onclick="app.openSmartImporter()" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Nạp nhanh file Word (.docx), PDF (.pdf), Excel vào môn đang chọn">
+                                    <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề Word/PDF
+                                </button>
+                                <button onclick="app.openNewQuestionModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Tạo câu hỏi thủ công cho môn này">
+                                    <i class="fa-solid fa-plus text-emerald-400"></i> Thêm Câu Hỏi
+                                </button>
+                                <button onclick="app.openSubjectEditor()" class="btn-3d btn-3d-amber px-2.5 py-1.5 rounded-xl text-slate-950 font-heading font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
+                                    <i class="fa-solid fa-folder-plus"></i> + Môn Mới
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Dropzone Kéo Thả Thẳng File Word / PDF / Excel vào Môn đang chọn -->
+                        <div class="p-2.5 rounded-2xl bg-slate-900/90 border-2 border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-indigo-950/20 transition cursor-pointer relative group flex items-center justify-between gap-3 shadow-inner">
+                            <input type="file" accept=".docx, .pdf, .xlsx, .xls, .json" onchange="app.handleHomeDirectFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" title="Nhấp hoặc thả file Word (.docx) hoặc PDF (.pdf) vào đây">
+                            <div class="flex items-center gap-2.5 pointer-events-none text-xs flex-1 min-w-0">
+                                <div class="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-sm shrink-0 border border-indigo-500/30 group-hover:scale-105 transition-transform">
+                                    <i class="fa-solid fa-cloud-arrow-up text-indigo-400"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="font-bold text-white text-[11px] flex items-center gap-1.5 truncate">
+                                        <span>Gửi thẳng file Word / PDF để tự động tạo câu hỏi</span>
+                                        <span class="px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 text-[9px] font-mono shrink-0">Tự bóc tách ⚡</span>
+                                    </p>
+                                    <p class="text-[10px] text-slate-400 truncate">Kéo thả file .docx, .pdf vào đây để nạp ngay vào môn: <strong id="home-upload-current-sub-label" class="text-amber-400">...</strong></p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold shrink-0 pointer-events-none shadow transition flex items-center gap-1">
+                                <i class="fa-solid fa-bolt text-amber-300"></i> Nạp Ngay
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -1064,18 +1096,19 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <div class="space-y-3 flex flex-col justify-between">
                         <div class="space-y-2">
                             <label class="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
-                                <i class="fa-solid fa-file-word text-sky-400"></i> Hoặc Tải Tệp Word (.docx) / Excel / JSON:
+                                <i class="fa-solid fa-file-word text-sky-400"></i> Hoặc Tải Tệp Word (.docx) / PDF (.pdf) / Excel / JSON:
                             </label>
                             <div class="p-4 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl text-center cursor-pointer transition bg-slate-950/40 relative group">
-                                <input type="file" id="importer-file-input" accept=".docx, .xlsx, .xls, .json" onchange="app.handleImporterFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
+                                <input type="file" id="importer-file-input" accept=".docx, .pdf, .xlsx, .xls, .json" onchange="app.handleImporterFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" title="Chọn file Word, PDF hoặc Excel">
                                 <div class="space-y-1 pointer-events-none">
                                     <div class="flex items-center justify-center gap-2 text-2xl mb-1 text-slate-400 group-hover:scale-105 transition-transform">
-                                        <i class="fa-solid fa-file-word text-sky-400"></i>
-                                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
-                                        <i class="fa-solid fa-image text-amber-400"></i>
+                                        <i class="fa-solid fa-file-word text-sky-400" title="Word"></i>
+                                        <i class="fa-solid fa-file-pdf text-rose-500" title="PDF"></i>
+                                        <i class="fa-solid fa-file-excel text-emerald-400" title="Excel"></i>
+                                        <i class="fa-solid fa-image text-amber-400" title="Ảnh thật"></i>
                                     </div>
-                                    <p class="text-xs font-semibold text-slate-200">Nhấp hoặc Kéo thả file Word (.docx), Excel, JSON</p>
-                                    <p class="text-[10px] text-amber-300 font-semibold">⚡ Tự động trích xuất CHỮ & HÌNH ẢNH THẬT 100% đính kèm trong file Word</p>
+                                    <p class="text-xs font-semibold text-slate-200">Nhấp hoặc Kéo thả file Word (.docx), PDF (.pdf), Excel, JSON</p>
+                                    <p class="text-[10px] text-amber-300 font-semibold">⚡ Tự động phân tích & tạo câu hỏi ngay khi vừa thả file vào (Ảnh thật 100%)</p>
                                 </div>
                             </div>
                         </div>

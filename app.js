@@ -273,6 +273,8 @@ class QuizApp {
         if (navSub) navSub.textContent = `Hệ Thống Ôn Tập Đề Cương ${semester}`;
         if (badge) badge.textContent = `${name} (${count} câu)`;
         if (topTitle) topTitle.textContent = name;
+        const uploadSubLabel = document.getElementById('home-upload-current-sub-label');
+        if (uploadSubLabel) uploadSubLabel.textContent = name;
     }
 
     getSubjectTitle() {
@@ -1008,17 +1010,46 @@ class QuizApp {
     /* 5. BỘ NẠP ĐỀ THÔNG MINH (SMART QUESTION IMPORTER)               */
     /* ============================================================== */
 
-    openSmartImporter() {
+    openSmartImporter(subjectKey) {
         const modal = document.getElementById('modal-smart-importer');
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             this.populateSubjectDropdowns();
+            const target = subjectKey || this.currentSubject;
             const select = document.getElementById('importer-subject-select');
-            if (select) select.value = this.currentSubject;
+            if (select) select.value = target;
             this.parsedImportQuestions = [];
             this.renderImporterPreview();
         }
+    }
+
+    openImporterForSubject(key) {
+        if (key) {
+            this.currentSubject = key;
+        }
+        this.openSmartImporter(key);
+    }
+
+    openNewQuestionForSubject(key) {
+        if (key) {
+            this.currentSubject = key;
+        }
+        this.openNewQuestionModal(key);
+    }
+
+    handleHomeDirectFileUpload(event) {
+        const file = event.target.files ? event.target.files[0] : null;
+        if (!file) return;
+
+        // Mở modal Smart Importer với môn hiện tại
+        this.openSmartImporter(this.currentSubject);
+
+        // Chạy xử lý file và tự động bóc tách câu hỏi ngay lập tức
+        this.handleImporterFileUpload({ target: { files: [file] } });
+
+        // Reset input để sẵn sàng cho lần chọn tiếp theo
+        event.target.value = '';
     }
 
     closeSmartImporter() {
@@ -1115,6 +1146,52 @@ Giải thích: Biên độ A = 5 cm.`;
                 }
             };
             reader.readAsArrayBuffer(file);
+        } else if (fileName.endsWith('.pdf')) {
+            if (typeof pdfjsLib === 'undefined') {
+                alert("Thư viện bóc tách PDF chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
+                return;
+            }
+
+            const countBadge = document.getElementById('importer-preview-count');
+            if (countBadge) countBadge.textContent = "⏳ Đang đọc nội dung file PDF và trích xuất câu hỏi...";
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const arrayBuffer = e.target.result;
+                    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    }
+                    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                    const pdfDoc = await loadingTask.promise;
+                    let fullText = '';
+
+                    for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                        const page = await pdfDoc.getPage(pageNum);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n\n';
+                    }
+
+                    const cleanText = fullText.trim();
+                    const textarea = document.getElementById('importer-text-input');
+                    if (textarea) textarea.value = cleanText;
+
+                    // Tự động phân tích câu hỏi ngay lập tức!
+                    this.parseImporterInput();
+
+                    // Nếu regex không tìm thấy câu nào và có cấu hình Gemini API Key
+                    if (this.parsedImportQuestions.length === 0 && (this.geminiApiKey || localStorage.getItem('gemini_api_key'))) {
+                        if (confirm(`Đã nạp ${pdfDoc.numPages} trang PDF! Bạn có muốn dùng AI Gemini để phân tích bóc tách đề không?`)) {
+                            await this.parseImporterWithGemini();
+                        }
+                    }
+                } catch (err) {
+                    console.error("Lỗi đọc file PDF:", err);
+                    alert("Lỗi đọc file PDF (.pdf): " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
         } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
             if (typeof XLSX === 'undefined') {
                 alert("Thư viện SheetJS chưa sẵn sàng, vui lòng tải lại trang.");
@@ -1135,7 +1212,7 @@ Giải thích: Biên độ A = 5 cm.`;
             };
             reader.readAsArrayBuffer(file);
         } else {
-            alert("Định dạng file không được hỗ trợ. Vui lòng chọn file Word (.docx), Excel (.xlsx/.xls) hoặc JSON (.json).");
+            alert("Định dạng file không được hỗ trợ. Vui lòng chọn file Word (.docx), PDF (.pdf), Excel (.xlsx/.xls) hoặc JSON (.json).");
         }
     }
 
@@ -1897,16 +1974,26 @@ ${rawText}`;
                     <span>Thẻ: <strong class="text-slate-200">${sub.semester || 'Học kỳ'}</strong></span>
                     <span>Đề: <strong class="text-indigo-400">${sub.count || 0} câu</strong></span>
                 </div>
-                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60 flex-wrap">
-                    <button onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1.5 rounded-lg ${isPrivate ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white' : 'bg-amber-600/20 text-amber-300 border border-amber-500/40 hover:bg-amber-600 hover:text-white'} text-xs font-semibold transition cursor-pointer" title="Bấm để chuyển đổi Công khai / Riêng tư">
-                        <i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isPrivate ? 'Công khai' : 'Riêng tư'}
-                    </button>
-                    <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer">
-                        <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
-                    </button>
-                    <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
-                        <i class="fa-solid fa-trash-can mr-1"></i> Xóa
-                    </button>
+                <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-700/60 flex-wrap">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <button onclick="app.openImporterForSubject('${sub.key}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Nạp nhanh đề từ file Word/PDF/Excel vào môn này">
+                            <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề File
+                        </button>
+                        <button onclick="app.openNewQuestionForSubject('${sub.key}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Tạo thêm câu hỏi mới cho môn này">
+                            <i class="fa-solid fa-plus text-emerald-400"></i> Thêm Câu Hỏi
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1.5 rounded-lg ${isPrivate ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white' : 'bg-amber-600/20 text-amber-300 border border-amber-500/40 hover:bg-amber-600 hover:text-white'} text-xs font-semibold transition cursor-pointer" title="Bấm để chuyển đổi Công khai / Riêng tư">
+                            <i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isPrivate ? 'Công khai' : 'Riêng tư'}
+                        </button>
+                        <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer" title="Chỉnh sửa thông tin môn học">
+                            <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
+                        </button>
+                        <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer" title="Xóa môn học này">
+                            <i class="fa-solid fa-trash-can mr-1"></i> Xóa
+                        </button>
+                    </div>
                 </div>
             `;
             container.appendChild(card);
@@ -3588,11 +3675,14 @@ ${rawText}`;
         location.reload();
     }
 
-    openNewQuestionModal() {
-        this.openEditQuestionModal(null);
+    openNewQuestionModal(subjectKey) {
+        if (subjectKey) {
+            this.currentSubject = subjectKey;
+        }
+        this.openEditQuestionModal(null, subjectKey);
     }
 
-    openEditQuestionModal(qId) {
+    openEditQuestionModal(qId, targetSubject) {
         const modal = document.getElementById('modal-question-editor');
         const title = document.getElementById('editor-modal-title');
         const idInput = document.getElementById('edit-q-id');
@@ -3603,7 +3693,8 @@ ${rawText}`;
         const expInput = document.getElementById('edit-q-explanation');
 
         this.populateSubjectDropdowns();
-        if (subjSelect) subjSelect.value = this.currentSubject;
+        const activeSub = targetSubject || this.currentSubject;
+        if (subjSelect) subjSelect.value = activeSub;
 
         if (qId) {
             const q = this.allQuestions.find(item => item.id === qId);
