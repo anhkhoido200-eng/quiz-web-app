@@ -1,22 +1,22 @@
-/* style.css - Hiệu ứng và tinh chỉnh giao diện QuizMaster Pro */
+/* style.css - QuizMaster Pro v4.0 Ultimate Stylesheet */
 
-/* Hiệu ứng chuyển động mượt */
+/* --- Hiệu ứng chuyển động mượt mà cho các màn hình --- */
 .screen-view {
-    animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: screenFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes fadeIn {
+@keyframes screenFadeIn {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(10px) scale(0.99);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
-/* Tùy chỉnh thanh cuộn hiện đại */
+/* --- Tùy chỉnh thanh cuộn hiện đại (Modern Scrollbar) --- */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -27,28 +27,15 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(79, 70, 229, 0.4);
+    background: rgba(99, 102, 241, 0.45);
     border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(99, 102, 241, 0.7);
+    background: rgba(129, 140, 248, 0.8);
 }
 
-/* Glassmorphism Card Effect */
-.glass-panel {
-    background: rgba(30, 41, 59, 0.65);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* Button pulse and hover transforms */
-button:active {
-    transform: scale(0.98);
-}
-
-/* Ẩn thanh cuộn thô trên Windows mà vẫn cuộn mượt mà */
+/* Ẩn hoàn toàn thanh cuộn mà vẫn cuộn mượt */
 .no-scrollbar::-webkit-scrollbar {
     display: none;
     width: 0 !important;
@@ -59,7 +46,100 @@ button:active {
     scrollbar-width: none;
 }
 
-/* Hiệu ứng hào quang cho đáp án đang chọn */
-.option-active {
-    box-shadow: 0 0 15px -3px rgba(99, 102, 241, 0.3);
+/* --- Glassmorphism UI Panels --- */
+.glass-panel {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-hover {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px -10px rgba(99, 102, 241, 0.25);
+    border-color: rgba(129, 140, 248, 0.35);
+}
+
+/* --- Tương tác nút bấm & Active transforms --- */
+button:active, .interactive-btn:active {
+    transform: scale(0.97);
+}
+
+/* Hiệu ứng hào quang cho đáp án trắc nghiệm */
+.option-selected-correct {
+    background: rgba(16, 185, 129, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.8) !important;
+    box-shadow: 0 0 20px -3px rgba(16, 185, 129, 0.35);
+}
+
+.option-selected-wrong {
+    background: rgba(244, 63, 94, 0.15) !important;
+    border-color: rgba(244, 63, 94, 0.8) !important;
+    box-shadow: 0 0 20px -3px rgba(244, 63, 94, 0.35);
+}
+
+/* --- Huy hiệu Bảng Xếp Hạng Podium Top 3 (Vàng, Bạc, Đồng) --- */
+.podium-gold {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.1));
+    border: 2px solid rgba(245, 158, 11, 0.7);
+    box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+.podium-gold::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.2) 50%, transparent 60%);
+    animation: goldShimmer 3.5s infinite;
+}
+
+@keyframes goldShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.podium-silver {
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.25), rgba(100, 116, 139, 0.1));
+    border: 2px solid rgba(203, 213, 225, 0.6);
+    box-shadow: 0 0 20px -5px rgba(148, 163, 184, 0.3);
+}
+
+.podium-bronze {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.2), rgba(180, 83, 9, 0.1));
+    border: 2px solid rgba(217, 119, 6, 0.6);
+    box-shadow: 0 0 20px -5px rgba(217, 119, 6, 0.3);
+}
+
+/* --- Hỗ trợ công thức Toán/Lí KaTeX --- */
+.katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem 0;
+    margin: 0.5rem 0 !important;
+}
+
+.katex {
+    font-size: 1.05em !important;
+    text-rendering: auto;
+}
+
+/* --- Pulse Glow Animation cho nút Admin --- */
+@keyframes adminPulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 30px rgba(245, 158, 11, 0.7);
+    }
+}
+
+.admin-floating-glow {
+    animation: adminPulseGlow 2.5s infinite;
 }

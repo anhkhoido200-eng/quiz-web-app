@@ -1,60 +1,127 @@
--- ==============================================================================
--- SUPABASE SQL SETUP SCRIPT: QUIZ_LOGINS & QUIZ_QUESTIONS
--- ==============================================================================
+-- =========================================================================
+-- QUIZMASTER PRO v4.0 - SUPABASE DATABASE INITIALIZATION SCRIPT
+-- =========================================================================
+-- Hướng dẫn chạy:
+-- 1. Mở trang quản trị Supabase (https://supabase.com/dashboard)
+-- 2. Chọn dự án của bạn -> Chọn mục "SQL Editor" ở menu bên trái.
+-- 3. Nhấp "New Query", dán toàn bộ nội dung script này vào và bấm "Run".
+-- =========================================================================
 
--- 1. Bảng lưu lịch sử ĐĂNG NHẬP, ĐỊA CHỈ IP & THIẾT BỊ CỦA THÍ SINH
+-- 1. BẬT TIỆN ÍCH TỰ ĐỘNG SINH UUID CHUẨN
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. BẢNG 1: QUIZ_LOGINS (Quản lý lượt đăng nhập, giám sát, phân quyền & cấu hình hệ thống)
 CREATE TABLE IF NOT EXISTS public.quiz_logins (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     player_name TEXT NOT NULL,
-    ip_address TEXT NOT NULL DEFAULT 'Chưa xác định',
-    device_info TEXT DEFAULT '',
+    ip_address TEXT DEFAULT 'Chưa xác định',
+    device_info TEXT DEFAULT 'Chưa rõ',
     status TEXT DEFAULT 'Đang ôn tập',
     score_summary TEXT DEFAULT '',
-    last_active TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    last_active TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins (ip_address);
-CREATE INDEX IF NOT EXISTS idx_quiz_logins_time ON public.quiz_logins (last_active DESC);
+-- Chỉ mục tối ưu tốc độ tra cứu tức thì cho Heartbeat & Bảng Admin
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_last_active ON public.quiz_logins(last_active DESC);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins(ip_address);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_player_name ON public.quiz_logins(player_name);
 
-ALTER TABLE public.quiz_logins ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Cho phép đọc đăng nhập công khai" ON public.quiz_logins;
-CREATE POLICY "Cho phép đọc đăng nhập công khai"
-ON public.quiz_logins FOR SELECT TO public USING (true);
-
-DROP POLICY IF EXISTS "Cho phép ghi nhận lượt đăng nhập" ON public.quiz_logins;
-CREATE POLICY "Cho phép ghi nhận lượt đăng nhập"
-ON public.quiz_logins FOR INSERT TO public WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Cho phép cập nhật trạng thái làm bài" ON public.quiz_logins;
-CREATE POLICY "Cho phép cập nhật trạng thái làm bài"
-ON public.quiz_logins FOR UPDATE TO public USING (true);
-
-DROP POLICY IF EXISTS "Cho phép Admin xóa nhật ký đăng nhập" ON public.quiz_logins;
-CREATE POLICY "Cho phép Admin xóa nhật ký đăng nhập"
-ON public.quiz_logins FOR DELETE TO public USING (true);
-
-
--- 2. Bảng lưu trữ và quản lý ngân hàng câu hỏi (Cho phép đồng bộ tức thì cho MỌI THIẾT BỊ)
+-- 3. BẢNG 2: QUIZ_QUESTIONS (Ngân hàng câu hỏi động đa môn học: Sử, Lí, Địa, Toán, Hóa...)
 CREATE TABLE IF NOT EXISTS public.quiz_questions (
-    id INTEGER PRIMARY KEY,
-    q_type TEXT DEFAULT 'mcq',
-    category TEXT NOT NULL DEFAULT 'Lịch Sử 11',
-    question TEXT NOT NULL,
-    options JSONB DEFAULT '[]'::jsonb,
-    correct INTEGER DEFAULT 0,
-    statements JSONB DEFAULT '[]'::jsonb,
-    explanation TEXT DEFAULT '',
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    id SERIAL PRIMARY KEY,
+    subject_key TEXT DEFAULT 'history',           -- 'history', 'physics', 'geography', hoặc mã môn động
+    category TEXT DEFAULT 'Bài học',              -- Tên bài học / Chuyên đề
+    q_type TEXT DEFAULT 'mcq',                    -- 'mcq' (4 lựa chọn), 'tf_group' (Đúng/Sai), 'short_answer' (Điền số)
+    question TEXT NOT NULL,                       -- Nội dung câu hỏi (hỗ trợ KaTeX & HTML)
+    options JSONB DEFAULT '[]'::jsonb,            -- Danh sách lựa chọn ["A", "B", "C", "D"]
+    statements JSONB DEFAULT '[]'::jsonb,         -- Danh sách ý Đúng/Sai [{"text":"...", "answer":true}]
+    correct INTEGER DEFAULT 0,                    -- Index đáp án đúng (0 = A, 1 = B, 2 = C, 3 = D)
+    answer INTEGER DEFAULT 0,                     -- Tương thích ngược
+    correct_value TEXT DEFAULT '',                -- Giá trị điền số (dành cho câu hỏi short_answer)
+    explanation TEXT DEFAULT '',                  -- Lời giải thích chi tiết
+    image_url TEXT DEFAULT '',                    -- Đường dẫn ảnh minh họa (nếu có)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_subject ON public.quiz_questions(subject_key);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_category ON public.quiz_questions(category);
+
+-- 4. BẬT BẢO MẬT HÀNG (ROW LEVEL SECURITY - RLS)
+ALTER TABLE public.quiz_logins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Cho phép đọc câu hỏi công khai" ON public.quiz_questions;
-CREATE POLICY "Cho phép đọc câu hỏi công khai"
-ON public.quiz_questions FOR SELECT TO public USING (true);
+-- 5. CHÍNH SÁCH TRUY CẬP CÔNG KHAI CHO WEB THI (ANON KEY CHO CLIENT SPA)
+DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
+CREATE POLICY "Public access to quiz_logins"
+ON public.quiz_logins
+FOR ALL
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Cho phép Admin chỉnh sửa câu hỏi" ON public.quiz_questions;
-CREATE POLICY "Cho phép Admin chỉnh sửa câu hỏi"
-ON public.quiz_questions FOR ALL TO public USING (true);
+DROP POLICY IF EXISTS "Public access to quiz_questions" ON public.quiz_questions;
+CREATE POLICY "Public access to quiz_questions"
+ON public.quiz_questions
+FOR ALL
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
+-- 6. KHỞI TẠO CÁC BẢN GHI HỆ THỐNG CỐ ĐỊNH (SYSTEM CONFIG RECORDS)
+-- Bản ghi 1: Cấu hình Whitelist IP Admin (ID: 00000000-0000-0000-0000-000000000001)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    '__ADMIN_IPS_CONFIG__',
+    'SYSTEM',
+    'PASSWORDLESS_AUTH',
+    'ACTIVE',
+    '{"masterIp":"","allowedIps":[]}',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 2: Phân quyền & Chế độ môn Địa Lí 11 (ID: 00000000-0000-0000-0000-000000000002)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000002',
+    '__ALLOWED_GEO_IPS__',
+    'SYSTEM',
+    'PUBLIC',
+    'ACTIVE',
+    '{"mode":"PUBLIC","ips":[]}',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 3: Chế độ Bảo trì Hệ thống (ID: 00000000-0000-0000-0000-000000000003)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000003',
+    '__SYSTEM_MAINTENANCE__',
+    'SYSTEM',
+    'OFF',
+    'INACTIVE',
+    'Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 4: Danh sách Môn học Động tùy biến (ID: 00000000-0000-0000-0000-000000000004)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000004',
+    '__DYNAMIC_SUBJECTS__',
+    'SYSTEM',
+    'DYNAMIC_HUB',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;

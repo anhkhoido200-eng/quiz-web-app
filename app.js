@@ -493,8 +493,9 @@ class QuizApp {
      * Cho phép học sinh quay về màn hình chính để chuyển sang ôn tập môn khác
      */
     returnToHome() {
+        const isQuizScreen = this.screens.quiz && !this.screens.quiz.classList.contains('hidden');
         const answeredCount = Object.keys(this.userAnswers).length;
-        if (answeredCount > 0) {
+        if (isQuizScreen && answeredCount > 0) {
             const subjName = this.getSubjectTitle();
             if (!confirm(`Bạn đang làm dở môn ${subjName} (${answeredCount} câu đã chọn).\nBạn có chắc muốn quay lại trang chủ để đổi sang môn học khác không?`)) {
                 return;
@@ -1282,6 +1283,7 @@ class QuizApp {
             }
         }
 
+        this.switchScreen('quiz');
         this.renderAllQuestions();
         window.scrollTo({ top: 120, behavior: 'smooth' });
     }
@@ -1949,7 +1951,11 @@ class QuizApp {
     }
 
     async seedDefaultQuestionsToCloud() {
-        if (!confirm("Hành động này sẽ tải toàn bộ câu hỏi lên Supabase Cloud Database để mọi máy khác đều được đồng bộ. Tiếp tục?")) {
+        if (this.currentSubject !== 'history') {
+            alert("⚠️ Lưu ý: Tính năng đồng bộ ngân hàng câu hỏi lên Supabase Cloud hiện áp dụng cho môn Lịch Sử 11. Vui lòng chuyển sang tab Lịch Sử 11 trước khi đồng bộ để tránh ghi đè ID các môn khác.");
+            return;
+        }
+        if (!confirm("Hành động này sẽ tải toàn bộ câu hỏi Lịch Sử 11 lên Supabase Cloud Database để mọi máy khác đều được đồng bộ. Tiếp tục?")) {
             return;
         }
         if (window.dbService) {
@@ -1957,7 +1963,7 @@ class QuizApp {
             if (res && res.error) {
                 alert(`⚠️ Lỗi từ máy chủ: ${res.error}`);
             } else {
-                alert(`✅ Đã lưu thành công ${this.allQuestions.length} câu hỏi lên Supabase Cloud!`);
+                alert(`✅ Đã lưu thành công ${this.allQuestions.length} câu hỏi Lịch Sử 11 lên Supabase Cloud!`);
             }
         }
     }
@@ -2518,7 +2524,7 @@ class QuizApp {
         const hasIpAccess = this.clientIp && this.allowedGeoIps && this.allowedGeoIps.includes(this.clientIp);
 
         // Nếu là PUBLIC thì TẤT CẢ mọi học sinh đều vào được; nếu là PRIVATE thì phải qua IP hoặc Admin
-        const isAllowed = (this.geoMode === 'PUBLIC') || this.isAdmin || isLocalUnlocked || hasIpAccess;
+        const isAllowed = (this.geoMode === 'PUBLIC') || this.isAdminAuthenticated || isLocalUnlocked || hasIpAccess;
 
         if (tabBtn) {
             if (isAllowed) {
