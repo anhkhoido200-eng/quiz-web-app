@@ -118,13 +118,33 @@ class DatabaseService {
 
     /**
      * Ghi nhận lượt đăng nhập (IP, Tên, Thiết bị, Trạng thái)
+     * Hỗ trợ cả 2 dạng gọi: recordLogin(object) hoặc recordLogin(name, ip, device, subject)
      */
-    async recordLogin(data) {
-        const cleanName = (data.playerName || "").trim();
-        const cleanIp = (data.ipAddress || "Chưa xác định").trim();
-        const cleanDevice = (data.deviceInfo || "Chưa rõ").trim();
-        const status = data.status || "Đang ôn tập";
-        const scoreSummary = data.scoreSummary || "";
+    async recordLogin(data, ipAddress, deviceInfo, subjectTitle) {
+        let cleanName = "";
+        let cleanIp = "127.0.0.1";
+        let cleanDevice = "Trình duyệt Web";
+        let status = "Đang làm bài";
+        let scoreSummary = "";
+
+        if (typeof data === 'object' && data !== null) {
+            cleanName = (data.playerName || data.name || "").trim();
+            cleanIp = (data.ipAddress || data.clientIp || ipAddress || "").trim();
+            cleanDevice = (data.deviceInfo || deviceInfo || "Trình duyệt Web").trim();
+            status = data.status || "Đang làm bài";
+            scoreSummary = data.scoreSummary || (data.subjectTitle ? `Môn: ${data.subjectTitle}` : "");
+        } else {
+            cleanName = String(data || "").trim();
+            cleanIp = String(ipAddress || "").trim();
+            cleanDevice = String(deviceInfo || "Trình duyệt Web").trim();
+            status = "Đang làm bài";
+            scoreSummary = subjectTitle ? `[${subjectTitle}] Bắt đầu làm bài` : "";
+        }
+
+        if (!cleanName) cleanName = "Khách truy cập";
+        if (!cleanIp || cleanIp === "Đang nhận diện..." || cleanIp === "—" || cleanIp === "Chưa xác định") cleanIp = "127.0.0.1";
+        if (!cleanDevice || cleanDevice === "—" || cleanDevice === "Chưa rõ") cleanDevice = "Trình duyệt Web";
+
         const nowIso = new Date().toISOString();
 
         const record = {
@@ -170,14 +190,20 @@ class DatabaseService {
                     .select('id');
 
                 if (!error && inserted && inserted[0]) {
-                    return inserted[0].id;
+                    const finalId = inserted[0].id;
+                    const resObj = { id: finalId, success: true };
+                    resObj.toString = () => finalId;
+                    return resObj;
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi ghi nhận đăng nhập lên Supabase:", err);
             }
         }
 
-        return record.id;
+        const localId = record.id;
+        const resObj = { id: localId, success: true };
+        resObj.toString = () => localId;
+        return resObj;
     }
 
     /**
@@ -288,6 +314,12 @@ class DatabaseService {
      * Lấy danh sách máy & người đăng nhập cho Admin (Mặc định tải 300 lượt)
      */
     async getLoginHistory(limit = 300) {
+        const systemIds = [
+            SYSTEM_RECORDS.ADMIN_IPS,
+            SYSTEM_RECORDS.GEO_CONFIG,
+            SYSTEM_RECORDS.MAINTENANCE,
+            SYSTEM_RECORDS.DYNAMIC_SUBJECTS
+        ];
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -297,15 +329,31 @@ class DatabaseService {
                     .limit(limit);
 
                 if (!error && Array.isArray(data)) {
-                    // Lọc bỏ toàn bộ các bản ghi hệ thống nội bộ (__...)
-                    const realLogins = data.filter(item => !item.player_name || !item.player_name.startsWith('__'));
+                    // Lọc bỏ toàn bộ các bản ghi hệ thống nội bộ (__...) và systemIds
+                    const realLogins = data
+                        .filter(item => (!item.player_name || !item.player_name.startsWith('__')) && !systemIds.includes(item.id))
+                        .map(item => ({
+                            ...item,
+                            ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
+                            client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
+                            player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
+                            device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
+                        }));
                     return realLogins;
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);
             }
         }
-        return this._getLocalLogins().filter(item => !item.player_name || !item.player_name.startsWith('__'));
+        return this._getLocalLogins()
+            .filter(item => (!item.player_name || !item.player_name.startsWith('__')) && !systemIds.includes(item.id))
+            .map(item => ({
+                ...item,
+                ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
+                client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
+                player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
+                device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
+            }));
     }
 
     /**
@@ -446,23 +494,38 @@ class DatabaseService {
 
     /**
      * Nạp hàng loạt (Bulk Import) câu hỏi từ bộ bóc tách văn bản/Excel
+     * Hỗ trợ cả 2 dạng gọi: saveQuestionsBulk(questionsList, subjectKey, replaceAll)
+     * hoặc saveQuestionsBulk(subjectKey, questionsList, replaceAll)
      */
-    async saveQuestionsBulk(questionsList, subjectKey = 'history') {
+    async saveQuestionsBulk(arg1, arg2, replaceAll = false) {
+        let questionsList = arg1;
+        let subjectKey = arg2;
+        if (typeof arg1 === 'string' && Array.isArray(arg2)) {
+            subjectKey = arg1;
+            questionsList = arg2;
+        }
+
         if (!Array.isArray(questionsList) || questionsList.length === 0) {
             return { success: false, count: 0, error: "Danh sách câu hỏi rỗng." };
         }
 
         const cleanSubject = subjectKey || 'history';
+
+        // Nếu replaceAll = true, xóa sạch câu hỏi cũ của môn này trước khi insert
+        if (replaceAll) {
+            await this.clearQuestionsBySubject(cleanSubject);
+        }
+
         const records = questionsList.map((q, idx) => ({
             subject_key: cleanSubject,
             category: q.category || 'Bài tập',
-            q_type: q.qType || 'mcq',
+            q_type: q.qType || q.type || 'mcq',
             question: q.question,
             options: q.options || [],
             statements: q.statements || [],
-            correct: q.correct !== undefined ? q.correct : (q.answer || 0),
-            answer: q.correct !== undefined ? q.correct : (q.answer || 0),
-            correct_value: q.correctValue || '',
+            correct: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
+            answer: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
+            correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
             explanation: q.explanation || '',
             image_url: q.imageUrl || '',
             updated_at: new Date().toISOString()
@@ -492,6 +555,20 @@ class DatabaseService {
         // Lưu local
         localStorage.setItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`, JSON.stringify(questionsList));
         return { success: true, count: questionsList.length, localOnly: true };
+    }
+
+    /**
+     * Tương thích ngược: Đồng bộ ngân hàng câu hỏi ban đầu lên Supabase Cloud
+     */
+    async seedInitialQuestions(questionsList, subjectKey = 'history') {
+        return await this.saveQuestionsBulk(questionsList, subjectKey, true);
+    }
+
+    /**
+     * Alias đồng nhất với tên gọi trong app.js
+     */
+    async fetchQuestionsBySubject(subjectKey = 'history') {
+        return await this.fetchQuestionsOnline(subjectKey);
     }
 
     /**
@@ -752,6 +829,29 @@ class DatabaseService {
         } catch (e) {}
 
         return null;
+    }
+
+    /**
+     * Alias phát thông báo tương thích với app.js
+     */
+    async broadcastNotice(message, targetIp = 'ALL') {
+        return await this.sendBroadcastNotice(message, targetIp);
+    }
+
+    /**
+     * Lấy thông báo mới nhất cho học sinh (tương thích app.js)
+     */
+    async getSystemNotice(clientIp) {
+        const notice = await this.fetchLatestNotice(clientIp);
+        if (!notice) return null;
+        return {
+            id: notice.id,
+            content: notice.message,
+            message: notice.message,
+            active: true,
+            targetIp: notice.targetIp,
+            timestamp: notice.timestamp
+        };
     }
 
     // =========================================================================
@@ -1228,14 +1328,25 @@ class DatabaseService {
                 }
             }
 
+            let timeSpent = '—';
+            const timeMatch = (item.score_summary || "").match(/-\s*(\d{1,2}:\d{2})/);
+            if (timeMatch) timeSpent = timeMatch[1];
+
             return {
                 id: item.id,
                 playerName: item.player_name || "Thí sinh ẩn danh",
+                player_name: item.player_name || "Thí sinh ẩn danh",
                 ipAddress: item.ip_address || "Chưa rõ",
+                ip_address: item.ip_address || "Chưa rõ",
                 deviceInfo: item.device_info || "Trình duyệt",
+                device_info: item.device_info || "Trình duyệt",
                 score: score,
+                timeSpent: timeSpent,
+                time_spent: timeSpent,
                 correctCount: correctCount,
+                correct_count: correctCount,
                 totalCount: totalCount,
+                total_count: totalCount,
                 status: item.status,
                 scoreSummary: item.score_summary,
                 submittedAt: item.last_active || item.created_at
@@ -1277,9 +1388,27 @@ class DatabaseService {
                 const scoreMatch = (item.score_summary || "").match(/(\d+(?:\.\d+)?)\s*điểm/i);
                 if (scoreMatch) score = parseFloat(scoreMatch[1]);
 
+                let correctCount = '-';
+                let totalItems = '-';
                 let correctText = "";
-                const ratioMatch = (item.score_summary || "").match(/đúng\s*(\d+\/\d+)/i);
-                if (ratioMatch) correctText = ratioMatch[1];
+                const ratioMatch = (item.score_summary || "").match(/đúng\s*(\d+)\/(\d+)/i) || (item.score_summary || "").match(/đúng\s*(\d+\/\d+)/i);
+                if (ratioMatch) {
+                    if (ratioMatch[2]) {
+                        correctCount = parseInt(ratioMatch[1], 10);
+                        totalItems = parseInt(ratioMatch[2], 10);
+                        correctText = `${correctCount}/${totalItems}`;
+                    } else {
+                        correctText = ratioMatch[1];
+                    }
+                }
+
+                let timeSpent = '—';
+                const timeMatch = (item.score_summary || "").match(/-\s*(\d{1,2}:\d{2})/);
+                if (timeMatch) timeSpent = timeMatch[1];
+
+                let subjName = 'Chung';
+                const subjMatch = (item.status || "").match(/\[(.*?)\]/);
+                if (subjMatch) subjName = subjMatch[1];
 
                 let timeStr = "";
                 try {
@@ -1289,13 +1418,31 @@ class DatabaseService {
                 }
 
                 return {
+                    // Vietnamese keys
                     "Họ Và Tên": item.player_name || "Thí sinh",
                     "Địa Chỉ IP": item.ip_address || "Chưa rõ",
                     "Thiết Bị": item.device_info || "Trình duyệt",
+                    "Môn Thi": subjName,
                     "Điểm Số": score,
                     "Số Câu Đúng": correctText,
                     "Chi Tiết Kết Quả": item.score_summary || item.status,
-                    "Thời Gian Nộp": timeStr
+                    "Thời Gian Làm Bài": timeSpent,
+                    "Thời Gian Nộp": timeStr,
+
+                    // English snake_case keys (chuẩn cho app.js adminExportScoreboardExcel)
+                    player_name: item.player_name || "Thí sinh",
+                    playerName: item.player_name || "Thí sinh",
+                    client_ip: item.ip_address || "Chưa rõ",
+                    ip_address: item.ip_address || "Chưa rõ",
+                    device_info: item.device_info || "Trình duyệt",
+                    subject_name: subjName,
+                    final_score: score,
+                    score: score,
+                    correct_count: correctCount,
+                    total_items: totalItems,
+                    time_spent: timeSpent,
+                    status: item.score_summary || item.status,
+                    created_at: item.last_active || item.created_at
                 };
             });
     }

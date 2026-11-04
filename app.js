@@ -1,15 +1,14 @@
 /**
- * QuizMaster Pro v4.0 - Hệ Thống Ôn Thi Trực Tuyến Toàn Diện
+ *  Hệ Thống Ôn Thi Trực Tuyến Toàn Diện
  * Tự động hóa toàn bộ: Phân quyền IP Admin, Đa môn học động, Nạp đề Word/Excel,
  * Xuất điểm Excel, Bảng xếp hạng Top 10, Chế độ bảo trì, Luyện tập vs Thi thử.
  */
 
 class QuizApp {
     constructor() {
-        // Môn học & Đa môn học động & Phân loại đợt kiểm tra
+        // Môn học & Đa môn học động
         this.currentSubject = 'history';
         this.dynamicSubjects = [];
-        this.selectedSemesterFilter = 'all';
 
         // Thông tin người học & Thiết bị & IP
         this.playerName = "";
@@ -17,10 +16,12 @@ class QuizApp {
         this.deviceInfo = this.detectDevice();
         this.currentLoginId = null;
 
-        // Đồng hồ bấm giờ làm bài
+        // Đồng hồ bấm giờ (Luyện tập: Đếm tiến / Thi thử: Đếm ngược)
         this.secondsElapsed = 0;
         this.timerInterval = null;
         this.isExamMode = false;
+        this.examMinutes = 45;
+        this.examSecondsRemaining = 45 * 60;
 
         // Âm thanh Ting / Bíp (Web Audio API)
         this.soundEnabled = localStorage.getItem('quiz_sound_enabled') !== 'false';
@@ -109,7 +110,7 @@ class QuizApp {
                 semester: 'Giữa Kì 1',
                 icon: 'fa-earth-americas',
                 gradient: 'emerald',
-                visibility: 'PUBLIC',
+                visibility: 'PRIVATE',
                 count: 52
             }
         ];
@@ -128,18 +129,13 @@ class QuizApp {
         if (!Array.isArray(loaded) || loaded.length === 0) {
             const cached = localStorage.getItem('quiz_dynamic_subjects');
             if (cached) {
-                try { loaded = JSON.parse(cached); } catch (e) {}
+                try { loaded = JSON.parse(cached); } catch (e) { }
             }
         }
 
         if (!Array.isArray(loaded) || loaded.length === 0) {
             loaded = this.getDefaultSubjects();
         }
-
-        // Đảm bảo mọi môn đều có thuộc tính visibility chuẩn (mặc định là PUBLIC)
-        loaded.forEach(s => {
-            if (!s.visibility) s.visibility = 'PUBLIC';
-        });
 
         this.dynamicSubjects = loaded;
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(loaded));
@@ -151,34 +147,15 @@ class QuizApp {
     renderHomeSubjects() {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
+
         grid.innerHTML = '';
-
-        // Học sinh chỉ thấy những môn được Admin để CÔNG KHAI (PUBLIC).
-        // Admin (khi đã đăng nhập) sẽ thấy toàn bộ để kiểm tra đề, kèm nhãn [Ẩn với HS] cho môn Private.
-        const visibleSubjects = this.dynamicSubjects.filter(sub => {
-            if (this.isAdminAuthenticated) return true;
-            return sub.visibility === 'PUBLIC';
-        });
-
-        if (visibleSubjects.length === 0) {
-            grid.innerHTML = `
-                <div class="col-span-full p-8 text-center text-slate-400 text-xs italic bg-slate-900/60 rounded-2xl border border-slate-800 space-y-1.5">
-                    <i class="fa-solid fa-lock text-amber-400 text-lg block"></i>
-                    <p class="font-bold text-white text-sm">Hiện chưa có môn thi nào được mở công khai.</p>
-                    <p class="text-slate-400 text-[11px]">Vui lòng đợi giáo viên kích hoạt môn thi hoặc quay lại sau!</p>
-                </div>
-            `;
-            return;
-        }
-
-        // Đảm bảo môn đang chọn hợp lệ
-        if (!visibleSubjects.some(s => s.key === this.currentSubject)) {
-            this.currentSubject = visibleSubjects[0].key;
-            this.loadQuestionsForCurrentSubject();
-        }
-
-        visibleSubjects.forEach(sub => {
+        this.dynamicSubjects.forEach(sub => {
+            // Kiểm tra hiển thị môn riêng tư (PRIVATE)
             const isPrivate = sub.visibility === 'PRIVATE';
+            const isAuthorized = !isPrivate || this.isAdminAuthenticated || this.allowedGeoIps.includes(this.clientIp);
+
+            if (!isAuthorized) return;
+
             const isSelected = this.currentSubject === sub.key;
             const card = document.createElement('button');
             card.type = 'button';
@@ -206,15 +183,15 @@ class QuizApp {
                 }
             }
 
-            card.className = `p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${bgClass}`;
+            card.className = `p-3 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${bgClass}`;
             card.innerHTML = `
-                <div class="w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center text-xl shrink-0 shadow">
+                <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center text-lg shrink-0 shadow">
                     <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                 </div>
                 <div class="overflow-hidden flex-1">
                     <div class="flex items-center justify-between gap-1">
                         <p class="font-bold text-xs sm:text-sm truncate text-white">${sub.name}</p>
-                        ${(isPrivate && this.isAdminAuthenticated) ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Ẩn với HS</span>' : ''}
+                        ${isPrivate ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Riêng tư</span>' : ''}
                     </div>
                     <p class="text-[10px] text-slate-400 mt-0.5 truncate">${sub.semester || 'Đề cương'} • ${sub.count || 0} câu</p>
                 </div>
@@ -447,7 +424,7 @@ class QuizApp {
                         this.allowedAdminIps.push(this.clientIp);
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             this.updateAdminUIVisibility();
             this.openAdminDashboard();
@@ -676,7 +653,7 @@ class QuizApp {
                     const parsed = JSON.parse(cached);
                     this.isMaintenanceMode = Boolean(parsed.isActive);
                     if (parsed.message) this.maintenanceMessage = parsed.message;
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
@@ -773,7 +750,7 @@ class QuizApp {
                 if (window.dbService && typeof window.dbService.setMaintenanceStatus === 'function') {
                     await window.dbService.setMaintenanceStatus(this.isMaintenanceMode, this.maintenanceMessage);
                 }
-            } catch (e) {}
+            } catch (e) { }
             this.updateAdminMaintenanceUI();
             this.applyMaintenanceMode();
         }
@@ -1214,13 +1191,13 @@ Giải thích: Biên độ A = 5 cm.`;
                 const optChars = ['A', 'B', 'C', 'D'];
                 optionsHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
                     ${q.options.map((opt, oIdx) => {
-                        const isCorrect = oIdx === (q.correct !== undefined ? q.correct : q.answer);
-                        return `
+                    const isCorrect = oIdx === (q.correct !== undefined ? q.correct : q.answer);
+                    return `
                             <div class="p-1.5 rounded-lg ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'bg-slate-900/60 text-slate-300'}">
                                 <span class="font-bold">${optChars[oIdx]}.</span> ${opt}
                             </div>
                         `;
-                    }).join('')}
+                }).join('')}
                 </div>`;
             } else if (q.statements && q.statements.length > 0) {
                 optionsHtml = `<div class="space-y-1 pt-1">
@@ -1270,183 +1247,40 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!container) return;
         container.innerHTML = '';
 
-        if (this.dynamicSubjects.length === 0) {
-            container.innerHTML = `
-                <div class="p-8 text-center text-slate-500 italic bg-slate-900/60 rounded-2xl border border-slate-800">
-                    Chưa có môn học nào trong hệ thống. Hãy bấm <strong>"+ Thêm Môn Học Mới"</strong> để khởi tạo.
-                </div>
-            `;
-            return;
-        }
-
-        // 1. Gom các môn học theo từng Tệp đợt thi (Giữa Kì 1, Cuối Kì 1, KT 15 Phút...)
-        const standardOrder = ['Kiểm Tra 15 Phút', 'Kiểm Tra 1 Tiết', 'Giữa Kì 1', 'Cuối Kì 1', 'Giữa Kì 2', 'Cuối Kì 2', 'Ôn Tập Tự Do'];
-        const groups = {};
         this.dynamicSubjects.forEach(sub => {
-            const sem = sub.semester || 'Ôn Tập Tự Do';
-            if (!groups[sem]) groups[sem] = [];
-            groups[sem].push(sub);
-        });
-
-        const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
-            let ia = standardOrder.indexOf(a);
-            let ib = standardOrder.indexOf(b);
-            if (ia === -1) ia = 99;
-            if (ib === -1) ib = 99;
-            return ia - ib;
-        });
-
-        // 2. Render từng Tệp gom chung
-        sortedGroupKeys.forEach(semName => {
-            const subList = groups[semName];
-            const folderBox = document.createElement('div');
-            folderBox.className = "p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-xl space-y-3.5";
-
-            let iconColor = "from-indigo-600/30 to-purple-600/30 border-indigo-500/40 text-indigo-400";
-            let folderIcon = "fa-folder-open";
-            if (semName.includes('15')) {
-                iconColor = "from-amber-600/30 to-orange-600/30 border-amber-500/40 text-amber-400";
-                folderIcon = "fa-bolt";
-            } else if (semName.includes('Tiết') || semName.includes('tiết')) {
-                iconColor = "from-sky-600/30 to-cyan-600/30 border-sky-500/40 text-sky-400";
-                folderIcon = "fa-pen-clip";
-            } else if (semName.includes('Cuối')) {
-                iconColor = "from-emerald-600/30 to-teal-600/30 border-emerald-500/40 text-emerald-400";
-                folderIcon = "fa-flag-checkered";
-            }
-
-            folderBox.innerHTML = `
-                <!-- Tiêu đề Tệp Gom Môn -->
-                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            const isPrivate = sub.visibility === 'PRIVATE';
+            const card = document.createElement('div');
+            card.className = "p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-md flex flex-col justify-between space-y-3";
+            card.innerHTML = `
+                <div class="flex items-start justify-between gap-3">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr ${iconColor} border flex items-center justify-center text-lg shadow">
-                            <i class="fa-solid ${folderIcon}"></i>
+                        <div class="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center text-lg">
+                            <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                         </div>
                         <div>
-                            <div class="flex items-center gap-2">
-                                <h4 class="font-heading font-extrabold text-white text-base tracking-tight">${semName}</h4>
-                                <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-[10px] border border-indigo-500/30">
-                                    ${subList.length} môn học
-                                </span>
-                            </div>
-                            <p class="text-[11px] text-slate-400 mt-0.5">Tệp gom các môn: <span class="text-slate-300 font-medium">${subList.map(s => s.name).join(', ')}</span></p>
+                            <h4 class="font-bold text-white text-sm">${sub.name}</h4>
+                            <p class="text-[11px] text-slate-400 font-mono">key: ${sub.key}</p>
                         </div>
                     </div>
-                    <button type="button" onclick="app.openSubjectEditorForSemester('${semName}')" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-plus"></i> + Thêm môn vào tệp ${semName}
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isPrivate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
+                        ${isPrivate ? '🔒 Riêng tư' : '🌍 Công khai'}
+                    </span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-700/60">
+                    <span>Thẻ: <strong class="text-slate-200">${sub.semester || 'Học kỳ'}</strong></span>
+                    <span>Đề: <strong class="text-indigo-400">${sub.count || 0} câu</strong></span>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+                    <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer">
+                        <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
+                    </button>
+                    <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
+                        <i class="fa-solid fa-trash-can mr-1"></i> Xóa
                     </button>
                 </div>
-
-                <!-- Lưới các môn học trong Tệp này -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    ${subList.map(sub => {
-                        const isPrivate = sub.visibility === 'PRIVATE';
-                        return `
-                            <div class="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 hover:border-slate-600 transition shadow flex flex-col justify-between space-y-2.5">
-                                <div class="flex items-start justify-between gap-2">
-                                    <div class="flex items-center gap-2.5">
-                                        <div class="w-9 h-9 rounded-lg bg-slate-700/80 text-white flex items-center justify-center text-base shrink-0">
-                                            <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
-                                        </div>
-                                        <div class="overflow-hidden">
-                                            <h5 class="font-bold text-white text-xs sm:text-sm truncate">${sub.name}</h5>
-                                            <p class="text-[10px] text-slate-400 font-mono truncate">key: ${sub.key}</p>
-                                        </div>
-                                    </div>
-                                    <button type="button" onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${isPrivate ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'}" title="${isPrivate ? 'Môn đang ẨN. Bấm để MỞ CÔNG KHAI cho học sinh' : 'Môn đang MỞ CÔNG KHAI. Bấm để ẨN KHỎI học sinh'}">
-                                        <i class="fa-solid ${isPrivate ? 'fa-lock' : 'fa-globe'}"></i>
-                                        <span>${isPrivate ? '🔒 Đang Ẩn (Riêng tư)' : '🌍 Đang Mở (Công khai)'}</span>
-                                    </button>
-                                </div>
-
-                                <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-700/60">
-                                    <span>Đề thi: <strong class="text-indigo-400 font-bold">${sub.count || 0} câu</strong></span>
-                                    <div class="flex items-center gap-1.5">
-                                        <button onclick="app.openSubjectEditor('${sub.key}')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-semibold transition cursor-pointer" title="Chỉnh sửa môn">
-                                            <i class="fa-solid fa-pen-to-square mr-0.5"></i> Sửa
-                                        </button>
-                                        <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-semibold transition cursor-pointer" title="Xóa môn">
-                                            <i class="fa-solid fa-trash-can mr-0.5"></i> Xóa
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
             `;
-            container.appendChild(folderBox);
+            container.appendChild(card);
         });
-    }
-
-    openSubjectEditorForSemester(semesterName) {
-        this.openSubjectEditor();
-        const semInput = document.getElementById('edit-sub-semester');
-        const semSelect = document.getElementById('edit-sub-semester-select');
-        const customBox = document.getElementById('edit-sub-custom-semester-box');
-
-        if (semInput) semInput.value = semesterName;
-        if (semSelect) {
-            let matched = false;
-            for (let i = 0; i < semSelect.options.length; i++) {
-                if (semSelect.options[i].value === semesterName) {
-                    semSelect.selectedIndex = i;
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
-                semSelect.value = '__CUSTOM__';
-                if (customBox) customBox.classList.remove('hidden');
-            } else {
-                if (customBox) customBox.classList.add('hidden');
-            }
-        }
-    }
-
-    async adminToggleSubjectVisibility(key) {
-        const sub = this.dynamicSubjects.find(s => s.key === key);
-        if (!sub) return;
-
-        const isCurrentlyPrivate = sub.visibility === 'PRIVATE';
-        sub.visibility = isCurrentlyPrivate ? 'PUBLIC' : 'PRIVATE';
-
-        // 1. Lưu localStorage
-        localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
-
-        // 2. Lưu Cloud Supabase
-        try {
-            if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
-                await window.dbService.saveDynamicSubjects(this.dynamicSubjects);
-            }
-        } catch (e) {
-            console.warn("Lưu Supabase:", e);
-        }
-
-        // 3. Render lại tức thì
-        this.renderAdminSubjectsList();
-        this.renderHomeSubjects();
-
-        const isNowPublic = sub.visibility === 'PUBLIC';
-        const msg = isNowPublic
-            ? `✅ ĐÃ MỞ CÔNG KHAI MÔN [${sub.name}]!\n\nHọc sinh vào trang web sẽ nhìn thấy và làm bài được ngay.`
-            : `🔒 ĐÃ KHÓA / ẨN MÔN [${sub.name}]!\n\nHọc sinh bình thường sẽ không thấy môn này nữa (chỉ Admin mới thấy để quản lý/soạn đề).`;
-        alert(msg);
-    }
-
-    onSemesterSelectChange(val) {
-        const customBox = document.getElementById('edit-sub-custom-semester-box');
-        const input = document.getElementById('edit-sub-semester');
-        if (val === '__CUSTOM__') {
-            if (customBox) customBox.classList.remove('hidden');
-            if (input) {
-                input.value = '';
-                input.focus();
-            }
-        } else {
-            if (customBox) customBox.classList.add('hidden');
-            if (input) input.value = val;
-        }
     }
 
     openSubjectEditor(key) {
@@ -1456,12 +1290,8 @@ Giải thích: Biên độ A = 5 cm.`;
         const nameInput = document.getElementById('edit-sub-name');
         const keyInput = document.getElementById('edit-sub-key');
         const semInput = document.getElementById('edit-sub-semester');
-        const semSelect = document.getElementById('edit-sub-semester-select');
-        const customBox = document.getElementById('edit-sub-custom-semester-box');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
-
-        let targetSem = 'Giữa Kì 1';
 
         if (key) {
             const sub = this.dynamicSubjects.find(s => s.key === key);
@@ -1473,7 +1303,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     keyInput.value = sub.key;
                     keyInput.disabled = true;
                 }
-                targetSem = sub.semester || 'Giữa Kì 1';
+                if (semInput) semInput.value = sub.semester || '';
                 if (iconSelect) iconSelect.value = sub.icon || 'fa-book';
                 if (gradSelect) gradSelect.value = sub.gradient || 'indigo';
 
@@ -1490,29 +1320,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 keyInput.value = '';
                 keyInput.disabled = false;
             }
-            targetSem = 'Giữa Kì 1';
-            const radios = document.getElementsByName('edit-sub-visibility');
-            radios.forEach(r => {
-                if (r.value === 'PUBLIC') r.checked = true;
-            });
-        }
-
-        if (semInput) semInput.value = targetSem;
-        if (semSelect) {
-            let matched = false;
-            for (let i = 0; i < semSelect.options.length; i++) {
-                if (semSelect.options[i].value === targetSem) {
-                    semSelect.selectedIndex = i;
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
-                semSelect.value = '__CUSTOM__';
-                if (customBox) customBox.classList.remove('hidden');
-            } else {
-                if (customBox) customBox.classList.add('hidden');
-            }
+            if (semInput) semInput.value = 'Giữa Kì 2';
         }
 
         if (modal) {
@@ -1534,19 +1342,12 @@ Giải thích: Biên độ A = 5 cm.`;
         const nameInput = document.getElementById('edit-sub-name');
         const keyInput = document.getElementById('edit-sub-key');
         const semInput = document.getElementById('edit-sub-semester');
-        const semSelect = document.getElementById('edit-sub-semester-select');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
 
         const name = nameInput ? nameInput.value.trim() : '';
         const key = keyInput ? keyInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') : '';
-        
-        let semester = semInput ? semInput.value.trim() : '';
-        if (!semester && semSelect && semSelect.value !== '__CUSTOM__') {
-            semester = semSelect.value;
-        }
-        if (!semester) semester = 'Ôn Tập Tự Do';
-
+        const semester = semInput ? semInput.value.trim() : 'Đề cương';
         const icon = iconSelect ? iconSelect.value : 'fa-book';
         const gradient = gradSelect ? gradSelect.value : 'indigo';
 
@@ -1606,7 +1407,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (window.dbService && typeof window.dbService.deleteDynamicSubject === 'function') {
                 await window.dbService.deleteDynamicSubject(key);
             }
-        } catch (e) {}
+        } catch (e) { }
 
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
         if (this.currentSubject === key) {
@@ -1642,16 +1443,16 @@ Giải thích: Biên độ A = 5 cm.`;
 
             const exportRows = data.map((item, idx) => ({
                 "STT": idx + 1,
-                "Họ và Tên": item.player_name || 'Học sinh',
-                "Địa Chỉ IP": item.client_ip || '—',
-                "Thiết Bị": item.device_info || '—',
-                "Môn Thi": item.subject_name || 'Chung',
-                "Điểm Số (Thang 100)": item.final_score !== undefined ? item.final_score : '—',
-                "Số Ý Đúng": item.correct_count !== undefined ? item.correct_count : '—',
-                "Tổng Số Ý": item.total_items !== undefined ? item.total_items : '—',
-                "Thời Gian Làm Bài": item.time_spent || '—',
-                "Trạng Thái": item.status || 'Hoàn thành',
-                "Thời Gian Nộp": item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : '—'
+                "Họ và Tên": item.player_name || item.playerName || item["Họ Và Tên"] || item["Họ và Tên"] || 'Học sinh',
+                "Địa Chỉ IP": item.client_ip || item.ip_address || item.ipAddress || item["Địa Chỉ IP"] || '—',
+                "Thiết Bị": item.device_info || item.deviceInfo || item["Thiết Bị"] || '—',
+                "Môn Thi": item.subject_name || item.subjectTitle || item["Môn Thi"] || 'Chung',
+                "Điểm Số (Thang 100)": item.final_score !== undefined ? item.final_score : (item.score !== undefined ? item.score : (item["Điểm Số"] !== undefined ? item["Điểm Số"] : '—')),
+                "Số Ý Đúng": (item.correct_count !== undefined && item.correct_count !== '-') ? item.correct_count : (item.correctCount !== undefined ? item.correctCount : (item["Số Câu Đúng"] || '—')),
+                "Tổng Số Ý": (item.total_items !== undefined && item.total_items !== '-') ? item.total_items : (item.totalCount !== undefined ? item.totalCount : '—'),
+                "Thời Gian Làm Bài": item.time_spent || item.timeSpent || item["Thời Gian Làm Bài"] || '—',
+                "Trạng Thái": item.status || item.scoreSummary || item["Chi Tiết Kết Quả"] || 'Hoàn thành',
+                "Thời Gian Nộp": item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : (item["Thời Gian Nộp"] || item.submittedAt || '—')
             }));
 
             const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -1722,9 +1523,9 @@ Giải thích: Biên độ A = 5 cm.`;
                         </div>
                         <div class="w-full podium-silver p-2.5 rounded-2xl text-center space-y-1">
                             <span class="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-slate-700 text-slate-200">Hạng 2</span>
-                            <p class="font-bold text-white text-xs truncate" title="${top2.player_name}">${top2.player_name}</p>
+                            <p class="font-bold text-white text-xs truncate" title="${top2.player_name || top2.playerName || 'Thí sinh'}">${top2.player_name || top2.playerName || 'Thí sinh'}</p>
                             <p class="font-extrabold text-amber-300 text-sm">${top2.score || 0}đ</p>
-                            <p class="text-[10px] text-slate-400 font-mono">${top2.time_spent || '—'}</p>
+                            <p class="text-[10px] text-slate-400 font-mono">${top2.time_spent || top2.timeSpent || '—'}</p>
                         </div>
                     ` : '<div class="h-24"></div>'}
                 </div>
@@ -1737,9 +1538,9 @@ Giải thích: Biên độ A = 5 cm.`;
                         </div>
                         <div class="w-full podium-gold p-3.5 rounded-2xl text-center space-y-1.5">
                             <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-amber-500 text-slate-950 shadow">Thủ Khoa</span>
-                            <p class="font-extrabold text-white text-xs sm:text-sm truncate" title="${top1.player_name}">${top1.player_name}</p>
+                            <p class="font-extrabold text-white text-xs sm:text-sm truncate" title="${top1.player_name || top1.playerName || 'Thí sinh'}">${top1.player_name || top1.playerName || 'Thí sinh'}</p>
                             <p class="font-extrabold text-amber-300 text-base sm:text-lg">${top1.score || 0}đ</p>
-                            <p class="text-[10px] text-amber-200/80 font-mono">${top1.time_spent || '—'}</p>
+                            <p class="text-[10px] text-amber-200/80 font-mono">${top1.time_spent || top1.timeSpent || '—'}</p>
                         </div>
                     ` : '<div class="h-28"></div>'}
                 </div>
@@ -1752,9 +1553,9 @@ Giải thích: Biên độ A = 5 cm.`;
                         </div>
                         <div class="w-full podium-bronze p-2.5 rounded-2xl text-center space-y-1">
                             <span class="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-900 text-amber-200">Hạng 3</span>
-                            <p class="font-bold text-white text-xs truncate" title="${top3.player_name}">${top3.player_name}</p>
+                            <p class="font-bold text-white text-xs truncate" title="${top3.player_name || top3.playerName || 'Thí sinh'}">${top3.player_name || top3.playerName || 'Thí sinh'}</p>
                             <p class="font-extrabold text-amber-300 text-sm">${top3.score || 0}đ</p>
-                            <p class="text-[10px] text-slate-400 font-mono">${top3.time_spent || '—'}</p>
+                            <p class="text-[10px] text-slate-400 font-mono">${top3.time_spent || top3.timeSpent || '—'}</p>
                         </div>
                     ` : '<div class="h-24"></div>'}
                 </div>
@@ -1773,9 +1574,9 @@ Giải thích: Biên độ A = 5 cm.`;
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td class="py-2.5 px-3 text-center font-bold text-slate-400">#${rank}</td>
-                        <td class="py-2.5 px-3 font-semibold text-white max-w-[140px] truncate">${item.player_name}</td>
+                        <td class="py-2.5 px-3 font-semibold text-white max-w-[140px] truncate">${item.player_name || item.playerName || 'Thí sinh'}</td>
                         <td class="py-2.5 px-3 text-center font-bold text-emerald-400">${item.score || 0}đ</td>
-                        <td class="py-2.5 px-3 text-right font-mono text-slate-400">${item.time_spent || '—'}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-slate-400">${item.time_spent || item.timeSpent || '—'}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -1828,11 +1629,30 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     /* ============================================================== */
-    /* 8. ÂM THANH & TRẢI NGHIỆM HỌC TẬP (UX ENHANCEMENTS)             */
+    /* 8. CHẾ ĐỘ LUYỆN TẬP VS THI THỬ & ÂM THANH (UX ENHANCEMENTS)    */
     /* ============================================================== */
 
     setExamMode(isExam) {
-        this.isExamMode = false;
+        this.isExamMode = isExam;
+        const btnPractice = document.getElementById('btn-mode-practice');
+        const btnExam = document.getElementById('btn-mode-exam');
+        const ind = document.getElementById('exam-mode-indicator-text');
+
+        if (isExam) {
+            if (btnExam) btnExam.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-amber-600/25 border-amber-500 text-white shadow-md";
+            if (btnPractice) btnPractice.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-400";
+            if (ind) {
+                ind.textContent = "Chế độ Thi Thử (Đếm ngược 45 phút)";
+                ind.className = "text-[11px] font-bold text-amber-400";
+            }
+        } else {
+            if (btnPractice) btnPractice.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md";
+            if (btnExam) btnExam.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-400";
+            if (ind) {
+                ind.textContent = "Chế độ Luyện Tập (Xem đáp án ngay)";
+                ind.className = "text-[11px] font-bold text-emerald-400";
+            }
+        }
     }
 
     toggleSound() {
@@ -1866,7 +1686,7 @@ Giải thích: Biên độ A = 5 cm.`;
             gain.connect(ctx.destination);
             osc.start();
             osc.stop(ctx.currentTime + 0.35);
-        } catch (e) {}
+        } catch (e) { }
     }
 
     playBeepSound() {
@@ -1884,7 +1704,7 @@ Giải thích: Biên độ A = 5 cm.`;
             gain.connect(ctx.destination);
             osc.start();
             osc.stop(ctx.currentTime + 0.25);
-        } catch (e) {}
+        } catch (e) { }
     }
 
     renderMath(container) {
@@ -1897,14 +1717,14 @@ Giải thích: Biên độ A = 5 cm.`;
                 ],
                 throwOnError: false
             });
-        } catch (e) {}
+        } catch (e) { }
     }
 
     /* ============================================================== */
     /* 9. THỰC HIỆN LÀM BÀI TRẮC NGHIỆM & TÍNH ĐIỂM                    */
     /* ============================================================== */
 
-    startQuiz() {
+    async startQuiz() {
         const input = document.getElementById('player-name-input');
         const err = document.getElementById('player-name-error');
         const name = input ? input.value.trim() : '';
@@ -1918,10 +1738,19 @@ Giải thích: Biên độ A = 5 cm.`;
         this.playerName = name;
         localStorage.setItem('quiz_user_name', name);
 
+        // Đảm bảo IP đã xác định trước khi ghi nhận vào hệ thống
+        if (!this.clientIp || this.clientIp.startsWith('Đang')) {
+            await this.fetchClientIp();
+        }
+
         // Khởi tạo bài thi trên Cloud Supabase
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
-            window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle())
-                .then(id => { this.currentLoginId = id; });
+            try {
+                const res = await window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle());
+                this.currentLoginId = (res && res.id) ? res.id : res;
+            } catch (err) {
+                console.warn("Lỗi lưu đăng nhập lên Supabase:", err);
+            }
         }
 
         // Cập nhật Header
@@ -1930,8 +1759,8 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const modeBadge = document.getElementById('quiz-mode-badge');
         if (modeBadge) {
-            modeBadge.textContent = "Ôn Luyện";
-            modeBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+            modeBadge.textContent = this.isExamMode ? "Thi Thử (45p)" : "Luyện Tập";
+            modeBadge.className = this.isExamMode ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30" : "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
         }
 
         // Tải Auto-Save tiến độ cũ nếu có
@@ -2017,24 +1846,33 @@ Giải thích: Biên độ A = 5 cm.`;
                     ${imgHtml}
                     <div class="grid grid-cols-1 gap-2 pt-1">
                         ${(q.options || []).map((opt, oIdx) => {
-                            let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
-                            if (isAnswered) {
-                                if (oIdx === correctIdx) {
-                                    optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
-                                } else if (selected === oIdx) {
-                                    optStyle = "bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong";
-                                }
-                            }
+                    let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
 
-                            return `
+                    if (this.isExamMode) {
+                        // Trong chế độ Thi Thử: Chỉ highlight phương án đã chọn, không lộ Đúng/Sai
+                        if (selected === oIdx) {
+                            optStyle = "bg-indigo-600/30 border-indigo-500 text-white font-bold ring-2 ring-indigo-500/50";
+                        }
+                    } else {
+                        // Trong chế độ Luyện Tập: Lộ ngay kết quả Đúng (Xanh) / Sai (Đỏ)
+                        if (isAnswered) {
+                            if (oIdx === correctIdx) {
+                                optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
+                            } else if (selected === oIdx) {
+                                optStyle = "bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong";
+                            }
+                        }
+                    }
+
+                    return `
                                 <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
                                     <span class="w-6 h-6 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">${optChars[oIdx]}</span>
                                     <span class="text-xs sm:text-sm font-medium flex-1 pt-0.5">${opt}</span>
                                 </button>
                             `;
-                        }).join('')}
+                }).join('')}
                     </div>
-                    ${(isAnswered && q.explanation) ? `
+                    ${(!this.isExamMode && isAnswered && q.explanation) ? `
                         <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
                             <p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
                             <p>${q.explanation}</p>
@@ -2057,22 +1895,27 @@ Giải thích: Biên độ A = 5 cm.`;
                     ${imgHtml}
                     <div class="space-y-2.5 pt-1">
                         ${stmts.map((st, sIdx) => {
-                            const val = ansObj[sIdx];
-                            const isAnswered = val !== undefined;
+                    const val = ansObj[sIdx];
+                    const isAnswered = val !== undefined;
 
-                            let trueBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
-                            let falseBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
+                    let trueBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
+                    let falseBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
 
-                            if (isAnswered) {
-                                if (val === true) {
-                                    trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                                }
-                                if (val === false) {
-                                    falseBtnClass = (st.answer === false) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                                }
+                    if (this.isExamMode) {
+                        if (val === true) trueBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
+                        if (val === false) falseBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
+                    } else {
+                        if (isAnswered) {
+                            if (val === true) {
+                                trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
                             }
+                            if (val === false) {
+                                falseBtnClass = (st.answer === false) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
+                            }
+                        }
+                    }
 
-                            return `
+                    return `
                                 <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
                                     <div class="flex items-start gap-2 flex-1">
                                         <span class="font-bold text-indigo-400">${String.fromCharCode(97 + sIdx)})</span>
@@ -2088,7 +1931,7 @@ Giải thích: Biên độ A = 5 cm.`;
                                     </div>
                                 </div>
                             `;
-                        }).join('')}
+                }).join('')}
                     </div>
                 `;
             }
@@ -2125,11 +1968,13 @@ Giải thích: Biên độ A = 5 cm.`;
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
 
-        const correctIdx = q.correct !== undefined ? q.correct : q.answer;
-        if (oIdx === correctIdx) {
-            this.playTingSound();
-        } else {
-            this.playBeepSound();
+        if (!this.isExamMode) {
+            const correctIdx = q.correct !== undefined ? q.correct : q.answer;
+            if (oIdx === correctIdx) {
+                this.playTingSound();
+            } else {
+                this.playBeepSound();
+            }
         }
 
         this.renderAllQuestions();
@@ -2141,12 +1986,14 @@ Giải thích: Biên độ A = 5 cm.`;
         this.userAnswers[qId][stmtIdx] = isTrue;
         this.saveAutoSaveProgress();
 
-        const q = this.allQuestions.find(item => item.id === qId);
-        if (q && q.statements && q.statements[stmtIdx]) {
-            if (Boolean(q.statements[stmtIdx].answer) === isTrue) {
-                this.playTingSound();
-            } else {
-                this.playBeepSound();
+        if (!this.isExamMode) {
+            const q = this.allQuestions.find(item => item.id === qId);
+            if (q && q.statements && q.statements[stmtIdx]) {
+                if (Boolean(q.statements[stmtIdx].answer) === isTrue) {
+                    this.playTingSound();
+                } else {
+                    this.playBeepSound();
+                }
             }
         }
 
@@ -2223,7 +2070,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const progressText = document.getElementById('quiz-progress-text');
         const progressBar = document.getElementById('quiz-progress-bar');
 
-        if (liveScore) liveScore.textContent = correctCount;
+        if (liveScore) liveScore.textContent = this.isExamMode ? '?' : correctCount;
         if (attemptedEl) attemptedEl.textContent = attemptedCount;
         if (wrongBadge) wrongBadge.textContent = wrongCount;
 
@@ -2240,13 +2087,30 @@ Giải thích: Biên độ A = 5 cm.`;
     startStopwatch() {
         clearInterval(this.timerInterval);
         const timerDisplay = document.getElementById('timer-display');
-        this.secondsElapsed = 0;
-        this.timerInterval = setInterval(() => {
-            this.secondsElapsed++;
-            const m = Math.floor(this.secondsElapsed / 60);
-            const s = this.secondsElapsed % 60;
-            if (timerDisplay) timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }, 1000);
+
+        if (this.isExamMode) {
+            this.examSecondsRemaining = this.examMinutes * 60;
+            this.timerInterval = setInterval(() => {
+                this.examSecondsRemaining--;
+                if (this.examSecondsRemaining <= 0) {
+                    clearInterval(this.timerInterval);
+                    alert("⏰ ĐÃ HẾT GIỜ LÀM BÀI! Hệ thống đang tự động nộp bài của bạn.");
+                    this.finishQuiz();
+                    return;
+                }
+                const m = Math.floor(this.examSecondsRemaining / 60);
+                const s = this.examSecondsRemaining % 60;
+                if (timerDisplay) timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            }, 1000);
+        } else {
+            this.secondsElapsed = 0;
+            this.timerInterval = setInterval(() => {
+                this.secondsElapsed++;
+                const m = Math.floor(this.secondsElapsed / 60);
+                const s = this.secondsElapsed % 60;
+                if (timerDisplay) timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            }, 1000);
+        }
     }
 
     stopStopwatch() {
@@ -2331,7 +2195,10 @@ Giải thích: Biên độ A = 5 cm.`;
         if (scoreEl) scoreEl.textContent = finalScore;
         if (ratioEl) ratioEl.textContent = `${correctCount}/${totalItems}`;
 
-        const secondsUsed = this.secondsElapsed;
+        let secondsUsed = this.secondsElapsed;
+        if (this.isExamMode) {
+            secondsUsed = (this.examMinutes * 60) - this.examSecondsRemaining;
+        }
         const m = Math.floor(secondsUsed / 60);
         const s = secondsUsed % 60;
         const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -2388,9 +2255,9 @@ Giải thích: Biên độ A = 5 cm.`;
                 const ansObj = this.userAnswers[q.id] || {};
                 ansReview = `<div class="space-y-1">
                     ${(q.statements || []).map((st, sIdx) => {
-                        const val = ansObj[sIdx];
-                        const isCorrect = val !== undefined && Boolean(val) === Boolean(st.answer);
-                        return `
+                    const val = ansObj[sIdx];
+                    const isCorrect = val !== undefined && Boolean(val) === Boolean(st.answer);
+                    return `
                             <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60">
                                 <span>${String.fromCharCode(97 + sIdx)}) ${st.text}</span>
                                 <span class="font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}">
@@ -2398,7 +2265,7 @@ Giải thích: Biên độ A = 5 cm.`;
                                 </span>
                             </div>
                         `;
-                    }).join('')}
+                }).join('')}
                 </div>`;
             } else {
                 const sel = this.userAnswers[q.id];
@@ -2499,6 +2366,7 @@ Giải thích: Biên độ A = 5 cm.`;
             nameEl.textContent = saved;
             banner.classList.remove('hidden');
             if (input) input.value = saved;
+            this.recordVisitorPresence('Đang ở trang chủ');
         } else if (banner) {
             banner.classList.add('hidden');
         }
@@ -2517,12 +2385,28 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     detectDevice() {
-        const ua = navigator.userAgent;
+        if (typeof navigator === 'undefined') return "Trình duyệt Web";
+        const ua = navigator.userAgent || '';
         if (/android/i.test(ua)) return "Android Phone";
-        if (/iphone|ipad|ipod/i.test(ua)) return "iPhone/iPad";
+        if (/iphone/i.test(ua)) return "iPhone";
+        if (/ipad/i.test(ua)) return "iPad";
         if (/windows/i.test(ua)) return "Windows PC";
-        if (/macintosh/i.test(ua)) return "MacBook/Mac";
+        if (/macintosh|mac os x/i.test(ua)) return "MacBook / Mac";
+        if (/cros/i.test(ua)) return "Chromebook";
+        if (/linux/i.test(ua)) return "Linux PC";
         return "Trình duyệt Web";
+    }
+
+    async recordVisitorPresence(statusText = 'Đang xem trang chủ') {
+        if (!window.dbService || typeof window.dbService.recordLogin !== 'function') return;
+        if (!this.clientIp || this.clientIp.startsWith('Đang')) {
+            await this.fetchClientIp();
+        }
+        const name = this.playerName || (document.getElementById('player-name-input')?.value || '').trim() || 'Khách truy cập';
+        try {
+            const res = await window.dbService.recordLogin(name, this.clientIp, this.deviceInfo, statusText);
+            if (res && res.id) this.currentLoginId = res.id;
+        } catch (e) { }
     }
 
     updateTotalQuestionDisplay() {
@@ -2562,7 +2446,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         this.updateAdminMaintenanceUI();
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             // 2. Kiểm tra xem IP hiện tại có bị chặn không
             try {
@@ -2572,7 +2456,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         this.showBlockedScreen(banInfo.reason);
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             // 3. Đồng bộ phân quyền Admin theo IP
             try {
@@ -2584,17 +2468,29 @@ Giải thích: Biên độ A = 5 cm.`;
                         if (!isAdmin) this.closeAdminDashboard();
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             // 4. Kiểm tra thông báo từ Giám thị
             try {
                 if (typeof window.dbService.getSystemNotice === 'function') {
-                    const notice = await window.dbService.getSystemNotice();
-                    if (notice && notice.content && notice.active) {
-                        this.showStudentNotice(notice.content);
+                    const notice = await window.dbService.getSystemNotice(this.clientIp);
+                    if (notice && (notice.content || notice.message) && (notice.active !== false)) {
+                        const noticeId = notice.id || notice.timestamp || notice.content || notice.message;
+                        if (this.lastReceivedNoticeId !== noticeId) {
+                            this.lastReceivedNoticeId = noticeId;
+                            this.showStudentNotice(notice.content || notice.message);
+                        }
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
+
+            // 5. Tự động cập nhật danh sách giám sát thí sinh thời gian thực (nếu Admin đang mở tab Giám sát)
+            try {
+                const adminModal = document.getElementById('modal-admin-dashboard');
+                if (adminModal && !adminModal.classList.contains('hidden') && this.adminCurrentTab === 'students' && this.isAdminAuthenticated) {
+                    await this.renderAdminStudentsList(true);
+                }
+            } catch (e) { }
         }, 3000);
     }
 
@@ -2642,53 +2538,103 @@ Giải thích: Biên độ A = 5 cm.`;
         if (banner) banner.classList.add('hidden');
     }
 
-    async renderAdminStudentsList() {
+    async renderAdminStudentsList(silent = false) {
         const tbody = document.getElementById('admin-students-tbody');
         const badgeCount = document.getElementById('admin-badge-login-count');
+        const countersContainer = document.getElementById('admin-subject-counters');
 
         if (!tbody || !window.dbService) return;
-        tbody.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-slate-400">Đang tải danh sách thí sinh...</td></tr>';
+        if (!silent) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-400">Đang tải danh sách thí sinh...</td></tr>';
+        }
 
         try {
-            const list = (window.dbService && typeof window.dbService.fetchActiveLogins === 'function')
-                ? await window.dbService.fetchActiveLogins()
-                : (window.dbService && typeof window.dbService.getLoginHistory === 'function')
-                    ? await window.dbService.getLoginHistory()
-                    : [];
+            const fetchFn = (typeof window.dbService.fetchActiveLogins === 'function')
+                ? window.dbService.fetchActiveLogins
+                : window.dbService.getLoginHistory;
+            const list = await fetchFn.call(window.dbService, 300);
             if (badgeCount) badgeCount.textContent = list.length;
-            tbody.innerHTML = '';
+
+            const nowMs = Date.now();
+            const activeNow = list.filter(s => {
+                const diffMs = s.last_active ? (nowMs - new Date(s.last_active).getTime()) : 9999999;
+                return diffMs <= 180000; // Hoạt động trong 3 phút qua
+            });
+
+            // Render Thẻ đếm số thí sinh trực tuyến & tổng lượt
+            if (countersContainer) {
+                countersContainer.innerHTML = `
+                    <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span class="text-xs font-semibold text-slate-300">Đang Trực Tuyến:</span>
+                        </div>
+                        <span class="text-sm font-extrabold text-emerald-400">${activeNow.length} máy</span>
+                    </div>
+                    <div class="p-3 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-users text-indigo-400 text-xs"></i>
+                            <span class="text-xs font-semibold text-slate-300">Tổng Lượt Truy Cập:</span>
+                        </div>
+                        <span class="text-sm font-extrabold text-indigo-300">${list.length}</span>
+                    </div>
+                `;
+            }
 
             if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-500 italic">Chưa có thí sinh nào đăng nhập.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500 italic">Chưa có thí sinh nào truy cập.</td></tr>';
                 return;
             }
 
+            let rowsHtml = '';
             list.forEach(student => {
-                const isAdmin = this.allowedAdminIps.includes(student.client_ip);
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="py-2.5 px-3 font-semibold text-white max-w-[130px] truncate">${student.player_name}</td>
-                    <td class="py-2.5 px-3 font-mono text-slate-400 text-[11px]">${student.client_ip || '—'}</td>
-                    <td class="py-2.5 px-3 text-slate-400 text-[11px]">${student.device_info || '—'}</td>
-                    <td class="py-2.5 px-3 text-center text-slate-400 text-[11px]">${student.created_at ? new Date(student.created_at).toLocaleTimeString('vi-VN') : '—'}</td>
-                    <td class="py-2.5 px-3 text-center">
-                        <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">${student.score_summary || student.status || 'Đang làm bài'}</span>
-                    </td>
-                    <td class="py-2.5 px-3 text-center">
-                        <button onclick="app.adminToggleStudentAdminRole('${student.client_ip}', '${student.player_name}')" class="px-2.5 py-1 rounded-lg ${isAdmin ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400 hover:text-amber-400'} border border-slate-700 text-[10px] transition cursor-pointer">
-                            <i class="fa-solid fa-crown mr-0.5"></i> ${isAdmin ? 'Thu Hồi' : '+ Cấp Admin'}
-                        </button>
-                    </td>
-                    <td class="py-2.5 px-3 text-right">
-                        <button onclick="app.adminBanStudentIp('${student.client_ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] font-bold transition cursor-pointer">
-                            <i class="fa-solid fa-ban mr-0.5"></i> Chặn IP
-                        </button>
-                    </td>
+                const ip = student.ip_address || student.client_ip || 'Chưa xác định';
+                const name = (student.player_name && student.player_name.trim()) ? student.player_name.trim() : 'Khách truy cập';
+                const device = student.device_info || 'Trình duyệt Web';
+                const timeStr = student.last_active
+                    ? new Date(student.last_active).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : (student.created_at ? new Date(student.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
+
+                const lastMs = student.last_active ? new Date(student.last_active).getTime() : 0;
+                const isOnline = lastMs && ((nowMs - lastMs) <= 180000);
+
+                const statusBadge = isOnline
+                    ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0">
+                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Online
+                       </span>`
+                    : `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] shrink-0">
+                         <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Nghỉ
+                       </span>`;
+
+                const scoreInfo = student.score_summary || student.status || 'Đang ôn tập';
+
+                rowsHtml += `
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="py-2.5 px-3">
+                            <div class="flex items-center gap-2">
+                                ${statusBadge}
+                                <span class="font-bold text-white text-xs truncate max-w-[150px]" title="${name}">${name}</span>
+                            </div>
+                        </td>
+                        <td class="py-2.5 px-3 font-mono text-amber-300 text-xs">${ip}</td>
+                        <td class="py-2.5 px-3 text-slate-300 text-xs">${device}</td>
+                        <td class="py-2.5 px-3 text-center text-slate-400 text-xs font-mono">${timeStr}</td>
+                        <td class="py-2.5 px-3 text-center">
+                            <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${scoreInfo}">
+                                ${scoreInfo}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 text-right">
+                            <button onclick="app.adminBanStudentIp('${ip}')" class="px-3 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer">
+                                <i class="fa-solid fa-ban mr-1"></i> Chặn IP
+                            </button>
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = rowsHtml;
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-rose-400">Lỗi tải danh sách: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-400">Lỗi tải danh sách: ${e.message}</td></tr>`;
         }
     }
 
@@ -2929,7 +2875,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
                 await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
             }
-        } catch (e) {}
+        } catch (e) { }
 
         this.closeQuestionEditor();
         this.renderAdminQuestionsList();
@@ -2944,7 +2890,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
                 await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
             }
-        } catch (e) {}
+        } catch (e) { }
         this.renderAdminQuestionsList();
         this.updateNavbarAndBadge();
     }
@@ -2979,11 +2925,22 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     initEventListeners() {
-        // Nhấn phím Enter tại ô tên học sinh -> bắt đầu làm bài
+        // Nhấn phím Enter hoặc thay đổi tên học sinh -> tự động ghi nhớ & ghi nhận trạng thái
         const nameInput = document.getElementById('player-name-input');
         if (nameInput) {
+            nameInput.addEventListener('change', () => {
+                const val = nameInput.value.trim();
+                if (val && val !== this.playerName) {
+                    this.playerName = val;
+                    localStorage.setItem('quiz_user_name', val);
+                    this.recordVisitorPresence(`Đang chọn môn thi`);
+                }
+            });
             nameInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') this.startQuiz();
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.startQuiz();
+                }
             });
         }
 
