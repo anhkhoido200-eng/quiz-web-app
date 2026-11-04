@@ -38,6 +38,9 @@ class QuizApp {
         this.allowedAdminIps = [];
         this.masterAdminIp = '';
 
+        // Phân quyền sử dụng Trợ lý AI theo địa chỉ IP
+        this.allowedAiIps = [];
+
         // Phân quyền môn Địa Lí (hoặc các môn Private)
         this.allowedGeoIps = [];
         this.geoMode = 'PRIVATE';
@@ -72,6 +75,7 @@ class QuizApp {
         this.updateSoundIcons();
         this.checkSavedUser();
         await this.loadGlobalGeminiApiKey();
+        await this.loadAiIpsConfig();
         await this.loadDynamicSubjects();
         await this.fetchClientIp();
         await this.loadQuestionsForCurrentSubject();
@@ -162,6 +166,7 @@ class QuizApp {
             if (!isAuthorized) return;
 
             const isSelected = this.currentSubject === sub.key;
+            const subName = sub.name || (sub.key === 'physics' ? 'Vật Lí 11' : (sub.key === 'geography' ? 'Địa Lí 11' : 'Lịch Sử 11'));
             const card = document.createElement('button');
             card.type = 'button';
             card.onclick = () => this.selectSubject(sub.key);
@@ -173,21 +178,24 @@ class QuizApp {
             else if (grad === 'rose') iconColorClass = "bg-rose-600/30 text-rose-300 border-rose-500/30";
             else if (grad === 'amber') iconColorClass = "bg-amber-600/30 text-amber-300 border-amber-500/30";
 
-            card.className = `p-3.5 rounded-2xl text-left flex items-center gap-3.5 cursor-pointer subject-card-interactive ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
+            card.className = `p-3.5 rounded-2xl text-left flex flex-col justify-between cursor-pointer subject-card-interactive transition-all relative min-h-[118px] ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
             card.innerHTML = `
-                <div class="w-12 h-12 rounded-2xl ${iconColorClass} border flex items-center justify-center text-xl shrink-0 shadow-md">
-                    <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
+                <!-- Hàng 1: Icon môn học và Badge trạng thái (không bị đè) -->
+                <div class="flex items-center justify-between gap-2 mb-2 w-full">
+                    <div class="w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
+                        <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
+                    </div>
+                    ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
+                    ${(!isSelected && isPrivate) ? '<span class="text-[10px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">🔒 Riêng tư</span>' : ''}
                 </div>
-                <div class="overflow-hidden flex-1">
-                    <div class="flex items-center justify-between gap-1.5 mb-0.5">
-                        <p class="font-heading font-extrabold text-sm sm:text-base truncate text-white">${sub.name}</p>
-                        ${isSelected ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
-                        ${(!isSelected && isPrivate) ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold shrink-0">🔒 Riêng tư</span>' : ''}
-                    </div>
-                    <div class="flex items-center gap-2 text-[11px] text-slate-400">
-                        <span class="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">${sub.semester || 'Đề cương'}</span>
-                        <span class="text-indigo-400 font-semibold"><i class="fa-solid fa-bolt text-[10px] mr-0.5 text-amber-400"></i>${sub.count || 0} câu</span>
-                    </div>
+                <!-- Hàng 2: Tên môn học và số lớp (11) hiển thị đầy đủ, không bị co rút -->
+                <div class="w-full mb-2">
+                    <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${subName}</p>
+                </div>
+                <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi sắc nét, không bị che khuất -->
+                <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${sub.semester || 'Đề cương'}</span>
+                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 0} câu</span>
                 </div>
             `;
             fragment.appendChild(card);
@@ -586,6 +594,158 @@ class QuizApp {
         this.renderAdminIpsTab();
     }
 
+    /* -------------------------------------------------------------- */
+    /* QUẢN LÝ PHÂN QUYỀN TRỢ LÝ AI THEO ĐỊA CHỈ IP (AI WHITELIST)    */
+    /* -------------------------------------------------------------- */
+
+    async loadAiIpsConfig() {
+        let loaded = [];
+        try {
+            if (window.dbService && typeof window.dbService.fetchAiIpsConfig === 'function') {
+                loaded = await window.dbService.fetchAiIpsConfig();
+            }
+        } catch (e) {
+            console.warn("Không thể tải danh sách IP cấp quyền AI:", e);
+        }
+        if (!Array.isArray(loaded) || loaded.length === 0) {
+            try {
+                const cached = localStorage.getItem('quiz_ai_allowed_ips');
+                if (cached) loaded = JSON.parse(cached);
+            } catch (e) { }
+        }
+        this.allowedAiIps = Array.isArray(loaded) ? loaded : [];
+    }
+
+    isAiAllowedForCurrentClient() {
+        // Admin luôn luôn có quyền sử dụng Trợ lý AI
+        if (this.isAdminAuthenticated) return true;
+        const currentIp = (this.clientIp || '').trim();
+        if (!currentIp || currentIp.startsWith('Đang')) return false;
+
+        // Nếu IP thuộc danh sách Admin hoặc Master Admin
+        if (this.allowedAdminIps && this.allowedAdminIps.includes(currentIp)) return true;
+        if (this.masterAdminIp && this.masterAdminIp === currentIp) return true;
+
+        // Kiểm tra trong danh sách IP được Admin cấp quyền AI
+        return (this.allowedAiIps || []).some(item => {
+            const ip = typeof item === 'string' ? item : item.ip;
+            return ip && ip.trim() === currentIp;
+        });
+    }
+
+    async adminToggleStudentAiRole(ip, studentName) {
+        if (!ip || ip.startsWith('__')) return;
+        const cleanIp = ip.trim();
+        const existingIdx = (this.allowedAiIps || []).findIndex(item => {
+            const itemIp = typeof item === 'string' ? item : item.ip;
+            return itemIp === cleanIp;
+        });
+
+        if (existingIdx !== -1) {
+            // Đang có -> Thu hồi
+            this.allowedAiIps.splice(existingIdx, 1);
+            alert(`Đã thu hồi quyền sử dụng Trợ lý AI của: ${studentName || 'Học sinh'} (${cleanIp})`);
+        } else {
+            // Chưa có -> Cấp quyền
+            this.allowedAiIps.push({ ip: cleanIp, name: studentName || 'Học sinh', grantedAt: new Date().toISOString() });
+            alert(`✨ Đã cấp quyền sử dụng Trợ lý AI thành công cho: ${studentName || 'Học sinh'} (${cleanIp})!`);
+        }
+
+        try {
+            if (window.dbService && typeof window.dbService.saveAiIpsConfig === 'function') {
+                await window.dbService.saveAiIpsConfig(this.allowedAiIps);
+            }
+        } catch (e) { }
+        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
+
+        this.renderAdminStudentsList();
+        this.renderAdminAiIpsList();
+    }
+
+    async adminAddManualAiIp() {
+        const ipInput = document.getElementById('admin-manual-ai-ip-input');
+        const nameInput = document.getElementById('admin-manual-ai-name-input');
+        const ip = ipInput ? ipInput.value.trim() : '';
+        const name = nameInput ? nameInput.value.trim() : 'Học sinh';
+
+        if (!ip) {
+            alert("Vui lòng nhập địa chỉ IP cần cấp quyền Trợ lý AI.");
+            return;
+        }
+
+        const exists = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip);
+        if (exists) {
+            alert(`Địa chỉ IP ${ip} đã được cấp quyền Trợ lý AI từ trước.`);
+            return;
+        }
+
+        this.allowedAiIps.push({ ip, name, grantedAt: new Date().toISOString() });
+        try {
+            if (window.dbService && typeof window.dbService.saveAiIpsConfig === 'function') {
+                await window.dbService.saveAiIpsConfig(this.allowedAiIps);
+            }
+        } catch (e) { }
+        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
+
+        if (ipInput) ipInput.value = '';
+        if (nameInput) nameInput.value = '';
+        alert(`✨ Đã cấp quyền Trợ lý AI cho IP: ${ip} (${name}) thành công!`);
+        this.renderAdminAiIpsList();
+        this.renderAdminStudentsList();
+    }
+
+    async adminRevokeAiIp(ip) {
+        if (!confirm(`Bạn có chắc muốn thu hồi quyền sử dụng Trợ lý AI của IP: ${ip}?`)) return;
+        this.allowedAiIps = (this.allowedAiIps || []).filter(item => (typeof item === 'string' ? item : item.ip) !== ip);
+        try {
+            if (window.dbService && typeof window.dbService.saveAiIpsConfig === 'function') {
+                await window.dbService.saveAiIpsConfig(this.allowedAiIps);
+            }
+        } catch (e) { }
+        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
+        this.renderAdminAiIpsList();
+        this.renderAdminStudentsList();
+    }
+
+    renderAdminAiIpsList() {
+        const container = document.getElementById('admin-ai-ips-list-container');
+        const countBadge = document.getElementById('admin-ai-ips-count');
+        if (countBadge) countBadge.textContent = (this.allowedAiIps || []).length;
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!this.allowedAiIps || this.allowedAiIps.length === 0) {
+            container.innerHTML = `<div class="p-3 text-center text-slate-500 italic text-xs">Chưa có IP nào được cấp quyền AI riêng (Admin luôn mặc định có quyền).</div>`;
+            return;
+        }
+
+        this.allowedAiIps.forEach(item => {
+            const ip = typeof item === 'string' ? item : item.ip;
+            const name = typeof item === 'object' && item.name ? item.name : 'Học sinh';
+            const isCurrent = ip === this.clientIp;
+            const card = document.createElement('div');
+            card.className = "p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3 text-xs";
+            card.innerHTML = `
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono text-purple-300 font-bold">${ip}</span>
+                            ${isCurrent ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">Máy của bạn</span>' : ''}
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-medium">${name}</p>
+                    </div>
+                </div>
+                <button onclick="app.adminRevokeAiIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
+                    <i class="fa-solid fa-trash-can mr-1"></i> Thu hồi
+                </button>
+            `;
+            container.appendChild(card);
+        });
+    }
+
     /* ============================================================== */
     /* 3. BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN & CHUYỂN TAB (ADMIN DASHBOARD)*/
     /* ============================================================== */
@@ -643,6 +803,7 @@ class QuizApp {
             this.renderAdminStudentsList();
         } else if (tabName === 'admin-ips') {
             this.renderAdminIpsTab();
+            this.renderAdminAiIpsList();
         } else if (tabName === 'subjects') {
             this.renderAdminSubjectsList();
         } else if (tabName === 'reports') {
@@ -1678,29 +1839,15 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     /* ============================================================== */
-    /* 8. CHẾ ĐỘ LUYỆN TẬP VS THI THỬ & ÂM THANH (UX ENHANCEMENTS)    */
+    /* 8. CHẾ ĐỘ LUYỆN TẬP THÔNG MINH & ÂM THANH (UX ENHANCEMENTS)    */
     /* ============================================================== */
 
     setExamMode(isExam) {
-        this.isExamMode = isExam;
-        const btnPractice = document.getElementById('btn-mode-practice');
-        const btnExam = document.getElementById('btn-mode-exam');
+        this.isExamMode = false;
         const ind = document.getElementById('exam-mode-indicator-text');
-
-        if (isExam) {
-            if (btnExam) btnExam.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-amber-600/25 border-amber-500 text-white shadow-md";
-            if (btnPractice) btnPractice.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-400";
-            if (ind) {
-                ind.textContent = "Chế độ Thi Thử (Đếm ngược 45 phút)";
-                ind.className = "text-[11px] font-bold text-amber-400";
-            }
-        } else {
-            if (btnPractice) btnPractice.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-indigo-600/25 border-indigo-500 text-white shadow-md";
-            if (btnExam) btnExam.className = "p-2.5 rounded-xl border transition flex items-center gap-2 cursor-pointer bg-slate-800/80 border-slate-700 hover:border-slate-600 text-slate-400";
-            if (ind) {
-                ind.textContent = "Chế độ Luyện Tập (Xem đáp án ngay)";
-                ind.className = "text-[11px] font-bold text-emerald-400";
-            }
+        if (ind) {
+            ind.textContent = "Chế độ Luyện Tập (Xem đáp án ngay)";
+            ind.className = "text-[11px] font-bold text-emerald-400";
         }
     }
 
@@ -1808,8 +1955,8 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const modeBadge = document.getElementById('quiz-mode-badge');
         if (modeBadge) {
-            modeBadge.textContent = this.isExamMode ? "Thi Thử (45p)" : "Luyện Tập";
-            modeBadge.className = this.isExamMode ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30" : "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+            modeBadge.textContent = "Luyện Tập";
+            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
         }
 
         // Tải Auto-Save tiến độ cũ nếu có
@@ -1888,7 +2035,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm THPT</span>
+                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
                 <div id="ai-explanation-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             ` : '';
@@ -2033,16 +2180,6 @@ Giải thích: Biên độ A = 5 cm.`;
 
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
-
-        if (!this.isExamMode) {
-            const correctIdx = q.correct !== undefined ? q.correct : q.answer;
-            if (oIdx === correctIdx) {
-                this.playTingSound();
-            } else {
-                this.playBeepSound();
-            }
-        }
-
         this.renderAllQuestions();
         this.updateLiveStats();
     }
@@ -2051,18 +2188,6 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!this.userAnswers[qId]) this.userAnswers[qId] = {};
         this.userAnswers[qId][stmtIdx] = isTrue;
         this.saveAutoSaveProgress();
-
-        if (!this.isExamMode) {
-            const q = this.allQuestions.find(item => item.id === qId);
-            if (q && q.statements && q.statements[stmtIdx]) {
-                if (Boolean(q.statements[stmtIdx].answer) === isTrue) {
-                    this.playTingSound();
-                } else {
-                    this.playBeepSound();
-                }
-            }
-        }
-
         this.renderAllQuestions();
         this.updateLiveStats();
     }
@@ -2292,7 +2417,7 @@ Giải thích: Biên độ A = 5 cm.`;
             totalCount: totalItems,
             timeSpent: timeStr,
             submittedAt: new Date().toISOString(),
-            mode: this.isExamMode ? 'Thi thử' : 'Luyện tập'
+            mode: 'Luyện tập'
         });
 
         // Bắn pháo hoa ăn mừng & Phát âm thanh chiến thắng
@@ -2375,7 +2500,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm THPT</span>
+                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
                 <div id="ai-explanation-review-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             `;
@@ -2514,7 +2639,7 @@ Giải thích: Biên độ A = 5 cm.`;
     updateTotalQuestionDisplay() {
         const count = this.allQuestions ? this.allQuestions.length : 0;
         const countText = document.getElementById('home-rules-count-text');
-        if (countText) countText.innerHTML = `Nội dung: <strong>${count} câu hỏi</strong> trắc nghiệm bám sát đề cương kiến thức.`;
+        if (countText) countText.innerHTML = `Nội dung: <strong>${count} câu hỏi</strong> trắc nghiệm (Tự động chấm & hiện đáp án ngay).`;
     }
 
     renderFilterTabs() {
@@ -2712,6 +2837,8 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 const scoreInfo = student.score_summary || student.status || 'Đang ôn tập';
 
+                const isAiGranted = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip) || this.allowedAdminIps.includes(ip) || ip === this.masterAdminIp;
+
                 rowsHtml += `
                     <tr class="hover:bg-slate-800/40 transition">
                         <td class="py-2.5 px-3">
@@ -2729,9 +2856,14 @@ Giải thích: Biên độ A = 5 cm.`;
                             </span>
                         </td>
                         <td class="py-2.5 px-3 text-right">
-                            <button onclick="app.adminBanStudentIp('${ip}')" class="px-3 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer">
-                                <i class="fa-solid fa-ban mr-1"></i> Chặn IP
-                            </button>
+                            <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                                <button onclick="app.adminToggleStudentAiRole('${ip}', '${name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-purple-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
+                                    <i class="fa-solid fa-wand-magic-sparkles mr-1 ${isAiGranted ? 'text-amber-300' : 'text-slate-400'}"></i> ${isAiGranted ? 'Đã có AI' : 'Cấp AI'}
+                                </button>
+                                <button onclick="app.adminBanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer">
+                                    <i class="fa-solid fa-ban mr-1"></i> Chặn IP
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -3108,6 +3240,12 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     async askAiExplanation(qId) {
+        // Kiểm tra quyền hạn theo IP: Phải là Admin hoặc được Admin cấp quyền IP
+        if (!this.isAiAllowedForCurrentClient()) {
+            alert(`🔒 BẠN CHƯA ĐƯỢC CẤP QUYỀN SỬ DỤNG TRỢ LÝ AI!\n\nĐịa chỉ IP của bạn: ${this.clientIp}\n\nTính năng Trợ lý AI giải thích bài yêu cầu Quản trị viên (Admin) cấp quyền theo địa chỉ IP. Vui lòng gửi địa chỉ IP của bạn cho Admin để được kích hoạt quyền.`);
+            return;
+        }
+
         let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
         if (!apiKey) {
             apiKey = await this.loadGlobalGeminiApiKey();
@@ -3144,7 +3282,7 @@ Giải thích: Biên độ A = 5 cm.`;
         targetDiv.innerHTML = `
             <div class="flex items-center gap-2.5 text-purple-300 font-bold py-2">
                 <i class="fa-solid fa-spinner fa-spin text-base text-amber-400"></i>
-                <span>Trợ lý AI đang phân tích câu hỏi & biên soạn lời giải thích sư phạm chi tiết...</span>
+                <span>Trợ lý AI đang phân tích câu hỏi & biên soạn lời giải thích ngắn gọn, dễ hiểu...</span>
             </div>
         `;
 
@@ -3171,21 +3309,23 @@ Giải thích: Biên độ A = 5 cm.`;
             studentAnswerText = (sIdx !== undefined && q.options) ? `${optChars[sIdx]}. ${q.options[sIdx]}` : "Chưa chọn đáp án";
         }
 
-        const prompt = `Bạn là một giáo viên chuyên môn giàu kinh nghiệm giảng dạy học sinh THPT tại Việt Nam.
-Hãy giải thích ngắn gọn, súc tích, chuẩn mực sư phạm và dễ hiểu nhất cho câu hỏi sau:
+        const prompt = `Bạn là trợ lý học tập thông minh, chuyên giải thích bài ngắn gọn và cực kỳ dễ hiểu cho học sinh Việt Nam.
+Hãy giải thích câu hỏi sau một cách NGẮN GỌN, TRỌNG TÂM, DỄ HIỂU NHẤT (khoảng 3 - 5 câu, tuyệt đối không viết dài dòng):
 
 - Môn học: ${this.getSubjectTitle()}
 - Câu hỏi: ${q.question}
 ${optionsText ? `- Các phương án:\n${optionsText}` : ''}
 - Đáp án đúng: ${correctText}
-- Đáp án học sinh đã chọn: ${studentAnswerText}
+${studentAnswerText ? `- Học sinh chọn: ${studentAnswerText}` : ''}
 
-YÊU CẦU TRẢ LỜI:
-1. **Lý do đáp án đúng**: Giải thích vì sao đáp án đúng lại chính xác dựa trên kiến thức trọng tâm SGK.
-2. **Phân tích bẫy / Phương án sai**: Chỉ ra học sinh hay nhầm lẫn ở điểm nào (đặc biệt nếu đáp án học sinh chọn bị sai).
-3. **Mẹo ghi nhớ cốt lõi**: Đúc kết 1 câu ngắn gọn giúp học sinh nhớ lâu kiến thức này khi đi thi.
-4. Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).
-5. Dùng ngôn ngữ thân thiện, khích lệ học sinh, ngắt đoạn rõ ràng bằng gạch đầu dòng.`;
+CẤU TRÚC GIẢI THÍCH (ngắn gọn, trực tiếp, rõ ràng):
+✅ **Vì sao đúng?**: Nêu bản chất/lý do cốt lõi trong 1-2 câu ngắn gọn, dễ hiểu nhất.
+💡 **Bẫy cần tránh (nếu có)**: Chỉ ra điểm học sinh hay nhầm lẫn trong 1 câu ngắn.
+⚡ **Mẹo nhớ nhanh**: 1 câu từ khóa / mẹo nhớ ngay lập tức.
+
+YÊU CẦU:
+- Văn phong tự nhiên, súc tích, dễ hiểu như gia sư dạy 1 kèm 1, tuyệt đối không viết văn dài dòng hay lý thuyết lan man.
+- Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
 
         try {
             const candidateModels = [

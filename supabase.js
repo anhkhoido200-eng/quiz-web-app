@@ -37,7 +37,8 @@ const SYSTEM_RECORDS = {
     GEO_CONFIG: '00000000-0000-0000-0000-000000000002',
     MAINTENANCE: '00000000-0000-0000-0000-000000000003',
     DYNAMIC_SUBJECTS: '00000000-0000-0000-0000-000000000004',
-    GEMINI_CONFIG: '00000000-0000-0000-0000-000000000005'
+    GEMINI_CONFIG: '00000000-0000-0000-0000-000000000005',
+    AI_IPS: '00000000-0000-0000-0000-000000000006'
 };
 
 function formatSupabaseUrl(rawUrl) {
@@ -400,7 +401,8 @@ class DatabaseService {
             SYSTEM_RECORDS.GEO_CONFIG,
             SYSTEM_RECORDS.MAINTENANCE,
             SYSTEM_RECORDS.DYNAMIC_SUBJECTS,
-            SYSTEM_RECORDS.GEMINI_CONFIG
+            SYSTEM_RECORDS.GEMINI_CONFIG,
+            SYSTEM_RECORDS.AI_IPS
         ];
         if (this.isSupabaseActive && this.client) {
             try {
@@ -1623,6 +1625,69 @@ class DatabaseService {
                 return true;
             } catch (err) {
                 console.error("[DatabaseService] Lỗi khi lưu Gemini API Key lên Cloud:", err);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Tải danh sách IP được Admin cấp quyền sử dụng Trợ lý AI từ Supabase Cloud
+     */
+    async fetchAiIpsConfig() {
+        let allowedIps = [];
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('device_info, score_summary')
+                    .eq('id', SYSTEM_RECORDS.AI_IPS)
+                    .limit(1);
+                if (!error && data && data.length > 0 && data[0].score_summary) {
+                    try {
+                        const parsed = JSON.parse(data[0].score_summary);
+                        if (Array.isArray(parsed)) allowedIps = parsed;
+                        else if (parsed && Array.isArray(parsed.ips)) allowedIps = parsed.ips;
+                    } catch (e) { }
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi khi tải danh sách IP cấp quyền AI:", err);
+            }
+        }
+        if (!allowedIps || allowedIps.length === 0) {
+            try {
+                const cached = localStorage.getItem('quiz_ai_allowed_ips');
+                if (cached) allowedIps = JSON.parse(cached);
+            } catch (e) { }
+        }
+        return Array.isArray(allowedIps) ? allowedIps : [];
+    }
+
+    /**
+     * Lưu danh sách IP được Admin cấp quyền sử dụng Trợ lý AI lên Supabase Cloud
+     */
+    async saveAiIpsConfig(ipsList) {
+        const cleanList = Array.isArray(ipsList) ? ipsList : [];
+        try {
+            localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(cleanList));
+        } catch (e) { }
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const nowIso = new Date().toISOString();
+                await this.client
+                    .from('quiz_logins')
+                    .upsert([{
+                        id: SYSTEM_RECORDS.AI_IPS,
+                        player_name: '__AI_IPS_CONFIG__',
+                        ip_address: 'SYSTEM',
+                        device_info: 'AI_IP_WHITELIST',
+                        status: 'ACTIVE',
+                        score_summary: JSON.stringify(cleanList),
+                        last_active: nowIso
+                    }], { onConflict: 'id' });
+                return true;
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi lưu danh sách AI IP:", err);
             }
         }
         return false;
