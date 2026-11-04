@@ -36,6 +36,13 @@ class QuizApp {
         this.allowedGeoIps = [];
         this.geoMode = 'PRIVATE';
 
+        // Chế độ bảo trì hệ thống (System Maintenance Mode)
+        this.isMaintenanceMode = false;
+        this.maintenanceMessage = "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!";
+        this.maintenanceClickCount = 0;
+        this.maintenanceClickTimer = null;
+        this._maintenanceKeyBlocker = null;
+
         // Cache màn hình
         this.screens = {
             home: document.getElementById('screen-home'),
@@ -70,6 +77,7 @@ class QuizApp {
         await this.loadQuestionsFromDb();
         this.updateTotalQuestionDisplay();
         await this.refreshGeographyAccess();
+        await this.initMaintenance();
         this.startRealtimeBanChecker();
     }
 
@@ -507,6 +515,24 @@ class QuizApp {
         this.lastSeenNoticeTime = Date.now(); // Ghi nhận mốc thời gian lúc mở trang
 
         this.banCheckInterval = setInterval(async () => {
+            // 0. Kiểm tra Chế độ Bảo trì Hệ thống thời gian thực (Áp dụng cho mọi học sinh sau tối đa 3 giây)
+            if (window.dbService) {
+                try {
+                    const maint = await window.dbService.checkMaintenanceStatus();
+                    this.isMaintenanceMode = maint.isActive;
+                    if (maint.message) this.maintenanceMessage = maint.message;
+
+                    if (this.isMaintenanceMode) {
+                        if (!this.isAdminAuthenticated) {
+                            this.showMaintenanceScreen(this.maintenanceMessage);
+                        }
+                    } else {
+                        this.hideMaintenanceScreen();
+                    }
+                    this.updateAdminMaintenanceUI();
+                } catch (e) {}
+            }
+
             if (!this.clientIp || this.clientIp === "Chưa xác định" || this.clientIp === "IP Cục Bộ") return;
             if (window.dbService) {
                 // 1. Kiểm tra xem IP có bị Admin chặn không
@@ -633,6 +659,115 @@ class QuizApp {
             modal.classList.add('flex');
         }
         this.stopStopwatch();
+    }
+
+    /**
+     * KHỞI TẠO TRẠNG THÁI BẢO TRÌ HỆ THỐNG
+     */
+    async initMaintenance() {
+        if (!window.dbService) return;
+        try {
+            const maint = await window.dbService.checkMaintenanceStatus();
+            this.isMaintenanceMode = maint.isActive;
+            if (maint.message) this.maintenanceMessage = maint.message;
+
+            if (this.isMaintenanceMode) {
+                if (!this.isAdminAuthenticated) {
+                    this.showMaintenanceScreen(this.maintenanceMessage);
+                }
+            } else {
+                this.hideMaintenanceScreen();
+            }
+            this.updateAdminMaintenanceUI();
+        } catch (e) {
+            console.warn("[QuizApp] Lỗi nạp trạng thái bảo trì:", e);
+        }
+    }
+
+    /**
+     * HIỂN THỊ MÀN HÌNH BẢO TRÌ VÀ KHÓA TƯƠNG TÁC NGƯỜI DÙNG PHỔ THÔNG
+     */
+    showMaintenanceScreen(message) {
+        if (this.isAdminAuthenticated) return; // Không khóa Admin
+
+        const screen = document.getElementById('screen-maintenance');
+        const msgEl = document.getElementById('maintenance-message-text');
+
+        if (msgEl && message) {
+            msgEl.textContent = message;
+        }
+
+        if (screen) {
+            screen.classList.remove('hidden');
+            screen.classList.add('flex');
+        }
+
+        // Khóa cuộn trang
+        document.body.style.overflow = 'hidden';
+
+        // Dừng đồng hồ làm bài nếu đang thi dở
+        this.stopStopwatch();
+
+        // Khóa bàn phím người dùng phổ thông (chỉ cho phép Alt+A hoặc gõ trong popup mật mã Admin)
+        if (!this._maintenanceKeyBlocker) {
+            this._maintenanceKeyBlocker = (e) => {
+                if (e.altKey && (e.key === 'a' || e.key === 'A')) {
+                    return; // Cho phép tổ hợp phím mở Admin
+                }
+                const authModal = document.getElementById('modal-admin-auth');
+                if (authModal && !authModal.classList.contains('hidden')) {
+                    return; // Đang mở ô nhập pass Admin thì cho phép gõ bình thường
+                }
+                // Chặn F12, phím cách, phím mũi tên, Ctrl+U, Ctrl+S...
+                if (e.key === 'F12' || (e.ctrlKey && (e.key === 'u' || e.key === 'U' || e.key === 's' || e.key === 'S')) || e.key === ' ' || e.key === 'Tab' || e.key.startsWith('Arrow')) {
+                    e.preventDefault();
+                }
+            };
+            window.addEventListener('keydown', this._maintenanceKeyBlocker, true);
+        }
+    }
+
+    /**
+     * ẨN MÀN HÌNH BẢO TRÌ VÀ MỞ LẠI TƯƠNG TÁC
+     */
+    hideMaintenanceScreen() {
+        const screen = document.getElementById('screen-maintenance');
+        if (screen) {
+            screen.classList.add('hidden');
+            screen.classList.remove('flex');
+        }
+
+        // Khôi phục cuộn trang
+        document.body.style.overflow = '';
+
+        // Hủy bộ chặn bàn phím
+        if (this._maintenanceKeyBlocker) {
+            window.removeEventListener('keydown', this._maintenanceKeyBlocker, true);
+            this._maintenanceKeyBlocker = null;
+        }
+    }
+
+    /**
+     * XỬ LÝ NHẤP 3 LẦN VÀO LOGO BẢO TRÌ ĐỂ MỞ CỬA THOÁT HIỂM ADMIN
+     */
+    handleMaintenanceIconClick() {
+        this.maintenanceClickCount = (this.maintenanceClickCount || 0) + 1;
+        if (this.maintenanceClickTimer) clearTimeout(this.maintenanceClickTimer);
+        this.maintenanceClickTimer = setTimeout(() => {
+            this.maintenanceClickCount = 0;
+        }, 2000);
+
+        if (this.maintenanceClickCount >= 3) {
+            this.maintenanceClickCount = 0;
+            this.openAdminAuthFromMaintenance();
+        }
+    }
+
+    /**
+     * MỞ POPUP XÁC THỰC ADMIN TỪ MÀN HÌNH BẢO TRÌ
+     */
+    openAdminAuthFromMaintenance() {
+        this.promptAdminAuth();
     }
 
     /**
@@ -1390,6 +1525,10 @@ class QuizApp {
         }
     }
 
+    openAdminAuthModal() {
+        this.promptAdminAuth();
+    }
+
     verifyAdminPassword() {
         const passInput = document.getElementById('admin-pass-input');
         const errText = document.getElementById('admin-auth-error');
@@ -1398,6 +1537,7 @@ class QuizApp {
         if (pass === this.adminSecretPass || pass === 'admin123') {
             this.isAdminAuthenticated = true;
             this.closeAdminAuthModal();
+            this.hideMaintenanceScreen();
             this.openAdminDashboard();
         } else {
             if (errText) errText.classList.remove('hidden');
@@ -1408,6 +1548,8 @@ class QuizApp {
     openAdminDashboard() {
         this.isAdminAuthenticated = true;
         this.refreshGeographyAccess();
+        this.hideMaintenanceScreen();
+        this.updateAdminMaintenanceUI();
         const modal = document.getElementById('modal-admin-dashboard');
         if (modal) {
             modal.classList.remove('hidden');
@@ -1421,6 +1563,99 @@ class QuizApp {
         if (modal) {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+    }
+
+    /**
+     * ADMIN BẬT / TẮT CHẾ ĐỘ BẢO TRÌ HỆ THỐNG
+     */
+    async adminToggleMaintenance(enabled) {
+        if (enabled) {
+            const confirmed = confirm("⚠️ BẠN CÓ CHẮC CHẮN MUỐN BẬT CHẾ ĐỘ BẢO TRÌ?\n\n- Toàn bộ máy học sinh sẽ bị KHÓA MÀN HÌNH ngay lập tức trong vòng 3 giây.\n- Mọi bài làm đang diễn ra sẽ tạm dừng.\n- Chỉ Admin mới có quyền truy cập.");
+            if (!confirmed) {
+                const toggle = document.getElementById('admin-maintenance-toggle');
+                if (toggle) toggle.checked = false;
+                return;
+            }
+        }
+
+        this.isMaintenanceMode = !!enabled;
+
+        if (window.dbService) {
+            await window.dbService.setMaintenanceStatus(this.isMaintenanceMode, this.maintenanceMessage);
+        }
+
+        this.updateAdminMaintenanceUI();
+
+        if (this.isMaintenanceMode) {
+            alert("🔒 ĐÃ KÍCH HOẠT CHẾ ĐỘ BẢO TRÌ TOÀN HỆ THỐNG!\nToàn bộ máy học sinh sẽ lập tức bị chặn tương tác.");
+        } else {
+            alert("✅ ĐÃ TẮT CHẾ ĐỘ BẢO TRÌ!\nHọc sinh ở mọi máy đã có thể truy cập và làm bài bình thường.");
+        }
+    }
+
+    /**
+     * ADMIN CHỈNH SỬA LỜI NHẮN THÔNG BÁO BẢO TRÌ
+     */
+    async adminEditMaintenanceMsg() {
+        const currentMsg = this.maintenanceMessage || "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!";
+        const newMsg = prompt("Nhập nội dung thông báo bảo trì hiển thị trên màn hình học sinh:", currentMsg);
+        if (newMsg === null) return; // Bấm Cancel
+
+        const cleanMsg = newMsg.trim() || currentMsg;
+        this.maintenanceMessage = cleanMsg;
+
+        if (window.dbService) {
+            await window.dbService.setMaintenanceStatus(this.isMaintenanceMode, this.maintenanceMessage);
+        }
+
+        // Cập nhật lên màn hình bảo trì nếu đang mở
+        const msgEl = document.getElementById('maintenance-message-text');
+        if (msgEl) msgEl.textContent = this.maintenanceMessage;
+
+        alert("✅ Đã cập nhật nội dung thông báo bảo trì thành công!");
+    }
+
+    /**
+     * CẬP NHẬT GIAO DIỆN CÔNG TẮC BẢO TRÌ TRONG ADMIN DASHBOARD
+     */
+    updateAdminMaintenanceUI() {
+        const toggle = document.getElementById('admin-maintenance-toggle');
+        const badge = document.getElementById('admin-maintenance-badge');
+        const indicator = document.getElementById('admin-maintenance-indicator');
+        const subtext = document.getElementById('admin-maintenance-subtext');
+        const toggleLabel = document.getElementById('admin-maintenance-toggle-label');
+
+        if (toggle) toggle.checked = this.isMaintenanceMode;
+
+        if (this.isMaintenanceMode) {
+            if (badge) {
+                badge.textContent = "ĐANG BẬT";
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/50 animate-pulse";
+            }
+            if (indicator) {
+                indicator.className = "w-3 h-3 rounded-full bg-rose-500 shadow-sm shadow-rose-500 animate-ping";
+            }
+            if (subtext) {
+                subtext.textContent = "Hệ thống đang KHÓA toàn bộ máy học sinh. Chỉ Admin mới có quyền truy cập.";
+            }
+            if (toggleLabel) {
+                toggleLabel.textContent = "Đang Bảo Trì (KHÓA)";
+            }
+        } else {
+            if (badge) {
+                badge.textContent = "ĐANG TẮT";
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700";
+            }
+            if (indicator) {
+                indicator.className = "w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500";
+            }
+            if (subtext) {
+                subtext.textContent = "Trang web đang mở công khai cho tất cả thí sinh làm bài.";
+            }
+            if (toggleLabel) {
+                toggleLabel.textContent = "Khóa Web (Bảo Trì)";
+            }
         }
     }
 

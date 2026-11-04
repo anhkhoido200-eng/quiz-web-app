@@ -11,7 +11,9 @@ const STORAGE_KEYS = {
     SUPABASE_KEY: 'quiz_supabase_key',
     LOCAL_LOGINS: 'quiz_local_logins_history',
     CUSTOM_QUESTIONS: 'quiz_custom_questions',
-    BANNED_IPS: 'quiz_banned_ips'
+    BANNED_IPS: 'quiz_banned_ips',
+    MAINTENANCE: 'quiz_maintenance_mode',
+    MAINTENANCE_MSG: 'quiz_maintenance_msg'
 };
 
 // Cấu hình mặc định của dự án Supabase (Đã được điền tự động)
@@ -855,6 +857,86 @@ class DatabaseService {
         config.ips = config.ips.filter(ip => ip !== cleanIp);
         await this.saveGeoConfig(config.mode, config.ips);
         return config.ips;
+    }
+
+    // =========================================================================
+    // PHẦN 6: CHẾ ĐỘ BẢO TRÌ HỆ THỐNG / KHÓA TRANG WEB (SYSTEM MAINTENANCE)
+    // =========================================================================
+
+    /**
+     * Cập nhật trạng thái Chế độ Bảo trì (Bật/Tắt & Lời nhắn) lên Supabase Cloud hoặc LocalStorage
+     */
+    async setMaintenanceStatus(isActive, message = "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!") {
+        const cleanActive = !!isActive;
+        const cleanMsg = (message || "").trim() || "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!";
+        const nowIso = new Date().toISOString();
+
+        try {
+            localStorage.setItem('quiz_maintenance_mode', cleanActive ? 'true' : 'false');
+            localStorage.setItem('quiz_maintenance_msg', cleanMsg);
+        } catch (e) {}
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .upsert([{
+                        id: '00000000-0000-0000-0000-000000000003',
+                        player_name: '__SYSTEM_MAINTENANCE__',
+                        ip_address: 'SYSTEM',
+                        device_info: cleanActive ? 'ON' : 'OFF',
+                        status: cleanActive ? 'ACTIVE' : 'INACTIVE',
+                        score_summary: cleanMsg,
+                        last_active: nowIso
+                    }], { onConflict: 'id' });
+            } catch (e) {
+                console.error("[DatabaseService] Lỗi cập nhật trạng thái bảo trì lên Supabase:", e);
+            }
+        }
+
+        return { isActive: cleanActive, message: cleanMsg };
+    }
+
+    /**
+     * Kiểm tra trạng thái Chế độ Bảo trì hiện tại để các máy học sinh đọc được
+     */
+    async checkMaintenanceStatus() {
+        let isActive = false;
+        let message = "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!";
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('device_info, status, score_summary, last_active')
+                    .eq('id', '00000000-0000-0000-0000-000000000003')
+                    .limit(1);
+
+                if (!error && data && data.length > 0) {
+                    const row = data[0];
+                    isActive = (row.status === 'ACTIVE' || row.device_info === 'ON');
+                    if (row.score_summary) message = row.score_summary;
+
+                    try {
+                        localStorage.setItem('quiz_maintenance_mode', isActive ? 'true' : 'false');
+                        localStorage.setItem('quiz_maintenance_msg', message);
+                    } catch (e) {}
+
+                    return { isActive, message };
+                }
+            } catch (e) {
+                console.warn("[DatabaseService] Lỗi kiểm tra bảo trì từ Supabase:", e);
+            }
+        }
+
+        // Fallback LocalStorage
+        try {
+            isActive = localStorage.getItem('quiz_maintenance_mode') === 'true';
+            const savedMsg = localStorage.getItem('quiz_maintenance_msg');
+            if (savedMsg) message = savedMsg;
+        } catch (e) {}
+
+        return { isActive, message };
     }
 }
 

@@ -79,6 +79,60 @@
         </div>
     </div>
 
+    <!-- MÀN HÌNH KHÓA BẢO TRÌ HỆ THỐNG (SYSTEM MAINTENANCE MODE) -->
+    <div id="screen-maintenance" class="fixed inset-0 bg-slate-950/95 z-[99999] hidden flex-col items-center justify-center p-4 text-center select-none backdrop-blur-md overflow-hidden">
+        <div class="relative max-w-lg w-full bg-slate-900/90 border border-slate-700/80 rounded-3xl p-6 sm:p-10 shadow-2xl backdrop-blur-xl space-y-6">
+            <!-- Vòng trang trí ánh sáng nền -->
+            <div class="absolute -top-16 -left-16 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-16 -right-16 w-40 h-40 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- Icon Bánh Răng Xoay / Cờ Lê (Nhấp 3 lần để mở cửa thoát hiểm Admin) -->
+            <div class="relative cursor-pointer select-none group inline-block mx-auto" onclick="app.handleMaintenanceIconClick()" title="Nhấp 3 lần để mở đăng nhập Admin">
+                <div class="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border-2 border-amber-500/50 flex items-center justify-center shadow-lg shadow-amber-500/10 transition-transform transform group-hover:scale-105">
+                    <i class="fa-solid fa-gears text-4xl sm:text-5xl text-amber-400 animate-spin" style="animation-duration: 9s;"></i>
+                </div>
+                <span class="absolute bottom-0 right-1/2 translate-x-7 translate-y-1 w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs shadow-md border-2 border-slate-900">
+                    <i class="fa-solid fa-wrench"></i>
+                </span>
+            </div>
+
+            <!-- Tiêu đề & Thông báo -->
+            <div class="space-y-2">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    <span>Tạm Khóa Hệ Thống</span>
+                </div>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">HỆ THỐNG ĐANG BẢO TRÌ</h2>
+                <p id="maintenance-message-text" class="text-sm sm:text-base text-slate-300 leading-relaxed font-medium">
+                    Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!
+                </p>
+            </div>
+
+            <!-- Hộp chi tiết trạng thái -->
+            <div class="p-4 rounded-2xl bg-slate-800/70 border border-slate-700/60 text-xs text-slate-400 space-y-2 text-left">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-notch fa-spin text-amber-400"></i> Trạng thái bảo trì:
+                    </span>
+                    <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[11px]">Đang cập nhật</span>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    Mọi tương tác làm bài tạm thời bị tạm dừng để đảm bảo tính toàn vẹn dữ liệu. Sau khi hoàn tất cập nhật, hệ thống sẽ tự động mở lại cho thí sinh.
+                </p>
+            </div>
+
+            <!-- Cửa thoát hiểm Admin (Bí mật / Nhỏ gọn) -->
+            <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                <button onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right text-xs"></i> Tải lại trang
+                </button>
+                <button onclick="app.openAdminAuthFromMaintenance()" class="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] text-slate-500 hover:text-amber-400 transition cursor-pointer border border-slate-800/80 flex items-center gap-1.5" title="Dành cho Quản trị viên quản lý">
+                    <i class="fa-solid fa-shield-halved text-amber-400/80"></i> Dành cho Quản trị viên
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- BANNER THÔNG BÁO TỪ GIÁM THỊ (HIỆN NỔI BẬT TRÊN MÀN HÌNH HỌC SINH ĐÚNG 5S) -->
     <div id="student-notice-banner" class="fixed top-20 left-1/2 -translate-x-1/2 z-[9990] max-w-lg w-[92%] sm:w-auto min-w-[340px] hidden transition-all duration-300 pointer-events-auto shadow-2xl">
         <div class="p-4 rounded-2xl bg-gradient-to-r from-amber-950/95 via-slate-900/95 to-amber-950/95 border-2 border-amber-500/80 shadow-2xl backdrop-blur-xl flex items-start gap-3.5 relative overflow-hidden">
@@ -419,7 +473,7 @@
     <!-- ======================================================= -->
 
     <!-- MODAL 1: XÁC THỰC MẬT KHẨU ADMIN -->
-    <div id="modal-admin-auth" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div id="modal-admin-auth" class="fixed inset-0 z-[100001] bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
             <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
                 <h3 class="font-heading font-bold text-white text-base flex items-center gap-2">
@@ -444,7 +498,7 @@
     </div>
 
     <!-- MODAL 2: BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN (ADMIN DASHBOARD) -->
-    <div id="modal-admin-dashboard" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4 overflow-hidden">
+    <div id="modal-admin-dashboard" class="fixed inset-0 z-[100000] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-2 sm:p-4 overflow-hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full h-[88vh] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <!-- Header Modal -->
             <div class="p-4 bg-slate-800/95 border-b border-slate-700 flex items-center justify-between shrink-0 select-none">
@@ -464,6 +518,38 @@
                     <button onclick="app.closeAdminDashboard()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
+                </div>
+            </div>
+
+            <!-- THANH ĐIỀU KHIỂN & CÔNG TẮC BẢO TRÌ HỆ THỐNG -->
+            <div class="px-4 py-2.5 bg-slate-900/90 border-b border-slate-700/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div id="admin-maintenance-indicator" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-power-off text-amber-400"></i>
+                                <span>Chế Độ Bảo Trì Web:</span>
+                            </span>
+                            <span id="admin-maintenance-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                ĐANG TẮT
+                            </span>
+                        </div>
+                        <p id="admin-maintenance-subtext" class="text-[11px] text-slate-400 mt-0.5">Trang web đang mở công khai cho tất cả thí sinh làm bài.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button onclick="app.adminEditMaintenanceMsg()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 cursor-pointer" title="Đổi lời nhắn bảo trì hiển thị cho học sinh">
+                        <i class="fa-solid fa-pen-to-square text-amber-400 text-[11px]"></i>
+                        <span>Đổi lời nhắn</span>
+                    </button>
+                    <!-- Toggle Switch Bật/Tắt Bảo Trì -->
+                    <label class="relative inline-flex items-center cursor-pointer select-none">
+                        <input type="checkbox" id="admin-maintenance-toggle" onchange="app.adminToggleMaintenance(this.checked)" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                        <span class="ml-2 text-xs font-bold text-slate-300 peer-checked:text-rose-400" id="admin-maintenance-toggle-label">Khóa Web (Bảo Trì)</span>
+                    </label>
                 </div>
             </div>
 
@@ -882,7 +968,7 @@
     </div>
 
     <!-- MODAL 4: CÀI ĐẶT SUPABASE CLOUD (KẾT NỐI DATABASE) -->
-    <div id="modal-settings" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div id="modal-settings" class="fixed inset-0 z-[100002] bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
                 <h3 class="font-heading font-bold text-white text-base flex items-center gap-2">
@@ -944,10 +1030,10 @@
     </div>
 
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ (Kèm tham số v để phá cache trình duyệt triệt để) -->
-    <script src="questions.js?v=3.2"></script>
-    <script src="physics_questions.js?v=3.2"></script>
-    <script src="geography_questions.js?v=3.2"></script>
-    <script src="supabase.js?v=3.2"></script>
-    <script src="app.js?v=3.2"></script>
+    <script src="questions.js?v=3.3"></script>
+    <script src="physics_questions.js?v=3.3"></script>
+    <script src="geography_questions.js?v=3.3"></script>
+    <script src="supabase.js?v=3.3"></script>
+    <script src="app.js?v=3.3"></script>
 </body>
 </html>
