@@ -268,7 +268,7 @@
                 <div class="text-center mb-6">
                     <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-pink-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold mb-3 shadow-sm">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        ⚡ Ôn tập trắc nghiệm
+                        ⚡ Ôn tập
                     </div>
                     <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn tập</h2>
                     <p class="text-slate-400 text-xs sm:text-sm">Hệ thống ôn luyện trắc nghiệm trực tuyến</p>
@@ -595,7 +595,7 @@
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <p class="text-xs text-slate-400 mb-4">Vui lòng nhập mật mã quản trị viên. Nhập đúng mật khẩu sẽ tự động cấp quyền Admin vĩnh viễn cho địa chỉ IP máy bạn!</p>
+            <p class="text-xs text-slate-400 mb-3">Nhập mật mã quản trị viên. Hệ thống sẽ <strong>tự động ghi nhớ vĩnh viễn quyền Admin trên thiết bị này</strong> để các lần sau bạn vào thẳng mà không cần nhập lại hay chọn IP!</p>
             <div class="space-y-3">
                 <input type="password" id="admin-pass-input" placeholder="Nhập mã bí mật..." 
                     class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
@@ -618,11 +618,15 @@
                         <i class="fa-solid fa-crown"></i>
                     </div>
                     <div>
-                        <h2 class="font-heading font-bold text-white text-base">Bảng Quản Trị Hệ Thống (QuizMaster Admin v4.0)</h2>
+                        <h2 class="font-heading font-bold text-white text-base">Bảng Quản Trị Hệ Thống</h2>
                         <p class="text-[11px] text-slate-400">Giám sát thiết bị • Quản lý IP Admin • Đa môn học • Xuất Excel</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button onclick="app.adminLogout()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Đăng xuất quyền Admin trên thiết bị này">
+                        <i class="fa-solid fa-arrow-right-from-bracket text-rose-400"></i>
+                        <span class="hidden sm:inline">Đăng Xuất Admin</span>
+                    </button>
                     <button onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
                         <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
                         <span class="hidden sm:inline">Cài Đặt API Key</span>

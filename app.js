@@ -6,8 +6,8 @@
 
 class QuizApp {
     constructor() {
-        // Môn học & Đa môn học động
-        this.currentSubject = 'history';
+        // Môn học & Đa môn học động (Ghi nhớ môn đã chọn gần nhất)
+        this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || 'history';
         this.dynamicSubjects = [];
 
         // Thông tin người học & Thiết bị & IP
@@ -31,8 +31,8 @@ class QuizApp {
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
-        // Quyền Quản trị viên (Passwordless Admin IP Whitelist)
-        this.isAdminAuthenticated = false;
+        // Quyền Quản trị viên (Ghi nhớ vĩnh viễn trên thiết bị & Whitelist IP Cloud)
+        this.isAdminAuthenticated = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
         this.adminCurrentTab = 'questions';
         this.adminSecretPass = '034569';
         this.allowedAdminIps = [];
@@ -259,7 +259,7 @@ class QuizApp {
 
         if (visibleSubjects.length === 0) {
             if (badge) badge.textContent = 'Không có bài nào gần đây';
-            if (navTitle) navTitle.textContent = 'Đề Cương Ôn Tập';
+            if (navTitle) navTitle.textContent = 'Ôn tập';
             if (navSub) navSub.textContent = 'Hiện chưa có bài ôn tập nào được mở';
             return;
         }
@@ -269,8 +269,8 @@ class QuizApp {
         const count = this.allQuestions ? this.allQuestions.length : 0;
         const semester = sub ? sub.semester : 'Giữa Kì 1';
 
-        if (navTitle) navTitle.textContent = name;
-        if (navSub) navSub.textContent = `Hệ Thống Ôn Tập Đề Cương ${semester}`;
+        if (navTitle) navTitle.textContent = 'Ôn tập';
+        if (navSub) navSub.textContent = `Hệ Thống Ôn Luyện Thông Minh • ${name}`;
         if (badge) badge.textContent = `${name} (${count} câu)`;
         if (topTitle) topTitle.textContent = name;
         const uploadSubLabel = document.getElementById('home-upload-current-sub-label');
@@ -285,6 +285,7 @@ class QuizApp {
     async selectSubject(subjKey) {
         if (subjKey === this.currentSubject) return;
         this.currentSubject = subjKey;
+        localStorage.setItem('quiz_last_selected_subject', subjKey);
         this.renderHomeSubjects();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
@@ -402,10 +403,14 @@ class QuizApp {
             console.warn("Không thể tải danh sách IP Admin:", e);
         }
 
-        // Kiểm tra xem IP hiện tại có quyền Admin không
+        // Kiểm tra xem thiết bị đã ghi nhớ quyền Admin hoặc IP hiện tại nằm trong Whitelist
+        const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
         const isWhitelisted = this.allowedAdminIps.includes(this.clientIp) || (this.masterAdminIp && this.masterAdminIp === this.clientIp);
-        if (isWhitelisted) {
+
+        if (isSavedAdmin || isWhitelisted) {
             this.isAdminAuthenticated = true;
+            localStorage.setItem('quiz_is_admin', 'true');
+            localStorage.setItem('quiz_admin_authenticated', 'true');
         }
 
         this.updateAdminUIVisibility();
@@ -443,7 +448,10 @@ class QuizApp {
     }
 
     promptAdminAuth() {
-        if (this.isAdminAuthenticated) {
+        const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
+        if (this.isAdminAuthenticated || isSavedAdmin) {
+            this.isAdminAuthenticated = true;
+            this.updateAdminUIVisibility();
             this.openAdminDashboard();
             return;
         }
@@ -474,9 +482,14 @@ class QuizApp {
 
         if (val === this.adminSecretPass) {
             this.isAdminAuthenticated = true;
+            // GHI NHỚ MẶC ĐỊNH VĨNH VIỄN TRÊN THIẾT BỊ NÀY (Không bao giờ hỏi lại)
+            localStorage.setItem('quiz_is_admin', 'true');
+            localStorage.setItem('quiz_admin_authenticated', 'true');
+            localStorage.setItem('quiz_admin_saved_ip', this.clientIp);
+
             this.closeAdminAuthModal();
 
-            // Tự động cấp quyền vĩnh viễn cho IP hiện tại (Fallback)
+            // Tự động cấp quyền vĩnh viễn cho IP hiện tại (Fallback Cloud)
             try {
                 if (window.dbService && typeof window.dbService.addAdminIp === 'function') {
                     await window.dbService.addAdminIp(this.clientIp, 'Admin Máy Hiện Tại');
@@ -488,10 +501,21 @@ class QuizApp {
 
             this.updateAdminUIVisibility();
             this.openAdminDashboard();
+            this.showToastNotification("👑 Đã xác thực & ghi nhớ quyền Admin vĩnh viễn trên thiết bị này!");
         } else {
             if (err) err.classList.remove('hidden');
             input?.focus();
         }
+    }
+
+    adminLogout() {
+        if (!confirm("Bạn có chắc muốn đăng xuất quyền Admin trên thiết bị này?\n(Để vào lại, bạn sẽ cần nhập lại mật khẩu Admin)")) return;
+        this.isAdminAuthenticated = false;
+        localStorage.removeItem('quiz_is_admin');
+        localStorage.removeItem('quiz_admin_authenticated');
+        this.closeAdminDashboard();
+        this.updateAdminUIVisibility();
+        this.showToastNotification("Đã đăng xuất quyền Admin trên thiết bị này.");
     }
 
     async adminSaveCurrentIpAsMaster() {
@@ -510,6 +534,8 @@ class QuizApp {
                     masterIp: this.masterAdminIp,
                     labels: { [this.clientIp]: 'Master Admin' }
                 });
+                localStorage.setItem('quiz_is_admin', 'true');
+                localStorage.setItem('quiz_admin_authenticated', 'true');
                 alert("👑 Đã lưu IP máy này làm Master Admin vĩnh viễn thành công!");
                 this.renderAdminIpsTab();
             }
@@ -1894,6 +1920,7 @@ ${rawText}`;
 
     onAdminChangeSubject(newSubj) {
         this.currentSubject = newSubj;
+        localStorage.setItem('quiz_last_selected_subject', newSubj);
         this.loadQuestionsForCurrentSubject().then(() => {
             this.renderAdminQuestionsList();
             this.renderHomeSubjects();
@@ -1931,35 +1958,33 @@ ${rawText}`;
             const card = document.createElement('div');
             card.className = "p-4 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-2";
 
+            const optChars = ['A', 'B', 'C', 'D'];
+            const correctIdx = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
+            const correctLetter = optChars[correctIdx] || 'A';
+
             let optionsHtml = '';
             if (q.options && q.options.length > 0) {
-                const optChars = ['A', 'B', 'C', 'D'];
-                optionsHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                optionsHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                     ${q.options.map((opt, oIdx) => {
-                    const isCorrect = oIdx === (q.correct !== undefined ? q.correct : q.answer);
+                    const isCorrect = oIdx === correctIdx;
                     return `
-                        <button onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="p-2 rounded-xl text-left transition flex items-center justify-between gap-2 border cursor-pointer ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 font-bold border-emerald-500/50 shadow-sm' : 'bg-slate-900/60 text-slate-300 border-slate-700/60 hover:border-slate-500 hover:bg-slate-800'}" title="Nhấp vào đây để đổi làm Đáp án đúng">
-                            <span class="flex-1"><strong class="${isCorrect ? 'text-emerald-400' : 'text-indigo-400'}">${optChars[oIdx]}.</strong> ${opt}</span>
-                            ${isCorrect ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/30 text-emerald-300 font-bold shrink-0">✓ Đáp án đúng</span>' : '<span class="text-[10px] text-slate-500 shrink-0 opacity-40 hover:opacity-100">Chọn</span>'}
+                        <button type="button" onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 ${isCorrect ? 'border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm' : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80'}" title="Nhấp vào để chọn làm đáp án đúng">
+                            <strong class="${isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-400'}">${optChars[oIdx]}.</strong>
+                            <span class="flex-1">${opt}</span>
                         </button>
                     `;
                 }).join('')}
                 </div>`;
             } else if (q.statements && q.statements.length > 0) {
-                optionsHtml = `<div class="space-y-1 pt-1">
+                optionsHtml = `<div class="space-y-1.5 pt-1">
                     ${q.statements.map((st, sIdx) => `
-                        <div class="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60 text-slate-300">
+                        <div class="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-300">
                             <span><strong>${String.fromCharCode(97 + sIdx)})</strong> ${st.text}</span>
-                            <span class="px-2 py-0.2 rounded font-bold ${st.answer ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${st.answer ? 'ĐÚNG' : 'SAI'}</span>
+                            <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold ${st.answer ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${st.answer ? 'ĐÚNG' : 'SAI'}</span>
                         </div>
                     `).join('')}
                 </div>`;
             }
-
-            card.innerHTML = `
-            const optChars = ['A', 'B', 'C', 'D'];
-            const correctIdx = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
-            const correctLetter = optChars[correctIdx] || 'A';
 
             card.innerHTML = `
                 <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -3334,9 +3359,10 @@ ${rawText}`;
                 }
             } catch (e) { }
 
-            // 3. Đồng bộ phân quyền Admin theo IP
+            // 3. Đồng bộ phân quyền Admin theo IP (Bảo lưu nếu thiết bị đã ghi nhớ Admin)
             try {
-                if (typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
+                const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
+                if (!isSavedAdmin && typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
                     const isAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
                     if (this.isAdminAuthenticated !== isAdmin) {
                         this.isAdminAuthenticated = isAdmin;

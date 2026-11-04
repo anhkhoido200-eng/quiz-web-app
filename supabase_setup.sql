@@ -45,13 +45,18 @@ CREATE TABLE IF NOT EXISTS public.quiz_questions (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- TỰ ĐỘNG BỔ SUNG CỘT CHO BẢNG CŨ (SỬA TRIỆT ĐỂ LỖI THIẾU CỘT subject_key)
+-- TỰ ĐỘNG BỔ SUNG CỘT CHO BẢNG CŨ (SỬA TRIỆT ĐỂ LỖI THIẾU CỘT subject_key & LỖI NULL ID)
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFAULT 'history';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 UPDATE public.quiz_questions SET subject_key = 'history' WHERE subject_key IS NULL;
+
+-- TẠO SEQUENCE TỰ ĐỘNG TĂNG ID NẾU BẢNG BỊ THIẾU AUTO INCREMENT
+CREATE SEQUENCE IF NOT EXISTS quiz_questions_id_seq;
+ALTER TABLE public.quiz_questions ALTER COLUMN id SET DEFAULT nextval('quiz_questions_id_seq');
+SELECT setval('quiz_questions_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM public.quiz_questions), 0) + 1, 1), false);
 
 CREATE INDEX IF NOT EXISTS idx_quiz_questions_subject ON public.quiz_questions(subject_key);
 CREATE INDEX IF NOT EXISTS idx_quiz_questions_category ON public.quiz_questions(category);

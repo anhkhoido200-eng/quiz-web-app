@@ -535,6 +535,25 @@ class DatabaseService {
         return [];
     }
 
+    async getNextQuestionId() {
+        let maxId = 0;
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data } = await this.client
+                    .from('quiz_questions')
+                    .select('id')
+                    .order('id', { ascending: false })
+                    .limit(1);
+                if (data && data.length > 0 && typeof data[0].id === 'number') {
+                    maxId = data[0].id;
+                }
+            } catch (e) {
+                maxId = 1000;
+            }
+        }
+        return maxId + 1;
+    }
+
     /**
      * Lưu/Cập nhật 1 câu hỏi lên Supabase
      */
@@ -556,6 +575,9 @@ class DatabaseService {
 
         if (qObj.id && Number.isInteger(Number(qObj.id))) {
             record.id = Number(qObj.id);
+        } else {
+            record.id = await this.getNextQuestionId();
+            qObj.id = record.id;
         }
 
         if (this.isSupabaseActive && this.client) {
@@ -602,20 +624,47 @@ class DatabaseService {
             await this.clearQuestionsBySubject(cleanSubject);
         }
 
-        const records = questionsList.map((q, idx) => ({
-            subject_key: cleanSubject,
-            category: q.category || 'Bài tập',
-            q_type: q.qType || q.type || 'mcq',
-            question: q.question,
-            options: q.options || [],
-            statements: q.statements || [],
-            correct: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
-            answer: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
-            correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
-            explanation: q.explanation || '',
-            image_url: q.image_url || q.imageUrl || '',
-            updated_at: new Date().toISOString()
-        }));
+        let currentMaxId = 0;
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: maxRows } = await this.client
+                    .from('quiz_questions')
+                    .select('id')
+                    .order('id', { ascending: false })
+                    .limit(1);
+                if (maxRows && maxRows.length > 0 && typeof maxRows[0].id === 'number') {
+                    currentMaxId = maxRows[0].id;
+                }
+            } catch (e) {
+                currentMaxId = 1000;
+            }
+        }
+
+        const records = questionsList.map((q, idx) => {
+            currentMaxId++;
+            const qId = currentMaxId;
+            q.id = qId;
+            return {
+                id: qId,
+                subject_key: cleanSubject,
+                category: q.category || 'Bài tập',
+                q_type: q.qType || q.type || 'mcq',
+                question: q.question,
+                options: q.options || [],
+                statements: q.statements || [],
+                correct: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
+                answer: q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0),
+                correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
+                explanation: q.explanation || '',
+                image_url: q.image_url || q.imageUrl || '',
+                updated_at: new Date().toISOString()
+            };
+        });
+
+        // Cập nhật lại bộ nhớ local của trình duyệt
+        try {
+            localStorage.setItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`, JSON.stringify(questionsList));
+        } catch (e) { }
 
         if (this.isSupabaseActive && this.client) {
             try {
@@ -638,8 +687,6 @@ class DatabaseService {
             }
         }
 
-        // Lưu local
-        localStorage.setItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`, JSON.stringify(questionsList));
         return { success: true, count: questionsList.length, localOnly: true };
     }
 
