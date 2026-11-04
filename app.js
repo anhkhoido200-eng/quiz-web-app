@@ -71,6 +71,7 @@ class QuizApp {
         this.initEventListeners();
         this.updateSoundIcons();
         this.checkSavedUser();
+        await this.loadGlobalGeminiApiKey();
         await this.loadDynamicSubjects();
         await this.fetchClientIp();
         await this.loadQuestionsForCurrentSubject();
@@ -1852,13 +1853,11 @@ Giải thích: Biên độ A = 5 cm.`;
             // Nút Hỏi AI dùng chung cho chế độ Luyện tập
             const aiButtonHtml = !this.isExamMode ? `
                 <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-${q.id}" class="btn-3d px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
-                        <span>✨ Hỏi AI giải thích thêm</span>
+                        <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <button type="button" onclick="app.openAiSettingsModal()" class="text-[11px] text-slate-400 hover:text-indigo-300 transition flex items-center gap-1 cursor-pointer" title="Cài đặt API Key Gemini">
-                        <i class="fa-solid fa-key text-[10px]"></i> Cài API Key
-                    </button>
+                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm THPT</span>
                 </div>
                 <div id="ai-explanation-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             ` : '';
@@ -2341,13 +2340,11 @@ Giải thích: Biên độ A = 5 cm.`;
                 ${ansReview}
                 ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${q.explanation}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
-                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-review-${q.id}" class="btn-3d px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
-                        <span>✨ Hỏi AI giải thích thêm</span>
+                        <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <button type="button" onclick="app.openAiSettingsModal()" class="text-[11px] text-slate-400 hover:text-indigo-300 transition flex items-center gap-1 cursor-pointer" title="Cài đặt Gemini API Key">
-                        <i class="fa-solid fa-key text-[10px]"></i> Cài API Key
-                    </button>
+                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm THPT</span>
                 </div>
                 <div id="ai-explanation-review-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
             `;
@@ -3004,10 +3001,24 @@ Giải thích: Biên độ A = 5 cm.`;
     /* 14. TRỢ LÝ AI GEMINI (GEMINI 2.5 FLASH API INTEGRATION)        */
     /* ============================================================== */
 
+    async loadGlobalGeminiApiKey() {
+        try {
+            if (window.dbService && typeof window.dbService.fetchGeminiApiKey === 'function') {
+                const cloudKey = await window.dbService.fetchGeminiApiKey();
+                if (cloudKey) {
+                    this.geminiApiKey = cloudKey;
+                    return cloudKey;
+                }
+            }
+        } catch (e) {}
+        this.geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+        return this.geminiApiKey;
+    }
+
     openAiSettingsModal() {
         const modal = document.getElementById('modal-ai-settings');
         const input = document.getElementById('gemini-api-key-input');
-        if (input) input.value = localStorage.getItem('gemini_api_key') || '';
+        if (input) input.value = this.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -3022,7 +3033,7 @@ Giải thích: Biên độ A = 5 cm.`;
         }
     }
 
-    saveAiApiKey() {
+    async saveAiApiKey() {
         const input = document.getElementById('gemini-api-key-input');
         const key = (input ? input.value : '').trim();
         if (!key) {
@@ -3031,24 +3042,53 @@ Giải thích: Biên độ A = 5 cm.`;
         }
         localStorage.setItem('gemini_api_key', key);
         this.geminiApiKey = key;
-        alert("✅ Đã lưu khóa Gemini API Key thành công! Giờ bạn có thể thoải mái hỏi AI giải thích mọi câu hỏi.");
+
+        let cloudSuccess = false;
+        try {
+            if (window.dbService && typeof window.dbService.saveGeminiApiKey === 'function') {
+                cloudSuccess = await window.dbService.saveGeminiApiKey(key);
+            }
+        } catch (e) {
+            console.warn("Lỗi lưu API key lên Cloud:", e);
+        }
+
+        if (cloudSuccess) {
+            alert("✅ ĐÃ ĐỒNG BỘ KHÓA AI LÊN TOÀN HỆ THỐNG ĐÁM MÂY!\n\nTừ bây giờ, TẤT CẢ học sinh khi vào làm bài trên bất kỳ điện thoại hay máy tính nào đều tự động được dùng Trợ lý AI miễn phí mà KHÔNG CẦN phải tự nhập khóa API!");
+        } else {
+            alert("✅ Đã lưu khóa Gemini API Key vào trình duyệt này!");
+        }
         this.closeAiSettingsModal();
     }
 
-    clearAiApiKey() {
-        if (!confirm("Bạn có chắc muốn xóa API Key khỏi trình duyệt này?")) return;
+    async clearAiApiKey() {
+        if (!confirm("Bạn có chắc muốn xóa API Key khỏi toàn bộ hệ thống?")) return;
         localStorage.removeItem('gemini_api_key');
         this.geminiApiKey = '';
         const input = document.getElementById('gemini-api-key-input');
         if (input) input.value = '';
-        alert("Đã xóa API Key.");
+
+        try {
+            if (window.dbService && typeof window.dbService.saveGeminiApiKey === 'function') {
+                await window.dbService.saveGeminiApiKey('');
+            }
+        } catch (e) {}
+
+        alert("Đã xóa API Key khỏi hệ thống.");
     }
 
     async askAiExplanation(qId) {
-        const apiKey = localStorage.getItem('gemini_api_key') || this.geminiApiKey;
+        let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-            alert("✨ Để kích hoạt Trợ lý AI giải thích chi tiết, vui lòng nhập Google Gemini API Key (hoàn toàn miễn phí).");
-            this.openAiSettingsModal();
+            apiKey = await this.loadGlobalGeminiApiKey();
+        }
+
+        if (!apiKey) {
+            if (this.isAdminAuthenticated) {
+                alert("✨ Bạn đang đăng nhập Admin. Hãy nhập Google Gemini API Key để chia sẻ quyền dùng Trợ lý AI cho toàn bộ học sinh!");
+                this.openAiSettingsModal();
+            } else {
+                alert("✨ Trợ lý AI đang chờ giáo viên/quản trị viên cấu hình khóa API chung. Vui lòng báo quản trị viên cài đặt!");
+            }
             return;
         }
 

@@ -1411,8 +1411,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </div>
                     <div>
-                        <h3 class="font-heading font-extrabold text-white text-base">Cài Đặt Trợ Lý AI Gemini</h3>
-                        <p class="text-[11px] text-purple-300">Google Gemini 2.5 Flash API</p>
+                        <h3 class="font-heading font-extrabold text-white text-base">Cấu Hình Trợ Lý AI Toàn Hệ Thống</h3>
+                        <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Dùng chung cho tất cả học sinh</p>
                     </div>
                 </div>
                 <button onclick="app.closeAiSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
@@ -1422,7 +1422,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
             <div class="space-y-3 text-xs">
                 <p class="text-slate-300 leading-relaxed">
-                    Nhập <strong>Gemini API Key</strong> để kích hoạt tính năng <span class="text-amber-300 font-bold">✨ Hỏi AI giải thích chi tiết</span> ở từng câu hỏi:
+                    Nhập <strong>Google Gemini API Key</strong> một lần duy nhất. Hệ thống sẽ lưu lên Supabase Cloud để <strong class="text-emerald-300">TẤT CẢ học sinh khi vào web đều được dùng Trợ lý AI miễn phí</strong> mà không cần phải tự nhập!
                 </p>
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
@@ -1435,8 +1435,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
 
                 <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 space-y-1">
-                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Hoàn toàn miễn phí từ Google:</p>
-                    <p>API Key được lưu an toàn tại trình duyệt (localStorage), không gửi về máy chủ thứ ba nào khác.</p>
+                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Chia sẻ tự động không giới hạn máy:</p>
+                    <p>Khóa API được mã hóa và lưu tại Supabase Cloud. Học sinh sử dụng điện thoại hay máy tính đều tự động nhận diện khóa này.</p>
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
@@ -1445,7 +1445,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     </button>
                     <div class="flex gap-2">
                         <button onclick="app.closeAiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Đóng</button>
-                        <button onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu Khóa API</button>
+                        <button onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu & Chia Sẻ Toàn Hệ Thống</button>
                     </div>
                 </div>
             </div>

@@ -36,7 +36,8 @@ const SYSTEM_RECORDS = {
     ADMIN_IPS: '00000000-0000-0000-0000-000000000001',
     GEO_CONFIG: '00000000-0000-0000-0000-000000000002',
     MAINTENANCE: '00000000-0000-0000-0000-000000000003',
-    DYNAMIC_SUBJECTS: '00000000-0000-0000-0000-000000000004'
+    DYNAMIC_SUBJECTS: '00000000-0000-0000-0000-000000000004',
+    GEMINI_CONFIG: '00000000-0000-0000-0000-000000000005'
 };
 
 function formatSupabaseUrl(rawUrl) {
@@ -411,7 +412,8 @@ class DatabaseService {
             SYSTEM_RECORDS.ADMIN_IPS,
             SYSTEM_RECORDS.GEO_CONFIG,
             SYSTEM_RECORDS.MAINTENANCE,
-            SYSTEM_RECORDS.DYNAMIC_SUBJECTS
+            SYSTEM_RECORDS.DYNAMIC_SUBJECTS,
+            SYSTEM_RECORDS.GEMINI_CONFIG
         ];
         if (this.isSupabaseActive && this.client) {
             try {
@@ -1572,6 +1574,67 @@ class DatabaseService {
         localStorage.removeItem(STORAGE_KEYS.LOCAL_LOGINS);
 
         return backupData;
+    }
+
+    // =========================================================================
+    // PHẦN 11: CẤU HÌNH TRỢ LÝ AI GEMINI TOÀN HỆ THỐNG (CLOUD SHARED KEY)
+    // =========================================================================
+
+    /**
+     * Tải khóa Gemini API Key dùng chung toàn hệ thống từ Supabase Cloud
+     */
+    async fetchGeminiApiKey() {
+        let key = localStorage.getItem('gemini_api_key') || "";
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('score_summary')
+                    .eq('id', SYSTEM_RECORDS.GEMINI_CONFIG)
+                    .limit(1);
+
+                if (!error && data && data.length > 0 && data[0].score_summary) {
+                    key = data[0].score_summary.trim();
+                    try {
+                        localStorage.setItem('gemini_api_key', key);
+                    } catch (e) {}
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi khi tải Gemini API Key từ Cloud:", err);
+            }
+        }
+        return key;
+    }
+
+    /**
+     * Lưu khóa Gemini API Key lên Supabase Cloud (Để toàn bộ học sinh đều dùng được ngay)
+     */
+    async saveGeminiApiKey(apiKey) {
+        const cleanKey = (apiKey || "").trim();
+        try {
+            localStorage.setItem('gemini_api_key', cleanKey);
+        } catch (e) {}
+
+        if (this.isSupabaseActive && this.client) {
+            const nowIso = new Date().toISOString();
+            try {
+                await this.client
+                    .from('quiz_logins')
+                    .upsert([{
+                        id: SYSTEM_RECORDS.GEMINI_CONFIG,
+                        player_name: '__GEMINI_CONFIG__',
+                        ip_address: 'SYSTEM',
+                        device_info: 'GEMINI_AI_2_5_FLASH',
+                        status: 'ACTIVE',
+                        score_summary: cleanKey,
+                        last_active: nowIso
+                    }], { onConflict: 'id' });
+                return true;
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi khi lưu Gemini API Key lên Cloud:", err);
+            }
+        }
+        return false;
     }
 }
 
