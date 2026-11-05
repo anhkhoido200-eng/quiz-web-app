@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quiz Studio | Quản trị câu hỏi</title>
+    <meta name="description" content="Bảng điều khiển quản lý ngân hàng câu hỏi Quiz Studio">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <link rel="stylesheet" href="admin.css?v=1.0">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="index.html" aria-label="Về trang làm bài">
+                <span class="brand-mark"><i class="fa-solid fa-sparkles"></i></span>
+                <span><strong>Quiz Studio</strong><small>Question workspace</small></span>
+            </a>
+            <div class="topbar-actions">
+                <span id="connection-status" class="connection-status"><i class="fa-solid fa-circle-notch fa-spin"></i> Đang kết nối</span>
+                <button id="theme-toggle" class="icon-button" title="Đổi giao diện"><i class="fa-solid fa-moon"></i></button>
+                <a class="back-link" href="index.html"><i class="fa-solid fa-arrow-left"></i><span>Trang học sinh</span></a>
+            </div>
+        </header>
+
+        <main class="page-content">
+            <section class="hero-row">
+                <div>
+                    <p class="eyebrow">ADMIN WORKSPACE</p>
+                    <h1>Ngân hàng câu hỏi</h1>
+                    <p class="hero-copy">Soạn, xem trước và quản lý đề Lớp 5 và Lớp 11 trong một không gian gọn gàng.</p>
+                </div>
+                <button id="refresh-button" class="button button-secondary"><i class="fa-solid fa-arrows-rotate"></i> Đồng bộ dữ liệu</button>
+            </section>
+
+            <section class="stats-grid" aria-label="Thống kê nhanh">
+                <article class="stat-card stat-total"><span class="stat-icon"><i class="fa-solid fa-layer-group"></i></span><div><small>Tổng câu hỏi</small><strong id="stat-total">0</strong></div></article>
+                <article class="stat-card stat-grade5"><span class="stat-icon"><i class="fa-solid fa-seedling"></i></span><div><small>Lớp 5</small><strong id="stat-grade5">0</strong></div></article>
+                <article class="stat-card stat-grade11"><span class="stat-icon"><i class="fa-solid fa-atom"></i></span><div><small>Lớp 11</small><strong id="stat-grade11">0</strong></div></article>
+            </section>
+
+            <div class="workspace-grid">
+                <section class="panel editor-panel">
+                    <div class="panel-heading"><div><p class="eyebrow">QUESTION EDITOR</p><h2 id="form-title">Thêm câu hỏi mới</h2></div><button id="reset-form" class="text-button">Làm mới</button></div>
+                    <form id="question-form" novalidate>
+                        <input type="hidden" id="question-id">
+                        <div class="form-grid two-columns">
+                            <label>Đối tượng<select id="grade-select" required><option value="5">Lớp 5</option><option value="11" selected>Lớp 11</option></select></label>
+                            <label>Môn học<select id="subject-select" required></select></label>
+                        </div>
+                        <label>Chuyên đề / bài học<input id="category-input" type="text" placeholder="Ví dụ: Phân số và số thập phân"></label>
+                        <label>Nội dung câu hỏi<textarea id="question-input" rows="4" required placeholder="Nhập nội dung câu hỏi..."></textarea></label>
+                        <div class="options-heading"><label>Đáp án lựa chọn</label><span>Chọn đáp án đúng bằng nút tròn</span></div>
+                        <div class="answers-grid">
+                            <label class="answer-field"><button type="button" class="answer-radio is-selected" data-answer="0" aria-label="Chọn A"><i class="fa-solid fa-circle-dot"></i></button><b>A</b><input id="option-0" required placeholder="Phương án A"></label>
+                            <label class="answer-field"><button type="button" class="answer-radio" data-answer="1" aria-label="Chọn B"><i class="fa-regular fa-circle"></i></button><b>B</b><input id="option-1" required placeholder="Phương án B"></label>
+                            <label class="answer-field"><button type="button" class="answer-radio" data-answer="2" aria-label="Chọn C"><i class="fa-regular fa-circle"></i></button><b>C</b><input id="option-2" required placeholder="Phương án C"></label>
+                            <label class="answer-field"><button type="button" class="answer-radio" data-answer="3" aria-label="Chọn D"><i class="fa-regular fa-circle"></i></button><b>D</b><input id="option-3" required placeholder="Phương án D"></label>
+                        </div>
+                        <label>Giải thích <span class="optional">Tùy chọn</span><textarea id="explanation-input" rows="3" placeholder="Giải thích ngắn gọn để học sinh hiểu bài..."></textarea></label>
+                        <div class="form-actions"><button type="button" id="cancel-edit" class="button button-secondary hidden">Hủy sửa</button><button class="button button-primary" type="submit"><i class="fa-solid fa-cloud-arrow-up"></i><span id="submit-label">Lưu câu hỏi</span></button></div>
+                    </form>
+                </section>
+
+                <section class="panel preview-panel">
+                    <div class="panel-heading"><div><p class="eyebrow">LIVE PREVIEW</p><h2>Học sinh sẽ thấy</h2></div><span class="preview-badge"><i class="fa-solid fa-eye"></i> Xem trước</span></div>
+                    <article id="preview-card" class="student-card"></article>
+                    <p class="preview-hint"><i class="fa-solid fa-wand-magic-sparkles"></i> Nội dung cập nhật ngay khi bạn nhập.</p>
+                </section>
+            </div>
+
+            <section class="panel library-panel">
+                <div class="panel-heading library-heading"><div><p class="eyebrow">QUESTION LIBRARY</p><h2>Câu hỏi đã có <span id="library-count" class="heading-count">0</span></h2></div><div class="library-actions"><label class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input id="search-input" type="search" placeholder="Tìm trong nội dung câu hỏi..."></label></div></div>
+                <div class="filters"><div class="segmented" role="tablist" aria-label="Lọc theo lớp"><button class="grade-filter is-active" data-grade="all">Tất cả</button><button class="grade-filter" data-grade="5">Lớp 5</button><button class="grade-filter" data-grade="11">Lớp 11</button></div><select id="library-subject-filter"><option value="all">Tất cả môn học</option></select><span id="result-summary" class="result-summary"></span></div>
+                <div id="questions-list" class="questions-list"></div>
+                <div id="empty-state" class="empty-state hidden"><i class="fa-regular fa-folder-open"></i><h3>Chưa có câu hỏi phù hợp</h3><p>Thử đổi bộ lọc hoặc tạo một câu hỏi mới.</p></div>
+            </section>
+        </main>
+    </div>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="admin.js?v=1.0"></script>
+</body>
+</html>
