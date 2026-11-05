@@ -804,7 +804,21 @@
         $('send-notice')?.addEventListener('click', broadcastNotice); document.querySelectorAll('[data-notice]').forEach((button) => button.addEventListener('click', () => { $('notice-input').value = button.dataset.notice; })); $('ban-ip-button')?.addEventListener('click', () => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())); $('refresh-students')?.addEventListener('click', loadStudents); $('clear-logins')?.addEventListener('click', async () => { if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return; const { error } = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (error) return notify(error.message, true); notify('Đã xóa lịch sử học sinh.'); loadStudents(); }); $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); if (ban) banIp(ban.dataset.banRow); if (unban) unbanIp(unban.dataset.unbanRow); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) unbanIp(button.dataset.unbanRow); });
         $('export-backup')?.addEventListener('click', exportBackup); $('export-excel')?.addEventListener('click', exportExcel); $('load-leaderboard')?.addEventListener('click', loadLeaderboard); $('save-gemini-key')?.addEventListener('click', saveGeminiKey); $('clear-gemini-key')?.addEventListener('click', clearGeminiKey); $('test-gemini-key')?.addEventListener('click', testGeminiKey);
         $('archive-data')?.addEventListener('click', async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) return notify(error.message, true); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) return notify(result.error.message, true); notify('Đã backup và dọn lịch sử kỳ thi.'); loadStudents(); });
-        $('new-subject-button')?.addEventListener('click', () => switchView('subjects')); $('go-subject-editor')?.addEventListener('click', () => { closeModal('subject-modal'); switchView('subjects'); });
+        $('new-subject-button')?.addEventListener('click', () => {
+            switchView('subjects');
+            resetSubjectForm();
+            const editor = document.querySelector('.subject-editor-panel');
+            editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            window.setTimeout(() => $('subject-name-input')?.focus(), 350);
+        });
+        $('go-subject-editor')?.addEventListener('click', () => {
+            closeModal('subject-modal');
+            switchView('subjects');
+            resetSubjectForm();
+            const editor = document.querySelector('.subject-editor-panel');
+            editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            window.setTimeout(() => $('subject-name-input')?.focus(), 350);
+        });
         $('subject-form')?.addEventListener('submit', saveSubject); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', loadSubjects); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) deleteSubject(remove.dataset.deleteSubject).catch((error) => notify(error.message, true)); }); $('subjects-list')?.addEventListener('click', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject); });
     }
 
