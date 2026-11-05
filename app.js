@@ -3718,7 +3718,9 @@ renderImporterPreview() {
         const bar = document.getElementById('student-notice-bar');
 
         if (!banner || !text) return;
-        text.textContent = content;
+        const cleanContent = typeof content === 'string' ? content.trim() : '';
+        if (cleanContent.length < 2) return;
+        text.textContent = cleanContent;
         banner.classList.remove('hidden');
 
         let secondsLeft = 5;

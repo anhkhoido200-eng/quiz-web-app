@@ -1036,6 +1036,12 @@ class DatabaseService {
      * Máy học sinh lắng nghe thông báo mới nhất
      */
     async fetchLatestNotice(clientIp) {
+        const isValidNotice = (message, timestamp) => {
+            const cleanMessage = typeof message === 'string' ? message.trim() : '';
+            // Ignore accidental test characters and notices that have already expired.
+            return cleanMessage.length >= 2 && (!timestamp || Date.now() - timestamp <= 10 * 60 * 1000);
+        };
+
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -1047,12 +1053,13 @@ class DatabaseService {
 
                 if (!error && data && data.length > 0) {
                     const match = data.find(item => item.ip_address === 'ALL' || (clientIp && item.ip_address === clientIp));
-                    if (match && match.score_summary) {
+                    const timestamp = match ? new Date(match.last_active || match.created_at).getTime() : 0;
+                    if (match && isValidNotice(match.score_summary, timestamp)) {
                         return {
                             id: match.id,
                             message: match.score_summary,
                             targetIp: match.ip_address,
-                            timestamp: new Date(match.last_active || match.created_at).getTime()
+                            timestamp
                         };
                     }
                 }
@@ -1063,7 +1070,7 @@ class DatabaseService {
             const raw = localStorage.getItem('quiz_latest_system_notice');
             if (raw) {
                 const n = JSON.parse(raw);
-                if (n.targetIp === 'ALL' || (clientIp && n.targetIp === clientIp)) {
+                if (isValidNotice(n.message, n.timestamp) && (n.targetIp === 'ALL' || (clientIp && n.targetIp === clientIp))) {
                     return n;
                 }
             }
