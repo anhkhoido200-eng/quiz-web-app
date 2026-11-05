@@ -1272,14 +1272,14 @@ Giải thích: Biên độ A = 5 cm.`;
                     const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
                     const html = result.value || '';
 
-                    // Trích xuất cả text thuần để điền vào textarea cho người dùng xem và AI phân tích
-                    const textResult = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                    const rawText = textResult.value || '';
+                    // Trích xuất văn bản có cấu trúc sạch và ảnh thật từ file Word
+                    this._docxExtractedImages = [];
+                    const cleanFormattedText = this.htmlToTextWithImgMarkers(html, this._docxExtractedImages);
                     const textarea = document.getElementById('importer-text-input');
-                    if (textarea) textarea.value = rawText;
+                    if (textarea) textarea.value = cleanFormattedText;
 
-                    // Bóc tách câu hỏi và hình ảnh từ cấu trúc HTML
-                    this.parseDocxHtmlToQuestions(html, rawText);
+                    // Bóc tách câu hỏi và hình ảnh bằng engine bóc tách thông minh chống dính câu
+                    this.parseDocxHtmlToQuestions(html, cleanFormattedText);
 
                     // TỰ ĐỘNG KÍCH HOẠT AI GEMINI ĐỂ GIẢI ĐỀ & TỰ ĐIỀN ĐÁP ÁN CHUẨN XÁC 100% NẾU CÓ API KEY
                     let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
@@ -1287,7 +1287,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         apiKey = await this.loadGlobalGeminiApiKey();
                     }
 
-                    if (apiKey && rawText.trim().length > 10) {
+                    if (apiKey && cleanFormattedText.trim().length > 10) {
                         const countBadge = document.getElementById('importer-preview-count');
                         if (countBadge) countBadge.textContent = "🤖 Đang tự động gọi AI Gemini giải đề và điền đáp án chuẩn xác...";
                         await this.parseImporterWithGemini();
@@ -1372,479 +1372,281 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     /* ============================================================== */
-    /* LÕI BÓC TÁCH CÂU HỎI DÙNG CHUNG (Word / PDF / Văn bản dán)      */
+    /* LÕI BÓC TÁCH CÂU HỎI ĐỀ THI THÔNG MINH (CHỐNG DÍNH CÂU & CHỐNG LỖI BẢNG) */
     /* ============================================================== */
 
-    /**
-     * Quét các mốc chữ cái đầu phương án. Phân biệt HOA (A-D) với thường (a-d)
-     * để không cắt nhầm chữ "a", "b", "c", "d" nằm trong câu.
-     */
-    _scanLetterMarkers(text, mode) {
-        const re = mode === 'option'
-            ? /(?:^|[\s\u00a0\t])([A-D])\s*[.):\-]\s+/g
-            : /(?:^|[\s\u00a0\t])([a-d])\s*[.):\-]\s+/g;
-        const marks = [];
-        let m;
-        while ((m = re.exec(text)) !== null) {
-            marks.push({ letter: m[1], start: m.index, contentStart: re.lastIndex, contentEnd: -1 });
-        }
-        if (marks.length === 0) return null;
-        const out = [];
-        for (let i = 0; i < marks.length; i++) {
-            const end = i + 1 < marks.length ? marks[i + 1].start : text.length;
-            out.push({
-                letter: marks[i].letter,
-                start: marks[i].start,
-                contentStart: marks[i].contentStart,
-                end,
-                text: text.slice(marks[i].contentStart, end).trim()
-            });
-        }
-        return out;
+    htmlToTextWithImgMarkers(html, imagesCollector) {
+        if (!html) return '';
+        let s = html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
+            if (imagesCollector) imagesCollector.push(src);
+            const idx = imagesCollector ? imagesCollector.length : 1;
+            return ' [[IMG:' + idx + ']] ';
+        });
+        s = s.replace(/<br\s*\/?>/gi, '\n');
+        s = s.replace(/<\/p>/gi, '\n\n');
+        s = s.replace(/<\/tr>/gi, '\n\n');
+        s = s.replace(/<\/td>/gi, '   ');
+        s = s.replace(/<\/div>/gi, '\n');
+        s = s.replace(/<\/li>/gi, '\n');
+        s = s.replace(/<[^>]+>/g, '');
+        s = s.replace(/&nbsp;/gi, ' ')
+             .replace(/&lt;/gi, '<')
+             .replace(/&gt;/gi, '>')
+             .replace(/&amp;/gi, '&')
+             .replace(/&quot;/gi, '"');
+        return s;
     }
 
-    /** Chỉ giữ chuỗi chữ cái tăng dần liên tiếp bắt đầu từ mốc cho trước */
-    _takeAscendingSequence(list, startLetter) {
-        if (!Array.isArray(list) || list.length === 0) return [];
-        const out = [];
-        let expected = startLetter.charCodeAt(0);
-        for (const it of list) {
-            const code = it.letter.charCodeAt(0);
-            if (code === expected) { out.push(it); expected++; }
-            else if (out.length > 0 && code > expected) break;
-        }
-        return out;
-    }
+    findOptionSequence(matches, fullText) {
+        if (!Array.isArray(matches) || matches.length === 0) return [];
 
-    /** Chọn chuỗi phương án A→D dài nhất, ưu tiên chuỗi xuất hiện muộn (đáp án thật nằm cuối câu) */
-    _bestAscendingSequence(list, startLetter) {
-        if (!Array.isArray(list) || list.length === 0) return [];
-        let best = [];
-        for (let i = 0; i < list.length; i++) {
-            if (list[i].letter !== startLetter) continue;
-            const seq = this._takeAscendingSequence(list.slice(i), startLetter);
-            if (seq.length > best.length) best = seq;
-            else if (seq.length === best.length && seq.length > 0 && best.length > 0 && seq[0].start > best[0].start) best = seq;
-        }
-        return best;
-    }
-
-    /** Nhận diện dòng mở đầu một câu hỏi */
-    _extractQuestionHeader(line) {
-        let m = line.match(/^(?:câu(?:\s*hỏi)?|question)\s*(\d+)\s*(?:[.):\-–]\s*|\s+)/i);
-        if (m) return { num: parseInt(m[1], 10), rest: line.slice(m[0].length), strong: true };
-        m = line.match(/^(\d+)\s*[.)]\s+/);
-        if (m) return { num: parseInt(m[1], 10), rest: line.slice(m[0].length), strong: false };
-        return null;
-    }
-
-    /**
-     * Tách một đoạn văn bản gộp thành nhiều mẩu nhỏ tại các mốc:
-     * "Câu N:", "Đáp án:", "Lời giải:" — vì Word/PDF thường làm mất dấu xuống dòng
-     * khiến nhiều câu hỏi (và đáp án) bị dính liền thành một dòng.
-     */
-    _splitInlineSegments(raw) {
-        const text = String(raw || '').replace(/\u00a0/g, ' ').trim();
-        if (!text) return [];
-
-        const markerRe = /(?:câu(?:\s*hỏi)?|question)\s*\d+\s*[.:\-–]|(?:đáp\s*án|answer)\s*[.:]|(?:lời\s*giải|giải\s*thích|explanation)\s*[.:]/gi;
-        const marks = [];
-        let m;
-        while ((m = markerRe.exec(text)) !== null) {
-            const idx = m.index;
-            const prev = idx > 0 ? text[idx - 1] : '';
-            if (idx === 0 || /[\s.;:)\]"']/.test(prev)) {
-                marks.push(idx);
-            } else {
-                markerRe.lastIndex = idx + 1;
+        // 1. Kiểm tra nếu có đủ 4 chữ cái A, B, C, D (hỗ trợ cả dạng bảng 2 cột: A C B D hoặc A B C D)
+        const letters = new Set(matches.map(m => m.letter));
+        if (letters.has('A') && letters.has('B') && letters.has('C') && letters.has('D')) {
+            const sortedByPos = [...matches].sort((a, b) => a.index - b.index);
+            const used = new Set();
+            const finalMarks = [];
+            for (const mark of sortedByPos) {
+                if (!used.has(mark.letter)) {
+                    used.add(mark.letter);
+                    finalMarks.push(mark);
+                    if (finalMarks.length === 4) break;
+                }
             }
+            finalMarks.sort((a, b) => a.index - b.index);
+            return finalMarks;
         }
-        if (marks.length <= 1 && (marks.length === 0 || marks[0] === 0)) return [text];
 
-        const out = [];
-        if (marks[0] > 0) {
-            const head = text.slice(0, marks[0]).trim();
-            if (head) out.push(head);
-        }
-        for (let i = 0; i < marks.length; i++) {
-            const end = i + 1 < marks.length ? marks[i + 1] : text.length;
-            const seg = text.slice(marks[i], end).trim();
-            if (seg) out.push(seg);
-        }
-        return out;
-    }
-
-    /** Nhận diện tiêu đề phần / bài / chương (ngắt mạch câu hỏi) */
-    _isSectionHeading(text) {
-        if (/^phần\s+[ivx\d]/i.test(text)) return true;
-        if (/^bài\s*\d+\s*[:.\-]/i.test(text)) return true;
-        if (/^(?:bài|chương|mục)\s*\d+\s*$/i.test(text)) return true;
-        if (/^[ivx]{1,4}\s*[.)]\s+/i.test(text) && text.split(/\s+/).length <= 12) return true;
-        return false;
-    }
-
-    /** Bảng có phải bảng khoá đáp án dạng "Câu 1 | Câu 2 ..." rồi "A | B ..." */
-    _isAnswerKeyGrid(grid) {
-        let hits = 0;
-        for (const row of grid || []) {
-            const cells = row.map(c => String(c || '').trim());
-            if (cells.filter(c => /^câu\s*\d+$/i.test(c)).length >= 2) hits += 2;
-            if (cells.filter(c => /^[A-D]$/i.test(c)).length >= 2) hits += 1;
-        }
-        return hits >= 4;
-    }
-
-    /** Trích khoá đáp án A/B/C/D từ các bảng trong đề */
-    _extractAnswerKeyFromGrids(grids) {
-        const key = {};
-        for (const grid of grids || []) {
-            for (let i = 0; i < grid.length; i++) {
-                const rowA = grid[i] || [];
-                for (const rowB of [grid[i + 1], grid[i + 2]]) {
-                    if (!rowB || rowB.length === 0) continue;
-                    const nums = rowA.map(c => {
-                        const m = String(c || '').trim().match(/^câu\s*(\d+)$/i);
-                        return m ? parseInt(m[1], 10) : null;
-                    });
-                    const letters = rowB.map(c => {
-                        const v = String(c || '').trim().toUpperCase();
-                        return /^[A-D]$/.test(v) ? v : null;
-                    });
-                    const n = Math.min(nums.length, letters.length);
-                    if (n === 0) continue;
-                    const okNums = nums.filter(x => x !== null).length;
-                    const okLetters = letters.filter(Boolean).length;
-                    if (okNums >= Math.ceil(n * 0.6) && okLetters >= Math.ceil(n * 0.6)) {
-                        for (let k = 0; k < n; k++) {
-                            if (nums[k] !== null && letters[k]) key[nums[k]] = letters[k];
-                        }
+        // 2. Thuật toán tìm chuỗi tăng dần liên tiếp (A -> B -> C -> D)
+        const order = ['A', 'B', 'C', 'D'];
+        let validSequences = [];
+        for (let i = 0; i < matches.length; i++) {
+            if (matches[i].letter === 'A') {
+                let seq = [matches[i]];
+                let expectedIdx = 1;
+                for (let j = i + 1; j < matches.length; j++) {
+                    if (matches[j].letter === order[expectedIdx]) {
+                        seq.push(matches[j]);
+                        expectedIdx++;
+                        if (expectedIdx >= order.length) break;
                     }
                 }
+                if (seq.length >= 2) validSequences.push(seq);
             }
         }
-        return key;
-    }
-
-    /**
-     * Trích khoá đáp án A/B/C/D từ văn bản thuần ("BẢNG ĐÁP ÁN: 1.A 2.B ..." hoặc dòng "1.A 2.B").
-     * Trả về { key, blocks } với blocks đã loại bỏ phần bảng đáp án để không dính vào câu hỏi.
-     */
-    _extractAnswerKeyFromTextBlocks(blocks) {
-        const key = {};
-        const kept = [];
-        let inKeySection = false;
-
-        const isKeyHeader = (t) => {
-            const s = t.replace(/\s+/g, ' ').trim();
-            if (/^(?:bảng\s+)?(?:đáp\s+án|answer\s*key|hướng\s+dẫn\s+chấm|bảng\s+tra\s+đáp\s+án)(?:\s+tham\s+khảo)?\s*[:.]?\s*$/i.test(s)) return true;
-            if (/^(?:bảng\s+)?(?:đáp\s+án|answer\s*key)[^:]{0,30}[:.]?\s*(?:\d+\s*[.:/\-–]?\s*[A-D]\b[\s,;|.]*)+$/i.test(s)) return true;
-            return false;
-        };
-        const isPairGrid = (t) => {
-            const cleaned = t.replace(/\s+/g, ' ').trim();
-            if (cleaned.length < 4) return false;
-            if (!/^(?:\d+\s*[.:/\-–]?\s*[A-D]\b[\s,;|.]*)+$/i.test(cleaned)) return false;
-            const pairs = cleaned.match(/\d+\s*[.:/\-–]?\s*[A-D]\b/gi) || [];
-            return pairs.length >= 2;
-        };
-        const harvest = (t) => {
-            // Chỉ nhận cặp "số + chữ cái" đứng cạnh nhau, tránh bắt nhầm "Đáp án: A"
-            const re = /(?:^|[\s,;|(])(\d+)\s*[.:/\-–]\s*([A-D])\b/gi;
-            let m;
-            while ((m = re.exec(t)) !== null) key[parseInt(m[1], 10)] = m[2].toUpperCase();
-        };
-
-        for (const b of blocks || []) {
-            const t = b && typeof b.text === 'string' ? b.text.trim() : '';
-            if (!t) { kept.push(b); continue; }
-            if (!inKeySection && isKeyHeader(t)) { inKeySection = true; harvest(t); continue; }
-            if (inKeySection) { harvest(t); continue; }
-            if (isPairGrid(t)) { harvest(t); continue; }
-            kept.push(b);
-        }
-        return { key, blocks: kept };
-    }
-
-    /** Dựng danh sách câu hỏi từ các block (đoạn văn / bảng / ảnh) theo đúng thứ tự tài liệu */
-    _buildQuestionsFromBlocks(blocks, answerKey) {
-        const questions = [];
-        const usedKey = new Set();
-        let cur = null;
-
-        const flush = () => {
-            if (!cur) return;
-            const optKeys = Array.from(cur.optMap.keys());
-            const stmts = cur.stmts.filter(Boolean);
-            const hasOptions = optKeys.length >= 2;
-            const hasStmts = stmts.length >= 1;
-            const hasShort = cur.correctValue !== undefined && cur.correctValue !== '';
-
-            if (cur.question.trim() && (hasOptions || hasStmts || hasShort)) {
-                cur.options = optKeys.map(k => cur.optMap.get(k));
-                delete cur.optMap;
-
-                if (hasStmts) {
-                    cur.qType = 'tf_group';
-                    cur.statements = stmts.map(s => ({ text: s.text, answer: s.answer }));
-                } else if (hasOptions) {
-                    cur.qType = 'mcq';
-                    cur.statements = [];
-                } else {
-                    cur.qType = 'short_answer';
-                    cur.statements = [];
-                }
-
-                if (cur.qType === 'mcq' && cur.correct === undefined && answerKey && cur.srcNum && answerKey[cur.srcNum] && !usedKey.has(cur.srcNum)) {
-                    const letter = answerKey[cur.srcNum];
-                    cur.correct = ['A', 'B', 'C', 'D'].indexOf(letter);
-                    cur.answer = cur.correct;
-                    cur.correctAnswer = letter;
-                    usedKey.add(cur.srcNum);
-                }
-
-                cur.id = questions.length + 1;
-                questions.push(cur);
-            }
-            cur = null;
-        };
-
-        const startQuestion = (num, rest) => {
-            flush();
-            cur = {
-                srcNum: num,
-                category: 'Ôn tập',
-                question: rest || '',
-                optMap: new Map(),
-                stmts: [],
-                explanation: '',
-                image_url: ''
-            };
-        };
-
-        const addOption = (letter, text) => {
-            if (!cur || cur.optMap.has(letter)) return;
-            cur.optMap.set(letter, text);
-        };
-
-        const addStatement = (letter, text) => {
-            if (!cur) return;
-            const idx = letter.toLowerCase().charCodeAt(0) - 97;
-            while (cur.stmts.length <= idx) cur.stmts.push(null);
-            cur.stmts[idx] = { text, answer: null };
-        };
-
-        const applyAnswerString = (ansStr) => {
-            if (!cur || !ansStr) return;
-
-            // Cắt phần "Lời giải:" nếu bị dính chung dòng với đáp án
-            let answerPart = String(ansStr);
-            let explPart = '';
-            const splitRe = /(?:lời\s*giải|giải\s*thích|explanation)\s*[.:]/i;
-            const splitM = answerPart.match(splitRe);
-            if (splitM) {
-                explPart = answerPart.slice(splitM.index + splitM[0].length).trim();
-                answerPart = answerPart.slice(0, splitM.index).trim();
-                if (!cur.explanation) cur.explanation = explPart;
-            }
-
-            const tfRe = /([a-d])\s*[-:=]\s*([đdDsStTfF])/gi;
-            let m;
-            let found = false;
-            while ((m = tfRe.exec(answerPart)) !== null) {
-                found = true;
-                const idx = m[1].toLowerCase().charCodeAt(0) - 97;
-                const val = m[2].toUpperCase();
-                while (cur.stmts.length <= idx) cur.stmts.push(null);
-                if (!cur.stmts[idx]) cur.stmts[idx] = { text: '', answer: null };
-                cur.stmts[idx].answer = (val === 'Đ' || val === 'D' || val === 'T');
-            }
-            if (found && cur.stmts.some(Boolean)) return;
-
-            // Chỉ coi là đáp án A/B/C/D khi câu này thực sự có phương án trắc nghiệm,
-            // tránh biến đáp án số của câu trả lời ngắn ("2") thành phương án C.
-            const isMcq = cur.optMap.size >= 2;
-            const letterOnly = answerPart.trim().toUpperCase().match(/^(?:đáp án\s*)?([A-D])$/);
-            const letterWord = isMcq ? answerPart.trim().toUpperCase().match(/^([A-D])\b/) : null;
-            const letter = letterOnly || letterWord;
-
-            if (letter) {
-                const idx = ['A', 'B', 'C', 'D'].indexOf(letter[1]);
-                cur.correct = idx;
-                cur.answer = idx;
-                cur.correctAnswer = letter[1];
-                return;
-            }
-            cur.correctValue = answerPart.trim();
-        };
-
-        const appendToLast = (text) => {
-            if (!cur || !text) return;
-            const optKeys = Array.from(cur.optMap.keys());
-            if (optKeys.length > 0) {
-                const last = optKeys[optKeys.length - 1];
-                cur.optMap.set(last, (cur.optMap.get(last) + ' ' + text).trim());
-            } else if (cur.stmts.some(Boolean)) {
-                for (let i = cur.stmts.length - 1; i >= 0; i--) {
-                    if (cur.stmts[i]) { cur.stmts[i].text = (cur.stmts[i].text + ' ' + text).trim(); break; }
-                }
-            } else {
-                cur.question = (cur.question ? cur.question + ' ' : '') + text;
-            }
-        };
-
-        const nextOptionLetter = () => {
-            const keys = Array.from(cur.optMap.keys());
-            if (keys.length === 0) return 'A';
-            const maxCode = Math.max.apply(null, keys.map(k => k.charCodeAt(0)));
-            return maxCode >= 'D'.charCodeAt(0) ? null : String.fromCharCode(maxCode + 1);
-        };
-
-        const nextStatementLetter = () => {
-            const filled = cur.stmts.map((s, i) => (s ? i : -1)).filter(i => i >= 0);
-            if (filled.length === 0) return 'a';
-            const maxIdx = Math.max.apply(null, filled);
-            return maxIdx >= 3 ? null : String.fromCharCode(97 + maxIdx + 1);
-        };
-
-        const consumeOptions = (text) => {
-            const scanned = this._scanLetterMarkers(text, 'option');
-            if (!scanned) return false;
-            const expected = nextOptionLetter();
-            const asc = expected ? this._takeAscendingSequence(scanned, expected) : [];
-            if (asc.length >= 2) {
-                asc.forEach(it => addOption(it.letter, it.text));
-                return true;
-            }
-            if (asc.length === 1 && scanned.length === 1) {
-                addOption(asc[0].letter, asc[0].text);
-                return true;
-            }
-            if (cur.optMap.size === 0) {
-                const fromA = this._takeAscendingSequence(scanned, 'A');
-                if (fromA.length >= 1) {
-                    fromA.forEach(it => addOption(it.letter, it.text));
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        const consumeStatements = (text) => {
-            const scanned = this._scanLetterMarkers(text, 'statement');
-            if (!scanned) return false;
-            const expected = nextStatementLetter();
-            const asc = expected ? this._takeAscendingSequence(scanned, expected) : [];
-            if (asc.length >= 2) {
-                asc.forEach(it => addStatement(it.letter, it.text));
-                return true;
-            }
-            if (asc.length === 1 && scanned.length === 1) {
-                addStatement(asc[0].letter, asc[0].text);
-                return true;
-            }
-            if (!cur.stmts.some(Boolean)) {
-                const fromA = this._takeAscendingSequence(scanned, 'a');
-                if (fromA.length >= 1) {
-                    fromA.forEach(it => addStatement(it.letter, it.text));
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        const consume = (raw) => {
-            const segments = this._splitInlineSegments(raw);
-            if (segments.length > 1) {
-                segments.forEach(seg => consume(seg));
-                return;
-            }
-
-            let text = String(raw || '').replace(/\u00a0/g, ' ').trim();
-            if (!text) return;
-
-            if (this._isSectionHeading(text)) { flush(); return; }
-
-            const hdr = this._extractQuestionHeader(text);
-            if (hdr) {
-                // Dòng vừa mở câu hỏi vừa chứa phương án A/B/C/D (Word/PDF mất xuống dòng)
-                const inlineOpts = this._scanLetterMarkers(hdr.rest, 'option');
-                const inlineSeq = inlineOpts ? this._bestAscendingSequence(inlineOpts, 'A') : [];
-                const inlineOptSeq = inlineSeq.length >= 2 ? inlineSeq : [];
-
-                let startsNew = hdr.strong || inlineOptSeq.length >= 2 || !cur;
-                if (!startsNew) {
-                    // Dòng "số. nội dung": câu hỏi mới nếu câu hiện tại đã xong phương án,
-                    // ngược lại là dòng liệt kê trong thân câu (ví dụ "1. Nồng độ chất A giảm.")
-                    const curHasOptions = cur ? cur.optMap.size >= 2 : false;
-                    const curHasStmts = cur ? cur.stmts.filter(Boolean).length >= 2 : false;
-                    startsNew = curHasOptions || curHasStmts;
-                }
-
-                if (!startsNew) {
-                    appendToLast(text);
-                    return;
-                }
-
-                if (inlineOptSeq.length >= 2 && inlineOptSeq[0].start <= 2) {
-                    // Toàn bộ nội dung sau "Câu N:" đã là các phương án
-                    startQuestion(hdr.num, '');
-                    inlineOptSeq.forEach(it => addOption(it.letter, it.text));
-                    return;
-                }
-                if (inlineOptSeq.length >= 2) {
-                    // "Câu N: <nội dung> A. ... B. ... C. ... D. ..."
-                    startQuestion(hdr.num, hdr.rest.slice(0, inlineOptSeq[0].start).trim());
-                    inlineOptSeq.forEach(it => addOption(it.letter, it.text));
-                    return;
-                }
-                startQuestion(hdr.num, hdr.rest);
-                return;
-            }
-
-            if (!cur) return;
-
-            if (/^(?:đáp án|answer)\s*[.:]/i.test(text)) {
-                applyAnswerString(text.replace(/^(?:đáp án|answer)\s*[.:]\s*/i, '').trim());
-                return;
-            }
-            if (/^(?:giải thích|lời giải|explanation)\s*[.:]/i.test(text)) {
-                cur.explanation = text.replace(/^(?:giải thích|lời giải|explanation)\s*[.:]\s*/i, '').trim();
-                return;
-            }
-
-            if (consumeOptions(text)) return;
-            if (consumeStatements(text)) return;
-
-            appendToLast(text);
-        };
-
-        (blocks || []).forEach(block => {
-            if (!block) return;
-            if (block.grid && block.grid.length > 0) {
-                if (this._isAnswerKeyGrid(block.grid)) return;
-                if (cur) {
-                    const flat = block.grid
-                        .map(r => r.map(c => String(c || '').trim()).filter(Boolean).join(' | '))
-                        .filter(Boolean)
-                        .join(' ; ');
-                    appendToLast(flat);
-                }
-                return;
-            }
-            if (block.images && block.images.length && cur && !cur.image_url) {
-                cur.image_url = block.images[0];
-            }
-            if (block.text) consume(block.text);
+        if (validSequences.length === 0) return [];
+        validSequences.sort((a, b) => {
+            if (b.length !== a.length) return b.length - a.length;
+            return b[0].index - a[0].index;
         });
-        flush();
+        return validSequences[0];
+    }
+
+    parseQuestionBlock(block, qNum, externalAnswer, currentCategory, imagesCollector) {
+        let imgUrl = '';
+        const imgMatch = block.match(/\[\[IMG:(\d+)\]\]/);
+        if (imgMatch && imagesCollector) {
+            const idx = parseInt(imgMatch[1], 10) - 1;
+            if (imagesCollector[idx]) imgUrl = imagesCollector[idx];
+        } else {
+            const directImgMatch = block.match(/\[\[IMG:(data:image.+?)\]\]/);
+            if (directImgMatch) imgUrl = directImgMatch[1];
+        }
+        const cleanBlock = block.replace(/\[\[IMG:.+?\]\]/g, ' ').trim();
+
+        const lines = cleanBlock.split('\n').map(l => l.trim()).filter(Boolean);
+        let options = [];
+        let correctAnswer = externalAnswer || 'A';
+        let correct = externalAnswer ? (externalAnswer === 'B' ? 1 : (externalAnswer === 'C' ? 2 : (externalAnswer === 'D' ? 3 : 0))) : 0;
+        let explanation = '';
+        let ansStr = '';
+
+        const remainingLines = [];
+        for (const line of lines) {
+            if (/^(?:đáp\s*án|answer)[\s.:]/i.test(line)) {
+                ansStr = line.replace(/^(?:đáp\s*án|answer)[\s.:]/i, '').trim();
+                const m = ansStr.match(/\b([A-D])\b/i) || ansStr.match(/^([A-D])/i);
+                if (m) {
+                    correctAnswer = m[1].toUpperCase();
+                    correct = correctAnswer === 'B' ? 1 : (correctAnswer === 'C' ? 2 : (correctAnswer === 'D' ? 3 : 0));
+                }
+                continue;
+            }
+            if (/^(?:lời\s*giải|giải\s*thích|explanation)[\s.:]/i.test(line)) {
+                explanation = line.replace(/^(?:lời\s*giải|giải\s*thích|explanation)[\s.:]/i, '').trim();
+                continue;
+            }
+            remainingLines.push(line);
+        }
+
+        // Kiểm tra câu Đúng - Sai nhiều ý con (a, b, c, d)
+        let tfStatements = [];
+        for (const line of remainingLines) {
+            const tfM = line.match(/^([a-d])[\s.):-]\s*(.*)$/);
+            if (tfM) {
+                tfStatements.push({ text: tfM[2].trim(), answer: true });
+            }
+        }
+
+        // Kiểm tra trắc nghiệm 4 lựa chọn (MCQ) trước
+        const fullContent = remainingLines.join('\n');
+        // Regex linh hoạt: hỗ trợ A. B. hoặc A) B) hoặc A/ B/ hoặc A: B: hoặc A - B -
+        // Chấp nhận cả trường hợp không có dấu cách sau dấu chấm (A.cân bằng tĩnh)
+        const optRegex = /(?:^|\n|[\s\u00a0\t(])([A-D])\s*[.):\/\-–]\s*/g;
+        let optMatches = [];
+        let om;
+        while ((om = optRegex.exec(fullContent)) !== null) {
+            const letterIdx = om[0].search(/[A-D]/);
+            const start = om.index + (letterIdx >= 0 ? letterIdx : 0);
+            optMatches.push({ letter: om[1].toUpperCase(), index: start, len: optRegex.lastIndex - start });
+        }
+
+        const seq = this.findOptionSequence(optMatches, fullContent);
+        if (seq.length >= 2) {
+            const questionPart = fullContent.substring(0, seq[0].index).trim();
+            const optMap = {};
+            for (let j = 0; j < seq.length; j++) {
+                const start = seq[j].index + seq[j].len;
+                const end = (j + 1 < seq.length) ? seq[j + 1].index : fullContent.length;
+                let optText = fullContent.substring(start, end).trim();
+                optText = optText.replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
+                optMap[seq[j].letter] = optText;
+            }
+
+            // Nếu bóc tách được các chữ cái, sắp xếp theo thứ tự A, B, C, D
+            const lettersPresent = ['A', 'B', 'C', 'D'].filter(ch => optMap[ch] !== undefined);
+            if (lettersPresent.length >= 2) {
+                options = lettersPresent.map(ch => optMap[ch]);
+            } else {
+                options = seq.map(item => optMap[item.letter]);
+            }
+
+            return {
+                id: qNum,
+                qType: 'mcq',
+                category: currentCategory || 'Ôn tập',
+                question: questionPart,
+                options: options.length >= 2 ? options : ['Đúng', 'Sai'],
+                correctAnswer,
+                correct,
+                explanation,
+                image_url: imgUrl || ''
+            };
+        }
+
+        // Nếu không phải MCQ mà có danh sách ý a), b), c), d) -> Đúng/Sai
+        if (tfStatements.length >= 2) {
+            if (ansStr) {
+                const parts = ansStr.split(/[,;\s]+/);
+                parts.forEach((p, sIdx) => {
+                    const m = p.match(/([a-d])\s*[-:=]\s*([đdsStTfF])/i);
+                    if (m && tfStatements[sIdx]) {
+                        const val = m[2].toUpperCase();
+                        tfStatements[sIdx].answer = (val === 'Đ' || val === 'D' || val === 'T');
+                    }
+                });
+            }
+            let qLines = [];
+            for (const line of remainingLines) {
+                if (/^[a-d][\s.):-]/i.test(line)) break;
+                qLines.push(line);
+            }
+            return {
+                id: qNum,
+                qType: 'tf_group',
+                category: currentCategory || 'Ôn tập',
+                question: qLines.join(' ').trim(),
+                statements: tfStatements,
+                correctAnswer: 'A',
+                correct: 0,
+                explanation,
+                image_url: imgUrl || ''
+            };
+        }
+
+        // Trường hợp còn lại (câu hỏi ngắn hoặc thiếu phương án)
+        return {
+            id: qNum,
+            qType: 'mcq',
+            category: currentCategory || 'Ôn tập',
+            question: fullContent,
+            options: ['Đúng', 'Sai'],
+            correctAnswer,
+            correct,
+            explanation,
+            image_url: imgUrl || ''
+        };
+    }
+
+    parseExamText(rawText, imagesCollector) {
+        let text = (rawText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // 1. Tách bảng đáp án ở cuối đề (nếu có: BẢNG ĐÁP ÁN: 1.A 2.B 3.C...)
+        let bottomAnsMap = {};
+        const tableHeaderRegex = /(?:bảng\s+đáp\s+án|đáp\s+án\s+tham\s+khảo|hướng\s+dẫn\s+chấm|bảng\s+tra\s+đáp\s+án)[\s\S]*$/i;
+        const tableMatch = text.match(tableHeaderRegex);
+        if (tableMatch) {
+            const tableText = tableMatch[0];
+            const pairRegex = /(\d+)[\s.:/-]*([A-D])\b/gi;
+            let pm;
+            while ((pm = pairRegex.exec(tableText)) !== null) {
+                bottomAnsMap[parseInt(pm[1], 10)] = pm[2].toUpperCase();
+            }
+            text = text.substring(0, tableMatch.index).trim();
+        }
+
+        // 2. Ép ngắt dòng trước mỗi Câu/Bài kể cả khi bị dính cùng dòng với phương án D
+        text = text.replace(/([^\n])\s*(?=(?:câu|câu\s*hỏi|question)\s*\d+[\s.:/-])/gi, '$1\n\n');
+
+        // 3. Ép ngắt dòng trước Đáp án và Lời giải
+        text = text.replace(/([^\n])\s*(?=(?:đáp\s*án|answer|lời\s*giải|giải\s*thích|explanation)[\s.:])/gi, '$1\n');
+
+        // 4. Tìm các vị trí bắt đầu câu hỏi
+        const hasCauPattern = /(?:câu|câu\s*hỏi|question)\s*\d+[\s.:/-]/i.test(text);
+        const qRegex = hasCauPattern
+            ? /(?:^|\n)\s*(?:câu|câu\s*hỏi|question)\s*(\d+)[\s.:/-]\s*/gi
+            : /(?:^|\n)\s*(?:bài\s*(\d+)[\s.:/-]|(\d+)[\s.:/-])\s+/gi;
+
+        let matches = [];
+        let m;
+        while ((m = qRegex.exec(text)) !== null) {
+            matches.push({
+                num: parseInt(m[1] || m[2], 10),
+                index: m.index,
+                headerLen: m[0].length
+            });
+        }
+
+        if (matches.length === 0) return [];
+
+        // Tìm category mặc định hoặc từ bài đầu tiên (Bài 1: Cân bằng hoá học -> Ôn tập)
+        let currentCategory = 'Ôn tập';
+        const preText = text.substring(0, matches[0].index);
+        const catM = preText.match(/(?:bài|chương|chủ đề)\s*\d+[\s.:-]*([^\n]+)/i);
+        if (catM) currentCategory = catM[0].trim();
+
+        const questions = [];
+        for (let i = 0; i < matches.length; i++) {
+            const cur = matches[i];
+            const nextStart = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+
+            if (i > 0) {
+                const inBetween = text.substring(matches[i - 1].index, cur.index);
+                const subCatM = inBetween.match(/(?:bài|chương|chủ đề)\s*\d+[\s.:-]*([^\n]+)/i);
+                if (subCatM) currentCategory = subCatM[0].trim();
+            }
+
+            const block = text.substring(cur.index + cur.headerLen, nextStart).trim();
+            const extAns = bottomAnsMap[cur.num];
+            const parsed = this.parseQuestionBlock(block, cur.num, extAns, currentCategory, imagesCollector);
+            questions.push(parsed);
+        }
 
         return questions;
     }
 
     /**
      * Chuẩn hoá đáp án đúng của câu trắc nghiệm về chỉ số 0-3.
-     * Nhận nhiều nguồn theo thứ tự ưu tiên (correct, answer, correctAnswer)
-     * vì Gemini hay trả về correctAnswer: null dù correct: 2 vẫn đúng.
      */
     _resolveAnswerIndex(...candidates) {
         for (const rawAns of candidates) {
@@ -1878,91 +1680,22 @@ Giải thích: Biên độ A = 5 cm.`;
         return Boolean(val);
     }
 
-    parseDocxHtmlToQuestions(html, rawText) {
-        if (!html) {
+    parseDocxHtmlToQuestions(html, cleanFormattedText) {
+        let text = cleanFormattedText;
+        if (!text && html) {
+            this._docxExtractedImages = [];
+            text = this.htmlToTextWithImgMarkers(html, this._docxExtractedImages);
+        }
+        if (!text) {
             this.parseImporterInput();
             return;
         }
 
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const blocks = [];
-            const allImages = [];
-
-            const collectGrid = (table) => Array.from(table.querySelectorAll('tr')).map(tr =>
-                Array.from(tr.children).map(td => (td.textContent || '').replace(/\s+/g, ' ').trim())
-            );
-
-            const walk = (node) => {
-                Array.from(node.children).forEach(el => {
-                    const tag = el.tagName.toLowerCase();
-
-                    if (tag === 'table') {
-                        const imgs = Array.from(el.querySelectorAll('img')).map(i => i.src);
-                        imgs.forEach(s => allImages.push(s));
-                        blocks.push({ grid: collectGrid(el), images: imgs });
-                        return;
-                    }
-                    if (tag === 'img') {
-                        allImages.push(el.src);
-                        blocks.push({ text: '', images: [el.src] });
-                        return;
-                    }
-                    if (tag === 'ul' || tag === 'ol') {
-                        Array.from(el.children).forEach(li => {
-                            const t = (li.textContent || '').replace(/\u00a0/g, ' ');
-                            const imgs = Array.from(li.querySelectorAll('img')).map(i => i.src);
-                            imgs.forEach(s => allImages.push(s));
-                            if (t.trim() || imgs.length) blocks.push({ text: t, images: imgs });
-                        });
-                        return;
-                    }
-
-                    const nestedTables = el.querySelectorAll('table');
-                    if (nestedTables.length > 0) {
-                        const ownText = Array.from(el.childNodes)
-                            .filter(n => !(n.nodeType === 1 && ['table', 'img'].indexOf(n.tagName.toLowerCase()) !== -1))
-                            .map(n => n.textContent || '')
-                            .join(' ')
-                            .replace(/\u00a0/g, ' ');
-                        const imgs = Array.from(el.querySelectorAll('img')).map(i => i.src);
-                        imgs.forEach(s => allImages.push(s));
-                        if (ownText.trim() || imgs.length) blocks.push({ text: ownText, images: imgs });
-                        walk(el);
-                        return;
-                    }
-
-                    const t = (el.textContent || '').replace(/\u00a0/g, ' ');
-                    const imgs = Array.from(el.querySelectorAll('img')).map(i => i.src);
-                    imgs.forEach(s => allImages.push(s));
-                    blocks.push({ text: t, images: imgs });
-                });
-            };
-            walk(doc.body);
-
-            this._docxExtractedImages = allImages;
-            const grids = blocks.filter(b => b.grid).map(b => b.grid);
-            const answerKey = this._extractAnswerKeyFromGrids(grids);
-            const textOnly = blocks.filter(b => !b.grid);
-            const textKeyInfo = this._extractAnswerKeyFromTextBlocks(textOnly);
-            const mergedKey = Object.assign({}, textKeyInfo.key, answerKey);
-            const questions = this._buildQuestionsFromBlocks(textKeyInfo.blocks, mergedKey);
-
-            this._docxQuestionImages = {};
-            questions.forEach(q => {
-                if (q.image_url && q.srcNum) this._docxQuestionImages[q.srcNum] = q.image_url;
-            });
-
-            if (questions.length > 0) {
-                this.parsedImportQuestions = this.normalizeQuestions(questions);
-                this.renderImporterPreview();
-            } else {
-                // Không bóc được từ cấu trúc HTML -> thử lại bằng văn bản thuần
-                this.parseImporterInput();
-            }
-        } catch (e) {
-            console.warn("Lỗi phân tích DOM Word, chuyển sang text thông thường:", e);
+        const questions = this.parseExamText(text, this._docxExtractedImages);
+        if (questions && questions.length > 0) {
+            this.parsedImportQuestions = this.normalizeQuestions(questions);
+            this.renderImporterPreview();
+        } else {
             this.parseImporterInput();
         }
     }
@@ -1977,49 +1710,10 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        const rawBlocks = rawText
-            .split(/\n/)
-            .map(l => l.replace(/\u00a0/g, ' ').trim())
-            .filter(Boolean)
-            .map(t => ({ text: t }));
-
-        // Tách bảng đáp án cuối đề ("BẢNG ĐÁP ÁN: 1.A 2.B ...") trước khi bóc câu hỏi
-        const keyInfo = this._extractAnswerKeyFromTextBlocks(rawBlocks);
-
-        let questions = [];
-        try {
-            questions = this._buildQuestionsFromBlocks(keyInfo.blocks, keyInfo.key);
-        } catch (e) {
-            console.warn("Lỗi bóc tách văn bản, dùng bộ phân tích dự phòng:", e);
-        }
-
-        this.parsedImportQuestions = this.normalizeQuestions(this._recoverOrphanOptions(questions));
+        const questions = this.parseExamText(rawText, this._docxExtractedImages);
+        this.parsedImportQuestions = this.normalizeQuestions(questions);
         this.renderImporterPreview();
     }
-
-    /**
-     * Cứu các phương án bị dính vào cuối câu hỏi trước (khi đề không xuống dòng
-     * đúng chuẩn). Chỉ áp dụng cho câu chưa đủ 4 phương án.
-     */
-    _recoverOrphanOptions(questions) {
-        if (!Array.isArray(questions)) return [];
-        return questions.map(q => {
-            if (q.qType !== 'mcq') return q;
-            const opts = Array.isArray(q.options) ? q.options : [];
-            if (opts.length >= 4) return q;
-
-            const text = [q.question].concat(opts).join(' \n ');
-            const scanned = this._scanLetterMarkers(text, 'option');
-            const asc = scanned ? this._bestAscendingSequence(scanned, 'A') : [];
-            if (asc.length >= 2) {
-                const head = text.slice(0, asc[0].start).trim();
-                q.question = head || q.question;
-                q.options = asc.map(it => it.text);
-            }
-            return q;
-        });
-    }
-
 
     async parseImporterWithGemini() {
         let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
@@ -2646,10 +2340,11 @@ ${rawText}`;
                 optionsHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                     ${q.options.map((opt, oIdx) => {
                     const isCorrect = oIdx === correctIdx;
+                    const optContent = (opt && opt.trim()) ? opt : '<span class="text-amber-400/90 italic font-mono text-[11px]">[Trống nội dung - Bấm "Sửa" để bổ sung công thức]</span>';
                     return `
                         <button type="button" onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="admin-opt-btn w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 ${isCorrect ? 'border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm' : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80'}" title="Nhấp vào để chọn làm đáp án đúng">
                             <strong class="${isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-400'}">${optChars[oIdx]}.</strong>
-                            <span class="flex-1">${opt}</span>
+                            <span class="flex-1">${optContent}</span>
                         </button>
                     `;
                 }).join('')}
