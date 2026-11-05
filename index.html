@@ -1535,24 +1535,47 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
             <div class="space-y-3 text-xs">
                 <p class="text-slate-300 leading-relaxed">
-                    Nhập <strong>Google Gemini API Key</strong> một lần duy nhất. Hệ thống sẽ lưu lên Supabase Cloud để <strong class="text-emerald-300">TẤT CẢ học sinh khi vào web đều được dùng Trợ lý AI miễn phí</strong> mà không cần phải tự nhập!
+                    Hệ thống hỗ trợ cả <strong>Google Gemini</strong> và mọi nhà cung cấp AI theo chuẩn <strong>OpenAI (<code>/v1/chat/completions</code>)</strong> như DeepSeek, OpenAI, OpenRouter, Groq...
                 </p>
-                <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
-                    <i class="fa-solid fa-graduation-cap"></i> Phục vụ tính năng: <strong>Gia Sư AI Giải Thích Bài Học 1 Kèm 1</strong> (Model: <code>gemini-2.5-flash</code>)
-                </div>
+
+                <!-- CHỌN LOẠI NHÀ CUNG CẤP AI -->
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-                        <span>Google Gemini API Key:</span>
-                        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-normal flex items-center gap-1">
+                    <label class="block font-semibold text-slate-300 mb-1">Nhà Cung Cấp AI:</label>
+                    <select id="ai-provider-select" onchange="app.toggleAiProviderFields()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none text-xs focus:border-purple-500 transition cursor-pointer">
+                        <option value="gemini">Google Gemini (Mặc định - Nhanh, Miễn phí)</option>
+                        <option value="openai_compatible">Chuẩn OpenAI / DeepSeek / Custom (/v1/chat/completions)</option>
+                    </select>
+                </div>
+
+                <!-- CÁC TRƯỜNG DÀNH RIÊNG CHO OPENAI COMPATIBLE -->
+                <div id="ai-openai-fields" class="space-y-2.5 hidden p-3 rounded-2xl bg-slate-900/90 border border-slate-700/80">
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">
+                            Endpoint / Base URL:
+                        </label>
+                        <input type="text" id="ai-base-url-input" placeholder="https://api.openai.com/v1 hoặc https://api.deepseek.com/v1" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-purple-500 transition">
+                        <p class="text-[10px] text-slate-400 mt-0.5">Tự động nhận diện và ghép <code>/v1/chat/completions</code></p>
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">Tên Model:</label>
+                        <input type="text" id="ai-custom-model-input" placeholder="Ví dụ: gpt-4o-mini, deepseek-chat, llama-3.3-70b..." class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-purple-500 transition">
+                    </div>
+                </div>
+
+                <!-- Ô NHẬP API KEY -->
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1 flex items-center justify-between">
+                        <span id="ai-key-label">API Key:</span>
+                        <a id="ai-key-link" href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-normal flex items-center gap-1">
                             Lấy key miễn phí <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                         </a>
                     </label>
-                    <input type="password" id="gemini-api-key-input" placeholder="Dán mã key AIzaSy..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
+                    <input type="password" id="gemini-api-key-input" placeholder="Dán mã API Key tại đây..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
                 </div>
 
                 <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 space-y-1">
-                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Chia sẻ tự động không giới hạn máy:</p>
-                    <p>Khóa API được mã hóa và lưu tại Supabase Cloud. Học sinh sử dụng điện thoại hay máy tính đều tự động nhận diện khóa này.</p>
+                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Tự động đồng bộ toàn hệ thống:</p>
+                    <p>Cấu hình AI được mã hóa và lưu tại Supabase Cloud. Tất cả học sinh truy cập trên mọi thiết bị đều được dùng chung ngay lập tức.</p>
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">

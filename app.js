@@ -1363,7 +1363,12 @@ Giải thích: Biên độ A = 5 cm.`;
 
     htmlToTextWithImgMarkers(html, imagesCollector) {
         if (!html) return '';
-        let s = html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
+
+        // Tự động nhận diện phương án in đậm (Bold) hoặc gạch chân (Underline) trong file Word làm đáp án đúng
+        let s = html.replace(/<(?:strong|b|u)>\s*([A-D])[\s.):-]([\s\S]*?)<\/(?:strong|b|u)>/gi, ' [[ANS:$1]] $1. $2 ');
+        s = s.replace(/<(?:strong|b|u)>\s*([A-D])[\s.):-]\s*<\/(?:strong|b|u)>/gi, ' [[ANS:$1]] $1. ');
+
+        s = s.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
             if (imagesCollector) imagesCollector.push(src);
             const idx = imagesCollector ? imagesCollector.length : 1;
             return ' [[IMG:' + idx + ']] ';
@@ -1428,7 +1433,7 @@ Giải thích: Biên độ A = 5 cm.`;
         return validSequences[0];
     }
 
-    parseQuestionBlock(block, qNum, externalAnswer, currentCategory, imagesCollector) {
+    parseQuestionBlock(block, qNum, externalAnswer, currentCategory, imagesCollector, headerAnswer) {
         let imgUrl = '';
         const imgMatch = block.match(/\[\[IMG:(\d+)\]\]/);
         if (imgMatch && imagesCollector) {
@@ -1438,19 +1443,24 @@ Giải thích: Biên độ A = 5 cm.`;
             const directImgMatch = block.match(/\[\[IMG:(data:image.+?)\]\]/);
             if (directImgMatch) imgUrl = directImgMatch[1];
         }
-        const cleanBlock = block.replace(/\[\[IMG:.+?\]\]/g, ' ').trim();
+
+        // Nhận diện đáp án in đậm từ Word
+        let boldAnsMatch = block.match(/\[\[ANS:([A-D])\]\]/i);
+        let boldAns = boldAnsMatch ? boldAnsMatch[1].toUpperCase() : null;
+
+        const cleanBlock = block.replace(/\[\[IMG:.+?\]\]/g, ' ').replace(/\[\[ANS:[A-D]\]\]/gi, ' ').trim();
 
         const lines = cleanBlock.split('\n').map(l => l.trim()).filter(Boolean);
         let options = [];
-        let correctAnswer = externalAnswer || 'A';
-        let correct = externalAnswer ? (externalAnswer === 'B' ? 1 : (externalAnswer === 'C' ? 2 : (externalAnswer === 'D' ? 3 : 0))) : 0;
+        let correctAnswer = headerAnswer || externalAnswer || boldAns || 'A';
+        let correct = correctAnswer === 'B' ? 1 : (correctAnswer === 'C' ? 2 : (correctAnswer === 'D' ? 3 : 0));
         let explanation = '';
         let ansStr = '';
 
         const remainingLines = [];
         for (const line of lines) {
-            if (/^(?:đáp\s*án|answer)[\s.:]/i.test(line)) {
-                ansStr = line.replace(/^(?:đáp\s*án|answer)[\s.:]/i, '').trim();
+            if (/^(?:đáp\s*án|answer|key|đ\/a)[\s.:]/i.test(line)) {
+                ansStr = line.replace(/^(?:đáp\s*án|answer|key|đ\/a)[\s.:]/i, '').trim();
                 const m = ansStr.match(/\b([A-D])\b/i) || ansStr.match(/^([A-D])/i);
                 if (m) {
                     correctAnswer = m[1].toUpperCase();
@@ -1467,15 +1477,104 @@ Giải thích: Biên độ A = 5 cm.`;
 
         // Kiểm tra câu Đúng - Sai nhiều ý con (a, b, c, d)
         let tfStatements = [];
+        const inlineTfRegex = /(?:[-–—:,|]\s*)?[([]\s*(đúng|sai|[đdsStTfF])\s*[)\]]\s*$|(?:[-–—:,|]\s+)(đúng|sai|[đdsStTfF])\s*$/i;
+
         for (const line of remainingLines) {
-            const tfM = line.match(/^([a-d])[\s.):-]\s*(.*)$/);
+            const tfM = line.match(/^([a-d])[\s.):-]\s*(.*)$/i);
             if (tfM) {
-                tfStatements.push({ text: tfM[2].trim(), answer: true });
+                let stmtText = tfM[2].trim();
+                let stmtAns = true; // default nếu không tìm thấy đáp án
+
+                const inlineMatch = stmtText.match(inlineTfRegex);
+                if (inlineMatch) {
+                    const val = (inlineMatch[1] || inlineMatch[2]).toUpperCase();
+                    stmtAns = (val === 'ĐÚNG' || val === 'Đ' || val === 'D' || val === 'TRUE' || val === 'T');
+                    stmtText = stmtText.replace(inlineTfRegex, '').trim();
+                }
+                tfStatements.push({
+                    letter: tfM[1].toLowerCase(),
+                    text: stmtText,
+                    answer: stmtAns
+                });
             }
         }
 
+        // Phân tích đáp án Đúng/Sai từ ansStr, headerAnswer, hoặc externalAnswer
+        const tfAnsSource = ansStr || headerAnswer || externalAnswer;
+        if (tfAnsSource && tfStatements.length >= 2) {
+            const mapPattern = /([a-d])\s*[-:=.]*\s*(đúng|sai|[đdsStTfF])\b/gi;
+            let mm;
+            let hasMap = false;
+            while ((mm = mapPattern.exec(tfAnsSource)) !== null) {
+                hasMap = true;
+                const letter = mm[1].toLowerCase();
+                const val = mm[2].toUpperCase();
+                const isTrue = (val === 'ĐÚNG' || val === 'Đ' || val === 'D' || val === 'TRUE' || val === 'T');
+                const target = tfStatements.find(s => s.letter === letter);
+                if (target) target.answer = isTrue;
+            }
+
+            if (!hasMap) {
+                const rawTokens = tfAnsSource.match(/\b(đúng|sai|true|false)\b|[đdsStTfF]/gi);
+                if (rawTokens && rawTokens.length >= tfStatements.length) {
+                    rawTokens.slice(0, tfStatements.length).forEach((token, idx) => {
+                        const u = token.toUpperCase();
+                        tfStatements[idx].answer = (u === 'ĐÚNG' || u === 'Đ' || u === 'D' || u === 'TRUE' || u === 'T');
+                    });
+                }
+            }
+        }
+
+        // Phân biệt chính xác giữa True/False và MCQ (Trắc nghiệm 4 đáp án)
+        const isSingleLetterMcq = /^[A-D]$/i.test((ansStr || '').trim()) || /^[A-D]$/i.test((headerAnswer || '').trim());
+        const hasTfKeywords = /(?:đúng\s*[\/-]?\s*sai|khẳng\s*định|mệnh\s*đề|phát\s*biểu|đ\s*[\/-]?\s*s)/i.test(cleanBlock);
+        const hasTfAnsPattern = /(?:[a-d]\s*[-:=.]*\s*(?:đúng|sai|[đdsStTfF])|[đs]\s*[-–,]\s*[đs]|\b(?:đúng|sai|true|false)\b)/i.test(tfAnsSource || '');
+        const hasLowerStatements = remainingLines.some(l => /^[a-d][\s.):-]/.test(l));
+
+        const isDefiniteTf = tfStatements.length >= 2 && !isSingleLetterMcq && (hasTfKeywords || hasTfAnsPattern || hasLowerStatements);
+
+        if (isDefiniteTf) {
+            let qLines = [];
+            for (const line of remainingLines) {
+                if (/^[a-d][\s.):-]/i.test(line)) break;
+                qLines.push(line);
+            }
+            let qText = qLines.join(' ').trim();
+            if (!qText) qText = `Câu hỏi Đúng / Sai #${qNum}`;
+
+            return {
+                id: qNum,
+                qType: 'tf_group',
+                category: currentCategory || 'Đúng/Sai',
+                question: qText,
+                statements: tfStatements.map(s => ({ text: s.text, answer: Boolean(s.answer) })),
+                options: ['Đúng', 'Sai'],
+                correctAnswer: 'A',
+                correct: 0,
+                explanation,
+                image_url: imgUrl || ''
+            };
+        }
+
         // Kiểm tra trắc nghiệm 4 lựa chọn (MCQ) trước
-        const fullContent = remainingLines.join('\n');
+        let fullContent = remainingLines.join('\n');
+
+        // Tách đáp án nằm ngay sau nội dung câu hỏi hoặc trước các phương án (nếu có)
+        // Hỗ trợ: (Đáp án: B), [Đáp án: B], (Đ/A: B), (Key: B), - Đáp án: B, . Đáp án: B, (B), [B] ở cuối câu hỏi
+        let inlineAns = null;
+        const inlineAnsPattern = /(?:[-––—:,|]\s*)?[([]\s*(?:đáp\s*án|answer|key|đ\/a)\s*[:=\-–]?\s*([A-D])\s*[)\]]|(?:[-––—:,|]\s*)?(?:đáp\s*án|answer|key|đ\/a)\s*[:=\-–]?\s*([A-D])\b|[([]\s*([A-D])\s*[)\]]\s*(?=\n|\r|$)/gi;
+        let inlineM;
+        while ((inlineM = inlineAnsPattern.exec(fullContent)) !== null) {
+            inlineAns = (inlineM[1] || inlineM[2] || inlineM[3]).toUpperCase();
+        }
+        if (inlineAns) {
+            correctAnswer = inlineAns;
+            // Xóa cụm đáp án inline, giữ lại cấu trúc xuống dòng
+            fullContent = fullContent.replace(inlineAnsPattern, '').replace(/[ \t]+/g, ' ');
+            fullContent = fullContent.replace(/[-––—:,([]\s*(\n|$)/g, '$1').trim();
+        }
+        correct = correctAnswer === 'B' ? 1 : (correctAnswer === 'C' ? 2 : (correctAnswer === 'D' ? 3 : 0));
+
         // Regex linh hoạt: hỗ trợ A. B. hoặc A) B) hoặc A/ B/ hoặc A: B: hoặc A - B -
         // Chấp nhận cả trường hợp không có dấu cách sau dấu chấm (A.cân bằng tĩnh)
         const optRegex = /(?:^|\n|[\s\u00a0\t(])([A-D])\s*[.):\/\-–]\s*/g;
@@ -1489,7 +1588,8 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const seq = this.findOptionSequence(optMatches, fullContent);
         if (seq.length >= 2) {
-            const questionPart = fullContent.substring(0, seq[0].index).trim();
+            let questionPart = fullContent.substring(0, seq[0].index).trim();
+            questionPart = questionPart.replace(/[-––—:,([]\s*$/, '').trim();
             const optMap = {};
             for (let j = 0; j < seq.length; j++) {
                 const start = seq[j].index + seq[j].len;
@@ -1520,35 +1620,7 @@ Giải thích: Biên độ A = 5 cm.`;
             };
         }
 
-        // Nếu không phải MCQ mà có danh sách ý a), b), c), d) -> Đúng/Sai
-        if (tfStatements.length >= 2) {
-            if (ansStr) {
-                const parts = ansStr.split(/[,;\s]+/);
-                parts.forEach((p, sIdx) => {
-                    const m = p.match(/([a-d])\s*[-:=]\s*([đdsStTfF])/i);
-                    if (m && tfStatements[sIdx]) {
-                        const val = m[2].toUpperCase();
-                        tfStatements[sIdx].answer = (val === 'Đ' || val === 'D' || val === 'T');
-                    }
-                });
-            }
-            let qLines = [];
-            for (const line of remainingLines) {
-                if (/^[a-d][\s.):-]/i.test(line)) break;
-                qLines.push(line);
-            }
-            return {
-                id: qNum,
-                qType: 'tf_group',
-                category: currentCategory || 'Ôn tập',
-                question: qLines.join(' ').trim(),
-                statements: tfStatements,
-                correctAnswer: 'A',
-                correct: 0,
-                explanation,
-                image_url: imgUrl || ''
-            };
-        }
+
 
         // Trường hợp còn lại (câu hỏi ngắn hoặc thiếu phương án)
         return {
@@ -1587,17 +1659,23 @@ Giải thích: Biên độ A = 5 cm.`;
         // 3. Ép ngắt dòng trước Đáp án và Lời giải
         text = text.replace(/([^\n])\s*(?=(?:đáp\s*án|answer|lời\s*giải|giải\s*thích|explanation)[\s.:])/gi, '$1\n');
 
-        // 4. Tìm các vị trí bắt đầu câu hỏi
-        const hasCauPattern = /(?:câu|câu\s*hỏi|question)\s*\d+[\s.:/-]/i.test(text);
+        // 4. Tìm các vị trí bắt đầu câu hỏi (Hỗ trợ cả Câu 1 (B):, Câu 1 [B]:, Câu 1 (Đáp án B):, Câu 1 - Đáp án B:)
+        const hasCauPattern = /(?:câu|câu\s*hỏi|question)\s*\d+/i.test(text);
         const qRegex = hasCauPattern
-            ? /(?:^|\n)\s*(?:câu|câu\s*hỏi|question)\s*(\d+)[\s.:/-]\s*/gi
+            ? /(?:^|\n)\s*(?:câu|câu\s*hỏi|question)\s*(\d+)(?:\s*[([]\s*(?:đáp\s*án\s*[:=\-–]?)?\s*([A-D])\s*[)\]]|\s*[-–]\s*(?:đáp\s*án\s*[:=\-–]?)?\s*([A-D]))?[\s.:/-]\s*/gi
             : /(?:^|\n)\s*(?:bài\s*(\d+)[\s.:/-]|(\d+)[\s.:/-])\s+/gi;
 
         let matches = [];
         let m;
         while ((m = qRegex.exec(text)) !== null) {
+            let headerAns = null;
+            if (hasCauPattern) {
+                if (m[2] && /[A-D]/i.test(m[2])) headerAns = m[2].toUpperCase();
+                else if (m[3] && /[A-D]/i.test(m[3])) headerAns = m[3].toUpperCase();
+            }
             matches.push({
                 num: parseInt(m[1] || m[2], 10),
+                headerAns,
                 index: m.index,
                 headerLen: m[0].length
             });
@@ -1624,7 +1702,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
             const block = text.substring(cur.index + cur.headerLen, nextStart).trim();
             const extAns = bottomAnsMap[cur.num];
-            const parsed = this.parseQuestionBlock(block, cur.num, extAns, currentCategory, imagesCollector);
+            const parsed = this.parseQuestionBlock(block, cur.num, extAns, currentCategory, imagesCollector, cur.headerAns);
             questions.push(parsed);
         }
 
@@ -1740,7 +1818,31 @@ renderImporterPreview() {
 
             if (q.qType === 'tf_group') {
                 typeBadge = '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-[10px]">Đúng/Sai (Ý)</span>';
-                ansDisplay = (q.statements || []).map((st, i) => `${String.fromCharCode(97 + i)}: ${st.answer ? 'Đ' : 'S'}`).join(', ');
+                ansDisplay = `
+                    <div class="flex flex-col gap-1.5 min-w-[130px]">
+                        ${(q.statements || []).map((st, sIdx) => {
+                            const letter = String.fromCharCode(97 + sIdx);
+                            const isTrue = st.answer === true;
+                            return `
+                                <div class="inline-flex items-center justify-between gap-2 p-1 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
+                                    <span class="font-bold text-purple-300 text-xs px-1.5">${letter}</span>
+                                    <div class="inline-flex items-center gap-1">
+                                        <button type="button" onclick="app.toggleImporterTfAnswer(${idx}, ${sIdx}, true)" 
+                                            class="w-7 h-6 rounded-md text-xs font-black cursor-pointer transition flex items-center justify-center ${isTrue ? 'bg-emerald-500 text-slate-950 shadow ring-1 ring-emerald-400 font-extrabold scale-105' : 'text-slate-400 hover:text-white hover:bg-slate-800'}"
+                                            title="Chọn ý ${letter} là ĐÚNG">
+                                            Đ
+                                        </button>
+                                        <button type="button" onclick="app.toggleImporterTfAnswer(${idx}, ${sIdx}, false)" 
+                                            class="w-7 h-6 rounded-md text-xs font-black cursor-pointer transition flex items-center justify-center ${!isTrue ? 'bg-rose-500 text-white shadow ring-1 ring-rose-400 font-extrabold scale-105' : 'text-slate-400 hover:text-white hover:bg-slate-800'}"
+                                            title="Chọn ý ${letter} là SAI">
+                                            S
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
             } else if (q.qType === 'short_answer') {
                 typeBadge = '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">Trả lời ngắn</span>';
                 ansDisplay = String(q.correctValue || '');
@@ -1794,6 +1896,36 @@ renderImporterPreview() {
                 </div>
             ` : '';
 
+            // Danh sách các ý con Đúng / Sai có nút chọn Đ / S ngay bên cạnh
+            const statementsPreview = (q.qType === 'tf_group' && q.statements && q.statements.length > 0) ? `
+                <div class="mt-2.5 space-y-1.5 text-xs">
+                    ${q.statements.map((st, sIdx) => {
+                        const letter = String.fromCharCode(97 + sIdx);
+                        const isTrue = st.answer === true;
+                        return `
+                            <div class="flex items-center justify-between gap-2.5 p-2 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 transition">
+                                <div class="flex items-start gap-2 flex-1 min-w-0">
+                                    <span class="font-bold text-purple-400 shrink-0">${letter})</span>
+                                    <span class="text-slate-200 leading-snug">${this.formatScientificNotation(st.text)}</span>
+                                </div>
+                                <div class="inline-flex items-center gap-1 shrink-0 p-0.5 rounded-lg bg-slate-900 border border-slate-700/80">
+                                    <button type="button" onclick="app.toggleImporterTfAnswer(${idx}, ${sIdx}, true)" 
+                                        class="px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer transition ${isTrue ? 'bg-emerald-500 text-slate-950 ring-1 ring-emerald-400 font-extrabold' : 'text-slate-400 hover:text-white hover:bg-slate-800'}"
+                                        title="Chọn ý ${letter} là ĐÚNG">
+                                        ĐÚNG
+                                    </button>
+                                    <button type="button" onclick="app.toggleImporterTfAnswer(${idx}, ${sIdx}, false)" 
+                                        class="px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer transition ${!isTrue ? 'bg-rose-500 text-white ring-1 ring-rose-400 font-extrabold' : 'text-slate-400 hover:text-white hover:bg-slate-800'}"
+                                        title="Chọn ý ${letter} là SAI">
+                                        SAI
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : '';
+
             tr.innerHTML = `
                 <td class="py-2.5 px-3 text-center font-bold text-slate-400 align-top">${idx + 1}</td>
                 <td class="py-2.5 px-3 align-top">${typeBadge}</td>
@@ -1801,6 +1933,7 @@ renderImporterPreview() {
                     <div class="font-semibold text-slate-100 text-xs sm:text-sm leading-snug">${this.formatScientificNotation(q.question)}</div>
                     ${imgBadge}
                     ${optionsPreview}
+                    ${statementsPreview}
                     ${explanationPreview}
                 </td>
                 <td class="py-2.5 px-3 align-top">${ansDisplay}</td>
@@ -1824,6 +1957,16 @@ renderImporterPreview() {
             this.parsedImportQuestions[idx].answer = num;
             this.parsedImportQuestions[idx].correctAnswer = ['A', 'B', 'C', 'D'][num];
             this.renderImporterPreview();
+        }
+    }
+
+    toggleImporterTfAnswer(qIdx, sIdx, isTrue) {
+        if (this.parsedImportQuestions && this.parsedImportQuestions[qIdx]) {
+            const q = this.parsedImportQuestions[qIdx];
+            if (q.statements && q.statements[sIdx]) {
+                q.statements[sIdx].answer = Boolean(isTrue);
+                this.renderImporterPreview();
+            }
         }
     }
 
@@ -1996,7 +2139,10 @@ renderImporterPreview() {
 
             const optChars = ['A', 'B', 'C', 'D'];
             const correctIdx = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
-            const correctLetter = optChars[correctIdx] || 'A';
+            let correctLetter = optChars[correctIdx] || 'A';
+            if (q.qType === 'tf_group' && q.statements) {
+                correctLetter = q.statements.map((s, i) => `${String.fromCharCode(97 + i)}: ${s.answer ? 'Đ' : 'S'}`).join(', ');
+            }
 
             let optionsHtml = '';
             if (q.options && q.options.length > 0) {
@@ -2014,12 +2160,30 @@ renderImporterPreview() {
                 </div>`;
             } else if (q.statements && q.statements.length > 0) {
                 optionsHtml = `<div class="space-y-1.5 pt-1">
-                    ${q.statements.map((st, sIdx) => `
-                        <div class="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-300">
-                            <span><strong>${String.fromCharCode(97 + sIdx)})</strong> ${this.formatScientificNotation(st.text)}</span>
-                            <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold ${st.answer ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${st.answer ? 'ĐÚNG' : 'SAI'}</span>
-                        </div>
-                    `).join('')}
+                    ${q.statements.map((st, sIdx) => {
+                        const letter = String.fromCharCode(97 + sIdx);
+                        const isTrue = st.answer === true;
+                        return `
+                            <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-300">
+                                <div class="flex items-start gap-2 flex-1">
+                                    <strong class="text-purple-400">${letter})</strong>
+                                    <span class="flex-1">${this.formatScientificNotation(st.text)}</span>
+                                </div>
+                                <div class="inline-flex items-center gap-1 shrink-0 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+                                    <button type="button" onclick="app.adminQuickToggleTfAnswer(${q.id}, ${sIdx}, true)"
+                                        class="px-2.5 py-0.5 rounded-md text-xs font-bold transition cursor-pointer ${isTrue ? 'bg-emerald-500 text-slate-950 font-black shadow ring-1 ring-emerald-400' : 'text-slate-400 hover:text-white'}"
+                                        title="Đặt ý ${letter} thành ĐÚNG">
+                                        ĐÚNG
+                                    </button>
+                                    <button type="button" onclick="app.adminQuickToggleTfAnswer(${q.id}, ${sIdx}, false)"
+                                        class="px-2.5 py-0.5 rounded-md text-xs font-bold transition cursor-pointer ${!isTrue ? 'bg-rose-500 text-white font-black shadow ring-1 ring-rose-400' : 'text-slate-400 hover:text-white'}"
+                                        title="Đặt ý ${letter} thành SAI">
+                                        SAI
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>`;
             }
 
@@ -2090,6 +2254,18 @@ renderImporterPreview() {
         this.debouncedCacheLocalQuestions();
 
         this.showToastNotification(`✅ Đã đổi đáp án câu #${q.id} thành [${optLetter}]!`);
+    }
+
+    async adminQuickToggleTfAnswer(qId, sIdx, isTrue) {
+        const q = this.allQuestions.find(item => item.id === qId);
+        if (!q || !q.statements || !q.statements[sIdx]) return;
+        q.statements[sIdx].answer = Boolean(isTrue);
+
+        this.debouncedSaveSingleQuestion(q);
+        this.debouncedCacheLocalQuestions();
+
+        this.renderAdminQuestionsList();
+        this.showToastNotification(`Đã đổi ý ${String.fromCharCode(97 + sIdx)} thành [${isTrue ? 'ĐÚNG' : 'SAI'}]!`);
     }
 
     /* ============================================================== */
