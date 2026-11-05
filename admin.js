@@ -45,14 +45,12 @@
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
         return builtIn?.name || dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
     };
-    const allSubjects = () => {
-        const map = new Map(Object.values(SUBJECTS).flat().map((item) => [item.key, item]));
-        state.subjects.forEach((item) => { const key = item.key || item.subject_key; if (key) map.set(key, { key, name: item.name || item.title || key }); });
-        return [...map.values()];
-    };
+    const allSubjects = () => state.subjects
+        .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
+        .filter((item) => item.key);
     const gradeOf = (q) => {
-        const key = String(q.subject_key || q.subjectKey || '').toLowerCase();
-        if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /(?:^|[_-])5$/.test(key)) return '5';
+        const key = String(q.subject_key || q.subjectKey || q.key || '').toLowerCase();
+        if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /5$/.test(key)) return '5';
         return '11';
     };
     const notify = (message, error = false) => {
@@ -155,7 +153,7 @@
     }
 
     function fillSubjects(grade, selected) {
-        const options = SUBJECTS[grade] || allSubjects();
+        const options = allSubjects().filter((item) => gradeOf(item) === String(grade));
         const select = $('subject-select');
         if (!select) return;
         select.innerHTML = options.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -163,7 +161,7 @@
     }
 
     function fillLibrarySubjects() {
-        const list = state.grade === 'all' ? allSubjects() : (SUBJECTS[state.grade] || allSubjects());
+        const list = state.grade === 'all' ? allSubjects() : allSubjects().filter((item) => gradeOf(item) === String(state.grade));
         if (!list.some((item) => item.key === state.subject)) state.subject = 'all';
         if ($('library-subject-filter')) {
             $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -349,7 +347,7 @@
         if ($('explanation-input')) $('explanation-input').value = normalized.explanation || '';
         [0, 1, 2, 3].forEach((index) => { if ($(`option-${index}`)) $(`option-${index}`).value = normalized.options?.[index] || ''; });
         state.answer = Number(normalized.correctAnswer ?? normalized.correct ?? 0);
-        state.tfAnswers = (normalized.statements || []).map((item) => Boolean(item.answer));
+        state.tfAnswers = (normalized.statements || []).map((item) => parseBool(item.answer ?? item.correctAnswer));
         while (state.tfAnswers.length < 4) state.tfAnswers.push(true);
         ensureTypeEditor(normalized.qType); setAnswer(state.answer);
         if (normalized.qType === 'tf_group') normalized.statements.forEach((item, index) => { if ($(`tf-${index}`)) $(`tf-${index}`).value = item.text || ''; });
@@ -440,7 +438,7 @@
         state.importQuestions = []; state.importIndex = 0; state.sourceText = '';
         if ($('import-text')) $('import-text').value = '';
         if ($('import-preview')) $('import-preview').innerHTML = '<p class="muted-copy">Chọn DOCX/PDF hoặc dán đề, sau đó bấm “Gemini phân tích & giải”.</p>';
-        fillLibrarySubjects(); openModal('import-modal');
+        fillLibrarySubjects(); switchView('questions'); openModal('import-modal');
     }
 
     function parseJsonInput(text) {
@@ -511,6 +509,7 @@
             state.importQuestions = (Array.isArray(parsed) ? parsed : parsed.questions || []).map(normalizeAiQuestion);
             state.importIndex = 0;
             state.importIntegrity = validateVerbatimQuestions(state.importQuestions, source);
+            if (state.importQuestions.length) fillForm(state.importQuestions[0]);
             renderImportReview();
             notify(`Gemini đã phân tích ${state.importQuestions.length} câu. Hãy duyệt trước khi lưu.`);
         } catch (error) { notify(`AI phân tích thất bại: ${error.message}`, true); }
@@ -540,6 +539,25 @@
             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
             closeModal('import-modal'); await loadQuestions();
         } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
+    }
+
+    async function handleImportFile(file) {
+        if (!file) return;
+        const input = $('import-file');
+        const button = $('ai-analyze-import');
+        if (input) input.disabled = true;
+        if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-file-arrow-up fa-beat"></i> Đang đọc file...'; }
+        try {
+            state.sourceText = await extractFile(file);
+            if (!state.sourceText.trim()) throw new Error('File không có lớp văn bản để đọc. Nếu là PDF scan ảnh, hãy OCR trước.');
+            $('import-text').value = state.sourceText;
+            notify(`Đã đọc ${file.name}. Gemini đang tự phân tích câu hỏi và đáp án...`);
+            await analyzeWithGemini();
+        } catch (error) {
+            notify(`Không thể đọc hoặc phân tích file: ${error.message}`, true);
+        } finally {
+            if (input) input.disabled = false;
+        }
     }
 
     async function fetchGeminiKey() {
@@ -623,15 +641,11 @@
     async function loadSubjects() {
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
-        const configured = new Map(state.subjects.map((item) => [item.key || item.subject_key, item]));
-        const builtIn = Object.values(SUBJECTS).flat().map((item) => ({
-            ...item,
-            ...(configured.get(item.key) || {}),
-            name: configured.get(item.key)?.name || item.name,
-            visibility: configured.get(item.key)?.visibility || 'PUBLIC'
-        }));
-        const custom = state.subjects.filter((item) => !builtIn.some((base) => base.key === (item.key || item.subject_key)));
-        state.subjects = [...builtIn, ...custom];
+        state.subjects = state.subjects
+            .map((item) => ({ ...item, key: item.key || item.subject_key, name: item.name || item.title || item.key }))
+            .filter((item) => item.key && item.name);
+        fillSubjects($('grade-select')?.value || '11');
+        fillLibrarySubjects();
         $('subject-count') && ($('subject-count').textContent = state.subjects.length);
         $('subjects-list') && ($('subjects-list').innerHTML = state.subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">${esc(subject.visibility || 'PUBLIC')}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.gradient || 'indigo')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn động. Môn tích hợp vẫn hoạt động bình thường.</div>');
         upgradePrivacyPanel();
@@ -675,6 +689,7 @@
     }
 
     async function saveSubjects() {
+        state.subjects = (state.subjects || []).filter((item) => item && item.key && item.name);
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
         fillLibrarySubjects(); await loadSubjects();
@@ -728,8 +743,8 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
-        $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const list = parseJsonInput($('import-text')?.value || ''); if (!list.length) return notify('Văn bản đã được giữ nguyên. Hãy dùng Gemini để phân tích câu hỏi.', true); state.importQuestions = list; state.importIndex = 0; renderImportReview(); }); $('ai-analyze-import')?.addEventListener('click', analyzeWithGemini); $('save-import')?.addEventListener('click', saveImportQuestions);
-        $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = event.target.value; }); $('import-file')?.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; try { state.sourceText = await extractFile(file); $('import-text').value = state.sourceText; notify(`Đã đọc ${file.name}, giữ nguyên nội dung trích xuất.`); } catch (error) { notify(`Không đọc được file: ${error.message}`, true); } });
+        $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('Văn bản đã được giữ nguyên. Hãy dùng Gemini để phân tích câu hỏi.', true); state.importQuestions = list; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); fillForm(list[0]); renderImportReview(); }); $('ai-analyze-import')?.addEventListener('click', analyzeWithGemini); $('save-import')?.addEventListener('click', saveImportQuestions);
+        $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = event.target.value; }); $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
         $('maintenance-toggle')?.addEventListener('change', toggleMaintenance); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; toggleMaintenance(); } });

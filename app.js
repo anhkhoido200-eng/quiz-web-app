@@ -186,9 +186,8 @@ class QuizApp {
             }
         }
 
-        if (!Array.isArray(loaded) || loaded.length === 0) {
-            loaded = this.getDefaultSubjects();
-        }
+        // Không tự tạo môn mẫu: chỉ hiển thị những môn Admin đã lưu trên Cloud.
+        if (!Array.isArray(loaded)) loaded = [];
 
         this.dynamicSubjects = loaded;
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(loaded));
