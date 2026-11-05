@@ -79,12 +79,12 @@ class QuizApp {
             }
         }, 300);
 
-        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-3.1-pro-preview (khắc phục lỗi deprecated gemini-2.5-pro / gemini-1.5)
+        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-3.5-flash
         const savedModel = localStorage.getItem('gemini_model');
-        if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.5-pro') || savedModel === 'gemini-2.5-pro') {
-            localStorage.setItem('gemini_model', 'gemini-3.1-pro-preview');
+        if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.0') || savedModel.includes('2.5') || savedModel.includes('3.1')) {
+            localStorage.setItem('gemini_model', 'gemini-3.5-flash');
         }
-        this.selectedGeminiModel = 'gemini-3.1-pro-preview';
+        this.selectedGeminiModel = 'gemini-3.5-flash';
 
         // Cache màn hình
         this.screens = {
@@ -1912,10 +1912,11 @@ ${rawText}`;
         // Danh sách model còn hoạt động (tính đến 2026). Hệ thống tự thử lần lượt.
         const candidateModels = [
             options.model,
-            'gemini-3.1-pro-preview',
+            'gemini-3.5-flash',
+            'gemini-3.5-flash-lite',
             'gemini-3-flash-preview',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite'
+            'gemini-3.8-flash',
+            'gemini-3.1-pro-preview'
         ].filter(Boolean);
 
         let lastErrMsg = '';
@@ -4592,10 +4593,11 @@ YÊU CẦU:
 
         try {
             const candidateModels = [
-                'gemini-3.1-pro-preview',
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-lite'
+                'gemini-3.5-flash',
+                'gemini-3.5-flash-lite',
+                'gemini-3-flash-preview',
+                'gemini-3.8-flash',
+                'gemini-3.1-pro-preview'
             ];
 
             let res = null;
