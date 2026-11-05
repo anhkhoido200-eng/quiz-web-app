@@ -13,6 +13,18 @@
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="admin.css?v=2.1">
+    <script>
+        window.addEventListener('load', () => {
+            const importText = document.getElementById('import-text');
+            if (!importText || !importText.value.includes('admin.js')) return;
+            importText.value = '';
+            const card = importText.closest('.modal-card');
+            if (!card || document.getElementById('import-file')) return;
+            card.insertAdjacentHTML('beforeend', '<div class="dropzone"><i class="fa-solid fa-cloud-arrow-up"></i><span>Kéo thả hoặc chọn DOCX, PDF, JSON, Excel, CSV, TXT</span><input id="import-file" type="file" accept=".docx,.pdf,.json,.xlsx,.xls,.csv,.txt"></div><div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal="import-modal">Hủy</button><button id="parse-import" class="button button-info" type="button"><i class="fa-solid fa-code"></i> Đọc JSON</button><button id="ai-analyze-import" class="button button-purple" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích &amp; giải</button><button id="save-import" class="button button-primary" type="button"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào ngân hàng</button></div><div id="import-preview" class="import-preview"></div>');
+            const loadScript = (src) => new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.appendChild(script); });
+            loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2').then(() => loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js')).then(() => loadScript('admin.js?v=3.2')).catch(() => { document.getElementById('access-denied')?.classList.remove('hidden'); });
+        });
+    </script>
 </head>
 <body>
     <div id="access-denied" class="access-denied hidden">
@@ -57,10 +69,11 @@
         </main>
     </div>
     <div id="import-modal" class="modal-backdrop hidden"><section class="modal-card import-modal"><div class="modal-header"><div><p class="eyebrow">SMART IMPORT</p><h2>Nạp câu hỏi hàng loạt</h2><p>Dán nội dung, JSON hoặc chọn file Excel/CSV.</p></div><button class="icon-button" data-close-modal="import-modal"><i class="fa-solid fa-xmark"></i></button></div><div class="import-toolbar"><label>Môn đích<select id="import-subject-select"></select></label><label class="checkbox-label"><input type="checkbox" id="import-replace"> Xóa câu hỏi cũ của môn này</label></div><textarea id="import-text" rows="12" placeholder="Dán nội dung câu hỏi hoặc JSON tại đây...
+    "></textarea><div class="dropzone"><i class="fa-solid fa-cloud-arrow-up"></i><span>Kéo thả hoặc chọn DOCX, PDF, JSON, Excel, CSV, TXT</span><input id="import-file" type="file" accept=".docx,.pdf,.json,.xlsx,.xls,.csv,.txt"></div><div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal="import-modal">Hủy</button><button id="parse-import" class="button button-info" type="button"><i class="fa-solid fa-code"></i> Đọc JSON</button><button id="ai-analyze-import" class="button button-purple" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích & giải</button><button id="save-import" class="button button-primary" type="button"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào ngân hàng</button></div><div id="import-preview" class="import-preview"></div></section></div>
     <div id="subject-modal" class="modal-backdrop hidden"><section class="modal-card small-modal"><div class="modal-header"><div><p class="eyebrow">QUICK SUBJECT</p><h2>Thêm môn học</h2></div><button class="icon-button" data-close-modal="subject-modal"><i class="fa-solid fa-xmark"></i></button></div><p class="muted-copy">Bạn có thể chỉnh sửa chi tiết trong khu vực Môn học & quyền riêng tư.</p><button id="go-subject-editor" class="button button-primary">Mở trình chỉnh sửa</button></section></div>
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="admin.js?v=3.1"></script>
+    <script src="admin.js?v=3.2"></script>
 </body>
 </html>
