@@ -623,8 +623,55 @@
     async function loadSubjects() {
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
+        const configured = new Map(state.subjects.map((item) => [item.key || item.subject_key, item]));
+        const builtIn = Object.values(SUBJECTS).flat().map((item) => ({
+            ...item,
+            ...(configured.get(item.key) || {}),
+            name: configured.get(item.key)?.name || item.name,
+            visibility: configured.get(item.key)?.visibility || 'PUBLIC'
+        }));
+        const custom = state.subjects.filter((item) => !builtIn.some((base) => base.key === (item.key || item.subject_key)));
+        state.subjects = [...builtIn, ...custom];
         $('subject-count') && ($('subject-count').textContent = state.subjects.length);
         $('subjects-list') && ($('subjects-list').innerHTML = state.subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">${esc(subject.visibility || 'PUBLIC')}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.gradient || 'indigo')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn động. Môn tích hợp vẫn hoạt động bình thường.</div>');
+        upgradePrivacyPanel();
+    }
+
+    function upgradePrivacyPanel() {
+        const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
+        if (!grid || grid.dataset.upgraded === 'true') { renderSubjectPrivacy(); return; }
+        const editor = grid.querySelector('.subject-editor-panel');
+        grid.innerHTML = '<section class="panel subject-privacy-panel"><div class="panel-title"><div><p class="eyebrow">SUBJECT PRIVACY</p><h2>Quyền riêng tư tất cả môn học</h2><p class="muted-copy">Bật Riêng tư để ẩn môn khỏi trang học sinh. Mỗi môn có thể cài đặt độc lập.</p></div><span id="privacy-private-count" class="status-badge safe">0 RIÊNG TƯ</span></div><div id="subject-privacy-list" class="subject-privacy-list"></div><div class="privacy-note"><i class="fa-solid fa-circle-info"></i><span>Thay đổi được lưu lên Cloud và áp dụng ngay sau khi học sinh tải lại trang.</span></div></section>';
+        if (editor) grid.appendChild(editor);
+        grid.dataset.upgraded = 'true';
+        renderSubjectPrivacy();
+    }
+
+    function renderSubjectPrivacy() {
+        const list = $('subject-privacy-list');
+        if (!list) return;
+        const subjects = state.subjects || [];
+        const privateCount = subjects.filter((subject) => subject.visibility === 'PRIVATE').length;
+        $('privacy-private-count') && ($('privacy-private-count').textContent = `${privateCount} RIÊNG TƯ`);
+        $('privacy-private-count') && ($('privacy-private-count').className = `status-badge ${privateCount ? 'danger' : 'safe'}`);
+        list.innerHTML = subjects.map((subject) => {
+            const isPrivate = subject.visibility === 'PRIVATE';
+            const grade = /5$/.test(subject.key || '') ? 'Lớp 5' : 'Lớp 11';
+            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>${esc(grade)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><button class="privacy-toggle ${isPrivate ? 'is-private' : ''}" data-toggle-subject="${esc(subject.key)}"><i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'}"></i><span>${isPrivate ? 'Mở môn' : 'Ẩn môn'}</span></button></div>`;
+        }).join('') || '<div class="empty-state">Chưa có môn học để cấu hình.</div>';
+    }
+
+    async function toggleSubjectPrivacy(key) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        if (!subject) return;
+        subject.visibility = subject.visibility === 'PRIVATE' ? 'PUBLIC' : 'PRIVATE';
+        try {
+            await saveSubjects();
+            notify(`${subject.name || key} đã chuyển sang ${subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai'}.`);
+        } catch (error) {
+            subject.visibility = subject.visibility === 'PRIVATE' ? 'PUBLIC' : 'PRIVATE';
+            notify(`Không thể lưu quyền môn học: ${error.message}`, true);
+        }
     }
 
     async function saveSubjects() {
@@ -693,7 +740,7 @@
         $('export-backup')?.addEventListener('click', exportBackup); $('export-excel')?.addEventListener('click', exportExcel); $('load-leaderboard')?.addEventListener('click', loadLeaderboard); $('save-gemini-key')?.addEventListener('click', saveGeminiKey); $('clear-gemini-key')?.addEventListener('click', clearGeminiKey);
         $('archive-data')?.addEventListener('click', async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) return notify(error.message, true); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) return notify(result.error.message, true); notify('Đã backup và dọn lịch sử kỳ thi.'); loadStudents(); });
         $('new-subject-button')?.addEventListener('click', () => switchView('subjects')); $('go-subject-editor')?.addEventListener('click', () => { closeModal('subject-modal'); switchView('subjects'); });
-        $('subject-form')?.addEventListener('submit', saveSubject); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', loadSubjects); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) deleteSubject(remove.dataset.deleteSubject).catch((error) => notify(error.message, true)); });
+        $('subject-form')?.addEventListener('submit', saveSubject); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', loadSubjects); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) deleteSubject(remove.dataset.deleteSubject).catch((error) => notify(error.message, true)); }); $('subjects-list')?.addEventListener('click', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject); });
     }
 
     async function init() {

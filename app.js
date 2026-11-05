@@ -201,7 +201,7 @@ class QuizApp {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
 
-        // Chỉ hiển thị các môn CÔNG KHAI (PUBLIC). Môn ẩn / Riêng tư (PRIVATE) tuyệt đối không đưa lên đây!
+        // Chỉ hiển thị các môn CÔNG KHAI (PUBLIC). Mọi môn PRIVATE đều được ẩn.
         const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
             const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
             return !isPrivate;
