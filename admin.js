@@ -41,6 +41,10 @@
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const parseBool = (value) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
     const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
+    const isValidGeminiKey = (value) => {
+        const key = cleanGeminiKey(value);
+        return Boolean(key && (/^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/i.test(key) || key.length >= 20));
+    };
     const subjectName = (key) => {
         const builtIn = Object.values(SUBJECTS).flat().find((item) => item.key === key);
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
@@ -509,7 +513,7 @@
   { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+        const models = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
         try {
             let response; let lastError = '';
             for (const model of models) {
@@ -594,7 +598,7 @@
     async function saveGeminiKey() {
         const key = cleanGeminiKey($('gemini-key-input')?.value);
         if (!key) return notify('Hãy nhập Gemini API Key.', true);
-        if (!/^AIza[\w-]{20,}$/.test(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza.', true);
+        if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza hoặc AQ.', true);
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'ACTIVE', score_summary: key, last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(`Không thể lưu API Key: ${error.message}`, true);
         localStorage.setItem('gemini_api_key', key); $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud.');
@@ -610,16 +614,32 @@
     async function testGeminiKey() {
         const key = await fetchGeminiKey();
         if (!key) return notify('Chưa có Gemini API Key để kiểm tra.', true);
-        if (!/^AIza[\w-]{20,}$/.test(key)) return notify('API Key không đúng định dạng. Hãy dán nguyên key bắt đầu bằng AIza...', true);
+        if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng. Key thường bắt đầu bằng AIza hoặc AQ...', true);
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply only with OK.' }] }], generationConfig: { temperature: 0, maxOutputTokens: 4 } }) });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                const message = data?.error?.message || `HTTP ${response.status}`;
-                throw new Error(message);
+            const testModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+            let ok = false;
+            let lastError = '';
+            for (const model of testModels) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply only with OK.' }] }], generationConfig: { temperature: 0, maxOutputTokens: 4 } })
+                    });
+                    if (response.ok) {
+                        ok = true;
+                        break;
+                    }
+                    const data = await response.json().catch(() => ({}));
+                    lastError = data?.error?.message || `HTTP ${response.status}`;
+                    if (response.status === 400 || response.status === 401 || response.status === 403) break;
+                } catch (err) {
+                    lastError = err.message;
+                }
             }
+            if (!ok) throw new Error(lastError || 'Không thể kết nối đến Gemini');
             notify('Gemini API Key hợp lệ và đang hoạt động.');
             if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key hợp lệ';
         } catch (error) {
