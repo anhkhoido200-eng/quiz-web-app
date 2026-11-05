@@ -401,7 +401,7 @@ class QuizApp {
 
             // 2. Chuẩn hóa nội dung câu hỏi
             if (typeof item.question === 'string') {
-                item.question = item.question.trim();
+                item.question = this.formatScientificNotation(item.question.trim());
             }
 
             // 3. Chuẩn hóa 4 phương án options: Hỗ trợ cả mảng và object { A, B, C, D }, loại bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
@@ -412,7 +412,8 @@ class QuizApp {
             if (Array.isArray(rawOpts)) {
                 item.options = rawOpts.map(opt => {
                     if (typeof opt !== 'string') return String(opt || '');
-                    return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+                    const cleanOpt = opt.replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
+                    return this.formatScientificNotation(cleanOpt);
                 });
             } else {
                 item.options = [];
@@ -428,7 +429,7 @@ class QuizApp {
                 if (!Array.isArray(item.statements)) item.statements = [];
                 item.statements = item.statements.map(st => {
                     if (!st || typeof st !== 'object') return { text: String(st || ''), answer: true };
-                    return { text: String(st.text || '').trim(), answer: this._parseBoolAnswer(st.answer) };
+                    return { text: this.formatScientificNotation(String(st.text || '').trim()), answer: this._parseBoolAnswer(st.answer) };
                 });
                 item.correct = 0;
                 item.answer = 0;
@@ -444,7 +445,7 @@ class QuizApp {
             }
 
             // 5. Chuẩn hóa giải thích
-            item.explanation = typeof item.explanation === 'string' ? item.explanation.trim() : '';
+            item.explanation = typeof item.explanation === 'string' ? this.formatScientificNotation(item.explanation.trim()) : '';
 
             return item;
         });
@@ -2119,7 +2120,7 @@ ${rawText}`;
                         const isChosen = oIdx === curIdx;
                         return `
                             <span class="${isChosen ? 'text-emerald-400 font-bold' : ''}">
-                                <strong class="${isChosen ? 'text-emerald-300' : 'text-slate-500'}">${optChars[oIdx]}.</strong> ${opt}
+                                <strong class="${isChosen ? 'text-emerald-300' : 'text-slate-500'}">${optChars[oIdx]}.</strong> ${this.formatScientificNotation(opt)}
                             </span>
                         `;
                     }).join('')}
@@ -2130,7 +2131,7 @@ ${rawText}`;
             const explanationPreview = q.explanation ? `
                 <div class="mt-2 p-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200/90 leading-relaxed flex items-start gap-1.5 shadow-sm">
                     <span class="text-amber-400 font-bold shrink-0">💡 Lời giải:</span>
-                    <span>${q.explanation}</span>
+                    <span>${this.formatScientificNotation(q.explanation)}</span>
                 </div>
             ` : '';
 
@@ -2138,16 +2139,18 @@ ${rawText}`;
                 <td class="py-2.5 px-3 text-center font-bold text-slate-400 align-top">${idx + 1}</td>
                 <td class="py-2.5 px-3 align-top">${typeBadge}</td>
                 <td class="py-2.5 px-3 font-medium text-white max-w-sm align-top">
-                    <div class="font-semibold text-slate-100 text-xs sm:text-sm leading-snug">${q.question}</div>
+                    <div class="font-semibold text-slate-100 text-xs sm:text-sm leading-snug">${this.formatScientificNotation(q.question)}</div>
                     ${imgBadge}
                     ${optionsPreview}
                     ${explanationPreview}
                 </td>
                 <td class="py-2.5 px-3 align-top">${ansDisplay}</td>
-                <td class="py-2.5 px-3 text-slate-400 italic max-w-xs text-xs align-top">${q.explanation || '—'}</td>
+                <td class="py-2.5 px-3 text-slate-400 italic max-w-xs text-xs align-top">${this.formatScientificNotation(q.explanation || '—')}</td>
             `;
             tbody.appendChild(tr);
         });
+
+        this.renderMath(tbody);
     }
 
     changeImporterAnswer(idx, val) {
@@ -2341,7 +2344,7 @@ ${rawText}`;
                 optionsHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                     ${q.options.map((opt, oIdx) => {
                     const isCorrect = oIdx === correctIdx;
-                    const optContent = (opt && opt.trim()) ? opt : '<span class="text-amber-400/90 italic font-mono text-[11px]">[Trống nội dung - Bấm "Sửa" để bổ sung công thức]</span>';
+                    const optContent = (opt && opt.trim()) ? this.formatScientificNotation(opt) : '<span class="text-amber-400/90 italic font-mono text-[11px]">[Trống nội dung - Bấm "Sửa" để bổ sung công thức]</span>';
                     return `
                         <button type="button" onclick="app.adminQuickChangeAnswer(${q.id}, ${oIdx})" class="admin-opt-btn w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2 ${isCorrect ? 'border-emerald-500 bg-emerald-950/30 text-emerald-300 font-semibold shadow-sm' : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/80'}" title="Nhấp vào để chọn làm đáp án đúng">
                             <strong class="${isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-400'}">${optChars[oIdx]}.</strong>
@@ -2354,7 +2357,7 @@ ${rawText}`;
                 optionsHtml = `<div class="space-y-1.5 pt-1">
                     ${q.statements.map((st, sIdx) => `
                         <div class="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-300">
-                            <span><strong>${String.fromCharCode(97 + sIdx)})</strong> ${st.text}</span>
+                            <span><strong>${String.fromCharCode(97 + sIdx)})</strong> ${this.formatScientificNotation(st.text)}</span>
                             <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold ${st.answer ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${st.answer ? 'ĐÚNG' : 'SAI'}</span>
                         </div>
                     `).join('')}
@@ -2377,12 +2380,12 @@ ${rawText}`;
                         </button>
                     </div>
                 </div>
-                <h4 class="font-bold text-white text-sm sm:text-base leading-snug">${q.question}</h4>
+                <h4 class="font-bold text-white text-sm sm:text-base leading-snug">${this.formatScientificNotation(q.question)}</h4>
                 ${optionsHtml}
                 ${q.explanation ? `
                     <div class="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 leading-relaxed flex items-start gap-2">
                         <span class="text-amber-400 font-bold shrink-0">💡 Lời giải:</span>
-                        <span>${q.explanation}</span>
+                        <span>${this.formatScientificNotation(q.explanation)}</span>
                     </div>
                 ` : ''}
             `;
@@ -2945,6 +2948,80 @@ ${rawText}`;
         } catch (e) { }
     }
 
+    /**
+     * Tự động chuẩn hóa toàn bộ ký hiệu Toán, Lý, Hóa, Sinh, Địa, Anh...
+     * Biến các ký hiệu gõ thô (//, <=>, ->, Delta H, KC, độ C, m/s^2, H2O, CaCO3, v.v.)
+     * thành chuẩn LaTeX / KaTeX sắc nét, loại bỏ triệt để các ký hiệu // thô kệch.
+     */
+    formatScientificNotation(text) {
+        if (!text || typeof text !== 'string') return text;
+
+        let s = text;
+
+        // 1. Bảo vệ các đoạn LaTeX đã có sẵn giữa $$...$$ hoặc $...$
+        const latexTokens = [];
+        s = s.replace(/(\$\$[\s\S]*?\$\$|\$[^\$]+?\$)/g, (m) => {
+            latexTokens.push(m);
+            return '___LATEX_TOKEN_' + (latexTokens.length - 1) + '___';
+        });
+
+        // 2. Hình học: Đường thẳng / Mặt phẳng song song: AB // CD, d1 // d2, (P) // (Q), (alpha) // (beta)
+        s = s.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 $\\parallel$ $2');
+
+        // 3. Hóa học: Phản ứng thuận nghịch: Thay thế // hoặc <=> hoặc <-> hoặc ⇌ hoặc ⇄ thành \rightleftharpoons
+        s = s.replace(/\s*(?:\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
+
+        // Mũi tên phản ứng hóa học một chiều: -> hoặc ──> hoặc --->
+        s = s.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' $\\rightarrow$ ');
+
+        // Mũi tên suy ra / tương đương trong toán: => hoặc <==>
+        s = s.replace(/\s*=>\s*/g, ' $\\Rightarrow$ ');
+
+        // 4. Ký hiệu so sánh toán học
+        s = s.replace(/\s*>=\s*/g, ' $\\ge$ ');
+        s = s.replace(/\s*<=\s*/g, ' $\\le$ ');
+        s = s.replace(/\s*!=\s*/g, ' $\\ne$ ');
+        s = s.replace(/\s*\+-\s*/g, ' $\\pm$ ');
+
+        // 5. Nhiệt động học / Hóa học: Delta H, Delta_r H298^0
+        s = s.replace(/\b(?:Delta|Δ)\s*([rR])\s*H(?:\s*298)?(?:\s*\^?0)?\b/g, '$\\Delta_r H_{298}^\\circ$');
+        s = s.replace(/(?<!\\)\b(?:Delta|Δ)\s*H\b/g, '$\\Delta H$');
+        s = s.replace(/(?<!\\)\b(?:Delta|Δ)\b/g, '$\\Delta$');
+
+        // 6. Hằng số cân bằng hóa học KC, Kp
+        s = s.replace(/\bK[Cc]\b/g, '$K_C$');
+        s = s.replace(/\bK[Pp]\b/g, '$K_p$');
+
+        // 7. Độ C (°C, ^oC, *C sau số)
+        s = s.replace(/(\d+)\s*(?:°C|\^oC|\*C)/g, '$1$^{\\circ}\\text{C}$');
+
+        // 8. Đơn vị đo lường có số mũ (Vật lý / Toán / Địa lý): m^2, cm^2, km^2, m^3, m/s^2, cm/s^2
+        s = s.replace(/\b(km|cm|dm|mm|m)\^?2\b/g, '$\\text{$1}^2$');
+        s = s.replace(/\b(km|cm|dm|mm|m)\^?3\b/g, '$\\text{$1}^3$');
+        s = s.replace(/\b(m|cm|km)\/s\^?2\b/g, '$\\text{$1}/\\text{s}^2$');
+
+        // 9. Công thức hóa học phổ biến khi gõ thô:
+        s = s.replace(/\bH2O\b/g, '$\\text{H}_2\\text{O}$');
+        s = s.replace(/\bCO2\b/g, '$\\text{CO}_2$');
+        s = s.replace(/\bH2SO4\b/g, '$\\text{H}_2\\text{SO}_4$');
+        s = s.replace(/\bCaCO3\b/g, '$\\text{CaCO}_3$');
+        s = s.replace(/\bSO2\b/g, '$\\text{SO}_2$');
+        s = s.replace(/\bNH3\b/g, '$\\text{NH}_3$');
+        s = s.replace(/\bN2\b/g, '$\\text{N}_2$');
+        s = s.replace(/\bO2\b/g, '$\\text{O}_2$');
+        s = s.replace(/\bH2\b/g, '$\\text{H}_2$');
+        s = s.replace(/\bCl2\b/g, '$\\text{Cl}_2$');
+        s = s.replace(/\bI2\b/g, '$\\text{I}_2$');
+        s = s.replace(/\bFe2O3\b/g, '$\\text{Fe}_2\\text{O}_3$');
+        s = s.replace(/\bAl2O3\b/g, '$\\text{Al}_2\\text{O}_3$');
+        s = s.replace(/\bBaSO4\b/g, '$\\text{BaSO}_4$');
+
+        // 10. Khôi phục lại các token LaTeX nguyên bản
+        s = s.replace(/___LATEX_TOKEN_(\d+)___/g, (m, idx) => latexTokens[parseInt(idx, 10)]);
+
+        return s;
+    }
+
     /* ============================================================== */
     /* 9. THỰC HIỆN LÀM BÀI TRẮC NGHIỆM & TÍNH ĐIỂM                    */
     /* ============================================================== */
@@ -3106,7 +3183,7 @@ ${rawText}`;
                         <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-xs">Câu ${idx + 1} / ${questions.length}</span>
                         <span class="text-[11px] text-slate-400">${q.category || 'Trắc nghiệm'}</span>
                     </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${q.question}</h3>
+                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="grid grid-cols-1 gap-2 pt-1">
                         ${(q.options || []).map((opt, oIdx) => {
@@ -3129,7 +3206,7 @@ ${rawText}`;
                     return `
                                 <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
                                     <span class="w-6 h-6 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">${optChars[oIdx]}</span>
-                                    <span class="text-xs sm:text-sm font-medium flex-1 pt-0.5">${opt}</span>
+                                    <span class="text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                 </button>
                             `;
                 }).join('')}
@@ -3137,7 +3214,7 @@ ${rawText}`;
                     ${(!this.isExamMode && isAnswered && q.explanation) ? `
                         <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
                             <p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
-                            <p>${q.explanation}</p>
+                            <p>${this.formatScientificNotation(q.explanation)}</p>
                         </div>
                     ` : ''}
                     ${aiButtonHtml}
@@ -3154,7 +3231,7 @@ ${rawText}`;
                         <span class="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold text-xs">Câu ${idx + 1} (Đúng / Sai)</span>
                         <span class="text-[11px] text-slate-400">${q.category || 'Đúng/Sai'}</span>
                     </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${q.question}</h3>
+                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="space-y-2.5 pt-1">
                         ${stmts.map((st, sIdx) => {
@@ -3182,7 +3259,7 @@ ${rawText}`;
                                 <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
                                     <div class="flex items-start gap-2 flex-1">
                                         <span class="font-bold text-indigo-400">${String.fromCharCode(97 + sIdx)})</span>
-                                        <span class="text-slate-200 font-medium">${st.text}</span>
+                                        <span class="text-slate-200 font-medium">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                                         <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" class="btn-3d px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${trueBtnClass}">
@@ -3208,7 +3285,7 @@ ${rawText}`;
                         <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs">Câu ${idx + 1} (Trả lời ngắn)</span>
                         <span class="text-[11px] text-slate-400">${q.category || 'Điền số/chữ'}</span>
                     </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${q.question}</h3>
+                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
                         <input type="text" id="short-input-${q.id}" value="${userVal}" onchange="app.saveShortAnswer(${q.id}, this.value)" placeholder="Nhập đáp án của bạn..." class="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono">
@@ -3524,7 +3601,7 @@ ${rawText}`;
                     const isCorrect = val !== undefined && Boolean(val) === Boolean(st.answer);
                     return `
                             <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800">
-                                <span class="font-medium text-slate-200">${String.fromCharCode(97 + sIdx)}) ${st.text}</span>
+                                <span class="font-medium text-slate-200">${String.fromCharCode(97 + sIdx)}) ${this.formatScientificNotation(st.text)}</span>
                                 <span class="font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'} shrink-0 ml-2">
                                     Bạn chọn: ${val === true ? 'ĐÚNG' : (val === false ? 'SAI' : '—')} • Đáp án: ${st.answer ? 'ĐÚNG' : 'SAI'}
                                 </span>
@@ -3545,10 +3622,10 @@ ${rawText}`;
 
             card.innerHTML = `
                 <div class="flex items-center justify-between font-bold text-white">
-                    <span>Câu ${idx + 1}: ${q.question}</span>
+                    <span>Câu ${idx + 1}: ${this.formatScientificNotation(q.question)}</span>
                 </div>
                 ${ansReview}
-                ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${q.explanation}</p>` : ''}
+                ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${this.formatScientificNotation(q.explanation)}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
                     <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
@@ -4646,7 +4723,7 @@ YÊU CẦU:
             const data = await res.json();
             const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Không nhận được phản hồi từ AI.";
 
-            let formattedHtml = replyText
+            let formattedHtml = this.formatScientificNotation(replyText)
                 .replace(/^### (.*$)/gim, '<h4 class="font-bold text-amber-300 mt-2 mb-1">$1</h4>')
                 .replace(/^## (.*$)/gim, '<h3 class="font-bold text-purple-300 mt-2 mb-1 text-sm">$1</h3>')
                 .replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-300 font-bold">$1</strong>')
