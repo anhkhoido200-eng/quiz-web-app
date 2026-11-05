@@ -1128,15 +1128,11 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             <p>• <strong>Hình ảnh minh họa:</strong> Tự động nhúng ảnh thật từ Word hoặc chèn thẻ <code>&lt;img&gt;</code></p>
                         </div>
 
-                        <!-- 2 LỰA CHỌN BÓC TÁCH: SIÊU TỐC HOẶC BẰNG AI GEMINI -->
-                        <div class="flex flex-col sm:flex-row gap-2">
-                            <button id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="flex-1 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
+                        <!-- NÚT BÓC TÁCH ĐỀ THI TỰ ĐỘNG -->
+                        <div>
+                            <button id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
                                 <i class="fa-solid fa-bolt text-amber-300"></i>
-                                <span>Bóc Tách Siêu Tốc</span>
-                            </button>
-                            <button id="btn-importer-parse-gemini" onclick="app.parseImporterWithGemini()" class="flex-1 py-2.5 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer" title="Sử dụng Trí Tuệ Nhân Tạo Gemini AI để bóc tách thông minh mọi dạng câu hỏi">
-                                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
-                                <span>Bóc Tách Bằng AI Gemini</span>
+                                <span>Phân Tích & Bóc Tách Đề Thi Tự Động</span>
                             </button>
                         </div>
                     </div>
@@ -1542,7 +1538,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     Nhập <strong>Google Gemini API Key</strong> một lần duy nhất. Hệ thống sẽ lưu lên Supabase Cloud để <strong class="text-emerald-300">TẤT CẢ học sinh khi vào web đều được dùng Trợ lý AI miễn phí</strong> mà không cần phải tự nhập!
                 </p>
                 <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
-                    <i class="fa-solid fa-bolt"></i> Model Chuẩn: <code>gemini-3.1-pro-preview</code> (Tự động giải đề trắc nghiệm & bóc tách đề cương)
+                    <i class="fa-solid fa-graduation-cap"></i> Phục vụ tính năng: <strong>Gia Sư AI Giải Thích Bài Học 1 Kèm 1</strong> (Model: <code>gemini-2.5-flash</code>)
                 </div>
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
