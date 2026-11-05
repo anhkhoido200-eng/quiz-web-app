@@ -63,10 +63,10 @@
     <!-- ============================================================== -->
     <!-- NÚT NỔI ADMIN BẤM VÀO LÀ VÀO THẲNG DASHBOARD (CHO IP ĐÃ WHITELIST) -->
     <!-- ============================================================== -->
-    <button id="floating-admin-btn" onclick="app.openAdminDashboard()" class="hidden fixed bottom-6 right-6 z-[9990] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-2xl shadow-amber-500/40 items-center gap-2 cursor-pointer transition-all transform hover:scale-105 active:scale-95 admin-floating-glow select-none" title="Mở Bảng Quản Trị Hệ Thống">
+    <a id="floating-admin-btn" href="admin.html" class="hidden fixed bottom-6 right-6 z-[9990] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-2xl shadow-amber-500/40 items-center gap-2 cursor-pointer transition-all transform hover:scale-105 active:scale-95 admin-floating-glow select-none" title="Mở Bảng Quản Trị Hệ Thống">
         <i class="fa-solid fa-crown text-sm"></i>
         <span>👑 Mở Bảng Admin</span>
-    </button>
+         </a>
 
     <!-- ============================================================== -->
     <!-- MÀN HÌNH CHẶN / KHÓA TRUY CẬP (KICK / BAN IP NGAY LẬP TỨC)     -->
@@ -211,7 +211,7 @@
         <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3 select-none">
                 <!-- ICON CHIẾC MŨ TỐT NGHIỆP: Mở Admin bí mật hoặc vào thẳng nếu IP Whitelisted -->
-                <div onclick="app.promptAdminAuth()" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 active:scale-95 transition-transform cursor-pointer" title="Quản trị viên">
+                <div id="admin-brand-mark" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25" title="Quiz Studio">
                     <i class="fa-solid fa-graduation-cap text-lg"></i>
                 </div>
                 <div class="cursor-pointer" onclick="app.showHome()">
@@ -247,10 +247,10 @@
                 </button>
 
                 <!-- Nút Admin góc header (Tự hiện khi đã xác thực IP) -->
-                <button id="nav-admin-btn" onclick="app.openAdminDashboard()" class="hidden px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition items-center gap-1.5 cursor-pointer">
+                <a id="nav-admin-btn" href="admin.html" class="hidden px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-crown text-amber-400"></i>
                     <span class="hidden sm:inline">Bảng Admin</span>
-                </button>
+                </a>
             </div>
         </div>
     </header>
@@ -425,7 +425,7 @@
                 <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
                         <!-- Icon Admin ẩn -->
-                        <div onclick="app.promptAdminAuth()" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md cursor-pointer active:scale-95 transition shrink-0" title="Quản trị">
+                        <div id="quiz-admin-mark" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md shrink-0" title="Quiz">
                             <i class="fa-solid fa-graduation-cap text-xs"></i>
                         </div>
                         <span id="quiz-top-subject-title" class="font-heading font-extrabold text-sm sm:text-base text-white hidden sm:inline-block">Lịch Sử 11</span>
@@ -576,7 +576,7 @@
 
     <!-- Footer -->
     <footer class="relative z-10 border-t border-slate-800/80 bg-slate-900/60 backdrop-blur-md py-4 text-center text-xs text-slate-500">
-        <p>Ôn tập • Hệ Thống Trắc Nghiệm Thông Minh • <span onclick="app.promptAdminAuth()" class="cursor-pointer text-slate-600 hover:text-slate-400 transition" title="Quản trị"><i class="fa-solid fa-lock text-[10px]"></i></span></p>
+        <p>Ôn tập • Hệ Thống Trắc Nghiệm Thông Minh</p>
     </footer>
 
     <!-- ======================================================= -->
@@ -1664,6 +1664,6 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="physics_questions.js?v=4.0"></script>
     <script src="geography_questions.js?v=4.0"></script>
     <script src="supabase.js?v=4.0"></script>
-    <script src="app.js?v=4.0"></script>
+    <script src="app.js?v=5.0"></script>
 </body>
 </html>

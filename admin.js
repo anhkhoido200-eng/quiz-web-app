@@ -4,6 +4,7 @@
         url: localStorage.getItem('quiz_supabase_url') || 'https://qotfikuiwmruicsvsbgq.supabase.co',
         key: localStorage.getItem('quiz_supabase_key') || 'sb_publishable_KtAmEX6Jj97BNElniBrX6w_wVyCeQYs'
     };
+    const ADMIN_CONFIG_ID = '00000000-0000-0000-0000-000000000001';
     const SUBJECTS = {
         5: [
             { key: 'math5', name: 'Toán 5' }, { key: 'vietnamese5', name: 'Tiếng Việt 5' },
@@ -23,6 +24,43 @@
     const gradeOf = (q) => /(?:5|grade5|math5|vietnamese5|science5|history5|geography5|english5)(?:$|_)/i.test(String(q.subject_key || q.subjectKey)) ? '5' : '11';
     const subjectName = (key) => Object.values(SUBJECTS).flat().find((item) => item.key === key)?.name || key;
     const notify = (message, error = false) => { const toast = $('toast'); toast.textContent = message; toast.className = `toast show${error ? ' error' : ''}`; clearTimeout(notify.timer); notify.timer = setTimeout(() => toast.className = 'toast', 3000); };
+
+    async function getClientIp() {
+        const providers = ['https://api.ipify.org?format=json', 'https://ipapi.co/json/'];
+        for (const endpoint of providers) {
+            try {
+                const response = await fetch(endpoint, { signal: AbortSignal.timeout(3500) });
+                const data = await response.json();
+                if (data && data.ip) return String(data.ip).trim();
+            } catch (error) { /* Try the fallback provider. */ }
+        }
+        return '';
+    }
+
+    async function isCurrentIpAllowed(client) {
+        const ip = await getClientIp();
+        if (!ip) return false;
+        const { data, error } = await client.from('quiz_logins').select('score_summary').eq('id', ADMIN_CONFIG_ID).limit(1);
+        if (error || !data || !data[0]) return false;
+        try {
+            const config = JSON.parse(data[0].score_summary || '{}');
+            if (Array.isArray(config)) {
+                return config.some((item) => (typeof item === 'string' ? item : item?.ip) === ip);
+            }
+            const masterIp = String(config.masterIp || '').trim();
+            const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips : []);
+            const ips = allowed.map((item) => typeof item === 'string' ? item : item.ip).filter(Boolean).map((item) => String(item).trim());
+            return ip === masterIp || ips.includes(ip);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function denyAccess() {
+        document.querySelector('.app-shell')?.classList.add('hidden');
+        $('access-denied')?.classList.remove('hidden');
+        setConnection(false, 'Không được cấp quyền');
+    }
 
     function setConnection(ready, message) { const el = $('connection-status'); el.className = `connection-status${ready ? ' is-ready' : ''}`; el.innerHTML = `<i class="fa-solid ${ready ? 'fa-cloud-check' : 'fa-triangle-exclamation'}"></i> ${message}`; }
     function fillSubjects(grade, selected) {
@@ -61,6 +99,15 @@
     async function saveQuestion(event) { event.preventDefault(); const q = readQuestion(); if (!q.question || q.options.some((item) => !item)) return notify('Vui lòng nhập đủ nội dung và 4 đáp án.', true); try { const payload = state.editingId ? { ...q, id: state.editingId } : q; const { error } = await state.client.from('quiz_questions').upsert(payload).select(); if (error) throw error; notify(state.editingId ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.'); resetForm(); await loadQuestions(); } catch (error) { notify(`Không thể lưu: ${error.message}`, true); } }
     async function deleteQuestion(id) { if (!window.confirm(`Xóa câu hỏi #${id}? Hành động này không thể hoàn tác.`)) return; try { const { error } = await state.client.from('quiz_questions').delete().eq('id', id); if (error) throw error; notify('Đã xóa câu hỏi.'); if (state.editingId === id) resetForm(); await loadQuestions(); } catch (error) { notify(`Không thể xóa: ${error.message}`, true); } }
     function bindEvents() { $('grade-select').addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); }); $('question-form').addEventListener('input', renderPreview); $('question-form').addEventListener('submit', saveQuestion); $('reset-form').addEventListener('click', resetForm); $('cancel-edit').addEventListener('click', resetForm); $('refresh-button').addEventListener('click', loadQuestions); $('search-input').addEventListener('input', renderLibrary); $('library-subject-filter').addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); }); document.querySelectorAll('.answer-radio').forEach((button) => button.addEventListener('click', () => setAnswer(button.dataset.answer))); document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); })); $('questions-list').addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) editQuestion(edit.dataset.edit); if (remove) deleteQuestion(remove.dataset.delete); }); $('theme-toggle').addEventListener('click', () => { document.body.classList.toggle('dark'); localStorage.setItem('quiz_admin_dark', document.body.classList.contains('dark') ? 'true' : 'false'); }); }
-    async function init() { if (localStorage.getItem('quiz_admin_dark') === 'true') document.body.classList.add('dark'); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); renderPreview(); try { state.client = window.supabase.createClient(CONFIG.url, CONFIG.key); await loadQuestions(); } catch (error) { setConnection(false, 'Thiếu cấu hình'); notify('Không thể khởi tạo Supabase.', true); } }
+    async function init() {
+        if (localStorage.getItem('quiz_admin_dark') === 'true') document.body.classList.add('dark');
+        try {
+            state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+            if (!(await isCurrentIpAllowed(state.client))) { denyAccess(); return; }
+            bindEvents(); fillSubjects('11'); fillLibrarySubjects(); renderPreview(); await loadQuestions();
+        } catch (error) {
+            denyAccess();
+        }
+    }
     init();
 })();

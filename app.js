@@ -32,7 +32,9 @@ class QuizApp {
         this.currentFilter = 'all';
 
         // Quyền Quản trị viên (Ghi nhớ vĩnh viễn trên thiết bị & Whitelist IP Cloud)
-        this.isAdminAuthenticated = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
+        // Quyền Admin chỉ hợp lệ khi IP hiện tại có trong whitelist Cloud.
+        // Không dùng localStorage làm quyền truy cập vì người dùng có thể xóa/sửa giá trị này.
+        this.isAdminAuthenticated = false;
         this.adminCurrentTab = 'questions';
         this.adminSecretPass = '034569';
         this.allowedAdminIps = [];
@@ -494,11 +496,10 @@ class QuizApp {
             console.warn("Không thể tải danh sách IP Admin:", e);
         }
 
-        // Kiểm tra xem thiết bị đã ghi nhớ quyền Admin hoặc IP hiện tại nằm trong Whitelist
-        const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
+        // Chỉ IP đã cấp quyền trên Cloud mới được xem là Admin.
         const isWhitelisted = this.clientIp && (this.allowedAdminIps.includes(this.clientIp) || (this.masterAdminIp && this.masterAdminIp === this.clientIp));
 
-        if (isSavedAdmin || isWhitelisted) {
+        if (isWhitelisted) {
             this.isAdminAuthenticated = true;
             localStorage.setItem('quiz_is_admin', 'true');
             localStorage.setItem('quiz_admin_authenticated', 'true');
@@ -510,6 +511,10 @@ class QuizApp {
                     this.allowedAdminIps.push(this.clientIp);
                 }
             }
+        } else {
+            this.isAdminAuthenticated = false;
+            localStorage.removeItem('quiz_is_admin');
+            localStorage.removeItem('quiz_admin_authenticated');
         }
 
         this.updateAdminUIVisibility();
@@ -520,8 +525,9 @@ class QuizApp {
         const floatBtn = document.getElementById('floating-admin-btn');
         const navBtn = document.getElementById('nav-admin-btn');
         const homeActions = document.getElementById('home-admin-subject-actions');
+        const hasCurrentIpPermission = this.clientIp && (this.allowedAdminIps.includes(this.clientIp) || this.masterAdminIp === this.clientIp);
 
-        if (this.isAdminAuthenticated) {
+        if (this.isAdminAuthenticated && hasCurrentIpPermission) {
             if (floatBtn) {
                 floatBtn.classList.remove('hidden');
                 floatBtn.classList.add('flex');
@@ -530,7 +536,8 @@ class QuizApp {
                 navBtn.classList.remove('hidden');
                 navBtn.classList.add('flex');
             }
-            if (homeActions) homeActions.classList.remove('hidden');
+            // Toàn bộ công cụ quản trị đã chuyển sang admin.html.
+            if (homeActions) homeActions.classList.add('hidden');
         } else {
             if (floatBtn) {
                 floatBtn.classList.add('hidden');
@@ -547,23 +554,13 @@ class QuizApp {
     }
 
     promptAdminAuth() {
-        const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
-        if (this.isAdminAuthenticated || isSavedAdmin) {
+        if (this.isAdminAuthenticated && this.hasAdminIpAccess()) {
             this.isAdminAuthenticated = true;
             this.updateAdminUIVisibility();
-            this.openAdminDashboard();
+            window.location.href = 'admin.html';
             return;
         }
-        const modal = document.getElementById('modal-admin-auth');
-        const input = document.getElementById('admin-pass-input');
-        const err = document.getElementById('admin-auth-error');
-        if (input) input.value = '';
-        if (err) err.classList.add('hidden');
-        if (modal) {
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            input?.focus();
-        }
+        this.showToastNotification('Thiết bị này chưa được cấp quyền Admin.');
     }
 
     closeAdminAuthModal() {
@@ -575,36 +572,8 @@ class QuizApp {
     }
 
     async verifyAdminPassword() {
-        const input = document.getElementById('admin-pass-input');
-        const err = document.getElementById('admin-auth-error');
-        const val = input ? input.value.trim() : '';
-
-        if (val === this.adminSecretPass) {
-            this.isAdminAuthenticated = true;
-            // GHI NHỚ MẶC ĐỊNH VĨNH VIỄN TRÊN THIẾT BỊ NÀY (Không bao giờ hỏi lại)
-            localStorage.setItem('quiz_is_admin', 'true');
-            localStorage.setItem('quiz_admin_authenticated', 'true');
-            localStorage.setItem('quiz_admin_saved_ip', this.clientIp);
-
-            this.closeAdminAuthModal();
-
-            // Tự động cấp quyền vĩnh viễn cho IP hiện tại (Fallback Cloud)
-            try {
-                if (window.dbService && typeof window.dbService.addAdminIp === 'function') {
-                    await window.dbService.addAdminIp(this.clientIp, 'Admin Máy Hiện Tại');
-                    if (!this.allowedAdminIps.includes(this.clientIp)) {
-                        this.allowedAdminIps.push(this.clientIp);
-                    }
-                }
-            } catch (e) { }
-
-            this.updateAdminUIVisibility();
-            this.openAdminDashboard();
-            this.showToastNotification("👑 Đã xác thực & ghi nhớ quyền Admin vĩnh viễn trên thiết bị này!");
-        } else {
-            if (err) err.classList.remove('hidden');
-            input?.focus();
-        }
+        // Mật khẩu cũ không còn là một đường cấp quyền. Chỉ whitelist IP Cloud mới được vào Admin.
+        this.promptAdminAuth();
     }
 
     adminLogout() {
@@ -913,13 +882,8 @@ class QuizApp {
     /* ============================================================== */
 
     openAdminDashboard() {
-        const modal = document.getElementById('modal-admin-dashboard');
-        if (modal) {
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            this.updateAdminMaintenanceUI();
-            this.switchAdminTab(this.adminCurrentTab);
-        }
+        if (!this.isAdminAuthenticated || !this.hasAdminIpAccess()) return;
+        window.location.href = 'admin.html';
     }
 
     closeAdminDashboard() {
@@ -3666,11 +3630,14 @@ renderImporterPreview() {
 
             // 3. Đồng bộ phân quyền Admin theo IP (Bảo lưu nếu thiết bị đã ghi nhớ Admin)
             try {
-                const isSavedAdmin = localStorage.getItem('quiz_is_admin') === 'true' || localStorage.getItem('quiz_admin_authenticated') === 'true';
-                if (!isSavedAdmin && typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
+                if (typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
                     const isAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
                     if (this.isAdminAuthenticated !== isAdmin) {
                         this.isAdminAuthenticated = isAdmin;
+                        if (!isAdmin) {
+                            localStorage.removeItem('quiz_is_admin');
+                            localStorage.removeItem('quiz_admin_authenticated');
+                        }
                         this.updateAdminUIVisibility();
                         if (!isAdmin) this.closeAdminDashboard();
                     }
