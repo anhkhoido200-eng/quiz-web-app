@@ -2851,6 +2851,10 @@ renderImporterPreview() {
         s = s.replace(/\bAl2O3\b/g, '$\\text{Al}_2\\text{O}_3$');
         s = s.replace(/\bBaSO4\b/g, '$\\text{BaSO}_4$');
 
+        // Phân số dạng gõ nhanh (7/100, 3 / 4) hiển thị thành tử số / mẫu số.
+        // Chỉ bắt các phân số số học độc lập, không ảnh hưởng ngày tháng hay đơn vị.
+        s = s.replace(/(?<![\w.])(\d+)\s*\/\s*(\d+)(?![\w.])/g, '$\\frac{$1}{$2}$');
+
         // 10. Khôi phục lại các token LaTeX nguyên bản
         s = s.replace(/___LATEX_TOKEN_(\d+)___/g, (m, idx) => latexTokens[parseInt(idx, 10)]);
 
@@ -2985,7 +2989,7 @@ renderImporterPreview() {
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            card.className = "glass-card-pro rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
+            card.className = "glass-card-pro quiz-question-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
 
             // Render hình ảnh đính kèm nếu có
             const imgHtml = q.image_url ? `
@@ -3014,13 +3018,13 @@ renderImporterPreview() {
                 const correctIdx = q.correct !== undefined ? q.correct : q.answer;
 
                 card.innerHTML = `
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-xs">Câu ${idx + 1} / ${questions.length}</span>
-                        <span class="text-[11px] text-slate-400">${q.category || 'Trắc nghiệm'}</span>
+                    <div class="quiz-card-meta flex items-center justify-between gap-2">
+                        <span class="quiz-number">${String(idx + 1).padStart(2, '0')} <span>/ ${questions.length}</span></span>
+                        <span class="quiz-category">${q.category || 'Trắc nghiệm'}</span>
                     </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
+                    <h3 class="quiz-question-title font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
-                    <div class="grid grid-cols-1 gap-2 pt-1">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         ${(q.options || []).map((opt, oIdx) => {
                     let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
 
@@ -3040,8 +3044,8 @@ renderImporterPreview() {
 
                     return `
                                 <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
-                                    <span class="w-6 h-6 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">${optChars[oIdx]}</span>
-                                    <span class="text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
+                                    <span class="quiz-option-letter">${optChars[oIdx]}</span>
+                                    <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                 </button>
                             `;
                 }).join('')}
