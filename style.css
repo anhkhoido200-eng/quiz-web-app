@@ -81,10 +81,18 @@ body {
 }
 
 .quiz-option-tile:hover:not(:disabled) {
-    transform: translateY(-2px);
     border-color: rgba(34, 211, 238, .72);
     background: linear-gradient(135deg, rgba(8, 47, 73, .72), rgba(30, 27, 75, .72));
     box-shadow: 0 10px 24px rgba(34, 211, 238, .10);
+}
+
+.quiz-option-tile:active:not(:disabled),
+.quiz-option-tile:focus-visible {
+    transform: none;
+}
+
+.quiz-option-tile:disabled {
+    pointer-events: none;
 }
 
 .quiz-option-letter {

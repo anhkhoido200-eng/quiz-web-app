@@ -3043,7 +3043,7 @@ renderImporterPreview() {
                     }
 
                     return `
-                                <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" ${isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                 </button>
