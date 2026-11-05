@@ -22,7 +22,7 @@
             if (!card || document.getElementById('import-file')) return;
             card.insertAdjacentHTML('beforeend', '<div class="dropzone"><i class="fa-solid fa-cloud-arrow-up"></i><span>Kéo thả hoặc chọn DOCX, PDF, JSON, Excel, CSV, TXT</span><input id="import-file" type="file" accept=".docx,.pdf,.json,.xlsx,.xls,.csv,.txt"></div><div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal="import-modal">Hủy</button><button id="parse-import" class="button button-info" type="button"><i class="fa-solid fa-code"></i> Đọc JSON</button><button id="ai-analyze-import" class="button button-purple" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích &amp; giải</button><button id="save-import" class="button button-primary" type="button"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào ngân hàng</button></div><div id="import-preview" class="import-preview"></div>');
             const loadScript = (src) => new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.appendChild(script); });
-            loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2').then(() => loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js')).then(() => loadScript('admin.js?v=3.4')).catch(() => { document.getElementById('access-denied')?.classList.remove('hidden'); });
+            loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2').then(() => loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js')).then(() => loadScript('admin.js?v=3.6')).catch(() => { document.getElementById('access-denied')?.classList.remove('hidden'); });
         });
     </script>
 </head>
@@ -74,6 +74,6 @@
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="admin.js?v=3.4"></script>
+    <script src="admin.js?v=3.6"></script>
 </body>
 </html>

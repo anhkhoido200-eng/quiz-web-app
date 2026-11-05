@@ -40,6 +40,7 @@
     const htmlText = (value, fallback = '') => esc(value || fallback).replace(/\r?\n/g, '<br>');
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const parseBool = (value) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
+    const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
     const subjectName = (key) => {
         const builtIn = Object.values(SUBJECTS).flat().find((item) => item.key === key);
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
@@ -139,7 +140,25 @@
         }
         const file = $('import-file');
         if (file) file.accept = '.docx,.pdf,.json,.csv,.xlsx,.xls,.txt';
+        injectGeminiControls();
         injectAdminStyles();
+    }
+
+    function injectGeminiControls() {
+        if ($('test-gemini-key')) return;
+        const saveButton = $('save-gemini-key');
+        if (!saveButton) return;
+        const testButton = document.createElement('button');
+        testButton.id = 'test-gemini-key';
+        testButton.type = 'button';
+        testButton.className = 'button button-info';
+        testButton.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra key';
+        saveButton.parentElement?.insertBefore(testButton, saveButton.nextSibling);
+        const status = document.createElement('span');
+        status.id = 'gemini-key-status';
+        status.className = 'info-badge';
+        status.textContent = 'Chưa kiểm tra';
+        saveButton.parentElement?.appendChild(status);
     }
 
     function injectAdminStyles() {
@@ -490,7 +509,7 @@
   { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+        const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
         try {
             let response; let lastError = '';
             for (const model of models) {
@@ -498,7 +517,7 @@
                 if (response.ok) break;
                 const errorData = await response.json().catch(() => ({}));
                 lastError = errorData?.error?.message || `HTTP ${response.status}`;
-                if (response.status === 400) break;
+                if (response.status === 400 || response.status === 401 || response.status === 403) break;
                 await sleep(500);
             }
             if (!response?.ok) throw new Error(lastError || 'Gemini không phản hồi.');
@@ -512,7 +531,12 @@
             if (state.importQuestions.length) fillForm(state.importQuestions[0]);
             renderImportReview();
             notify(`Gemini đã phân tích ${state.importQuestions.length} câu. Hãy duyệt trước khi lưu.`);
-        } catch (error) { notify(`AI phân tích thất bại: ${error.message}`, true); }
+        } catch (error) {
+            const detail = /api key|api_key|invalid argument|permission denied/i.test(error.message)
+                ? 'Gemini API Key không hợp lệ hoặc đã hết hạn. Vào Báo cáo & dữ liệu, xóa key cũ, nhập key mới rồi bấm Kiểm tra key.'
+                : error.message;
+            notify(`AI phân tích thất bại: ${detail}`, true);
+        }
         finally {
             if (button) {
                 button.disabled = false;
@@ -563,13 +587,14 @@
     async function fetchGeminiKey() {
         let key = localStorage.getItem('gemini_api_key') || '';
         const row = await systemRow(SYSTEM.gemini);
-        if (row?.score_summary) { key = row.score_summary.trim(); localStorage.setItem('gemini_api_key', key); }
-        return key;
+        if (row?.score_summary) { key = row.score_summary; localStorage.setItem('gemini_api_key', cleanGeminiKey(key)); }
+        return cleanGeminiKey(key);
     }
 
     async function saveGeminiKey() {
-        const key = $('gemini-key-input')?.value.trim() || '';
+        const key = cleanGeminiKey($('gemini-key-input')?.value);
         if (!key) return notify('Hãy nhập Gemini API Key.', true);
+        if (!/^AIza[\w-]{20,}$/.test(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza.', true);
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'ACTIVE', score_summary: key, last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(`Không thể lưu API Key: ${error.message}`, true);
         localStorage.setItem('gemini_api_key', key); $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud.');
@@ -580,6 +605,29 @@
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'INACTIVE', score_summary: '', last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(error.message, true);
         localStorage.removeItem('gemini_api_key'); notify('Đã xóa Gemini API Key.');
+    }
+
+    async function testGeminiKey() {
+        const key = await fetchGeminiKey();
+        if (!key) return notify('Chưa có Gemini API Key để kiểm tra.', true);
+        if (!/^AIza[\w-]{20,}$/.test(key)) return notify('API Key không đúng định dạng. Hãy dán nguyên key bắt đầu bằng AIza...', true);
+        const button = $('test-gemini-key');
+        if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply only with OK.' }] }], generationConfig: { temperature: 0, maxOutputTokens: 4 } }) });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                const message = data?.error?.message || `HTTP ${response.status}`;
+                throw new Error(message);
+            }
+            notify('Gemini API Key hợp lệ và đang hoạt động.');
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key hợp lệ';
+        } catch (error) {
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key không hợp lệ';
+            notify(`Gemini API Key không hợp lệ: ${error.message}`, true);
+        } finally {
+            if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra key'; }
+        }
     }
 
     function switchView(view) {
@@ -671,19 +719,21 @@
         list.innerHTML = subjects.map((subject) => {
             const isPrivate = subject.visibility === 'PRIVATE';
             const grade = /5$/.test(subject.key || '') ? 'Lớp 5' : 'Lớp 11';
-            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>${esc(grade)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><button class="privacy-toggle ${isPrivate ? 'is-private' : ''}" data-toggle-subject="${esc(subject.key)}"><i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'}"></i><span>${isPrivate ? 'Mở môn' : 'Ẩn môn'}</span></button></div>`;
+            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>${esc(grade)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><label class="privacy-switch" title="${isPrivate ? 'Bật để mở môn' : 'Tắt để ẩn môn'}"><input type="checkbox" data-toggle-subject="${esc(subject.key)}" ${isPrivate ? '' : 'checked'}><span></span></label></div>`;
         }).join('') || '<div class="empty-state">Chưa có môn học để cấu hình.</div>';
     }
 
-    async function toggleSubjectPrivacy(key) {
+    async function toggleSubjectPrivacy(key, isPublic) {
         const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
         if (!subject) return;
-        subject.visibility = subject.visibility === 'PRIVATE' ? 'PUBLIC' : 'PRIVATE';
+        const previous = subject.visibility;
+        subject.visibility = isPublic ? 'PUBLIC' : 'PRIVATE';
         try {
             await saveSubjects();
             notify(`${subject.name || key} đã chuyển sang ${subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai'}.`);
         } catch (error) {
-            subject.visibility = subject.visibility === 'PRIVATE' ? 'PUBLIC' : 'PRIVATE';
+            subject.visibility = previous;
+            renderSubjectPrivacy();
             notify(`Không thể lưu quyền môn học: ${error.message}`, true);
         }
     }
@@ -749,10 +799,10 @@
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
         $('maintenance-toggle')?.addEventListener('change', toggleMaintenance); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; toggleMaintenance(); } });
         $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true))); $('add-ai-ip')?.addEventListener('click', () => addAiIp().catch((error) => notify(error.message, true)));
-        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); });
+        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
         document.querySelectorAll('[data-geo-mode]').forEach((button) => button.addEventListener('click', () => { state.geo.mode = button.dataset.geoMode; saveGeo().catch((error) => notify(error.message, true)); })); $('add-geo-ip')?.addEventListener('click', () => { const ip = $('geo-ip-input').value.trim(); if (ip && !state.geo.ips.includes(ip)) state.geo.ips.push(ip); $('geo-ip-input').value = ''; saveGeo().catch((error) => notify(error.message, true)); }); $('geo-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-geo]'); if (button) { state.geo.ips = state.geo.ips.filter((ip) => ip !== button.dataset.removeGeo); saveGeo().catch((error) => notify(error.message, true)); } });
         $('send-notice')?.addEventListener('click', broadcastNotice); document.querySelectorAll('[data-notice]').forEach((button) => button.addEventListener('click', () => { $('notice-input').value = button.dataset.notice; })); $('ban-ip-button')?.addEventListener('click', () => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())); $('refresh-students')?.addEventListener('click', loadStudents); $('clear-logins')?.addEventListener('click', async () => { if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return; const { error } = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (error) return notify(error.message, true); notify('Đã xóa lịch sử học sinh.'); loadStudents(); }); $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); if (ban) banIp(ban.dataset.banRow); if (unban) unbanIp(unban.dataset.unbanRow); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) unbanIp(button.dataset.unbanRow); });
-        $('export-backup')?.addEventListener('click', exportBackup); $('export-excel')?.addEventListener('click', exportExcel); $('load-leaderboard')?.addEventListener('click', loadLeaderboard); $('save-gemini-key')?.addEventListener('click', saveGeminiKey); $('clear-gemini-key')?.addEventListener('click', clearGeminiKey);
+        $('export-backup')?.addEventListener('click', exportBackup); $('export-excel')?.addEventListener('click', exportExcel); $('load-leaderboard')?.addEventListener('click', loadLeaderboard); $('save-gemini-key')?.addEventListener('click', saveGeminiKey); $('clear-gemini-key')?.addEventListener('click', clearGeminiKey); $('test-gemini-key')?.addEventListener('click', testGeminiKey);
         $('archive-data')?.addEventListener('click', async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) return notify(error.message, true); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) return notify(result.error.message, true); notify('Đã backup và dọn lịch sử kỳ thi.'); loadStudents(); });
         $('new-subject-button')?.addEventListener('click', () => switchView('subjects')); $('go-subject-editor')?.addEventListener('click', () => { closeModal('subject-modal'); switchView('subjects'); });
         $('subject-form')?.addEventListener('submit', saveSubject); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', loadSubjects); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) deleteSubject(remove.dataset.deleteSubject).catch((error) => notify(error.message, true)); }); $('subjects-list')?.addEventListener('click', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject); });
