@@ -105,7 +105,7 @@ VALUES (
     'SYSTEM',
     'PUBLIC',
     'ACTIVE',
-    '{"mode":"PUBLIC","ips":[]}',
+    '{"mode":"PUBLIC","ips":[],"grade5Ips":[]}',
     NOW(),
     NOW()
 )

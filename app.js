@@ -205,7 +205,8 @@ class QuizApp {
 
         const source = `${subject?.key || ''} ${subject?.name || subject?.title || ''}`;
         const gradeMatch = source.match(/(?:^|[^0-9])(5|11)(?:$|[^0-9])/);
-        return gradeMatch ? gradeMatch[1] : 'other';
+        // Môn không có metadata cũ được coi là Lớp 11 để hệ thống chỉ còn hai lớp cố định.
+        return gradeMatch ? gradeMatch[1] : '11';
     }
 
     canViewGrade5() {
@@ -217,19 +218,20 @@ class QuizApp {
     }
 
     getHomeGradeFilter() {
-        if (this.isAdminAuthenticated) return ['all', '5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
-        return this.canViewGrade5() ? '5' : '11';
+        if (!this.isAdminAuthenticated && !this.canViewGrade5()) return '11';
+        return ['5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : '11';
     }
 
     getHomeVisibleSubjects() {
-        const canViewPrivateGrade5 = this.canViewGrade5();
-        const publicSubjects = (this.dynamicSubjects || []).filter((sub) => {
+        const canViewGrade5 = this.canViewGrade5();
+        const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
+            const grade = this.getSubjectGrade(sub);
+            const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
             const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
-            return !isPrivate || (canViewPrivateGrade5 && this.getSubjectGrade(sub) === '5');
+            return canViewGrade && (!isPrivate || this.isAdminAuthenticated || (grade === '5' && canViewGrade5));
         });
         const filter = this.getHomeGradeFilter();
-        if (filter === 'all') return publicSubjects;
-        return publicSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
+        return allowedSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
     }
 
     async syncClass5Access() {
@@ -255,9 +257,9 @@ class QuizApp {
         const activeGrade = this.getHomeGradeFilter();
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
-            if (this.isAdminAuthenticated) {
-                tabs.innerHTML = ['all', '5', '11'].map((grade) => {
-                    const label = grade === 'all' ? 'Tất cả lớp' : `Lớp ${grade}`;
+            if (this.isAdminAuthenticated || this.canViewGrade5()) {
+                tabs.innerHTML = ['5', '11'].map((grade) => {
+                    const label = `Lớp ${grade}`;
                     const active = activeGrade === grade;
                     return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
                 }).join('');
@@ -388,6 +390,11 @@ class QuizApp {
     }
 
     async selectSubject(subjKey) {
+        const selected = (this.dynamicSubjects || []).find((subject) => subject.key === subjKey);
+        if (!selected || !this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey)) {
+            this.showToastNotification('Môn học này không thuộc khu vực được cấp quyền trên thiết bị hiện tại.');
+            return;
+        }
         if (subjKey === this.currentSubject) return;
         this.currentSubject = subjKey;
         localStorage.setItem('quiz_last_selected_subject', subjKey);
@@ -2915,21 +2922,15 @@ renderImporterPreview() {
         localStorage.setItem('quiz_user_name', name);
 
         // 1. Kiểm tra quyền truy cập môn học (Công khai hay Ẩn/Riêng tư)
-        const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
-            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
-            return !isPrivate;
-        });
+        const visibleSubjects = this.getHomeVisibleSubjects();
 
         if (visibleSubjects.length === 0) {
             alert("⚠️ Hiện tại tất cả các đề thi đều đang được Giáo viên tạm ẩn. Vui lòng quay lại sau!");
             return;
         }
 
-        const currentSubObj = (this.dynamicSubjects || []).find(s => s.key === this.currentSubject);
-        const isCurrentPrivate = currentSubObj && (currentSubObj.visibility === 'PRIVATE' || currentSubObj.is_public === false || currentSubObj.visibility === 'HIDDEN');
-
-        if (isCurrentPrivate) {
-            alert(`⚠️ Môn [${this.getSubjectTitle()}] hiện đang ở chế độ Ẩn / Riêng tư. Vui lòng chọn môn học công khai!`);
+        if (!visibleSubjects.some((subject) => subject.key === this.currentSubject)) {
+            alert(`⚠️ Môn [${this.getSubjectTitle()}] không thuộc khu vực được cấp quyền trên thiết bị hiện tại.`);
             await this.selectSubject(visibleSubjects[0].key);
             return;
         }

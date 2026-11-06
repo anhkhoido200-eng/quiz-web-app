@@ -406,6 +406,22 @@ class DatabaseService {
             SYSTEM_RECORDS.GEMINI_CONFIG,
             SYSTEM_RECORDS.AI_IPS
         ];
+        let adminIps = new Set();
+        try {
+            const adminConfig = await this.fetchAdminIpsConfig();
+            adminIps = new Set([
+                adminConfig?.masterIp,
+                ...(Array.isArray(adminConfig?.ips) ? adminConfig.ips : []),
+                ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
+            ].map(ip => String(ip || '').trim()).filter(Boolean));
+        } catch (error) {
+            console.warn('[DatabaseService] Không tải được danh sách IP quản trị để lọc giám sát:', error);
+        }
+        const isStudentLogin = (item) => {
+            const playerName = String(item?.player_name || '').trim();
+            const ip = String(item?.ip_address || item?.client_ip || '').trim();
+            return !systemIds.includes(item?.id) && !playerName.startsWith('__') && !adminIps.has(ip);
+        };
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -417,7 +433,7 @@ class DatabaseService {
                 if (!error && Array.isArray(data)) {
                     // Lọc bỏ toàn bộ các bản ghi hệ thống nội bộ (__...) và systemIds
                     const realLogins = data
-                        .filter(item => (!item.player_name || !item.player_name.startsWith('__')) && !systemIds.includes(item.id))
+                        .filter(isStudentLogin)
                         .map(item => ({
                             ...item,
                             ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
@@ -432,7 +448,7 @@ class DatabaseService {
             }
         }
         return this._getLocalLogins()
-            .filter(item => (!item.player_name || !item.player_name.startsWith('__')) && !systemIds.includes(item.id))
+            .filter(isStudentLogin)
             .map(item => ({
                 ...item,
                 ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
@@ -454,9 +470,8 @@ class DatabaseService {
      */
     async deleteLoginRecord(loginId) {
         if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
-            try {
-                await this.client.from('quiz_logins').delete().eq('id', loginId);
-            } catch (e) {}
+            const { error } = await this.client.from('quiz_logins').delete().eq('id', loginId);
+            if (error) throw new Error(`Không thể xóa lịch sử đăng nhập: ${error.message}`);
         }
         let list = this._getLocalLogins();
         list = list.filter(item => item.id !== loginId);
@@ -468,12 +483,25 @@ class DatabaseService {
      */
     async clearAllLogins() {
         if (this.isSupabaseActive && this.client) {
-            try {
-                await this.client
-                    .from('quiz_logins')
-                    .delete()
-                    .not('player_name', 'like', '__%');
-            } catch (e) {}
+            const adminConfig = await this.fetchAdminIpsConfig();
+            const adminIps = new Set([
+                adminConfig?.masterIp,
+                ...(Array.isArray(adminConfig?.ips) ? adminConfig.ips : []),
+                ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
+            ].map(ip => String(ip || '').trim()).filter(Boolean));
+            const { data, error: selectError } = await this.client
+                .from('quiz_logins')
+                .select('id, player_name, ip_address');
+            if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập trước khi xóa: ${selectError.message}`);
+
+            const ids = (data || [])
+                .filter(item => !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim()))
+                .map(item => item.id)
+                .filter(Boolean);
+            if (ids.length > 0) {
+                const { error: deleteError } = await this.client.from('quiz_logins').delete().in('id', ids);
+                if (deleteError) throw new Error(`Không thể xóa lịch sử đăng nhập: ${deleteError.message}`);
+            }
         }
         localStorage.removeItem(STORAGE_KEYS.LOCAL_LOGINS);
     }
@@ -993,6 +1021,7 @@ class DatabaseService {
     async sendBroadcastNotice(message, targetIp = 'ALL') {
         const cleanMsg = (message || "").trim();
         if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
+        const cleanTargetIp = String(targetIp || 'ALL').trim() || 'ALL';
 
         const nowIso = new Date().toISOString();
         const noticeId = this.generateUUID();
@@ -1000,7 +1029,7 @@ class DatabaseService {
         const record = {
             id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
-            ip_address: targetIp,
+            ip_address: cleanTargetIp,
             device_info: '5s',
             status: 'ACTIVE',
             score_summary: cleanMsg,
@@ -1012,7 +1041,7 @@ class DatabaseService {
             localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
                 id: noticeId,
                 message: cleanMsg,
-                targetIp: targetIp,
+                targetIp: cleanTargetIp,
                 timestamp: Date.now()
             }));
         } catch (e) {}
@@ -1029,7 +1058,7 @@ class DatabaseService {
             }
         }
 
-        return { success: true, id: noticeId, message: cleanMsg, targetIp: targetIp };
+        return { success: true, id: noticeId, message: cleanMsg, targetIp: cleanTargetIp };
     }
 
     /**
@@ -1044,12 +1073,12 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data, error } = await this.client
+                let query = this.client
                     .from('quiz_logins')
                     .select('*')
-                    .eq('player_name', '__SYSTEM_NOTICE__')
-                    .order('last_active', { ascending: false })
-                    .limit(5);
+                    .eq('player_name', '__SYSTEM_NOTICE__');
+                if (clientIp) query = query.in('ip_address', ['ALL', String(clientIp).trim()]);
+                const { data, error } = await query.order('last_active', { ascending: false }).limit(20);
 
                 if (!error && data && data.length > 0) {
                     const match = data.find(item => item.ip_address === 'ALL' || (clientIp && item.ip_address === clientIp));
@@ -1746,13 +1775,18 @@ class DatabaseService {
 
         // 2. Xóa toàn bộ học sinh trên Supabase Cloud (bảo toàn cấu hình hệ thống __...)
         if (this.isSupabaseActive && this.client) {
-            try {
-                await this.client
-                    .from('quiz_logins')
-                    .delete()
-                    .not('player_name', 'like', '__%');
-            } catch (e) {
-                console.error("[DatabaseService] Lỗi xóa dữ liệu trên cloud:", e);
+            const adminConfig = await this.fetchAdminIpsConfig();
+            const adminIps = new Set([
+                adminConfig?.masterIp,
+                ...(Array.isArray(adminConfig?.ips) ? adminConfig.ips : []),
+                ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
+            ].map(ip => String(ip || '').trim()).filter(Boolean));
+            const { data, error: selectError } = await this.client.from('quiz_logins').select('id, player_name, ip_address');
+            if (selectError) throw new Error(`Không thể đọc dữ liệu trước khi dọn: ${selectError.message}`);
+            const ids = (data || []).filter(item => !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
+            if (ids.length > 0) {
+                const { error } = await this.client.from('quiz_logins').delete().in('id', ids);
+                if (error) throw new Error(`Không thể dọn dữ liệu trên Cloud: ${error.message}`);
             }
         }
 

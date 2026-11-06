@@ -77,9 +77,15 @@
         });
         return merged.filter((item) => item.key && (item.name || item.title));
     };
+    const subjectGrade = (subject) => {
+        const explicit = String(subject?.grade || subject?.class || subject?.grade_level || '').match(/5|11/);
+        if (explicit) return explicit[0];
+        const source = `${subject?.key || ''} ${subject?.name || subject?.title || ''}`;
+        return /(?:^|[^0-9])5(?:$|[^0-9])/.test(source) || /5$/.test(subject?.key || '') ? '5' : '11';
+    };
     const gradeOf = (q) => {
         const key = String(q.subject_key || q.subjectKey || q.key || '').toLowerCase();
-        if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /5$/.test(key)) return '5';
+        if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /5$/.test(key) || q.grade === '5' || q.grade_level === '5') return '5';
         return '11';
     };
     const notify = (message, error = false) => {
@@ -233,7 +239,7 @@
     }
 
     function fillSubjects(grade, selected) {
-        const options = allSubjects().filter((item) => gradeOf(item) === String(grade));
+        const options = allSubjects().filter((item) => subjectGrade(item) === String(grade));
         const select = $('subject-select');
         if (!select) return;
         select.innerHTML = options.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -241,7 +247,7 @@
     }
 
     function fillLibrarySubjects() {
-        const list = state.grade === 'all' ? allSubjects() : allSubjects().filter((item) => gradeOf(item) === String(state.grade));
+        const list = state.grade === 'all' ? allSubjects() : allSubjects().filter((item) => subjectGrade(item) === String(state.grade));
         if (!list.some((item) => item.key === state.subject)) state.subject = 'all';
         if ($('library-subject-filter')) {
             $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -808,16 +814,13 @@
         fillSubjects($('grade-select')?.value || '11');
         fillLibrarySubjects();
         $('subject-count') && ($('subject-count').textContent = state.subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = state.subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">${esc(subject.visibility || 'PUBLIC')}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.gradient || 'indigo')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn động. Môn tích hợp vẫn hoạt động bình thường.</div>');
+        $('subjects-list') && ($('subjects-list').innerHTML = state.subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn động. Môn tích hợp vẫn hoạt động bình thường.</div>');
         upgradePrivacyPanel();
     }
 
     function upgradePrivacyPanel() {
         const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
         if (!grid || grid.dataset.upgraded === 'true') { ensureClass5AccessPanel(); renderSubjectPrivacy(); return; }
-        const editor = grid.querySelector('.subject-editor-panel');
-        grid.innerHTML = '<section class="panel subject-privacy-panel"><div class="panel-title"><div><p class="eyebrow">SUBJECT PRIVACY</p><h2>Quyền riêng tư tất cả môn học</h2><p class="muted-copy">Bật Riêng tư để ẩn môn khỏi trang học sinh. Mỗi môn có thể cài đặt độc lập.</p></div><span id="privacy-private-count" class="status-badge safe">0 RIÊNG TƯ</span></div><div id="subject-privacy-list" class="subject-privacy-list"></div><div class="privacy-note"><i class="fa-solid fa-circle-info"></i><span>Thay đổi được lưu lên Cloud và áp dụng ngay sau khi học sinh tải lại trang.</span></div></section>';
-        if (editor) grid.appendChild(editor);
         grid.dataset.upgraded = 'true';
         ensureClass5AccessPanel();
         renderSubjectPrivacy();
@@ -832,8 +835,7 @@
         $('privacy-private-count') && ($('privacy-private-count').className = `status-badge ${privateCount ? 'danger' : 'safe'}`);
         list.innerHTML = subjects.map((subject) => {
             const isPrivate = subject.visibility === 'PRIVATE';
-            const grade = /5$/.test(subject.key || '') ? 'Lớp 5' : 'Lớp 11';
-            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>${esc(grade)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><label class="privacy-switch" title="${isPrivate ? 'Bật để mở môn' : 'Tắt để ẩn môn'}"><input type="checkbox" data-toggle-subject="${esc(subject.key)}" ${isPrivate ? '' : 'checked'}><span></span></label></div>`;
+            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>Lớp ${subjectGrade(subject)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><label class="privacy-switch" title="${isPrivate ? 'Bật để mở môn' : 'Tắt để ẩn môn'}"><input type="checkbox" data-toggle-subject="${esc(subject.key)}" ${isPrivate ? '' : 'checked'}><span></span></label></div>`;
         }).join('') || '<div class="empty-state">Chưa có môn học để cấu hình.</div>';
     }
 
@@ -859,25 +861,73 @@
         fillLibrarySubjects(); await loadSubjects();
     }
 
-    function resetSubjectForm() { ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; }); if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book'; if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học'; }
-    async function saveSubject(event) { event.preventDefault(); const key = $('subject-key-input')?.value.trim(); const name = $('subject-name-input')?.value.trim(); if (!key || !name) return notify('Nhập tên và mã môn học.', true); const subject = { key, name, semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' }; const index = state.subjects.findIndex((item) => item.key === key); if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject }; else state.subjects.push(subject); try { await saveSubjects(); resetSubjectForm(); notify('Đã lưu môn học.'); } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); } }
+    function setSubjectGrade(grade) { const value = String(grade) === '5' ? '5' : '11'; if ($('subject-grade-input')) $('subject-grade-input').value = value; document.querySelectorAll('[data-subject-grade]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectGrade === value)); }
+    function resetSubjectForm() { ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; }); if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book'; if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC'; setSubjectGrade('11'); if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học'; }
+    async function saveSubject(event) { event.preventDefault(); const key = $('subject-key-input')?.value.trim(); const name = $('subject-name-input')?.value.trim(); if (!key || !name) return notify('Nhập tên và mã môn học.', true); const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' }; const index = state.subjects.findIndex((item) => item.key === key); if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject }; else state.subjects.push(subject); try { await saveSubjects(); resetSubjectForm(); notify('Đã lưu môn học.'); } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); } }
     async function deleteSubject(key) { if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return; state.subjects = state.subjects.filter((item) => item.key !== key); await state.client.from('quiz_questions').delete().eq('subject_key', key); await saveSubjects(); notify('Đã xóa môn học.'); }
 
     async function loadStudents() {
         const systemIds = Object.values(SYSTEM);
+        const adminRow = await systemRow(SYSTEM.admin);
+        if (adminRow?.score_summary) {
+            try {
+                const config = JSON.parse(adminRow.score_summary);
+                state.adminConfig = {
+                    masterIp: String(config.masterIp || '').trim(),
+                    allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : []
+                };
+            } catch (error) { /* Keep the config already loaded. */ }
+        }
+        const adminIps = new Set([
+            state.adminConfig.masterIp,
+            ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)
+        ].map((ip) => String(ip || '').trim()).filter(Boolean));
         const { data, error } = await state.client.from('quiz_logins').select('*').order('last_active', { ascending: false }).limit(200);
         if (error) return notify(error.message, true);
-        const rows = (data || []).filter((row) => !systemIds.includes(row.id));
+        const rows = (data || []).filter((row) => {
+            const playerName = String(row.player_name || '').trim();
+            const ip = String(row.ip_address || '').trim();
+            return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(ip);
+        });
         const online = rows.filter((row) => row.last_active && Date.now() - new Date(row.last_active).getTime() < 120000);
         animateMetricValue('stat-online', online.length); $('nav-online-count') && ($('nav-online-count').textContent = online.length); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} lượt truy cập`);
-        $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${online.length}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => row.status === 'BANNED').length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
-        $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = row.status === 'BANNED' || String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; return `<tr><td><b>${esc(row.player_name || 'Học sinh')}</b></td><td><code>${esc(row.ip_address || '—')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(row.ip_address || '')}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(row.ip_address || '')}"><i class="fa-solid fa-ban"></i></button>`}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
+        $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${online.length}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => String(row.status || '').startsWith('BANNED')).length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
+        $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; const ip = row.ip_address || ''; const name = row.player_name || 'Học sinh'; return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || '—')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button></div></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
         const banned = rows.filter((row) => String(row.status || '').startsWith('BANNED'));
         $('banned-count') && ($('banned-count').textContent = `${banned.length} IP`);
         $('banned-list') && ($('banned-list').innerHTML = banned.map((row) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-ban"></i></span><span class="stack-item-main"><b>${esc(row.ip_address)}</b><small>${esc(row.score_summary || row.device_info || 'Vi phạm quy chế')}</small></span><button data-unban-row="${esc(row.ip_address)}"><i class="fa-solid fa-unlock"></i></button></div>`).join('') || '<p class="muted-copy">Chưa có IP bị chặn.</p>');
     }
 
     async function broadcastNotice() { const message = $('notice-input')?.value.trim(); if (!message) return notify('Nhập nội dung thông báo.', true); const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: 'ALL', device_info: '5s', status: 'ACTIVE', score_summary: message, last_active: new Date().toISOString() }); if (error) return notify(error.message, true); $('notice-input').value = ''; notify('Đã phát thông báo tới học sinh.'); }
+    async function sendPrivateNotice(ip, name = 'Học sinh') {
+        const targetIp = String(ip || '').trim();
+        if (!targetIp || targetIp === '127.0.0.1' || targetIp === '—') return notify('Không xác định được IP học sinh.', true);
+        const message = window.prompt(`Nhập thông báo riêng cho ${name} (${targetIp}):`, '');
+        if (message === null || !message.trim()) return;
+        const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: targetIp, device_info: '5s', status: 'ACTIVE', score_summary: message.trim(), last_active: new Date().toISOString() });
+        if (error) return notify(`Không thể gửi thông báo riêng: ${error.message}`, true);
+        notify(`Đã gửi thông báo riêng tới IP ${targetIp}.`);
+    }
+    async function clearStudentLogins() {
+        if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return;
+        const systemIds = Object.values(SYSTEM);
+        const adminIps = new Set([
+            state.adminConfig.masterIp,
+            ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)
+        ].map((ip) => String(ip || '').trim()).filter(Boolean));
+        const { data, error: selectError } = await state.client.from('quiz_logins').select('id, player_name, ip_address');
+        if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập: ${selectError.message}`);
+        const ids = (data || []).filter((row) => {
+            const playerName = String(row.player_name || '').trim();
+            return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(String(row.ip_address || '').trim());
+        }).map((row) => row.id).filter(Boolean);
+        if (ids.length) {
+            const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
+            if (error) throw new Error(`Không thể xóa lịch sử học sinh: ${error.message}`);
+        }
+        notify('Đã xóa lịch sử học sinh. Cấu hình hệ thống được giữ nguyên.');
+        await loadStudents();
+    }
     async function banIp(ip, reason = '') { if (!ip) return; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${reason || 'Vi phạm quy chế ôn tập'}`, score_summary: reason || 'Vi phạm quy chế ôn tập', last_active: now }).eq('ip_address', ip).select(); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: ip, device_info: 'Manual Ban', status: `BANNED: ${reason || 'Vi phạm quy chế ôn tập'}`, score_summary: reason, last_active: now }); if (error) return notify(error.message, true); } notify(`Đã chặn IP ${ip}.`); loadStudents(); }
     async function unbanIp(ip) { const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', ip); if (error) return notify(error.message, true); await state.client.from('quiz_logins').update({ status: 'Đang ôn tập', last_active: new Date().toISOString() }).eq('ip_address', ip).like('status', 'BANNED%'); notify(`Đã mở khóa IP ${ip}.`); loadStudents(); }
 
@@ -933,10 +983,10 @@
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
         $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
-        $('clear-logins')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return; const { error } = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (error) throw error; notify('Đã xóa lịch sử học sinh.'); await loadStudents(); }));
-        $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
+        $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
+        $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); const privateNotice = event.target.closest('[data-private-notice]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); if (privateNotice) runAction(() => sendPrivateNotice(privateNotice.dataset.privateNotice, privateNotice.dataset.privateName)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
-        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) throw error; exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) throw result.error; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
+        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
         $('new-subject-button')?.addEventListener('click', () => {
             switchView('subjects');
             resetSubjectForm();
@@ -944,6 +994,7 @@
             editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             window.setTimeout(() => $('subject-name-input')?.focus(), 350);
         });
+        $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
         $('go-subject-editor')?.addEventListener('click', () => {
             closeModal('subject-modal');
             switchView('subjects');
