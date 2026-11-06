@@ -74,6 +74,17 @@
     </div>
 
     <div id="import-modal" class="modal-backdrop hidden"><section class="modal-card import-modal"><div class="modal-header"><div><p class="eyebrow">SMART IMPORT</p><h2>Nạp câu hỏi hàng loạt</h2><p>Dán nội dung hoặc chọn DOCX, PDF, JSON, Excel, CSV, TXT.</p></div><button class="icon-button" data-close-modal="import-modal" type="button"><i class="fa-solid fa-xmark"></i></button></div><div class="import-toolbar"><label>Môn đích<select id="import-subject-select"></select></label><label class="checkbox-label"><input type="checkbox" id="import-replace"> Xóa câu hỏi cũ của môn này</label></div><textarea id="import-text" rows="12" placeholder="Dán JSON theo schema Gemini hoặc văn bản đề gốc tại đây..."></textarea><div class="dropzone"><i class="fa-solid fa-cloud-arrow-up"></i><span>Kéo thả hoặc chọn DOCX, PDF, JSON, Excel, CSV, TXT</span><input id="import-file" type="file" accept=".docx,.pdf,.json,.xlsx,.xls,.csv,.txt"></div><div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal="import-modal">Hủy</button><button id="parse-import" class="button button-info" type="button"><i class="fa-solid fa-code"></i> Đọc JSON</button><button id="ai-analyze-import" class="button button-purple" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích &amp; giải</button><button id="save-import" class="button button-primary" type="button"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào ngân hàng</button></div><div id="import-preview" class="import-preview"></div></section></div>
+    <dialog id="subject-dialog" class="subject-dialog" aria-labelledby="subject-editor-title">
+        <header class="subject-dialog-header">
+            <div>
+                <p class="eyebrow">SUBJECT EDITOR</p>
+                <h2 id="subject-editor-title">Tạo môn học</h2>
+                <p class="muted-copy">Tạo môn mới và gán vào Lớp 5 hoặc Lớp 11.</p>
+            </div>
+            <button id="subject-dialog-close" class="icon-button" type="button" aria-label="Đóng cửa sổ môn học"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div id="subject-dialog-content"></div>
+    </dialog>
     <div id="toast" class="toast" role="status"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>

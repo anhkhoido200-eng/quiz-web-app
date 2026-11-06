@@ -39,6 +39,7 @@
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
+        subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] }
     };
     const $ = (id) => document.getElementById(id);
@@ -59,6 +60,10 @@
     const allSubjects = () => mergeSubjectCatalog(state.subjects)
         .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
         .filter((item) => item.key);
+    const subjectsWithQuestions = () => {
+        const questionKeys = new Set((state.questions || []).map((question) => String(question.subject_key || question.subjectKey || '')).filter(Boolean));
+        return allSubjects().filter((subject) => questionKeys.has(String(subject.key)));
+    };
     const builtinSubjects = () => Object.entries(SUBJECTS).flatMap(([grade, items]) => items.map((item) => ({
         ...item,
         grade,
@@ -247,7 +252,7 @@
     }
 
     function fillLibrarySubjects() {
-        const list = state.grade === 'all' ? allSubjects() : allSubjects().filter((item) => subjectGrade(item) === String(state.grade));
+        const list = state.grade === 'all' ? subjectsWithQuestions() : subjectsWithQuestions().filter((item) => subjectGrade(item) === String(state.grade));
         if (!list.some((item) => item.key === state.subject)) state.subject = 'all';
         if ($('library-subject-filter')) {
             $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -350,7 +355,7 @@
             state.questions = (data || []).map(normalizeRow);
             setConnection(true, 'Đã đồng bộ');
             $('last-sync') && ($('last-sync').textContent = `Đồng bộ lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
-            renderStats(); renderLibrary(); renderRecentActivity();
+            renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
             $('health-database') && ($('health-database').textContent = 'Supabase đang hoạt động');
             $('health-database-badge') && ($('health-database-badge').textContent = 'Ổn định');
             $('health-database-badge')?.classList.replace('pending', 'safe');
@@ -807,14 +812,20 @@
     async function addClass5Ip(ip) { const cleanIp = String(ip || '').trim(); if (!cleanIp) return notify('Nhập IP máy của em bạn.', true); state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; if (!state.geo.grade5Ips.includes(cleanIp)) state.geo.grade5Ips.push(cleanIp); await saveGeo(); notify(`Đã cấp quyền Lớp 5 cho IP ${cleanIp}.`); }
     async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
 
+    function renderSubjectCatalog() {
+        const subjects = subjectsWithQuestions();
+        $('subject-count') && ($('subject-count').textContent = subjects.length);
+        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn nào có câu hỏi.</div>');
+        renderSubjectPrivacy();
+    }
+
     async function loadSubjects() {
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
         state.subjects = mergeSubjectCatalog(state.subjects);
         fillSubjects($('grade-select')?.value || '11');
         fillLibrarySubjects();
-        $('subject-count') && ($('subject-count').textContent = state.subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = state.subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn động. Môn tích hợp vẫn hoạt động bình thường.</div>');
+        renderSubjectCatalog();
         upgradePrivacyPanel();
     }
 
@@ -829,7 +840,7 @@
     function renderSubjectPrivacy() {
         const list = $('subject-privacy-list');
         if (!list) return;
-        const subjects = state.subjects || [];
+        const subjects = subjectsWithQuestions();
         const privateCount = subjects.filter((subject) => subject.visibility === 'PRIVATE').length;
         $('privacy-private-count') && ($('privacy-private-count').textContent = `${privateCount} RIÊNG TƯ`);
         $('privacy-private-count') && ($('privacy-private-count').className = `status-badge ${privateCount ? 'danger' : 'safe'}`);
@@ -862,8 +873,67 @@
     }
 
     function setSubjectGrade(grade) { const value = String(grade) === '5' ? '5' : '11'; if ($('subject-grade-input')) $('subject-grade-input').value = value; document.querySelectorAll('[data-subject-grade]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectGrade === value)); }
-    function resetSubjectForm() { ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; }); if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book'; if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC'; setSubjectGrade('11'); if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học'; }
-    async function saveSubject(event) { event.preventDefault(); const key = $('subject-key-input')?.value.trim(); const name = $('subject-name-input')?.value.trim(); if (!key || !name) return notify('Nhập tên và mã môn học.', true); const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' }; const index = state.subjects.findIndex((item) => item.key === key); if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject }; else state.subjects.push(subject); try { await saveSubjects(); resetSubjectForm(); notify('Đã lưu môn học.'); } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); } }
+    function moveSubjectFormToDialog() {
+        const form = $('subject-form');
+        const dialogContent = $('subject-dialog-content');
+        const editor = document.querySelector('.subject-editor-panel');
+        if (!form || !dialogContent || !editor || editor.dataset.moved === 'true') return;
+        editor.dataset.moved = 'true';
+        form.classList.add('subject-dialog-form');
+        dialogContent.appendChild(form);
+        editor.remove();
+    }
+    function resetSubjectForm() {
+        ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; });
+        if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book';
+        if ($('subject-gradient-input')) $('subject-gradient-input').value = 'indigo';
+        if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC';
+        setSubjectGrade('11');
+        state.subjectEditingKey = null;
+        if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học';
+    }
+    function closeSubjectDialog() {
+        const dialog = $('subject-dialog');
+        if (dialog?.open) dialog.close();
+        resetSubjectForm();
+    }
+    function openSubjectDialog(subject = null, opener = null) {
+        moveSubjectFormToDialog();
+        switchView('subjects');
+        state.subjectDialogOpener = opener || document.activeElement;
+        resetSubjectForm();
+        if (subject) {
+            state.subjectEditingKey = subject.key || subject.subject_key;
+            $('subject-name-input').value = subject.name || subject.title || '';
+            $('subject-key-input').value = state.subjectEditingKey || '';
+            $('subject-semester-input').value = subject.semester || '';
+            $('subject-icon-input').value = subject.icon || 'fa-book';
+            $('subject-gradient-input').value = subject.gradient || 'indigo';
+            $('subject-visibility-input').value = subject.visibility || 'PUBLIC';
+            setSubjectGrade(subjectGrade(subject));
+            $('subject-editor-title').textContent = `Sửa môn ${subject.name || state.subjectEditingKey}`;
+        }
+        const dialog = $('subject-dialog');
+        if (!dialog) return;
+        if (!dialog.open) dialog.showModal();
+        window.requestAnimationFrame(() => $('subject-name-input')?.focus());
+    }
+    async function saveSubject(event) {
+        event.preventDefault();
+        const key = $('subject-key-input')?.value.trim();
+        const name = $('subject-name-input')?.value.trim();
+        if (!key || !name) return notify('Nhập tên và mã môn học.', true);
+        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
+        const index = state.subjects.findIndex((item) => item.key === state.subjectEditingKey);
+        if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject };
+        else if (state.subjects.some((item) => item.key === key)) return notify('Mã định danh này đã tồn tại.', true);
+        else state.subjects.push(subject);
+        try {
+            await saveSubjects();
+            closeSubjectDialog();
+            notify('Đã lưu môn học.');
+        } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
+    }
     async function deleteSubject(key) { if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return; state.subjects = state.subjects.filter((item) => item.key !== key); await state.client.from('quiz_questions').delete().eq('subject_key', key); await saveSubjects(); notify('Đã xóa môn học.'); }
 
     async function loadStudents() {
@@ -987,23 +1057,10 @@
         $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); const privateNotice = event.target.closest('[data-private-notice]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); if (privateNotice) runAction(() => sendPrivateNotice(privateNotice.dataset.privateNotice, privateNotice.dataset.privateName)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
-        $('new-subject-button')?.addEventListener('click', () => {
-            switchView('subjects');
-            resetSubjectForm();
-            const editor = document.querySelector('.subject-editor-panel');
-            editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            window.setTimeout(() => $('subject-name-input')?.focus(), 350);
-        });
+        $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
-        $('go-subject-editor')?.addEventListener('click', () => {
-            closeModal('subject-modal');
-            switchView('subjects');
-            resetSubjectForm();
-            const editor = document.querySelector('.subject-editor-panel');
-            editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            window.setTimeout(() => $('subject-name-input')?.focus(), 350);
-        });
-        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+        $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
     async function init() {
