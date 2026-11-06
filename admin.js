@@ -300,12 +300,37 @@
         }
     }
 
+    function animateMetricValue(id, target) {
+        const element = $(id);
+        if (!element) return;
+
+        const value = Math.max(0, Number(target) || 0);
+        const previous = Number(element.dataset.metricValue || 0);
+        element.dataset.metricValue = String(value);
+
+        if (previous === value || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            element.textContent = String(value);
+            return;
+        }
+
+        cancelAnimationFrame(element.metricAnimationFrame);
+        const startedAt = performance.now();
+        const duration = 650;
+        const tick = (now) => {
+            const progress = Math.min((now - startedAt) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.textContent = String(Math.round(previous + (value - previous) * eased));
+            if (progress < 1) element.metricAnimationFrame = requestAnimationFrame(tick);
+        };
+        element.metricAnimationFrame = requestAnimationFrame(tick);
+    }
+
     function renderStats() {
         const grade5 = state.questions.filter((q) => gradeOf(q) === '5').length;
         const grade11 = state.questions.length - grade5;
-        $('stat-total') && ($('stat-total').textContent = state.questions.length);
-        $('stat-grade5') && ($('stat-grade5').textContent = grade5);
-        $('stat-grade11') && ($('stat-grade11').textContent = grade11);
+        animateMetricValue('stat-total', state.questions.length);
+        animateMetricValue('stat-grade5', grade5);
+        animateMetricValue('stat-grade11', grade11);
         $('nav-question-count') && ($('nav-question-count').textContent = state.questions.length);
     }
 
@@ -780,7 +805,7 @@
         if (error) return notify(error.message, true);
         const rows = (data || []).filter((row) => !systemIds.includes(row.id));
         const online = rows.filter((row) => row.last_active && Date.now() - new Date(row.last_active).getTime() < 120000);
-        $('stat-online') && ($('stat-online').textContent = online.length); $('nav-online-count') && ($('nav-online-count').textContent = online.length); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} lượt truy cập`);
+        animateMetricValue('stat-online', online.length); $('nav-online-count') && ($('nav-online-count').textContent = online.length); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} lượt truy cập`);
         $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${online.length}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => row.status === 'BANNED').length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
         $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = row.status === 'BANNED' || String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; return `<tr><td><b>${esc(row.player_name || 'Học sinh')}</b></td><td><code>${esc(row.ip_address || '—')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(row.ip_address || '')}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(row.ip_address || '')}"><i class="fa-solid fa-ban"></i></button>`}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
         const banned = rows.filter((row) => String(row.status || '').startsWith('BANNED'));
