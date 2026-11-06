@@ -8,7 +8,7 @@ class QuizApp {
     constructor() {
         // Môn học & Đa môn học động (Ghi nhớ môn đã chọn gần nhất)
         this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || 'history';
-        this.homeGradeFilter = '11';
+        this.homeGradeFilter = 'all';
         this.dynamicSubjects = [];
 
         // Thông tin người học & Thiết bị & IP
@@ -16,6 +16,7 @@ class QuizApp {
         this.clientIp = "Đang nhận diện...";
         this.deviceInfo = this.detectDevice();
         this.currentLoginId = null;
+        this.presenceHeartbeatAt = 0;
 
         // Đồng hồ bấm giờ (Luyện tập: Đếm tiến / Thi thử: Đếm ngược)
         this.secondsElapsed = 0;
@@ -120,13 +121,12 @@ class QuizApp {
         this.initNetworkListeners();
         this.initEventListeners();
         this.updateSoundIcons();
-        this.checkSavedUser();
-        await this.loadGlobalGeminiApiKey();
-        await this.loadAiIpsConfig();
         await this.loadBannedIpsList();
         await this.loadDynamicSubjects();
         await this.fetchClientIp();
         await this.syncClass5Access();
+        this.checkSavedUser();
+        await this.loadAiIpsConfig();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
         await this.initMaintenance();
@@ -174,15 +174,17 @@ class QuizApp {
 
     async loadDynamicSubjects() {
         let loaded = [];
+        let cloudAvailable = false;
         try {
             if (window.dbService && typeof window.dbService.fetchDynamicSubjects === 'function') {
                 loaded = await window.dbService.fetchDynamicSubjects();
+                cloudAvailable = Boolean(window.dbService.isSupabaseActive);
             }
         } catch (e) {
             console.warn("Không thể tải môn học từ cloud, dùng dữ liệu mặc định:", e);
         }
 
-        if (!Array.isArray(loaded) || loaded.length === 0) {
+        if ((!Array.isArray(loaded) || loaded.length === 0) && (!navigator.onLine || !cloudAvailable)) {
             const cached = localStorage.getItem('quiz_dynamic_subjects');
             if (cached) {
                 try { loaded = JSON.parse(cached); } catch (e) { }
@@ -218,29 +220,39 @@ class QuizApp {
     }
 
     getHomeGradeFilter() {
-        if (!this.isAdminAuthenticated && !this.canViewGrade5()) return '11';
-        return ['5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : '11';
+        return ['all', '5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
     }
 
     getHomeVisibleSubjects() {
         const canViewGrade5 = this.canViewGrade5();
+        const currentIp = String(this.clientIp || '').trim();
+        const canViewPrivateByIp = this.allowedGeoIps.includes(currentIp);
         const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
             const grade = this.getSubjectGrade(sub);
+            const questionCount = Number(sub.count ?? sub.question_count ?? 0);
+            const hasKnownQuestions = questionCount > 0 || ['history', 'physics', 'geography'].includes(sub.key);
             const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
-            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
-            return canViewGrade && (!isPrivate || this.isAdminAuthenticated || (grade === '5' && canViewGrade5));
+            const visibility = String(sub.visibility || '').toUpperCase();
+            const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || sub.is_public === false;
+            const canViewPrivate = this.isAdminAuthenticated || canViewPrivateByIp || (grade === '5' && canViewGrade5);
+            return canViewGrade && hasKnownQuestions && (!isPrivate || canViewPrivate);
         });
         const filter = this.getHomeGradeFilter();
-        return allowedSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
+        return filter === 'all'
+            ? allowedSubjects
+            : allowedSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
     }
 
     async syncClass5Access() {
         try {
             if (window.dbService && typeof window.dbService.fetchGeoConfig === 'function') {
                 const config = await window.dbService.fetchGeoConfig();
+                this.allowedGeoIps = Array.isArray(config?.ips) ? config.ips : [];
                 this.class5AllowedIps = Array.isArray(config?.grade5Ips) ? config.grade5Ips : [];
+                this.geoMode = config?.mode || 'PUBLIC';
             }
         } catch (error) {
+            this.allowedGeoIps = [];
             this.class5AllowedIps = [];
             console.warn('Không thể tải quyền truy cập Lớp 5:', error);
         }
@@ -257,21 +269,18 @@ class QuizApp {
         const activeGrade = this.getHomeGradeFilter();
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
-            if (this.isAdminAuthenticated || this.canViewGrade5()) {
-                tabs.innerHTML = ['5', '11'].map((grade) => {
-                    const label = `Lớp ${grade}`;
+            tabs.innerHTML = ['all', '5', '11'].map((grade) => {
+                    const label = grade === 'all' ? 'Tất cả' : `Lớp ${grade}`;
                     const active = activeGrade === grade;
-                    return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
+                    const locked = grade === '5' && !this.isAdminAuthenticated && !this.canViewGrade5();
+                    return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''} ${locked ? 'is-locked' : ''}" data-grade-filter="${grade}" ${locked ? 'disabled title="Lớp 5 chưa được cấp quyền"' : ''}>${locked ? '<i class="fa-solid fa-lock"></i>' : ''}${label}</button>`;
                 }).join('');
-                tabs.querySelectorAll('[data-grade-filter]').forEach((button) => {
-                    button.addEventListener('click', () => {
-                        this.homeGradeFilter = button.dataset.gradeFilter;
-                        this.renderHomeSubjects();
-                    });
+            tabs.querySelectorAll('[data-grade-filter]:not(:disabled)').forEach((button) => {
+                button.addEventListener('click', () => {
+                    this.homeGradeFilter = button.dataset.gradeFilter;
+                    this.renderHomeSubjects();
                 });
-            } else {
-                tabs.innerHTML = `<span class="home-grade-lock"><i class="fa-solid ${activeGrade === '5' ? 'fa-lock' : 'fa-graduation-cap'}"></i> Khu vực riêng: Lớp ${activeGrade}</span>`;
-            }
+            });
         }
 
         // Nếu môn đang chọn hiện tại bị ẩn, tự động chuyển sang môn công khai đầu tiên
@@ -288,7 +297,7 @@ class QuizApp {
                     <div class="w-12 h-12 rounded-2xl bg-slate-800/80 text-slate-400 flex items-center justify-center mx-auto text-xl border border-slate-700 shadow-sm">
                         <i class="fa-solid fa-folder-open"></i>
                     </div>
-                    <p class="font-bold text-slate-200 text-sm">Chưa có môn Lớp ${activeGrade} được mở</p>
+                    <p class="font-bold text-slate-200 text-sm">Chưa có môn ${activeGrade === 'all' ? 'nào' : `Lớp ${activeGrade}`} được mở</p>
                     <p class="text-xs text-slate-400 max-w-sm mx-auto">Hiện chưa có đề cương ôn tập nào dành cho khu vực này. Vui lòng quay lại sau!</p>
                 </div>
             `;
@@ -540,7 +549,7 @@ class QuizApp {
                 const data2 = await res2.json();
                 if (data2 && data2.ip) this.clientIp = data2.ip;
             } catch (e2) {
-                if (this.clientIp.startsWith('Đang')) this.clientIp = "127.0.0.1";
+                if (this.clientIp.startsWith('Đang')) this.clientIp = "Chưa xác định";
             }
         }
 
@@ -573,13 +582,8 @@ class QuizApp {
             this.isAdminAuthenticated = true;
             localStorage.setItem('quiz_is_admin', 'true');
             localStorage.setItem('quiz_admin_authenticated', 'true');
-            if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== '127.0.0.1') {
+            if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') {
                 localStorage.setItem('quiz_admin_saved_ip', this.clientIp);
-                // Tự động ghi nhớ IP máy này làm Admin vĩnh viễn trên Supabase nếu chưa có
-                if (!this.allowedAdminIps.includes(this.clientIp) && window.dbService && typeof window.dbService.addAdminIp === 'function') {
-                    window.dbService.addAdminIp(this.clientIp, 'Admin Máy Hiện Tại', true).catch(() => {});
-                    this.allowedAdminIps.push(this.clientIp);
-                }
             }
         } else {
             this.isAdminAuthenticated = false;
@@ -808,24 +812,12 @@ class QuizApp {
         } catch (e) {
             console.warn("Không thể tải danh sách IP cấp quyền AI:", e);
         }
-        if (!Array.isArray(loaded) || loaded.length === 0) {
-            try {
-                const cached = localStorage.getItem('quiz_ai_allowed_ips');
-                if (cached) loaded = JSON.parse(cached);
-            } catch (e) { }
-        }
         this.allowedAiIps = Array.isArray(loaded) ? loaded : [];
     }
 
     isAiAllowedForCurrentClient() {
-        // Admin luôn luôn có quyền sử dụng Trợ lý AI
-        if (this.isAdminAuthenticated) return true;
         const currentIp = (this.clientIp || '').trim();
         if (!currentIp || currentIp.startsWith('Đang')) return false;
-
-        // Nếu IP thuộc danh sách Admin hoặc Master Admin
-        if (this.allowedAdminIps && this.allowedAdminIps.includes(currentIp)) return true;
-        if (this.masterAdminIp && this.masterAdminIp === currentIp) return true;
 
         // Kiểm tra trong danh sách IP được Admin cấp quyền AI
         return (this.allowedAiIps || []).some(item => {
@@ -857,7 +849,6 @@ class QuizApp {
                 await window.dbService.saveAiIpsConfig(this.allowedAiIps);
             }
         } catch (e) { }
-        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
 
         this.renderAdminStudentsList();
         this.renderAdminAiIpsList();
@@ -886,7 +877,6 @@ class QuizApp {
                 await window.dbService.saveAiIpsConfig(this.allowedAiIps);
             }
         } catch (e) { }
-        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
 
         if (ipInput) ipInput.value = '';
         if (nameInput) nameInput.value = '';
@@ -903,7 +893,6 @@ class QuizApp {
                 await window.dbService.saveAiIpsConfig(this.allowedAiIps);
             }
         } catch (e) { }
-        localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(this.allowedAiIps));
         this.renderAdminAiIpsList();
         this.renderAdminStudentsList();
     }
@@ -916,7 +905,7 @@ class QuizApp {
         container.innerHTML = '';
 
         if (!this.allowedAiIps || this.allowedAiIps.length === 0) {
-            container.innerHTML = `<div class="p-3 text-center text-slate-500 italic text-xs">Chưa có IP nào được cấp quyền AI riêng (Admin luôn mặc định có quyền).</div>`;
+            container.innerHTML = `<div class="p-3 text-center text-slate-500 italic text-xs">Chưa có IP nào được cấp quyền AI.</div>`;
             return;
         }
 
@@ -3641,7 +3630,6 @@ renderImporterPreview() {
             nameEl.textContent = saved;
             banner.classList.remove('hidden');
             if (input) input.value = saved;
-            this.recordVisitorPresence('Đang ở trang chủ');
         } else if (banner) {
             banner.classList.add('hidden');
         }
@@ -3714,9 +3702,14 @@ renderImporterPreview() {
     /* ============================================================== */
 
     startRealtimeHeartbeat() {
-        // Chu kỳ 3 giây kiểm tra trạng thái bảo trì, chặn IP và phân quyền Admin
+        // Kiểm tra quyền thường xuyên nhưng chỉ ghi heartbeat hiện diện mỗi 30 giây.
         setInterval(async () => {
             if (!window.dbService) return;
+
+            if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 30000) {
+                this.presenceHeartbeatAt = Date.now();
+                await window.dbService.heartbeat?.(this.currentLoginId);
+            }
 
             // 1. Kiểm tra trạng thái Bảo trì
             try {
@@ -3757,7 +3750,12 @@ renderImporterPreview() {
                 }
             } catch (e) { }
 
-            // 4. Kiểm tra thông báo từ Giám thị
+            // 4. Đồng bộ quyền AI để thu hồi quyền có hiệu lực ngay.
+            try {
+                await this.loadAiIpsConfig();
+            } catch (e) { }
+
+            // 5. Kiểm tra thông báo từ Giám thị
             try {
                 if (typeof window.dbService.getSystemNotice === 'function') {
                     const notice = await window.dbService.getSystemNotice(this.clientIp);
@@ -3878,7 +3876,7 @@ renderImporterPreview() {
             let rowsHtml = '';
             list.forEach(student => {
                 const rawIp = student.ip_address || student.client_ip || '';
-                const ip = (rawIp && rawIp !== '-' && rawIp !== 'Chưa xác định') ? rawIp : '127.0.0.1';
+                const ip = (rawIp && rawIp !== '-') ? rawIp : 'Chưa xác định';
                 const name = (student.player_name && student.player_name.trim()) ? student.player_name.trim() : 'Khách truy cập';
                 const rawDev = student.device_info || '';
                 const device = (rawDev && rawDev !== '-' && rawDev !== 'Chưa rõ') ? rawDev : 'Trình duyệt Web';
@@ -3907,7 +3905,7 @@ renderImporterPreview() {
 
                 const scoreInfo = student.score_summary || student.status || 'Đang ôn tập';
 
-                const isAiGranted = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip) || this.allowedAdminIps.includes(ip) || ip === this.masterAdminIp;
+                const isAiGranted = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip);
 
                 rowsHtml += `
                     <tr class="hover:bg-slate-800/40 transition">
@@ -4427,8 +4425,10 @@ renderImporterPreview() {
                     return cloudKey;
                 }
             }
-        } catch (e) {}
-        this.geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+        } catch (e) {
+            console.warn('Không thể tải khóa Gemini từ Cloud:', e);
+        }
+        this.geminiApiKey = '';
         return this.geminiApiKey;
     }
 
@@ -4439,7 +4439,7 @@ renderImporterPreview() {
         }
         const modal = document.getElementById('modal-ai-settings');
         const input = document.getElementById('gemini-api-key-input');
-        if (input) input.value = this.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
+        if (input) input.value = this.geminiApiKey || '';
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -4459,13 +4459,16 @@ renderImporterPreview() {
     }
 
     async saveAiApiKey() {
+        if (!this.isAdminAuthenticated) {
+            alert("🔒 Chỉ Quản trị viên mới được thay đổi Gemini API Key.");
+            return;
+        }
         const input = document.getElementById('gemini-api-key-input');
         const key = (input ? input.value : '').trim();
         if (!key) {
             alert("Vui lòng dán mã Google Gemini API Key để lưu.");
             return;
         }
-        localStorage.setItem('gemini_api_key', key);
         this.geminiApiKey = key;
 
         let cloudSuccess = false;
@@ -4478,14 +4481,18 @@ renderImporterPreview() {
         }
 
         if (cloudSuccess) {
-            alert("✅ ĐÃ ĐỒNG BỘ KHÓA AI LÊN TOÀN HỆ THỐNG ĐÁM MÂY!\n\nTừ bây giờ, TẤT CẢ học sinh khi vào làm bài trên bất kỳ điện thoại hay máy tính nào đều tự động được dùng Trợ lý AI miễn phí mà KHÔNG CẦN phải tự nhập khóa API!");
+            alert("✅ Đã lưu khóa AI trên Cloud. Học sinh chỉ sử dụng được khi IP đã được cấp quyền AI.");
         } else {
-            alert("✅ Đã lưu khóa Gemini API Key vào trình duyệt này!");
+            alert("✅ Đã lưu khóa Gemini API Key lên Cloud.");
         }
         this.closeAiSettingsModal();
     }
 
     async clearAiApiKey() {
+        if (!this.isAdminAuthenticated) {
+            alert("🔒 Chỉ Quản trị viên mới được xóa Gemini API Key.");
+            return;
+        }
         if (!confirm("Bạn có chắc muốn xóa API Key khỏi toàn bộ hệ thống?")) return;
         localStorage.removeItem('gemini_api_key');
         this.geminiApiKey = '';
@@ -4503,19 +4510,20 @@ renderImporterPreview() {
 
     async askAiExplanation(qId) {
         // Kiểm tra quyền hạn theo IP: Phải là Admin hoặc được Admin cấp quyền IP
+        await this.loadAiIpsConfig();
         if (!this.isAiAllowedForCurrentClient()) {
             alert(`🔒 BẠN CHƯA ĐƯỢC CẤP QUYỀN SỬ DỤNG TRỢ LÝ AI!\n\nĐịa chỉ IP của bạn: ${this.clientIp}\n\nTính năng Trợ lý AI giải thích bài yêu cầu Quản trị viên (Admin) cấp quyền theo địa chỉ IP. Vui lòng gửi địa chỉ IP của bạn cho Admin để được kích hoạt quyền.`);
             return;
         }
 
-        let apiKey = this.geminiApiKey || localStorage.getItem('gemini_api_key');
+        let apiKey = this.geminiApiKey || '';
         if (!apiKey) {
             apiKey = await this.loadGlobalGeminiApiKey();
         }
 
         if (!apiKey) {
             if (this.isAdminAuthenticated) {
-                alert("✨ Bạn đang đăng nhập Admin. Hãy nhập Google Gemini API Key để chia sẻ quyền dùng Trợ lý AI cho toàn bộ học sinh!");
+                alert("✨ Chưa cấu hình Gemini API Key. Hãy nhập khóa trong khu vực Admin, sau đó cấp quyền AI cho từng IP.");
                 this.openAiSettingsModal();
             } else {
                 alert("✨ Trợ lý AI đang chờ giáo viên/quản trị viên cấu hình khóa API chung. Vui lòng báo quản trị viên cài đặt!");
@@ -4996,7 +5004,6 @@ YÊU CẦU:
                 if (val && val !== this.playerName) {
                     this.playerName = val;
                     localStorage.setItem('quiz_user_name', val);
-                    this.recordVisitorPresence(`Đang chọn môn thi`);
                 }
             });
             nameInput.addEventListener('keydown', (e) => {

@@ -126,7 +126,7 @@ class DatabaseService {
      */
     async recordLogin(data, ipAddress, deviceInfo, subjectTitle) {
         let cleanName = "";
-        let cleanIp = "127.0.0.1";
+        let cleanIp = "Chưa xác định";
         let cleanDevice = "Trình duyệt Web";
         let status = "Đang làm bài";
         let scoreSummary = "";
@@ -146,8 +146,19 @@ class DatabaseService {
         }
 
         if (!cleanName) cleanName = "Khách truy cập";
-        if (!cleanIp || cleanIp === "Đang nhận diện..." || cleanIp === "—" || cleanIp === "Chưa xác định") cleanIp = "127.0.0.1";
+        if (!cleanIp || cleanIp === "Đang nhận diện..." || cleanIp === "—") cleanIp = "Chưa xác định";
         if (!cleanDevice || cleanDevice === "—" || cleanDevice === "Chưa rõ") cleanDevice = "Trình duyệt Web";
+
+        let sessionId = '';
+        try {
+            sessionId = sessionStorage.getItem('quiz_presence_session') || '';
+            if (!sessionId) {
+                sessionId = this.generateUUID();
+                sessionStorage.setItem('quiz_presence_session', sessionId);
+            }
+        } catch (e) {
+            sessionId = `fallback_${cleanIp}_${cleanName}`.replace(/[^a-z0-9_.-]/gi, '_');
+        }
 
         const nowIso = new Date().toISOString();
 
@@ -157,6 +168,7 @@ class DatabaseService {
             device_info: cleanDevice,
             status: status,
             score_summary: scoreSummary,
+            session_id: sessionId,
             last_active: nowIso,
             created_at: nowIso
         };
@@ -171,27 +183,54 @@ class DatabaseService {
 
             let localLogs = this._getLocalLogins();
             record.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            localLogs.unshift(record);
+            const existingLocal = localLogs.find((item) => item.session_id === sessionId);
+            if (existingLocal) {
+                Object.assign(existingLocal, record, { id: existingLocal.id, created_at: existingLocal.created_at || nowIso });
+                record.id = existingLocal.id;
+            } else {
+                localLogs.unshift(record);
+            }
             localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localLogs.slice(0, 100)));
         } catch (e) {}
 
         // 2. Lưu Supabase Cloud cho Admin giám sát
         if (this.isSupabaseActive && this.client) {
             try {
-                const cloudId = this.generateUUID();
-                const { data: inserted, error } = await this.client
+                const { data: existing, error: lookupError } = await this.client
                     .from('quiz_logins')
-                    .insert([{
-                        id: cloudId,
-                        player_name: cleanName,
-                        ip_address: cleanIp,
-                        device_info: cleanDevice,
-                        status: status,
-                        score_summary: scoreSummary,
-                        last_active: nowIso,
-                        created_at: nowIso
-                    }])
-                    .select('id');
+                    .select('id, created_at')
+                    .eq('session_id', sessionId)
+                    .limit(1);
+
+                if (!lookupError && existing && existing[0]) {
+                    const { error: updateError } = await this.client.from('quiz_logins').update({
+                        player_name: cleanName, ip_address: cleanIp, device_info: cleanDevice,
+                        status, score_summary: scoreSummary, last_active: nowIso
+                    }).eq('id', existing[0].id);
+                    if (!updateError) {
+                        const resObj = { id: existing[0].id, success: true };
+                        resObj.toString = () => existing[0].id;
+                        return resObj;
+                    }
+                }
+
+                const cloudId = this.generateUUID();
+                const payload = {
+                    id: cloudId, player_name: cleanName, ip_address: cleanIp,
+                    device_info: cleanDevice, status, score_summary: scoreSummary,
+                    session_id: sessionId, last_active: nowIso, created_at: nowIso
+                };
+                let { data: inserted, error } = await this.client.from('quiz_logins').insert([payload]).select('id');
+                // Cho phép hệ thống cũ vẫn ghi nhận học sinh trước khi Admin chạy migration session_id.
+                if (error && /session_id|column/i.test(error.message || '')) {
+                    const legacyPayload = { ...payload };
+                    delete legacyPayload.session_id;
+                    ({ data: inserted, error } = await this.client.from('quiz_logins').insert([legacyPayload]).select('id'));
+                }
+
+                if (error && /policy|permission|not allowed/i.test(error.message || '')) {
+                    console.warn('[DatabaseService] Supabase từ chối ghi phiên, không dùng fallback giả online.');
+                }
 
                 if (!error && inserted && inserted[0]) {
                     const finalId = inserted[0].id;
@@ -208,6 +247,26 @@ class DatabaseService {
         const resObj = { id: localId, success: true };
         resObj.toString = () => localId;
         return resObj;
+    }
+
+    async heartbeat(loginId) {
+        const nowIso = new Date().toISOString();
+        if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
+            try {
+                const { error } = await this.client.from('quiz_logins').update({ last_active: nowIso }).eq('id', loginId);
+                if (error) throw error;
+            } catch (error) {
+                console.warn('[DatabaseService] Không cập nhật được heartbeat:', error);
+            }
+        }
+        try {
+            const list = this._getLocalLogins();
+            const item = list.find((entry) => entry.id === loginId || entry.session_id === sessionStorage.getItem('quiz_presence_session'));
+            if (item) {
+                item.last_active = nowIso;
+                localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(list));
+            }
+        } catch (e) {}
     }
 
     /**
@@ -1165,16 +1224,17 @@ class DatabaseService {
                             }
                         } catch (e) {}
                     }
-                    try {
-                        localStorage.setItem('quiz_geo_mode', mode);
-                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
-                        localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
-                    } catch (e) {}
-                    return { mode, ips, grade5Ips };
+            try {
+                localStorage.setItem('quiz_geo_mode', mode);
+                localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
+                localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
+            } catch (e) {}
+            return { mode, ips, grade5Ips };
                 }
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi lấy cấu hình phân quyền môn Địa:", e);
             }
+            return { mode, ips, grade5Ips };
         }
 
         try {
@@ -1523,7 +1583,10 @@ class DatabaseService {
                     } catch (e) {}
                     return subjects;
                 }
+                // Cloud là nguồn sự thật khi đang online; không phục hồi cache cũ sau khi Admin đã xóa dữ liệu.
+                if (error || !data || data.length === 0) return [];
             } catch (e) {}
+            return subjects;
         }
 
         try {
@@ -1548,7 +1611,7 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.DYNAMIC_SUBJECTS,
@@ -1559,6 +1622,7 @@ class DatabaseService {
                         score_summary: payloadStr,
                         last_active: nowIso
                     }], { onConflict: 'id' });
+                if (error) throw error;
             } catch (e) {
                 console.error("[DatabaseService] Lỗi lưu môn học động:", e);
             }
@@ -1804,20 +1868,17 @@ class DatabaseService {
      * Tải khóa Gemini API Key dùng chung toàn hệ thống từ Supabase Cloud
      */
     async fetchGeminiApiKey() {
-        let key = localStorage.getItem('gemini_api_key') || "";
+        let key = "";
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('score_summary')
+                    .select('status, score_summary')
                     .eq('id', SYSTEM_RECORDS.GEMINI_CONFIG)
                     .limit(1);
 
-                if (!error && data && data.length > 0 && data[0].score_summary) {
+                if (!error && data && data.length > 0 && data[0].status === 'ACTIVE' && data[0].score_summary) {
                     key = data[0].score_summary.trim();
-                    try {
-                        localStorage.setItem('gemini_api_key', key);
-                    } catch (e) {}
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải Gemini API Key từ Cloud:", err);
@@ -1831,14 +1892,10 @@ class DatabaseService {
      */
     async saveGeminiApiKey(apiKey) {
         const cleanKey = (apiKey || "").trim();
-        try {
-            localStorage.setItem('gemini_api_key', cleanKey);
-        } catch (e) {}
-
         if (this.isSupabaseActive && this.client) {
             const nowIso = new Date().toISOString();
             try {
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.GEMINI_CONFIG,
@@ -1849,6 +1906,7 @@ class DatabaseService {
                         score_summary: cleanKey,
                         last_active: nowIso
                     }], { onConflict: 'id' });
+                if (error) throw error;
                 return true;
             } catch (err) {
                 console.error("[DatabaseService] Lỗi khi lưu Gemini API Key lên Cloud:", err);
@@ -1866,27 +1924,22 @@ class DatabaseService {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('device_info, score_summary')
+                    .select('status, score_summary')
                     .eq('id', SYSTEM_RECORDS.AI_IPS)
                     .limit(1);
-                if (!error && data && data.length > 0 && data[0].score_summary) {
+                if (!error && data && data.length > 0 && data[0].status === 'ACTIVE' && data[0].score_summary) {
                     try {
                         const parsed = JSON.parse(data[0].score_summary);
                         if (Array.isArray(parsed)) allowedIps = parsed;
                         else if (parsed && Array.isArray(parsed.ips)) allowedIps = parsed.ips;
                     } catch (e) { }
                 }
+                return Array.isArray(allowedIps) ? allowedIps : [];
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải danh sách IP cấp quyền AI:", err);
             }
         }
-        if (!allowedIps || allowedIps.length === 0) {
-            try {
-                const cached = localStorage.getItem('quiz_ai_allowed_ips');
-                if (cached) allowedIps = JSON.parse(cached);
-            } catch (e) { }
-        }
-        return Array.isArray(allowedIps) ? allowedIps : [];
+        return [];
     }
 
     /**
@@ -1894,14 +1947,11 @@ class DatabaseService {
      */
     async saveAiIpsConfig(ipsList) {
         const cleanList = Array.isArray(ipsList) ? ipsList : [];
-        try {
-            localStorage.setItem('quiz_ai_allowed_ips', JSON.stringify(cleanList));
-        } catch (e) { }
 
         if (this.isSupabaseActive && this.client) {
             try {
                 const nowIso = new Date().toISOString();
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.AI_IPS,
@@ -1912,6 +1962,7 @@ class DatabaseService {
                         score_summary: JSON.stringify(cleanList),
                         last_active: nowIso
                     }], { onConflict: 'id' });
+                if (error) throw error;
                 return true;
             } catch (err) {
                 console.error("[DatabaseService] Lỗi lưu danh sách AI IP:", err);

@@ -162,7 +162,7 @@
     async function bootstrapAdmin() {
         if (!state.client) state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
         if (!state.clientIp) state.clientIp = await getClientIp();
-        if (state.clientIp === '127.0.0.1' || !state.clientIp) return notify('Không xác định được IP máy hiện tại.', true);
+        if (!state.clientIp || state.clientIp === 'Chưa xác định') return notify('Không xác định được IP máy hiện tại.', true);
         const row = await systemRow(SYSTEM.admin);
         if (!row) return notify('Chưa tìm thấy bản ghi cấu hình Admin trên Supabase.', true);
         let config;
@@ -682,9 +682,9 @@
     }
 
     async function fetchGeminiKey() {
-        let key = localStorage.getItem('gemini_api_key') || '';
+        let key = '';
         const row = await systemRow(SYSTEM.gemini);
-        if (row?.score_summary) { key = row.score_summary; localStorage.setItem('gemini_api_key', cleanGeminiKey(key)); }
+        if (row?.status === 'ACTIVE' && row?.score_summary) key = row.score_summary;
         return cleanGeminiKey(key);
     }
 
@@ -694,7 +694,7 @@
         if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza hoặc AQ.', true);
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'ACTIVE', score_summary: key, last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(`Không thể lưu API Key: ${error.message}`, true);
-        localStorage.setItem('gemini_api_key', key); $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud.');
+        $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud.');
     }
 
     async function clearGeminiKey() {
@@ -780,7 +780,7 @@
         const row = await systemRow(SYSTEM.admin);
         if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.adminConfig = { masterIp: data.masterIp || '', allowedIps: data.allowedIps || [] }; } catch (error) {} }
         const aiRow = await systemRow(SYSTEM.aiIps);
-        if (aiRow) { try { const data = JSON.parse(aiRow.score_summary || '[]'); state.aiIps = Array.isArray(data) ? data : data.ips || []; } catch (error) {} }
+        if (aiRow?.status === 'ACTIVE') { try { const data = JSON.parse(aiRow.score_summary || '[]'); state.aiIps = Array.isArray(data) ? data : data.ips || []; } catch (error) { state.aiIps = []; } } else state.aiIps = [];
         renderAccess();
     }
 
@@ -938,6 +938,7 @@
     async function deleteSubject(key) { if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return; state.subjects = state.subjects.filter((item) => item.key !== key); await state.client.from('quiz_questions').delete().eq('subject_key', key); await saveSubjects(); notify('Đã xóa môn học.'); }
 
     async function loadStudents() {
+        ensureMonitorTable();
         const systemIds = Object.values(SYSTEM);
         const adminRow = await systemRow(SYSTEM.admin);
         if (adminRow?.score_summary) {
@@ -957,22 +958,30 @@
         if (error) return notify(error.message, true);
         const rows = (data || []).filter((row) => {
             const playerName = String(row.player_name || '').trim();
-            const ip = String(row.ip_address || '').trim();
+            const ip = String(row.ip_address || row.client_ip || '').trim();
             return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(ip);
         });
-        const online = rows.filter((row) => row.last_active && Date.now() - new Date(row.last_active).getTime() < 120000);
-        animateMetricValue('stat-online', online.length); $('nav-online-count') && ($('nav-online-count').textContent = online.length); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} lượt truy cập`);
-        $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${online.length}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => String(row.status || '').startsWith('BANNED')).length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
-        $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; const ip = row.ip_address || ''; const name = row.player_name || 'Học sinh'; return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || '—')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button></div></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
+        const nowMs = Date.now();
+        const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && row.last_active && nowMs - new Date(row.last_active).getTime() < 90000);
+        const activeSessions = new Set(online.map((row) => row.session_id || `legacy:${row.ip_address || row.client_ip || ''}:${row.player_name || ''}`));
+        animateMetricValue('stat-online', activeSessions.size); $('nav-online-count') && ($('nav-online-count').textContent = activeSessions.size); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
+        $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => String(row.status || '').startsWith('BANNED')).length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
+        $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; const ip = row.ip_address || row.client_ip || ''; const name = row.player_name || 'Học sinh'; return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button></div></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
         const banned = rows.filter((row) => String(row.status || '').startsWith('BANNED'));
         $('banned-count') && ($('banned-count').textContent = `${banned.length} IP`);
         $('banned-list') && ($('banned-list').innerHTML = banned.map((row) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-ban"></i></span><span class="stack-item-main"><b>${esc(row.ip_address)}</b><small>${esc(row.score_summary || row.device_info || 'Vi phạm quy chế')}</small></span><button data-unban-row="${esc(row.ip_address)}"><i class="fa-solid fa-unlock"></i></button></div>`).join('') || '<p class="muted-copy">Chưa có IP bị chặn.</p>');
+    }
+    function ensureMonitorTable() {
+        if ($('students-body')) return;
+        const stats = $('monitor-stats');
+        if (!stats) return;
+        stats.insertAdjacentHTML('afterend', '<section class="panel monitor-table-panel"><div class="panel-title"><div><p class="eyebrow">PRESENCE</p><h2>Phiên truy cập và địa chỉ IP</h2></div><span class="info-badge">Heartbeat 30 giây</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"><tr><td colspan="6" class="empty-state">Đang tải dữ liệu...</td></tr></tbody></table></div></section>');
     }
 
     async function broadcastNotice() { const message = $('notice-input')?.value.trim(); if (!message) return notify('Nhập nội dung thông báo.', true); const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: 'ALL', device_info: '5s', status: 'ACTIVE', score_summary: message, last_active: new Date().toISOString() }); if (error) return notify(error.message, true); $('notice-input').value = ''; notify('Đã phát thông báo tới học sinh.'); }
     async function sendPrivateNotice(ip, name = 'Học sinh') {
         const targetIp = String(ip || '').trim();
-        if (!targetIp || targetIp === '127.0.0.1' || targetIp === '—') return notify('Không xác định được IP học sinh.', true);
+        if (!targetIp || targetIp === 'Chưa xác định' || targetIp === '—') return notify('Không xác định được IP học sinh.', true);
         const message = window.prompt(`Nhập thông báo riêng cho ${name} (${targetIp}):`, '');
         if (message === null || !message.trim()) return;
         const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: targetIp, device_info: '5s', status: 'ACTIVE', score_summary: message.trim(), last_active: new Date().toISOString() });
@@ -1054,9 +1063,10 @@
         });
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
-        $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
-        $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
-        $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); const privateNotice = event.target.closest('[data-private-notice]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); if (privateNotice) runAction(() => sendPrivateNotice(privateNotice.dataset.privateNotice, privateNotice.dataset.privateName)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
+         $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
+         $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
+         document.addEventListener('click', (event) => { const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice]'); if (!target) return; if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow)); else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow)); else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName)); });
+         $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); const privateNotice = event.target.closest('[data-private-notice]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); if (privateNotice) runAction(() => sendPrivateNotice(privateNotice.dataset.privateNotice, privateNotice.dataset.privateName)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
         $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
@@ -1076,6 +1086,7 @@
             }
             showApp(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
+            setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 30000);
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
             denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');

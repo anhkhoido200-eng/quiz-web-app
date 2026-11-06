@@ -180,6 +180,13 @@ html {
 
 .home-grade-tabs {
     scrollbar-width: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .45rem;
+    padding: .25rem;
+    border: 1px solid rgba(129, 140, 248, .18);
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, .55);
 }
 
 .home-grade-tab {
@@ -194,6 +201,9 @@ html {
     color: #94a3b8;
     font-size: .69rem;
     font-weight: 700;
+    justify-content: center;
+    min-height: 2.5rem;
+    white-space: nowrap;
     transition: transform .2s ease, color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 
@@ -223,6 +233,12 @@ html {
 .home-grade-tab.is-active b {
     background: rgba(255, 255, 255, .18);
     color: #fff;
+}
+.home-grade-tab:disabled{cursor:not-allowed;opacity:.55;filter:saturate(.4)}.home-grade-tab.is-locked{border-style:dashed}
+
+@media (max-width: 480px) {
+    .home-grade-tabs { gap: .3rem; }
+    .home-grade-tab { padding-inline: .45rem; font-size: .64rem; }
 }
 
 .home-grade-lock {

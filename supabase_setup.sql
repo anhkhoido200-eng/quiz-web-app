@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_logins (
     device_info TEXT DEFAULT 'Chưa rõ',
     status TEXT DEFAULT 'Đang ôn tập',
     score_summary TEXT DEFAULT '',
+    session_id TEXT,
     last_active TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -26,6 +27,8 @@ CREATE TABLE IF NOT EXISTS public.quiz_logins (
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_last_active ON public.quiz_logins(last_active DESC);
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins(ip_address);
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_player_name ON public.quiz_logins(player_name);
+ALTER TABLE public.quiz_logins ADD COLUMN IF NOT EXISTS session_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_session_id ON public.quiz_logins(session_id);
 
 -- 3. BẢNG 2: QUIZ_QUESTIONS (Ngân hàng câu hỏi động đa môn học: Sử, Lí, Địa, Toán, Hóa...)
 CREATE TABLE IF NOT EXISTS public.quiz_questions (
@@ -67,12 +70,21 @@ ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 
 -- 5. CHÍNH SÁCH TRUY CẬP CÔNG KHAI CHO WEB THI (ANON KEY CHO CLIENT SPA)
 DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
+CREATE POLICY "Public read quiz_logins"
+ON public.quiz_logins
+FOR SELECT
+TO anon, authenticated
+USING (true)
+;
 CREATE POLICY "Public access to quiz_logins"
 ON public.quiz_logins
 FOR ALL
 TO anon, authenticated
 USING (true)
 WITH CHECK (true);
+
+-- TODO: Khi triển khai RPC/Edge Function cho Admin, thay policy trên bằng RLS
+-- chỉ cho phép session của học sinh và tách các bản ghi cấu hình hệ thống.
 
 DROP POLICY IF EXISTS "Public access to quiz_questions" ON public.quiz_questions;
 CREATE POLICY "Public access to quiz_questions"
