@@ -27,6 +27,12 @@
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const AI_TYPE_LABELS = { multiple_choice: 'Trắc nghiệm 4 lựa chọn', true_false: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
+    const SUBJECT_ICONS = {
+        math5: 'fa-calculator', vietnamese5: 'fa-language', science5: 'fa-flask', history5: 'fa-landmark',
+        geography5: 'fa-earth-asia', english5: 'fa-language', history: 'fa-landmark', physics: 'fa-atom',
+        geography: 'fa-earth-americas', math11: 'fa-calculator', chemistry11: 'fa-vial', biology11: 'fa-dna',
+        english11: 'fa-language'
+    };
     const state = {
         client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
@@ -50,9 +56,27 @@
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
         return builtIn?.name || dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
     };
-    const allSubjects = () => state.subjects
+    const allSubjects = () => mergeSubjectCatalog(state.subjects)
         .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
         .filter((item) => item.key);
+    const builtinSubjects = () => Object.entries(SUBJECTS).flatMap(([grade, items]) => items.map((item) => ({
+        ...item,
+        grade,
+        semester: 'Giữa Kì 1',
+        icon: SUBJECT_ICONS[item.key] || 'fa-book',
+        gradient: grade === '5' ? 'green' : 'indigo',
+        visibility: 'PUBLIC',
+        count: 0
+    })));
+    const mergeSubjectCatalog = (configured) => {
+        const byKey = new Map((Array.isArray(configured) ? configured : []).map((item) => [item.key || item.subject_key, item]));
+        const merged = builtinSubjects().map((item) => ({ ...item, ...(byKey.get(item.key) || {}) }));
+        (Array.isArray(configured) ? configured : []).forEach((item) => {
+            const key = item?.key || item?.subject_key;
+            if (key && !merged.some((subject) => subject.key === key)) merged.push({ ...item, key, name: item.name || item.title || key });
+        });
+        return merged.filter((item) => item.key && (item.name || item.title));
+    };
     const gradeOf = (q) => {
         const key = String(q.subject_key || q.subjectKey || q.key || '').toLowerCase();
         if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /5$/.test(key)) return '5';
@@ -66,6 +90,10 @@
         clearTimeout(notify.timer);
         notify.timer = setTimeout(() => { toast.className = 'toast'; }, 3400);
     };
+    const runAction = (action) => Promise.resolve().then(action).catch((error) => {
+        console.error('[Quiz Studio Admin]', error);
+        notify(error?.message || 'Thao tác không thành công.', true);
+    });
 
     function setConnection(ready, message) {
         const el = $('connection-status');
@@ -88,7 +116,11 @@
 
     async function systemRow(id) {
         const { data, error } = await state.client.from('quiz_logins').select('*').eq('id', id).limit(1);
-        if (error || !data?.[0]) return null;
+        if (error) {
+            console.error(`[Quiz Studio Admin] Không đọc được bản ghi hệ thống ${id}:`, error);
+            throw error;
+        }
+        if (!data?.[0]) return null;
         return data[0];
     }
 
@@ -109,9 +141,31 @@
         } catch (error) { return false; }
     }
 
-    function denyAccess() {
+    function denyAccess(reason = '') {
         $('app-shell')?.classList.add('hidden');
         $('access-denied')?.classList.remove('hidden');
+        const message = document.querySelector('#access-denied .access-card p:not(.eyebrow)');
+        if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
+    }
+
+    async function bootstrapAdmin() {
+        if (!state.client) state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+        if (!state.clientIp) state.clientIp = await getClientIp();
+        if (state.clientIp === '127.0.0.1' || !state.clientIp) return notify('Không xác định được IP máy hiện tại.', true);
+        const row = await systemRow(SYSTEM.admin);
+        if (!row) return notify('Chưa tìm thấy bản ghi cấu hình Admin trên Supabase.', true);
+        let config;
+        try { config = JSON.parse(row.score_summary || '{}'); } catch (error) { config = {}; }
+        const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
+        const masterIp = String(config.masterIp || '').trim();
+        if (masterIp || allowed.length) return notify('Hệ thống đã có whitelist Admin. Hãy dùng tài khoản/IP được cấp.', true);
+        const password = window.prompt('Nhập mật khẩu Admin để thiết lập lần đầu:');
+        if (password !== '034569') return notify('Mật khẩu Admin không đúng.', true);
+        const payload = { masterIp: state.clientIp, allowedIps: [{ ip: state.clientIp, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
+        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) throw error;
+        notify('Đã thiết lập Master Admin. Đang tải lại bảng điều khiển.');
+        window.setTimeout(() => window.location.reload(), 700);
     }
 
     function showApp() {
@@ -121,17 +175,20 @@
 
     function injectEditorControls() {
         const form = $('question-form');
-        if (!form || $('question-type-select')) return;
-        const questionLabel = $('question-input')?.closest('label');
-        const explanationLabel = $('explanation-input')?.closest('label');
-        if (!questionLabel || !explanationLabel) return;
-        const typeLabel = document.createElement('label');
-        typeLabel.innerHTML = 'Loại câu hỏi<select id="question-type-select" required><option value="mcq">Trắc nghiệm 4 lựa chọn</option><option value="tf_group">Trắc nghiệm Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select>';
-        questionLabel.before(typeLabel);
-        const typeEditor = document.createElement('div');
-        typeEditor.id = 'dynamic-type-editor';
-        typeEditor.innerHTML = '<div id="tf-editor" class="hidden"></div><div id="short-editor" class="hidden"></div>';
-        explanationLabel.before(typeEditor);
+        if (!form) return;
+        if (!$('question-type-select')) {
+            const questionLabel = $('question-input')?.closest('label');
+            const explanationLabel = $('explanation-input')?.closest('label');
+            if (questionLabel && explanationLabel) {
+                const typeLabel = document.createElement('label');
+                typeLabel.innerHTML = 'Loại câu hỏi<select id="question-type-select" required><option value="mcq">Trắc nghiệm 4 lựa chọn</option><option value="tf_group">Trắc nghiệm Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select>';
+                questionLabel.before(typeLabel);
+                const typeEditor = document.createElement('div');
+                typeEditor.id = 'dynamic-type-editor';
+                typeEditor.innerHTML = '<div id="tf-editor" class="hidden"></div><div id="short-editor" class="hidden"></div>';
+                explanationLabel.before(typeEditor);
+            }
+        }
         const importModal = $('import-modal');
         if (importModal && !$('ai-analyze-import')) {
             const actions = importModal.querySelector('.modal-actions');
@@ -747,9 +804,7 @@
     async function loadSubjects() {
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
-        state.subjects = state.subjects
-            .map((item) => ({ ...item, key: item.key || item.subject_key, name: item.name || item.title || item.key }))
-            .filter((item) => item.key && item.name);
+        state.subjects = mergeSubjectCatalog(state.subjects);
         fillSubjects($('grade-select')?.value || '11');
         fillLibrarySubjects();
         $('subject-count') && ($('subject-count').textContent = state.subjects.length);
@@ -805,7 +860,7 @@
     }
 
     function resetSubjectForm() { ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; }); if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book'; if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học'; }
-    async function saveSubject(event) { event.preventDefault(); const key = $('subject-key-input')?.value.trim(); const name = $('subject-name-input')?.value.trim(); if (!key || !name) return notify('Nhập tên và mã môn học.', true); const subject = { key, name, semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' }; const index = state.subjects.findIndex((item) => item.key === key); if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject }; else state.subjects.push(subject); await saveSubjects(); resetSubjectForm(); notify('Đã lưu môn học.'); }
+    async function saveSubject(event) { event.preventDefault(); const key = $('subject-key-input')?.value.trim(); const name = $('subject-name-input')?.value.trim(); if (!key || !name) return notify('Nhập tên và mã môn học.', true); const subject = { key, name, semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' }; const index = state.subjects.findIndex((item) => item.key === key); if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject }; else state.subjects.push(subject); try { await saveSubjects(); resetSubjectForm(); notify('Đã lưu môn học.'); } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); } }
     async function deleteSubject(key) { if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return; state.subjects = state.subjects.filter((item) => item.key !== key); await state.client.from('quiz_questions').delete().eq('subject_key', key); await saveSubjects(); notify('Đã xóa môn học.'); }
 
     async function loadStudents() {
@@ -856,13 +911,32 @@
         $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = event.target.value; }); $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
-        $('maintenance-toggle')?.addEventListener('change', toggleMaintenance); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; toggleMaintenance(); } });
+        $('maintenance-toggle')?.addEventListener('change', () => runAction(toggleMaintenance)); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; runAction(toggleMaintenance); } });
         $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true))); $('add-ai-ip')?.addEventListener('click', () => addAiIp().catch((error) => notify(error.message, true)));
         $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
-        document.querySelectorAll('[data-geo-mode]').forEach((button) => button.addEventListener('click', () => { state.geo.mode = button.dataset.geoMode; saveGeo().catch((error) => notify(error.message, true)); })); $('add-geo-ip')?.addEventListener('click', () => { const ip = $('geo-ip-input').value.trim(); if (ip && !state.geo.ips.includes(ip)) state.geo.ips.push(ip); $('geo-ip-input').value = ''; saveGeo().catch((error) => notify(error.message, true)); }); $('geo-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-geo]'); if (button) { state.geo.ips = state.geo.ips.filter((ip) => ip !== button.dataset.removeGeo); saveGeo().catch((error) => notify(error.message, true)); } }); document.addEventListener('click', (event) => { const add = event.target.closest('#add-class5-ip'); const addCurrent = event.target.closest('#add-current-class5-ip'); const remove = event.target.closest('[data-remove-class5]'); if (add) { const input = $('class5-ip-input'); addClass5Ip(input?.value).then(() => { if (input) input.value = ''; }).catch((error) => notify(error.message, true)); } if (addCurrent) addClass5Ip(state.clientIp).catch((error) => notify(error.message, true)); if (remove) removeClass5Ip(remove.dataset.removeClass5).catch((error) => notify(error.message, true)); });
-        $('send-notice')?.addEventListener('click', broadcastNotice); document.querySelectorAll('[data-notice]').forEach((button) => button.addEventListener('click', () => { $('notice-input').value = button.dataset.notice; })); $('ban-ip-button')?.addEventListener('click', () => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())); $('refresh-students')?.addEventListener('click', loadStudents); $('clear-logins')?.addEventListener('click', async () => { if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return; const { error } = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (error) return notify(error.message, true); notify('Đã xóa lịch sử học sinh.'); loadStudents(); }); $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); if (ban) banIp(ban.dataset.banRow); if (unban) unbanIp(unban.dataset.unbanRow); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) unbanIp(button.dataset.unbanRow); });
-        $('export-backup')?.addEventListener('click', exportBackup); $('export-excel')?.addEventListener('click', exportExcel); $('load-leaderboard')?.addEventListener('click', loadLeaderboard); $('save-gemini-key')?.addEventListener('click', saveGeminiKey); $('clear-gemini-key')?.addEventListener('click', clearGeminiKey); $('test-gemini-key')?.addEventListener('click', testGeminiKey);
-        $('archive-data')?.addEventListener('click', async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) return notify(error.message, true); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) return notify(result.error.message, true); notify('Đã backup và dọn lịch sử kỳ thi.'); loadStudents(); });
+        document.addEventListener('click', (event) => {
+            const geoMode = event.target.closest('[data-geo-mode]');
+            const addGeo = event.target.closest('#add-geo-ip');
+            const removeGeo = event.target.closest('[data-remove-geo]');
+            const addClass5 = event.target.closest('#add-class5-ip');
+            const addCurrentClass5 = event.target.closest('#add-current-class5-ip');
+            const removeClass5 = event.target.closest('[data-remove-class5]');
+            const notice = event.target.closest('[data-notice]');
+            if (geoMode) { state.geo.mode = geoMode.dataset.geoMode; runAction(saveGeo); }
+            if (addGeo) { const input = $('geo-ip-input'); const ip = input?.value.trim(); if (ip && !state.geo.ips.includes(ip)) state.geo.ips.push(ip); if (input) input.value = ''; runAction(saveGeo); }
+            if (removeGeo) { state.geo.ips = state.geo.ips.filter((ip) => ip !== removeGeo.dataset.removeGeo); runAction(saveGeo); }
+            if (addClass5) { const input = $('class5-ip-input'); runAction(() => addClass5Ip(input?.value).then(() => { if (input) input.value = ''; })); }
+            if (addCurrentClass5) runAction(() => addClass5Ip(state.clientIp));
+            if (removeClass5) runAction(() => removeClass5Ip(removeClass5.dataset.removeClass5));
+            if (notice && $('notice-input')) $('notice-input').value = notice.dataset.notice;
+        });
+        $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
+        $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
+        $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
+        $('clear-logins')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return; const { error } = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (error) throw error; notify('Đã xóa lịch sử học sinh.'); await loadStudents(); }));
+        $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
+        $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
+        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*').not('player_name', 'like', '__%'); if (error) throw error; exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records: data || [] }); const result = await state.client.from('quiz_logins').delete().not('player_name', 'like', '__%'); if (result.error) throw result.error; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
         $('new-subject-button')?.addEventListener('click', () => {
             switchView('subjects');
             resetSubjectForm();
@@ -878,17 +952,24 @@
             editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             window.setTimeout(() => $('subject-name-input')?.focus(), 350);
         });
-        $('subject-form')?.addEventListener('submit', saveSubject); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', loadSubjects); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) deleteSubject(remove.dataset.deleteSubject).catch((error) => notify(error.message, true)); }); $('subjects-list')?.addEventListener('click', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject); });
+        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) { $('subject-name-input').value = subject.name || subject.title || ''; $('subject-key-input').value = subject.key || ''; $('subject-semester-input').value = subject.semester || ''; $('subject-icon-input').value = subject.icon || 'fa-book'; $('subject-gradient-input').value = subject.gradient || 'indigo'; $('subject-visibility-input').value = subject.visibility || 'PUBLIC'; $('subject-editor-title').textContent = `Sửa môn ${subject.name || subject.key}`; } } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
     }
 
     async function init() {
         if (localStorage.getItem('quiz_admin_dark') === 'true') document.body.classList.add('dark');
+        $('bootstrap-admin')?.addEventListener('click', () => runAction(bootstrapAdmin));
         try {
             state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
-            if (!(await isCurrentIpAllowed())) { denyAccess(); return; }
+            if (!(await isCurrentIpAllowed())) {
+                denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
+                return;
+            }
             showApp(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
-        } catch (error) { denyAccess(); }
+        } catch (error) {
+            console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
+            denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');
+        }
     }
     init();
 })();

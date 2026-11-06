@@ -1,0 +1,367 @@
+{
+  "ids": [
+    "question-type-runtime-style",
+    "access-denied",
+    "app-shell",
+    "sidebar",
+    "current-ip",
+    "nav-question-count",
+    "nav-online-count",
+    "maintenance-dot",
+    "maintenance-mini-label",
+    "maintenance-mini-message",
+    "mobile-menu",
+    "view-title",
+    "connection-status",
+    "theme-toggle",
+    "refresh-button",
+    "last-sync",
+    "stat-total",
+    "stat-total-note",
+    "stat-grade5",
+    "stat-grade11",
+    "stat-online",
+    "stat-visitor-note",
+    "health-database",
+    "health-database-badge",
+    "health-content",
+    "health-content-badge",
+    "health-maintenance",
+    "health-maintenance-badge",
+    "maintenance-badge",
+    "maintenance-copy",
+    "maintenance-toggle",
+    "maintenance-toggle-label",
+    "edit-maintenance",
+    "quick-import",
+    "recent-activity",
+    "import-button",
+    "new-question-button",
+    "form-title",
+    "reset-form",
+    "question-form",
+    "question-id",
+    "grade-select",
+    "subject-select",
+    "category-input",
+    "question-type-select",
+    "question-input",
+    "option-0",
+    "option-1",
+    "option-2",
+    "option-3",
+    "dynamic-type-editor",
+    "tf-editor",
+    "short-editor",
+    "explanation-input",
+    "cancel-edit",
+    "submit-label",
+    "preview-card",
+    "library-count",
+    "search-input",
+    "library-subject-filter",
+    "question-type-filter",
+    "result-summary",
+    "questions-list",
+    "empty-state",
+    "refresh-students",
+    "clear-logins",
+    "monitor-stats",
+    "notice-input",
+    "send-notice",
+    "banned-count",
+    "ban-ip-input",
+    "ban-reason-input",
+    "ban-ip-button",
+    "banned-list",
+    "student-count",
+    "students-body",
+    "access-current-ip",
+    "save-master-ip",
+    "admin-ip-count",
+    "admin-ip-input",
+    "admin-ip-name",
+    "add-admin-ip",
+    "admin-ip-list",
+    "ai-ip-count",
+    "ai-ip-input",
+    "ai-ip-name",
+    "add-ai-ip",
+    "ai-ip-list",
+    "new-subject-button",
+    "subject-count",
+    "refresh-subjects",
+    "subjects-list",
+    "privacy-private-count",
+    "subject-privacy-list",
+    "subject-editor-title",
+    "subject-form",
+    "subject-name-input",
+    "subject-key-input",
+    "subject-semester-input",
+    "subject-icon-input",
+    "subject-gradient-input",
+    "subject-visibility-input",
+    "clear-subject-form",
+    "class5-ip-count",
+    "class5-ip-input",
+    "add-class5-ip",
+    "add-current-class5-ip",
+    "class5-ip-list",
+    "export-excel",
+    "export-backup",
+    "load-leaderboard",
+    "archive-data",
+    "leaderboard-subject",
+    "leaderboard-content",
+    "gemini-key-input",
+    "save-gemini-key",
+    "test-gemini-key",
+    "clear-gemini-key",
+    "gemini-key-status",
+    "import-modal",
+    "import-subject-select",
+    "import-replace",
+    "import-text",
+    "import-file",
+    "parse-import",
+    "ai-analyze-import",
+    "save-import",
+    "import-preview",
+    "subject-modal",
+    "go-subject-editor",
+    "toast"
+  ],
+  "buttons": [
+    {
+      "id": "",
+      "text": "Tổng quan",
+      "view": "overview",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Ngân hàng câu hỏi\n73",
+      "view": "questions",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Giám sát học sinh\n11",
+      "view": "students",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Quyền truy cập",
+      "view": "access",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Môn học & quyền riêng tư",
+      "view": "subjects",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Báo cáo & dữ liệu",
+      "view": "reports",
+      "disabled": false
+    },
+    {
+      "id": "mobile-menu",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "theme-toggle",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "refresh-button",
+      "text": "Đồng bộ",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Tạo câu hỏi",
+      "go": "questions",
+      "disabled": false
+    },
+    {
+      "id": "edit-maintenance",
+      "text": "Đổi lời nhắn",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Soạn câu hỏi\nThêm hoặc sửa nội dung",
+      "go": "questions",
+      "disabled": false
+    },
+    {
+      "id": "quick-import",
+      "text": "Nạp đề hàng loạt\nText, JSON, Excel",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Phát thông báo\nGửi tới học sinh",
+      "go": "students",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Xuất dữ liệu\nExcel hoặc backup JSON",
+      "go": "reports",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Xem tất cả",
+      "go": "students",
+      "disabled": false
+    },
+    {
+      "id": "import-button",
+      "text": "Nạp hàng loạt",
+      "disabled": false
+    },
+    {
+      "id": "new-question-button",
+      "text": "Câu hỏi mới",
+      "disabled": false
+    },
+    {
+      "id": "reset-form",
+      "text": "Làm mới",
+      "disabled": false
+    },
+    {
+      "id": "cancel-edit",
+      "text": "Hủy sửa",
+      "disabled": false
+    },
+    {
+      "id": "refresh-students",
+      "text": "Làm mới",
+      "disabled": false
+    },
+    {
+      "id": "clear-logins",
+      "text": "Xóa lịch sử",
+      "disabled": false
+    },
+    {
+      "id": "send-notice",
+      "text": "Gửi toàn phòng",
+      "disabled": false
+    },
+    {
+      "id": "ban-ip-button",
+      "text": "Chặn IP",
+      "disabled": false
+    },
+    {
+      "id": "save-master-ip",
+      "text": "Đặt làm Master",
+      "disabled": false
+    },
+    {
+      "id": "add-admin-ip",
+      "text": "Cấp quyền",
+      "disabled": false
+    },
+    {
+      "id": "add-ai-ip",
+      "text": "Cấp AI",
+      "disabled": false
+    },
+    {
+      "id": "new-subject-button",
+      "text": "Thêm môn học",
+      "disabled": false
+    },
+    {
+      "id": "refresh-subjects",
+      "text": "Làm mới",
+      "disabled": false
+    },
+    {
+      "id": "clear-subject-form",
+      "text": "Làm mới",
+      "disabled": false
+    },
+    {
+      "id": "add-class5-ip",
+      "text": "Cấp quyền",
+      "disabled": false
+    },
+    {
+      "id": "add-current-class5-ip",
+      "text": "Cấp quyền cho IP máy này",
+      "disabled": false
+    },
+    {
+      "id": "export-excel",
+      "text": "Tải Excel",
+      "disabled": false
+    },
+    {
+      "id": "export-backup",
+      "text": "Tải backup",
+      "disabled": false
+    },
+    {
+      "id": "load-leaderboard",
+      "text": "Xem xếp hạng",
+      "disabled": false
+    },
+    {
+      "id": "archive-data",
+      "text": "Dọn dữ liệu",
+      "disabled": false
+    },
+    {
+      "id": "save-gemini-key",
+      "text": "Lưu API Key",
+      "disabled": false
+    },
+    {
+      "id": "test-gemini-key",
+      "text": "Kiểm tra key",
+      "disabled": false
+    },
+    {
+      "id": "clear-gemini-key",
+      "text": "Xóa",
+      "disabled": false
+    },
+    {
+      "id": "parse-import",
+      "text": "Đọc JSON",
+      "disabled": false
+    },
+    {
+      "id": "ai-analyze-import",
+      "text": "Gemini phân tích & giải",
+      "disabled": false
+    },
+    {
+      "id": "save-import",
+      "text": "Lưu vào ngân hàng",
+      "disabled": false
+    },
+    {
+      "id": "go-subject-editor",
+      "text": "Mở trình chỉnh sửa",
+      "disabled": false
+    }
+  ],
+  "forms": [
+    "question-form",
+    "subject-form"
+  ]
+}
