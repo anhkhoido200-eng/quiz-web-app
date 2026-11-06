@@ -60,25 +60,14 @@
     const allSubjects = () => mergeSubjectCatalog(state.subjects)
         .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
         .filter((item) => item.key);
-    const subjectsWithQuestions = () => {
-        const questionKeys = new Set((state.questions || []).map((question) => String(question.subject_key || question.subjectKey || '')).filter(Boolean));
-        return mergeSubjectCatalog(state.subjects).filter((subject) => questionKeys.has(String(subject.key || subject.subject_key)));
-    };
-    const builtinSubjects = () => Object.entries(SUBJECTS).flatMap(([grade, items]) => items.map((item) => ({
-        ...item,
-        grade,
-        semester: 'Giữa Kì 1',
-        icon: SUBJECT_ICONS[item.key] || 'fa-book',
-        gradient: grade === '5' ? 'green' : 'indigo',
-        visibility: 'PUBLIC',
-        count: 0
-    })));
+    const builtinSubjects = () => [];
     const mergeSubjectCatalog = (configured) => {
-        const byKey = new Map((Array.isArray(configured) ? configured : []).map((item) => [item.key || item.subject_key, item]));
-        const merged = builtinSubjects().map((item) => ({ ...item, ...(byKey.get(item.key) || {}) }));
+        const merged = [];
         (Array.isArray(configured) ? configured : []).forEach((item) => {
             const key = item?.key || item?.subject_key;
-            if (key && !merged.some((subject) => subject.key === key)) merged.push({ ...item, key, name: item.name || item.title || key });
+            if (key && !merged.some((subject) => subject.key === key)) {
+                merged.push({ ...item, key, name: item.name || item.title || key });
+            }
         });
         return merged.filter((item) => item.key && (item.name || item.title));
     };
@@ -506,8 +495,8 @@
         const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && q.correct_value.length > 0));
         if (!valid) return notify('Vui lòng nhập đủ nội dung theo loại câu hỏi.', true);
         try {
-            const id = state.editingId || await nextQuestionId();
-            const { error } = await state.client.from('quiz_questions').upsert(toRecord(q, q.subject_key, id)).select();
+            const record = toRecord(q, q.subject_key, state.editingId || undefined);
+            const { error } = await state.client.from('quiz_questions').upsert(record, { onConflict: 'id' }).select();
             if (error) throw error;
             notify(state.editingId ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.');
             resetForm(); await loadQuestions();
@@ -575,18 +564,18 @@
         const q = normalizeAiQuestion(state.importQuestions[state.importIndex]);
         const type = AI_TYPE_LABELS[q.type] || TYPE_LABELS[q.qType] || TYPE_LABELS.mcq;
         const detail = q.qType === 'tf_group' ? q.statements.map((item) => `<div class="tf-preview-row"><b>${esc(item.key)}</b><span>${htmlText(item.text)}</span><span class="tf-preview-answer ${item.answer ? '' : 'false'}">${item.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('') : q.qType === 'short_answer' ? `<div class="item-option is-correct">Đáp án: ${esc(q.correctValue)}</div>` : q.options.map((item, index) => `<div class="preview-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(item)}</span></div>`).join('');
-        const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Strict mode: văn bản và thứ tự được hiển thị đúng theo phản hồi JSON của Gemini. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không thể xác minh nguyên văn một số trường: ${esc(state.importIntegrity.errors.join(' | '))}. Hệ thống sẽ không cho lưu cho tới khi phân tích lại với văn bản nguồn.</span></div>`;
+        const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Strict mode: văn bản và thứ tự được hiển thị đúng theo phản hồi JSON của Gemini. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không khớp nguyên văn một số trường sau khi chuẩn hóa khoảng trắng: ${esc(state.importIntegrity.errors.join(' | '))}. Khi bấm lưu, Admin sẽ được hỏi xác nhận tiếp tục.</span></div>`;
         root.innerHTML = `<div class="ai-review"><div class="ai-review-toolbar"><b>Đã phân tích ${state.importIndex + 1}/${state.importQuestions.length} câu · ${esc(type)}</b><div><button type="button" class="button button-secondary compact" data-import-prev ${state.importIndex === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button> <button type="button" class="button button-secondary compact" data-import-next ${state.importIndex === state.importQuestions.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="ai-review-list">${state.importQuestions.map((item, index) => `<button type="button" class="ai-review-index ${index === state.importIndex ? 'is-active' : ''}" data-import-index="${index}">Câu ${index + 1}</button>`).join('')}</div><div class="ai-review-question"><b>${htmlText(q.question)}</b><div style="margin-top:9px">${detail}</div><p class="muted-copy">${htmlText(q.explanation)}</p></div>${integrity}</div>`;
     }
 
     function validateVerbatimQuestions(questions, source) {
         if (!source) return { valid: true, errors: [] };
         const errors = [];
-        const normalizeVerbatim = (value) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const normalizeVerbatim = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
         const normalizedSource = normalizeVerbatim(source);
         const check = (value, label) => {
             const normalizedValue = normalizeVerbatim(value);
-            if (normalizedValue && !normalizedSource.includes(normalizedValue)) errors.push(label);
+            if (normalizedValue && !normalizedSource.toLowerCase().includes(normalizedValue.toLowerCase())) errors.push(label);
         };
         questions.forEach((raw, index) => {
             const q = normalizeAiQuestion(raw);
@@ -610,7 +599,7 @@
   { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        const models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
         try {
             let response; let lastError = '';
             for (const model of models) {
@@ -655,10 +644,9 @@
                 const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', state.importSubject);
                 if (error) throw error;
             }
-            let id = await nextQuestionId();
-            const records = state.importQuestions.map((item) => toRecord(item, state.importSubject, id++));
+            const records = state.importQuestions.map((item) => toRecord(item, state.importSubject, undefined));
             for (let index = 0; index < records.length; index += 50) {
-                const { error } = await state.client.from('quiz_questions').upsert(records.slice(index, index + 50));
+                const { error } = await state.client.from('quiz_questions').insert(records.slice(index, index + 50));
                 if (error) throw error;
             }
             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
@@ -715,7 +703,7 @@
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+            const testModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
             let ok = false;
             let lastError = '';
             for (const model of testModels) {
@@ -807,7 +795,7 @@
     function ensureClass5AccessPanel() {
         const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
         if (!grid || document.getElementById('class5-ip-list')) return;
-        grid.insertAdjacentHTML('beforeend', '<section class="panel class5-access-panel"><div class="panel-title"><div><p class="eyebrow">CLASS 5 ACCESS</p><h2>Quyền riêng Lớp 5</h2><p class="muted-copy">Chỉ các IP bên dưới mới thấy môn Lớp 5. IP khác mặc định chỉ thấy Lớp 11.</p></div><span id="class5-ip-count" class="status-badge safe">0 IP</span></div><div class="inline-form"><input id="class5-ip-input" placeholder="IP máy của em bạn"><button id="add-class5-ip" class="button button-primary"><i class="fa-solid fa-user-plus"></i> Cấp quyền</button></div><button id="add-current-class5-ip" class="text-button"><i class="fa-solid fa-location-crosshairs"></i> Cấp quyền cho IP máy này</button><div id="class5-ip-list" class="stack-list"></div></section>');
+        grid.insertAdjacentHTML('beforeend', '<section class="panel class5-access-panel"><div class="panel-title"><div><p class="eyebrow">CLASS 5 ACCESS</p><h2>Quyền riêng Lớp 5</h2><p class="muted-copy">Chỉ các IP bên dưới mới thấy môn Lớp 5. IP khác mặc định chỉ thấy Lớp 11.</p></div><span id="class5-ip-count" class="status-badge safe">0 IP</span></div><div class="inline-form"><input id="class5-ip-input" autocomplete="off" spellcheck="false" placeholder="Nhập địa chỉ IP..."><button id="add-class5-ip" class="button button-primary"><i class="fa-solid fa-user-plus"></i> Cấp quyền</button></div><button id="add-current-class5-ip" class="text-button"><i class="fa-solid fa-location-crosshairs"></i> Cấp quyền cho IP máy này</button><div id="class5-ip-list" class="stack-list"></div></section>');
     }
 
     async function loadGeo() { const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: data.ips || [], grade5Ips: data.grade5Ips || [] }; } catch (error) {} } ensureClass5AccessPanel(); renderGeo(); }
@@ -878,7 +866,7 @@
         }, {});
         state.subjects = state.subjects.map((subject) => ({
             ...subject,
-            count: questionCounts[subject.key] || 0
+            count: questionCounts[subject.key || subject.subject_key] || 0
         }));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;

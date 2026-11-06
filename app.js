@@ -86,11 +86,11 @@ class QuizApp {
 
         // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
         const savedModel = localStorage.getItem('gemini_model');
-        const supportedGeminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        const supportedGeminiModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
         if (!supportedGeminiModels.includes(savedModel)) {
-            localStorage.setItem('gemini_model', 'gemini-2.5-flash');
+            localStorage.setItem('gemini_model', supportedGeminiModels[0]);
         }
-        this.selectedGeminiModel = 'gemini-2.5-flash';
+        this.selectedGeminiModel = supportedGeminiModels.includes(savedModel) ? savedModel : supportedGeminiModels[0];
 
         // Cache màn hình
         this.screens = {
@@ -422,13 +422,15 @@ class QuizApp {
 
     async loadQuestionsForCurrentSubject() {
         let questions = [];
+        let cloudQuestionsLoaded = false;
 
         // 1. Thử lấy từ Supabase Cloud nếu Online
         if (navigator.onLine) {
             try {
                 if (window.dbService && typeof window.dbService.fetchQuestionsBySubject === 'function') {
                     const cloudQuestions = await window.dbService.fetchQuestionsBySubject(this.currentSubject);
-                    if (Array.isArray(cloudQuestions) && cloudQuestions.length > 0) {
+                    if (Array.isArray(cloudQuestions)) {
+                        cloudQuestionsLoaded = Boolean(window.dbService.isSupabaseActive);
                         questions = cloudQuestions;
                         // Lưu cache ngoại tuyến vào localStorage
                         try {
@@ -442,7 +444,7 @@ class QuizApp {
         }
 
         // 2. Dự phòng 1: Nạp từ bộ nhớ Offline Cache (khi mất mạng)
-        if (questions.length === 0) {
+        if (questions.length === 0 && (!navigator.onLine || !cloudQuestionsLoaded)) {
             try {
                 const cachedRaw = localStorage.getItem(`quiz_cache_${this.currentSubject}`);
                 if (cachedRaw) {
@@ -455,7 +457,7 @@ class QuizApp {
         }
 
         // 3. Dự phòng 2: Dữ liệu biến toàn cục đã nhúng trong file JS
-        if (questions.length === 0) {
+        if (questions.length === 0 && (!navigator.onLine || !cloudQuestionsLoaded)) {
             if (this.currentSubject === 'history' && Array.isArray(window.QUIZ_QUESTIONS)) {
                 questions = [...window.QUIZ_QUESTIONS];
             } else if (this.currentSubject === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
@@ -572,7 +574,10 @@ class QuizApp {
         const clientIp = String(this.clientIp || '').trim();
         const isValidIp = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clientIp);
         if (!isValidIp) return false;
-        const allowedIps = Array.isArray(this.allowedAdminIps) ? this.allowedAdminIps : [];
+        const allowedIps = (Array.isArray(this.allowedAdminIps) ? this.allowedAdminIps : [])
+            .map((item) => typeof item === 'string' ? item : item?.ip)
+            .map((ip) => String(ip || '').trim())
+            .filter(Boolean);
         return allowedIps.includes(clientIp) || clientIp === String(this.masterAdminIp || '').trim();
     }
 
@@ -1271,6 +1276,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 category: String(read(row, 'Chuyên đề', 'Chuyen de', 'Category') || 'Ôn tập').trim(),
                 question: String(read(row, 'Câu hỏi', 'Cau hoi', 'Question') || '').trim(),
                 options: ['A', 'B', 'C', 'D'].map((letter) => String(read(row, letter, letter.toLowerCase()) || '').trim()),
+                correct: correctIndex,
+                answer: correctIndex,
                 correctAnswer: ['A', 'B', 'C', 'D'][correctIndex],
                 explanation: String(read(row, 'Giải thích', 'Giai thich', 'Explanation') || '').trim()
             };
@@ -2297,6 +2304,7 @@ renderImporterPreview() {
 
         const optChars = ['A', 'B', 'C', 'D'];
         const optLetter = optChars[newCorrectIdx] || 'A';
+        const previousAnswer = { correct: q.correct, answer: q.answer, correctAnswer: q.correctAnswer };
         q.correct = newCorrectIdx;
         q.answer = newCorrectIdx;
         q.correctAnswer = optLetter;
@@ -2322,23 +2330,43 @@ renderImporterPreview() {
             });
         }
 
-        // Lưu đơn lẻ lên Supabase Cloud và cache ngầm bằng Debounce (mượt mà 100%)
-        this.debouncedSaveSingleQuestion(q);
-        this.debouncedCacheLocalQuestions();
-
-        this.showToastNotification(`✅ Đã đổi đáp án câu #${q.id} thành [${optLetter}]!`);
+        try {
+            const result = window.dbService && typeof window.dbService.saveQuestion === 'function'
+                ? await window.dbService.saveQuestion(q, this.currentSubject)
+                : { success: false, error: 'Dịch vụ Supabase chưa sẵn sàng.' };
+            if (!result || result.success === false || result.localOnly) throw new Error(result?.error || 'Supabase Cloud không khả dụng, câu hỏi chưa được đồng bộ.');
+            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+            this.showToastNotification(`Đã đổi đáp án câu #${q.id} thành [${optLetter}] và đồng bộ Cloud.`, 'success');
+        } catch (error) {
+            Object.assign(q, previousAnswer);
+            this.renderAdminQuestionsList();
+            console.error('Lỗi đồng bộ đáp án lên Cloud:', error);
+            this.showToastNotification(`Không thể đồng bộ đáp án lên Cloud: ${error.message}`, 'error');
+            alert(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
+        }
     }
 
     async adminQuickToggleTfAnswer(qId, sIdx, isTrue) {
         const q = this.allQuestions.find(item => item.id === qId);
         if (!q || !q.statements || !q.statements[sIdx]) return;
+        const previousAnswer = q.statements[sIdx].answer;
         q.statements[sIdx].answer = Boolean(isTrue);
 
-        this.debouncedSaveSingleQuestion(q);
-        this.debouncedCacheLocalQuestions();
-
         this.renderAdminQuestionsList();
-        this.showToastNotification(`Đã đổi ý ${String.fromCharCode(97 + sIdx)} thành [${isTrue ? 'ĐÚNG' : 'SAI'}]!`);
+        try {
+            const result = window.dbService && typeof window.dbService.saveQuestion === 'function'
+                ? await window.dbService.saveQuestion(q, this.currentSubject)
+                : { success: false, error: 'Dịch vụ Supabase chưa sẵn sàng.' };
+            if (!result || result.success === false || result.localOnly) throw new Error(result?.error || 'Supabase Cloud không khả dụng, câu hỏi chưa được đồng bộ.');
+            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
+            this.showToastNotification(`Đã đổi ý ${String.fromCharCode(97 + sIdx)} thành [${isTrue ? 'ĐÚNG' : 'SAI'}] và đồng bộ Cloud.`, 'success');
+        } catch (error) {
+            q.statements[sIdx].answer = previousAnswer;
+            this.renderAdminQuestionsList();
+            console.error('Lỗi đồng bộ đáp án Đúng/Sai lên Cloud:', error);
+            this.showToastNotification(`Không thể đồng bộ đáp án lên Cloud: ${error.message}`, 'error');
+            alert(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
+        }
     }
 
     /* ============================================================== */
@@ -3030,9 +3058,19 @@ renderImporterPreview() {
         localStorage.setItem(key, JSON.stringify(this.userAnswers));
     }
 
-    clearAutoSaveProgress() {
-        const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
-        localStorage.removeItem(key);
+    clearAutoSaveProgress(clearSubjectProgress = false) {
+        const prefix = `quiz_autosave_${this.currentSubject}_`;
+        if (clearSubjectProgress) {
+            try {
+                Object.keys(localStorage).forEach((key) => {
+                    if (key.startsWith(prefix)) localStorage.removeItem(key);
+                });
+            } catch (error) {
+                console.warn('Không thể xóa toàn bộ tiến độ tạm:', error);
+            }
+            return;
+        }
+        localStorage.removeItem(`${prefix}${this.playerName}`);
     }
 
     renderAllQuestions(skipExitAnimation = false) {
@@ -4366,10 +4404,16 @@ renderImporterPreview() {
             explanation: expInput ? expInput.value.trim() : ''
         };
 
+        let previousQuestion = null;
+        let previousQuestionIndex = -1;
         if (targetSubject === this.currentSubject) {
             if (qId) {
                 const idx = this.allQuestions.findIndex(item => String(item.id) === String(qId));
-                if (idx >= 0) this.allQuestions[idx] = newQ;
+                previousQuestionIndex = idx;
+                if (idx >= 0) {
+                    previousQuestion = this.allQuestions[idx];
+                    this.allQuestions[idx] = newQ;
+                }
                 else this.allQuestions.push(newQ);
             } else {
                 this.allQuestions.push(newQ);
@@ -4381,11 +4425,25 @@ renderImporterPreview() {
 
         // Lưu đơn lẻ nguyên tử lên Supabase Cloud (Không xóa nhầm dữ liệu cũ)
         try {
-            if (window.dbService && typeof window.dbService.saveQuestion === 'function') {
-                await window.dbService.saveQuestion(newQ, targetSubject);
+            const result = window.dbService && typeof window.dbService.saveQuestion === 'function'
+                ? await window.dbService.saveQuestion(newQ, targetSubject)
+                : { success: false, error: 'Dịch vụ Supabase chưa sẵn sàng.' };
+            if (!result || result.success === false || result.localOnly) throw new Error(result?.error || 'Supabase Cloud không khả dụng, câu hỏi chưa được đồng bộ.');
+            if (result.item?.id !== undefined) newQ.id = result.item.id;
+        } catch (error) {
+            if (targetSubject === this.currentSubject) {
+                if (previousQuestionIndex >= 0 && previousQuestion) this.allQuestions[previousQuestionIndex] = previousQuestion;
+                else this.allQuestions = this.allQuestions.filter((item) => item !== newQ);
+                try { localStorage.setItem(`quiz_cache_${targetSubject}`, JSON.stringify(this.allQuestions)); } catch (cacheError) { }
+                this.renderAdminQuestionsList();
             }
-        } catch (e) {
-            console.warn("Lỗi lưu câu hỏi lên Cloud:", e);
+            console.error("Lỗi lưu câu hỏi lên Cloud:", error);
+            this.showToastNotification(`Không thể đồng bộ câu hỏi lên Cloud: ${error.message}`, 'error');
+            alert(`Không thể lưu câu hỏi lên Supabase Cloud.\n${error.message}`);
+            return;
+        }
+        if (targetSubject === this.currentSubject) {
+            try { localStorage.setItem(`quiz_cache_${targetSubject}`, JSON.stringify(this.allQuestions)); } catch (e) { }
         }
 
         const sub = this.dynamicSubjects.find(s => s.key === targetSubject);
@@ -4402,7 +4460,7 @@ renderImporterPreview() {
         this.renderAdminQuestionsList();
         this.renderHomeSubjects();
         this.updateNavbarAndBadge();
-        this.showToastNotification("✅ Đã lưu câu hỏi thành công!");
+        this.showToastNotification("Đã lưu câu hỏi và đồng bộ lên Supabase Cloud.", 'success');
     }
 
     async adminDeleteQuestion(qId) {
@@ -4646,7 +4704,7 @@ YÊU CẦU:
 - Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
 
         try {
-            const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+            const candidateModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
             let res = null;
             let lastErrMsg = "";

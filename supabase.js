@@ -595,8 +595,8 @@ class DatabaseService {
 
                 const { data, error } = await query;
 
-                if (!error && data && data.length > 0) {
-                    return data.map(row => ({
+                if (!error) {
+                    return (data || []).map(row => ({
                         id: row.id,
                         subjectKey: row.subject_key || 'history',
                         category: row.category || 'Bài học',
@@ -611,8 +611,10 @@ class DatabaseService {
                         imageUrl: row.image_url || ''
                     }));
                 }
+                throw error;
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi fetch questions từ Supabase:", err);
+                return null;
             }
         }
 
@@ -671,36 +673,35 @@ class DatabaseService {
         }) : [];
 
         const record = {
-            subject_key: qObj.subjectKey || subjectKey || 'history',
+            subject_key: qObj.subjectKey || qObj.subject_key || subjectKey || 'history',
             category: qObj.category || 'Bài học',
-            q_type: qObj.qType || 'mcq',
+            q_type: qObj.qType || qObj.q_type || 'mcq',
             question: qObj.question,
             options: cleanOptions,
             statements: qObj.statements || [],
             correct: correctInt,
             answer: correctInt,
-            correct_value: qObj.correctValue || '',
+            correct_value: qObj.correctValue !== undefined ? String(qObj.correctValue) : String(qObj.correct_value || ''),
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
             updated_at: new Date().toISOString()
         };
 
-        if (qObj.id && Number.isInteger(Number(qObj.id))) {
+        if (qObj.id !== undefined && qObj.id !== null && qObj.id !== '' && Number.isInteger(Number(qObj.id))) {
             record.id = Number(qObj.id);
-        } else {
-            record.id = await this.getNextQuestionId();
-            qObj.id = record.id;
         }
 
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
                     .from('quiz_questions')
-                    .upsert([record])
+                    .upsert([record], { onConflict: 'id' })
                     .select();
 
-                if (!error && data && data.length > 0) {
-                    return { success: true, item: data[0] };
+                if (!error) {
+                    const item = data?.[0] || record;
+                    if (qObj.id === undefined || qObj.id === null || qObj.id === '') qObj.id = item.id;
+                    return { success: true, item };
                 }
                 if (error) throw error;
             } catch (err) {
@@ -736,27 +737,7 @@ class DatabaseService {
             await this.clearQuestionsBySubject(cleanSubject);
         }
 
-        let currentMaxId = 0;
-        if (this.isSupabaseActive && this.client) {
-            try {
-                const { data: maxRows } = await this.client
-                    .from('quiz_questions')
-                    .select('id')
-                    .order('id', { ascending: false })
-                    .limit(1);
-                if (maxRows && maxRows.length > 0 && typeof maxRows[0].id === 'number') {
-                    currentMaxId = maxRows[0].id;
-                }
-            } catch (e) {
-                currentMaxId = 1000;
-            }
-        }
-
-        const records = questionsList.map((q, idx) => {
-            currentMaxId++;
-            const qId = currentMaxId;
-            q.id = qId;
-
+        const records = questionsList.map((q) => {
             let correctInt = 0;
             const rawCorrect = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : q.correctAnswer);
             if (typeof rawCorrect === 'number') {
@@ -779,7 +760,7 @@ class DatabaseService {
             }) : [];
 
             return {
-                id: qId,
+                ...(q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id)) ? { id: Number(q.id) } : {}),
                 subject_key: cleanSubject,
                 category: q.category || 'Bài tập',
                 q_type: q.qType || q.type || 'mcq',
@@ -809,9 +790,12 @@ class DatabaseService {
                     const chunk = records.slice(i, i + chunkSize);
                     const { data, error } = await this.client
                         .from('quiz_questions')
-                        .insert(chunk)
+                        .upsert(chunk, { onConflict: 'id' })
                         .select('id');
                     if (error) throw error;
+                    (data || []).forEach((row, rowIndex) => {
+                        if (questionsList[i + rowIndex] && row?.id !== undefined) questionsList[i + rowIndex].id = row.id;
+                    });
                     insertedCount += (data ? data.length : chunk.length);
                 }
                 return { success: true, count: insertedCount };
