@@ -27,6 +27,15 @@
     const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     const htmlText = (value, fallback = '') => esc(value || fallback).replace(/\r?\n/g, '<br>');
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 60000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
     const parseBool = (value) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
     const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
     const isValidGeminiKey = (value) => {
@@ -444,7 +453,8 @@
     function normalizeAiQuestion(raw) {
         const type = raw?.type === 'multiple_choice' ? 'mcq' : raw?.type === 'true_false' ? 'tf_group' : (raw?.type || raw?.q_type || raw?.qType || 'mcq');
         if (type === 'tf_group') {
-            return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: Array.isArray(raw?.subQuestions) ? raw.subQuestions.map((item, index) => ({ key: item.id || 'abcd'[index], label: item.id || 'abcd'[index], text: item.content ?? '', answer: parseBool(item.correctAnswer) })) : (raw?.statements || []), options: [], explanation: raw?.explanation ?? '' };
+            const rawStatements = Array.isArray(raw?.subQuestions) ? raw.subQuestions : (Array.isArray(raw?.statements) ? raw.statements : []);
+            return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
         }
         if (type === 'short_answer') return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? '', options: [], statements: [], correctValue: raw?.correctAnswer ?? raw?.correct_value ?? raw?.correctValue ?? '', explanation: raw?.explanation ?? '' };
         return { ...raw, qType: 'mcq', q_type: 'mcq', question: raw?.question ?? '', options: Array.isArray(raw?.options) ? raw.options : [], statements: [], correct: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), correctAnswer: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), explanation: raw?.explanation ?? '' };
@@ -566,6 +576,24 @@
         return { valid: errors.length === 0, errors };
     }
 
+    function validateAiQuestionSet(questions) {
+        const errors = [];
+        questions.forEach((question, index) => {
+            const q = normalizeAiQuestion(question);
+            if (!q.question.trim()) errors.push(`Câu ${index + 1} thiếu nội dung`);
+            if (q.qType === 'mcq') {
+                if (q.options.length !== 4 || q.options.some((option) => !String(option).trim())) errors.push(`Câu ${index + 1} MCQ phải đủ A/B/C/D`);
+                if (!Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3) errors.push(`Câu ${index + 1} MCQ thiếu đáp án đúng`);
+            } else if (q.qType === 'tf_group') {
+                if (q.statements.length !== 4 || q.statements.some((statement) => !String(statement.text || '').trim())) errors.push(`Câu ${index + 1} Đúng/Sai phải đủ a/b/c/d`);
+                if (q.statements.some((statement) => typeof statement.answer !== 'boolean')) errors.push(`Câu ${index + 1} Đúng/Sai thiếu đáp án`);
+            } else if (q.qType === 'short_answer' && !String(q.correctValue || '').trim()) {
+                errors.push(`Câu ${index + 1} trả lời ngắn thiếu đáp án`);
+            }
+        });
+        return errors;
+    }
+
     async function analyzeWithGemini() {
         const source = $('import-text')?.value || state.sourceText;
         if (!source) return notify('Chưa có văn bản đề để phân tích.', true);
@@ -574,21 +602,26 @@
         const button = $('ai-analyze-import');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gemini đang phân tích...'; }
         const schemaInstruction = `[
-  { "type": "multiple_choice", "question": "Giữ nguyên 100% câu chữ đề bài", "options": ["Nội dung A", "Nội dung B", "Nội dung C", "Nội dung D"], "correctAnswer": 0, "explanation": "Giải thích chi tiết" },
-  { "type": "true_false", "question": "Đoạn thông tin / ngữ liệu dẫn của đề bài", "subQuestions": [ { "id": "a", "content": "Nội dung ý a", "correctAnswer": true }, { "id": "b", "content": "Nội dung ý b", "correctAnswer": false }, { "id": "c", "content": "Nội dung ý c", "correctAnswer": true }, { "id": "d", "content": "Nội dung ý d", "correctAnswer": false } ], "explanation": "Giải thích chi tiết cho từng ý" },
-  { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
+  { "type": "multiple_choice", "question": "Giữ nguyên 100% câu chữ đề bài", "options": ["Nội dung A", "Nội dung B", "Nội dung C", "Nội dung D"], "correctAnswer": 0, "explanation": "Giải thích ngắn gọn 1-2 câu" },
+  { "type": "true_false", "question": "Đoạn thông tin / ngữ liệu dẫn của đề bài", "subQuestions": [ { "id": "a", "content": "Nội dung ý a", "correctAnswer": true }, { "id": "b", "content": "Nội dung ý b", "correctAnswer": false }, { "id": "c", "content": "Nội dung ý c", "correctAnswer": true }, { "id": "d", "content": "Nội dung ý d", "correctAnswer": false } ], "explanation": "Giải thích ngắn gọn 1-2 câu" },
+  { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Giải thích ngắn gọn 1-2 câu" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
+        const models = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-pro-preview'];
+        const enforcedPrompt = `${prompt}\n\nBẮT BUỘC: Phân loại đúng từng câu theo đề gốc. Câu có A/B/C/D phải là multiple_choice, giữ nguyên đúng vị trí A/B/C/D và tự chọn correctAnswer 0-3. Câu có a/b/c/d phải là true_false với đủ bốn ý và tự chọn boolean đúng/sai. Câu yêu cầu tính hoặc điền đáp án phải là short_answer với correctAnswer chính xác. Không được biến tất cả thành MCQ. Explanation chỉ tối đa 1-2 câu.`;
         try {
             let response; let lastError = '';
+            const maxOutputTokens = Math.min(24576, Math.max(4096, Math.ceil(source.length / 2.2)));
             for (const model of models) {
-                response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) });
-                if (response.ok) break;
-                const errorData = await response.json().catch(() => ({}));
-                lastError = errorData?.error?.message || `HTTP ${response.status}`;
-                if (response.status === 400 || response.status === 401 || response.status === 403) break;
-                await sleep(500);
+                try {
+                    response = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: enforcedPrompt }] }], generationConfig: { temperature: 0, maxOutputTokens, responseMimeType: 'application/json' } }) }, 60000);
+                    if (response.ok) break;
+                    const errorData = await response.json().catch(() => ({}));
+                    lastError = errorData?.error?.message || `HTTP ${response.status}`;
+                    if (response.status === 400 || response.status === 401 || response.status === 403) break;
+                } catch (error) {
+                    lastError = error.name === 'AbortError' ? `${model} phản hồi quá 60 giây.` : error.message;
+                }
             }
             if (!response?.ok) throw new Error(lastError || 'Gemini không phản hồi.');
             const data = await response.json();
@@ -596,6 +629,8 @@
             const clean = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
             const parsed = JSON.parse(clean);
             state.importQuestions = (Array.isArray(parsed) ? parsed : parsed.questions || []).map(normalizeAiQuestion);
+            const structureErrors = validateAiQuestionSet(state.importQuestions);
+            if (structureErrors.length) throw new Error(`AI trả về đề chưa đủ cấu trúc: ${structureErrors.slice(0, 3).join('; ')}`);
             state.importIndex = 0;
             state.importIntegrity = validateVerbatimQuestions(state.importQuestions, source);
             if (state.importQuestions.length) fillForm(state.importQuestions[0]);
