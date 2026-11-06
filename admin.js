@@ -252,7 +252,8 @@
     }
 
     function fillLibrarySubjects() {
-        const list = state.grade === 'all' ? subjectsWithQuestions() : subjectsWithQuestions().filter((item) => subjectGrade(item) === String(state.grade));
+        const catalog = mergeSubjectCatalog(state.subjects);
+        const list = state.grade === 'all' ? catalog : catalog.filter((item) => subjectGrade(item) === String(state.grade));
         if (!list.some((item) => item.key === state.subject)) state.subject = 'all';
         if ($('library-subject-filter')) {
             $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
@@ -581,8 +582,11 @@
     function validateVerbatimQuestions(questions, source) {
         if (!source) return { valid: true, errors: [] };
         const errors = [];
+        const normalizeVerbatim = (value) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const normalizedSource = normalizeVerbatim(source);
         const check = (value, label) => {
-            if (value && !source.includes(value)) errors.push(label);
+            const normalizedValue = normalizeVerbatim(value);
+            if (normalizedValue && !normalizedSource.includes(normalizedValue)) errors.push(label);
         };
         questions.forEach((raw, index) => {
             const q = normalizeAiQuestion(raw);
@@ -606,7 +610,7 @@
   { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
         try {
             let response; let lastError = '';
             for (const model of models) {
@@ -644,7 +648,7 @@
 
     async function saveImportQuestions() {
         if (!state.importQuestions.length) return notify('Chưa có câu hỏi AI để lưu.', true);
-        if (!state.importIntegrity.valid) return notify('Không lưu vì AI đã làm thay đổi văn bản nguồn. Hãy phân tích lại hoặc kiểm tra từng câu.', true);
+        if (!state.importIntegrity.valid && !window.confirm('Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?')) return;
         if ($('import-replace')?.checked && !window.confirm('Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp?')) return;
         try {
             if ($('import-replace')?.checked) {
@@ -711,7 +715,7 @@
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+            const testModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
             let ok = false;
             let lastError = '';
             for (const model of testModels) {
@@ -813,9 +817,9 @@
     async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
 
     function renderSubjectCatalog() {
-        const subjects = subjectsWithQuestions();
+        const subjects = mergeSubjectCatalog(state.subjects);
         $('subject-count') && ($('subject-count').textContent = subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')}</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn nào có câu hỏi.</div>');
+        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · ${Number(subject.count || 0)} câu</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn học.</div>');
         renderSubjectPrivacy();
     }
 
@@ -840,7 +844,7 @@
     function renderSubjectPrivacy() {
         const list = $('subject-privacy-list');
         if (!list) return;
-        const subjects = subjectsWithQuestions();
+        const subjects = mergeSubjectCatalog(state.subjects);
         const privateCount = subjects.filter((subject) => subject.visibility === 'PRIVATE').length;
         $('privacy-private-count') && ($('privacy-private-count').textContent = `${privateCount} RIÊNG TƯ`);
         $('privacy-private-count') && ($('privacy-private-count').className = `status-badge ${privateCount ? 'danger' : 'safe'}`);
@@ -867,6 +871,15 @@
 
     async function saveSubjects() {
         state.subjects = (state.subjects || []).filter((item) => item && item.key && item.name);
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = String(question.subject_key || question.subjectKey || '').trim();
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        state.subjects = state.subjects.map((subject) => ({
+            ...subject,
+            count: questionCounts[subject.key] || 0
+        }));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
         fillLibrarySubjects(); await loadSubjects();
@@ -1066,7 +1079,7 @@
          $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
          document.addEventListener('click', (event) => { const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice]'); if (!target) return; if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow)); else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow)); else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName)); });
-         $('students-body')?.addEventListener('click', (event) => { const ban = event.target.closest('[data-ban-row]'); const unban = event.target.closest('[data-unban-row]'); const privateNotice = event.target.closest('[data-private-notice]'); if (ban) runAction(() => banIp(ban.dataset.banRow)); if (unban) runAction(() => unbanIp(unban.dataset.unbanRow)); if (privateNotice) runAction(() => sendPrivateNotice(privateNotice.dataset.privateNotice, privateNotice.dataset.privateName)); }); $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
+         $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
         $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));

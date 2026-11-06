@@ -84,12 +84,13 @@ class QuizApp {
             }
         }, 300);
 
-        // Nâng cấp & di trú Model Gemini lên chuẩn gemini-3.5-flash
+        // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
         const savedModel = localStorage.getItem('gemini_model');
-        if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.0') || savedModel.includes('2.5') || savedModel.includes('3.1')) {
-            localStorage.setItem('gemini_model', 'gemini-3.5-flash');
+        const supportedGeminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        if (!supportedGeminiModels.includes(savedModel)) {
+            localStorage.setItem('gemini_model', 'gemini-2.5-flash');
         }
-        this.selectedGeminiModel = 'gemini-3.5-flash';
+        this.selectedGeminiModel = 'gemini-2.5-flash';
 
         // Cache màn hình
         this.screens = {
@@ -111,6 +112,14 @@ class QuizApp {
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(context, args), wait);
         };
+    }
+
+    showToastNotification(msg, type = 'info') {
+        if (typeof this.showNetworkToast === 'function') {
+            this.showNetworkToast(msg, type);
+        } else {
+            console.log(msg);
+        }
     }
 
     /**
@@ -229,13 +238,11 @@ class QuizApp {
         const canViewPrivateByIp = this.allowedGeoIps.includes(currentIp);
         const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
             const grade = this.getSubjectGrade(sub);
-            const questionCount = Number(sub.count ?? sub.question_count ?? 0);
-            const hasKnownQuestions = questionCount > 0 || ['history', 'physics', 'geography'].includes(sub.key);
             const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
             const visibility = String(sub.visibility || '').toUpperCase();
             const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || sub.is_public === false;
             const canViewPrivate = this.isAdminAuthenticated || canViewPrivateByIp || (grade === '5' && canViewGrade5);
-            return canViewGrade && hasKnownQuestions && (!isPrivate || canViewPrivate);
+            return canViewGrade && (!isPrivate || canViewPrivate);
         });
         const filter = this.getHomeGradeFilter();
         return filter === 'all'
@@ -561,6 +568,14 @@ class QuizApp {
         await this.syncAdminIpsConfig();
     }
 
+    hasAdminIpAccess() {
+        const clientIp = String(this.clientIp || '').trim();
+        const isValidIp = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clientIp);
+        if (!isValidIp) return false;
+        const allowedIps = Array.isArray(this.allowedAdminIps) ? this.allowedAdminIps : [];
+        return allowedIps.includes(clientIp) || clientIp === String(this.masterAdminIp || '').trim();
+    }
+
     async syncAdminIpsConfig() {
         try {
             if (window.dbService && typeof window.dbService.fetchAdminIpsConfig === 'function') {
@@ -576,7 +591,7 @@ class QuizApp {
         }
 
         // Chỉ IP đã cấp quyền trên Cloud mới được xem là Admin.
-        const isWhitelisted = this.clientIp && (this.allowedAdminIps.includes(this.clientIp) || (this.masterAdminIp && this.masterAdminIp === this.clientIp));
+        const isWhitelisted = this.hasAdminIpAccess();
 
         if (isWhitelisted) {
             this.isAdminAuthenticated = true;
@@ -599,7 +614,7 @@ class QuizApp {
         const floatBtn = document.getElementById('floating-admin-btn');
         const navBtn = document.getElementById('nav-admin-btn');
         const homeActions = document.getElementById('home-admin-subject-actions');
-        const hasCurrentIpPermission = this.clientIp && (this.allowedAdminIps.includes(this.clientIp) || this.masterAdminIp === this.clientIp);
+        const hasCurrentIpPermission = this.hasAdminIpAccess();
 
         if (this.isAdminAuthenticated && hasCurrentIpPermission) {
             if (floatBtn) {
@@ -1235,6 +1250,39 @@ Giải thích: Biên độ A = 5 cm.`;
         this.parseImporterInput();
     }
 
+    convertExcelRowsToQuestions(rows) {
+        if (!Array.isArray(rows)) return [];
+        const read = (row, ...keys) => {
+            const key = keys.find((candidate) => Object.prototype.hasOwnProperty.call(row, candidate));
+            return key ? row[key] : '';
+        };
+        const answerIndex = (value) => {
+            const normalized = String(value ?? '').trim().toUpperCase();
+            if (/^[0-3]$/.test(normalized)) return Number(normalized);
+            return ['A', 'B', 'C', 'D'].indexOf(normalized) >= 0 ? ['A', 'B', 'C', 'D'].indexOf(normalized) : 0;
+        };
+
+        return rows.map((row, index) => {
+            const correctAnswer = String(read(row, 'Đáp án', 'Dap an', 'Đáp án đúng', 'Correct Answer')).trim().toUpperCase();
+            const correctIndex = answerIndex(correctAnswer);
+            return {
+                id: read(row, 'ID', 'Id', 'id') || undefined,
+                qType: 'mcq',
+                category: String(read(row, 'Chuyên đề', 'Chuyen de', 'Category') || 'Ôn tập').trim(),
+                question: String(read(row, 'Câu hỏi', 'Cau hoi', 'Question') || '').trim(),
+                options: ['A', 'B', 'C', 'D'].map((letter) => String(read(row, letter, letter.toLowerCase()) || '').trim()),
+                correctAnswer: ['A', 'B', 'C', 'D'][correctIndex],
+                explanation: String(read(row, 'Giải thích', 'Giai thich', 'Explanation') || '').trim()
+            };
+        }).filter((item) => item.question);
+    }
+
+    toggleAiProviderFields() {
+        const provider = document.getElementById('ai-provider-select')?.value;
+        const fields = document.getElementById('ai-openai-fields');
+        if (fields) fields.classList.toggle('hidden', provider !== 'openai_compatible');
+    }
+
     handleImporterFileUpload(event) {
         const file = event.target.files ? event.target.files[0] : null;
         if (!file) return;
@@ -1249,9 +1297,9 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const fileName = file.name.toLowerCase();
         // Bảo mật 07: Whitelist định dạng file cho phép
-        const isAllowedExtension = fileName.endsWith('.json') || fileName.endsWith('.docx') || fileName.endsWith('.pdf');
+        const isAllowedExtension = fileName.endsWith('.json') || fileName.endsWith('.docx') || fileName.endsWith('.pdf') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
         if (!isAllowedExtension) {
-            alert("⚠️ Định dạng file không hợp lệ. Vui lòng chỉ tải lên file .docx, .pdf hoặc .json!");
+            alert("⚠️ Định dạng file không hợp lệ. Vui lòng chỉ tải lên file .docx, .pdf, .xlsx, .xls hoặc .json!");
             if (event.target) event.target.value = '';
             return;
         }
@@ -4305,7 +4353,7 @@ renderImporterPreview() {
         const optLetter = ['A', 'B', 'C', 'D'][correct];
 
         const newQ = {
-            id: qId || (this.allQuestions.length + 1),
+            id: qId || undefined,
             subjectKey: targetSubject,
             qType: 'mcq',
             category: catInput ? catInput.value.trim() : 'Ôn tập',
@@ -4598,16 +4646,7 @@ YÊU CẦU:
 - Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
 
         try {
-            const candidateModels = [
-                this.selectedGeminiModel || 'gemini-3.5-flash',
-                'gemini-3.1-flash-lite',
-                'gemini-3.5-flash-lite',
-                'gemini-3-flash-preview',
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
-                'gemini-3.1-pro-preview'
-            ];
+            const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
 
             let res = null;
             let lastErrMsg = "";
