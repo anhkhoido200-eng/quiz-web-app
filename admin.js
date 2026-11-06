@@ -38,7 +38,12 @@
     };
     const isGeminiQuotaError = (status, message = '') => status === 429 || /resource_exhausted|quota exceeded|rate limit|free[_ -]?tier|billing|limit:\s*0/i.test(String(message));
     const geminiQuotaMessage = 'Gemini đã hết quota của project/API key hiện tại. Hãy đổi sang API key/project khác, bật billing hoặc chờ quota Google cấp lại; không thể tạo câu hỏi mới lúc này.';
-    const parseBool = (value) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
+    const parseBool = (value) => {
+        if (value === true || value === 1) return true;
+        if (value === false || value === 0 || value === null || value === undefined) return false;
+        const normalized = String(value).trim().toLowerCase();
+        return ['true', 'đúng', 'dung', 'yes', 'y', 't', '1'].includes(normalized);
+    };
     const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
     const isValidGeminiKey = (value) => {
         const key = cleanGeminiKey(value);
@@ -820,6 +825,21 @@
         $('sidebar')?.classList.remove('is-open');
     }
 
+    function removeGeminiSettingsUi() {
+        document.querySelector('.ai-config-panel')?.remove();
+        const reportsDescription = document.querySelector('[data-view-panel="reports"] .page-heading p:not(.eyebrow)');
+        if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
+        const quickImport = $('quick-import');
+        if (quickImport) {
+            const title = quickImport.querySelector('b');
+            const description = quickImport.querySelector('small');
+            if (title) title.textContent = 'Phân tích đề gửi vào';
+            if (description) description.textContent = 'Text, JSON, Word, PDF, Excel';
+        }
+        const importButton = $('import-button');
+        if (importButton) importButton.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Phân tích đề';
+    }
+
     async function loadMaintenance() {
         const row = await systemRow(SYSTEM.maintenance);
         if (row) state.maintenance = { isActive: row.status === 'ACTIVE' || row.device_info === 'ON', message: row.score_summary || 'Website đang mở công khai cho học sinh.' };
@@ -1168,7 +1188,7 @@
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;
             }
-            showApp(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
+            showApp(); removeGeminiSettingsUi(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
             setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 30000);
         } catch (error) {
