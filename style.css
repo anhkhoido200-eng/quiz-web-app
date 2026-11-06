@@ -559,6 +559,50 @@ body.light-theme .ai-explanation-box strong {
     color: #6b21a8;
 }
 
+/* Hiệu ứng chuyển tab trong bảng quản trị */
+.admin-tab-enter {
+    animation: adminTabEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes adminTabEnter {
+    from {
+        opacity: 0;
+        transform: translateY(9px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#admin-tab-btn-questions,
+#admin-tab-btn-students,
+#admin-tab-btn-admin-ips,
+#admin-tab-btn-subjects,
+#admin-tab-btn-reports {
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+#admin-tab-btn-questions:active,
+#admin-tab-btn-students:active,
+#admin-tab-btn-admin-ips:active,
+#admin-tab-btn-subjects:active,
+#admin-tab-btn-reports:active {
+    transform: translateY(1px) scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-tab-enter,
+    #admin-tab-btn-questions,
+    #admin-tab-btn-students,
+    #admin-tab-btn-admin-ips,
+    #admin-tab-btn-subjects,
+    #admin-tab-btn-reports {
+        animation: none;
+        transition: none;
+    }
+}
+
 body.light-theme footer {
     background-color: rgba(255, 255, 255, 0.8) !important;
     border-top-color: rgba(226, 232, 240, 0.8) !important;

@@ -907,6 +907,7 @@ class QuizApp {
             }
             if (content) {
                 content.classList.add('hidden');
+                content.classList.remove('admin-tab-enter');
             }
         });
 
@@ -919,6 +920,7 @@ class QuizApp {
         }
         if (activeContent) {
             activeContent.classList.remove('hidden');
+            requestAnimationFrame(() => activeContent.classList.add('admin-tab-enter'));
         }
 
         // Kích hoạt render dữ liệu theo từng tab

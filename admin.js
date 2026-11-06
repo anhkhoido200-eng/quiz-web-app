@@ -652,7 +652,12 @@
 
     function switchView(view) {
         const titles = { overview: 'Tổng quan', questions: 'Ngân hàng câu hỏi', students: 'Giám sát học sinh', access: 'Quyền truy cập', subjects: 'Môn học & quyền riêng tư', reports: 'Báo cáo & dữ liệu' };
-        document.querySelectorAll('[data-view-panel]').forEach((panel) => panel.classList.toggle('is-visible', panel.dataset.viewPanel === view));
+        document.querySelectorAll('[data-view-panel]').forEach((panel) => {
+            const isActive = panel.dataset.viewPanel === view;
+            panel.classList.toggle('is-visible', isActive);
+            panel.classList.remove('view-enter');
+            if (isActive) requestAnimationFrame(() => panel.classList.add('view-enter'));
+        });
         document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === view));
         $('view-title') && ($('view-title').textContent = titles[view] || view);
         $('sidebar')?.classList.remove('is-open');
