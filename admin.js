@@ -62,7 +62,7 @@
         .filter((item) => item.key);
     const subjectsWithQuestions = () => {
         const questionKeys = new Set((state.questions || []).map((question) => String(question.subject_key || question.subjectKey || '')).filter(Boolean));
-        return allSubjects().filter((subject) => questionKeys.has(String(subject.key)));
+        return mergeSubjectCatalog(state.subjects).filter((subject) => questionKeys.has(String(subject.key || subject.subject_key)));
     };
     const builtinSubjects = () => Object.entries(SUBJECTS).flatMap(([grade, items]) => items.map((item) => ({
         ...item,
@@ -924,9 +924,10 @@
         const name = $('subject-name-input')?.value.trim();
         if (!key || !name) return notify('Nhập tên và mã môn học.', true);
         const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
-        const index = state.subjects.findIndex((item) => item.key === state.subjectEditingKey);
+        const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
+        const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
+        if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
         if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject };
-        else if (state.subjects.some((item) => item.key === key)) return notify('Mã định danh này đã tồn tại.', true);
         else state.subjects.push(subject);
         try {
             await saveSubjects();
@@ -1009,6 +1010,7 @@
     function bindEvents() {
         if (state.bound) return; state.bound = true;
         injectEditorControls();
+        moveSubjectFormToDialog();
         document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
         document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
         $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
@@ -1059,7 +1061,7 @@
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
         $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
-        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', resetSubjectForm); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
