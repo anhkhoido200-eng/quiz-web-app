@@ -1109,6 +1109,7 @@ class DatabaseService {
     async fetchGeoConfig() {
         let mode = 'PUBLIC';
         let ips = [];
+        let grade5Ips = [];
 
         if (this.isSupabaseActive && this.client) {
             try {
@@ -1131,14 +1132,16 @@ class DatabaseService {
                             } else if (parsed && typeof parsed === 'object') {
                                 if (parsed.mode) mode = parsed.mode;
                                 if (Array.isArray(parsed.ips)) ips = parsed.ips;
+                                if (Array.isArray(parsed.grade5Ips)) grade5Ips = parsed.grade5Ips;
                             }
                         } catch (e) {}
                     }
                     try {
                         localStorage.setItem('quiz_geo_mode', mode);
                         localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
+                        localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
                     } catch (e) {}
-                    return { mode, ips };
+                    return { mode, ips, grade5Ips };
                 }
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi lấy cấu hình phân quyền môn Địa:", e);
@@ -1149,18 +1152,26 @@ class DatabaseService {
             mode = localStorage.getItem('quiz_geo_mode') || 'PUBLIC';
             const raw = localStorage.getItem('quiz_allowed_geo_ips');
             ips = raw ? JSON.parse(raw) : [];
+            const grade5Raw = localStorage.getItem('quiz_allowed_grade5_ips');
+            grade5Ips = grade5Raw ? JSON.parse(grade5Raw) : [];
         } catch (e) {}
 
-        return { mode, ips };
+        return { mode, ips, grade5Ips };
     }
 
-    async saveGeoConfig(mode = 'PUBLIC', ipList = []) {
+    async saveGeoConfig(mode = 'PUBLIC', ipList = [], grade5IpList) {
         const cleanMode = (mode === 'PRIVATE') ? 'PRIVATE' : 'PUBLIC';
         const cleanList = Array.isArray(ipList) ? [...new Set(ipList.map(ip => String(ip).trim()).filter(Boolean))] : [];
+        let storedGrade5Ips = grade5IpList;
+        if (!Array.isArray(storedGrade5Ips)) {
+            try { storedGrade5Ips = JSON.parse(localStorage.getItem('quiz_allowed_grade5_ips') || '[]'); } catch (e) { storedGrade5Ips = []; }
+        }
+        const cleanGrade5Ips = Array.isArray(storedGrade5Ips) ? [...new Set(storedGrade5Ips.map(ip => String(ip).trim()).filter(Boolean))] : [];
 
         try {
             localStorage.setItem('quiz_geo_mode', cleanMode);
             localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(cleanList));
+            localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(cleanGrade5Ips));
         } catch (e) {}
 
         if (this.isSupabaseActive && this.client) {
@@ -1173,7 +1184,7 @@ class DatabaseService {
                         ip_address: 'SYSTEM',
                         device_info: cleanMode,
                         status: 'ACTIVE',
-                        score_summary: JSON.stringify({ mode: cleanMode, ips: cleanList }),
+                        score_summary: JSON.stringify({ mode: cleanMode, ips: cleanList, grade5Ips: cleanGrade5Ips }),
                         last_active: new Date().toISOString()
                     }], { onConflict: 'id' });
             } catch (e) {
@@ -1181,7 +1192,7 @@ class DatabaseService {
             }
         }
 
-        return { mode: cleanMode, ips: cleanList };
+        return { mode: cleanMode, ips: cleanList, grade5Ips: cleanGrade5Ips };
     }
 
     async setGeoMode(mode) {

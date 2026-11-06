@@ -8,6 +8,7 @@ class QuizApp {
     constructor() {
         // Môn học & Đa môn học động (Ghi nhớ môn đã chọn gần nhất)
         this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || 'history';
+        this.homeGradeFilter = '11';
         this.dynamicSubjects = [];
 
         // Thông tin người học & Thiết bị & IP
@@ -49,6 +50,7 @@ class QuizApp {
         // Phân quyền môn Địa Lí (hoặc các môn Private)
         this.allowedGeoIps = [];
         this.geoMode = 'PRIVATE';
+        this.class5AllowedIps = [];
 
         // Chế độ bảo trì hệ thống (Maintenance Mode)
         this.isMaintenanceMode = false;
@@ -124,6 +126,7 @@ class QuizApp {
         await this.loadBannedIpsList();
         await this.loadDynamicSubjects();
         await this.fetchClientIp();
+        await this.syncClass5Access();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
         await this.initMaintenance();
@@ -196,19 +199,83 @@ class QuizApp {
         this.populateSubjectDropdowns();
     }
 
+    getSubjectGrade(subject) {
+        const explicitGrade = String(subject?.grade || subject?.class || subject?.grade_level || '').match(/5|11/);
+        if (explicitGrade) return explicitGrade[0];
+
+        const source = `${subject?.key || ''} ${subject?.name || subject?.title || ''}`;
+        const gradeMatch = source.match(/(?:^|[^0-9])(5|11)(?:$|[^0-9])/);
+        return gradeMatch ? gradeMatch[1] : 'other';
+    }
+
+    canViewGrade5() {
+        const currentIp = String(this.clientIp || '').trim();
+        return Boolean(
+            this.isAdminAuthenticated ||
+            (currentIp && !currentIp.startsWith('Đang') && this.class5AllowedIps.includes(currentIp))
+        );
+    }
+
+    getHomeGradeFilter() {
+        if (this.isAdminAuthenticated) return ['all', '5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
+        return this.canViewGrade5() ? '5' : '11';
+    }
+
+    getHomeVisibleSubjects() {
+        const canViewPrivateGrade5 = this.canViewGrade5();
+        const publicSubjects = (this.dynamicSubjects || []).filter((sub) => {
+            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
+            return !isPrivate || (canViewPrivateGrade5 && this.getSubjectGrade(sub) === '5');
+        });
+        const filter = this.getHomeGradeFilter();
+        if (filter === 'all') return publicSubjects;
+        return publicSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
+    }
+
+    async syncClass5Access() {
+        try {
+            if (window.dbService && typeof window.dbService.fetchGeoConfig === 'function') {
+                const config = await window.dbService.fetchGeoConfig();
+                this.class5AllowedIps = Array.isArray(config?.grade5Ips) ? config.grade5Ips : [];
+            }
+        } catch (error) {
+            this.class5AllowedIps = [];
+            console.warn('Không thể tải quyền truy cập Lớp 5:', error);
+        }
+
+        this.homeGradeFilter = this.getHomeGradeFilter();
+        this.renderHomeSubjects();
+    }
+
     renderHomeSubjects() {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
 
-        // Chỉ hiển thị các môn CÔNG KHAI (PUBLIC). Mọi môn PRIVATE đều được ẩn.
-        const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
-            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
-            return !isPrivate;
-        });
+        const visibleSubjects = this.getHomeVisibleSubjects();
+        const activeGrade = this.getHomeGradeFilter();
+        const tabs = document.getElementById('home-semester-tabs');
+        if (tabs) {
+            if (this.isAdminAuthenticated) {
+                tabs.innerHTML = ['all', '5', '11'].map((grade) => {
+                    const label = grade === 'all' ? 'Tất cả lớp' : `Lớp ${grade}`;
+                    const active = activeGrade === grade;
+                    return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
+                }).join('');
+                tabs.querySelectorAll('[data-grade-filter]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        this.homeGradeFilter = button.dataset.gradeFilter;
+                        this.renderHomeSubjects();
+                    });
+                });
+            } else {
+                tabs.innerHTML = `<span class="home-grade-lock"><i class="fa-solid ${activeGrade === '5' ? 'fa-lock' : 'fa-graduation-cap'}"></i> Khu vực riêng: Lớp ${activeGrade}</span>`;
+            }
+        }
 
         // Nếu môn đang chọn hiện tại bị ẩn, tự động chuyển sang môn công khai đầu tiên
         if (visibleSubjects.length > 0 && !visibleSubjects.some(s => s.key === this.currentSubject)) {
             this.currentSubject = visibleSubjects[0].key;
+            localStorage.setItem('quiz_last_selected_subject', this.currentSubject);
             this.loadQuestionsForCurrentSubject();
         }
 
@@ -219,8 +286,8 @@ class QuizApp {
                     <div class="w-12 h-12 rounded-2xl bg-slate-800/80 text-slate-400 flex items-center justify-center mx-auto text-xl border border-slate-700 shadow-sm">
                         <i class="fa-solid fa-folder-open"></i>
                     </div>
-                    <p class="font-bold text-slate-200 text-sm">Không có bài nào gần đây</p>
-                    <p class="text-xs text-slate-400 max-w-sm mx-auto">Hiện tại chưa có đề cương ôn tập nào được mở công khai. Vui lòng quay lại sau!</p>
+                    <p class="font-bold text-slate-200 text-sm">Chưa có môn Lớp ${activeGrade} được mở</p>
+                    <p class="text-xs text-slate-400 max-w-sm mx-auto">Hiện chưa có đề cương ôn tập nào dành cho khu vực này. Vui lòng quay lại sau!</p>
                 </div>
             `;
             this.updateNavbarAndBadge();
@@ -288,10 +355,7 @@ class QuizApp {
     }
 
     updateNavbarAndBadge() {
-        const visibleSubjects = (this.dynamicSubjects || []).filter(sub => {
-            const isPrivate = sub.visibility === 'PRIVATE' || sub.is_public === false || sub.visibility === 'HIDDEN';
-            return !isPrivate;
-        });
+        const visibleSubjects = this.getHomeVisibleSubjects();
 
         const navTitle = document.getElementById('navbar-subject-title');
         const navSub = document.getElementById('navbar-subject-subtitle');
@@ -2305,6 +2369,7 @@ renderImporterPreview() {
         const customBox = document.getElementById('edit-sub-custom-semester-box');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
+        const gradeSelect = document.getElementById('edit-sub-grade');
 
         if (key) {
             const sub = this.dynamicSubjects.find(s => s.key === key);
@@ -2330,6 +2395,7 @@ renderImporterPreview() {
                 }
                 if (iconSelect) iconSelect.value = sub.icon || 'fa-book';
                 if (gradSelect) gradSelect.value = sub.gradient || 'indigo';
+                if (gradeSelect) gradeSelect.value = this.getSubjectGrade(sub) === '5' ? '5' : '11';
 
                 const radios = document.getElementsByName('edit-sub-visibility');
                 radios.forEach(r => {
@@ -2347,6 +2413,7 @@ renderImporterPreview() {
             if (semInput) semInput.value = 'Giữa Kì 2';
             if (semSelect) semSelect.value = 'Giữa Kì 2';
             if (customBox) customBox.classList.add('hidden');
+            if (gradeSelect) gradeSelect.value = '11';
         }
 
         if (modal) {
@@ -2383,6 +2450,7 @@ renderImporterPreview() {
         const semInput = document.getElementById('edit-sub-semester');
         const iconSelect = document.getElementById('edit-sub-icon');
         const gradSelect = document.getElementById('edit-sub-gradient');
+        const gradeSelect = document.getElementById('edit-sub-grade');
 
         const name = nameInput ? nameInput.value.trim() : '';
         const key = keyInput ? keyInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') : '';
@@ -2392,6 +2460,7 @@ renderImporterPreview() {
         }
         const icon = iconSelect ? iconSelect.value : 'fa-book';
         const gradient = gradSelect ? gradSelect.value : 'indigo';
+        const grade = gradeSelect ? gradeSelect.value : '11';
 
         let visibility = 'PUBLIC';
         const radios = document.getElementsByName('edit-sub-visibility');
@@ -2407,6 +2476,7 @@ renderImporterPreview() {
             id: key,
             key: key,
             name: name,
+            grade: grade,
             semester: semester,
             icon: icon,
             gradient: gradient,

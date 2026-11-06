@@ -302,8 +302,8 @@
                         <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Đang tải...</span>
                     </div>
 
-                    <!-- Tabs phân loại đợt thi / học kì -->
-                    <div id="home-semester-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 scrollbar-none"></div>
+                    <!-- Bộ lọc lớp để tách riêng khu vực ôn tập của Lớp 5 và Lớp 11 -->
+                    <div id="home-semester-tabs" class="home-grade-tabs flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 scrollbar-none" aria-label="Chọn lớp"></div>
 
                     <!-- Lưới môn học gọn gàng cho học sinh -->
                     <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1253,6 +1253,15 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             <option value="sky">Xanh Da Trời (Sky Blue)</option>
                         </select>
                     </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Khối Lớp <span class="text-emerald-400">*</span></label>
+                    <select id="edit-sub-grade" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
+                        <option value="5">Lớp 5</option>
+                        <option value="11">Lớp 11</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500 mt-1">Môn sẽ xuất hiện đúng trong bộ lọc lớp tương ứng trên trang học sinh.</p>
                 </div>
 
                 <div>
