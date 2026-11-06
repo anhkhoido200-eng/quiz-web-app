@@ -2998,9 +2998,22 @@ renderImporterPreview() {
         localStorage.removeItem(key);
     }
 
-    renderAllQuestions() {
+    renderAllQuestions(skipExitAnimation = false) {
         const container = document.getElementById('questions-container');
         if (!container) return;
+
+        // Let the current cards leave before inserting the freshly-rendered state.
+        // This keeps answer feedback readable without changing quiz logic.
+        if (!skipExitAnimation && container.children.length > 0) {
+            clearTimeout(this.questionRenderTimer);
+            container.classList.add('question-list-exit');
+            this.questionRenderTimer = setTimeout(() => {
+                container.classList.remove('question-list-exit');
+                this.renderAllQuestions(true);
+            }, 110);
+            return;
+        }
+
         container.innerHTML = '';
 
         const questions = this.allQuestions || [];
@@ -3025,7 +3038,8 @@ renderImporterPreview() {
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            card.className = "glass-card-pro quiz-question-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
+            card.className = "glass-card-pro quiz-question-card question-card-enter rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
+            card.style.setProperty('--question-index', idx);
 
             // Render hình ảnh đính kèm nếu có
             const imgHtml = q.image_url ? `
@@ -3078,10 +3092,15 @@ renderImporterPreview() {
                         }
                     }
 
+                    const feedbackIcon = !this.isExamMode && isAnswered && oIdx === correctIdx
+                        ? '<span class="answer-feedback-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>'
+                        : '';
+
                     return `
                                 <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" ${isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
+                                    ${feedbackIcon}
                                 </button>
                             `;
                 }).join('')}
@@ -3186,7 +3205,7 @@ renderImporterPreview() {
 
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
-        this.renderAllQuestions();
+        this.renderAllQuestions(true);
         this.updateLiveStats();
     }
 
@@ -3194,7 +3213,7 @@ renderImporterPreview() {
         if (!this.userAnswers[qId]) this.userAnswers[qId] = {};
         this.userAnswers[qId][stmtIdx] = isTrue;
         this.saveAutoSaveProgress();
-        this.renderAllQuestions();
+        this.renderAllQuestions(true);
         this.updateLiveStats();
     }
 
@@ -3202,7 +3221,7 @@ renderImporterPreview() {
         if (!val || !val.trim()) return;
         this.userAnswers[qId] = val.trim();
         this.saveAutoSaveProgress();
-        this.renderAllQuestions();
+        this.renderAllQuestions(true);
         this.updateLiveStats();
     }
 
@@ -3389,7 +3408,7 @@ renderImporterPreview() {
         const timeSpentEl = document.getElementById('result-time-spent');
         const greetingEl = document.getElementById('result-player-greeting');
 
-        if (scoreEl) scoreEl.textContent = finalScore;
+        if (scoreEl) scoreEl.textContent = '0';
         if (ratioEl) ratioEl.textContent = `${correctCount}/${totalItems}`;
 
         let secondsUsed = this.secondsElapsed;
@@ -3426,22 +3445,41 @@ renderImporterPreview() {
             mode: 'Luyện tập'
         });
 
-        // Bắn pháo hoa ăn mừng & Phát âm thanh chiến thắng
+        // Phát âm thanh nhẹ khi hoàn tất, không dùng hiệu ứng gây rối mắt.
         if (finalScore >= 90) {
             this.playFanfareSound();
-            this.fireDoubleConfetti();
         } else if (finalScore >= 50) {
             this.playTingSound();
-            if (typeof confetti === 'function') {
-                confetti({ particleCount: 120, spread: 75, origin: { y: 0.6 } });
-            }
         } else {
             this.playBeepSound();
         }
 
         this.renderReviewList();
         this.switchScreen('result');
+        this.animateResultScore(finalScore);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    animateResultScore(targetScore) {
+        const scoreEl = document.getElementById('result-score');
+        if (!scoreEl) return;
+
+        const target = Math.max(0, Number(targetScore) || 0);
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (reduceMotion) {
+            scoreEl.textContent = String(target);
+            return;
+        }
+
+        const start = performance.now();
+        const duration = 360;
+        const tick = (now) => {
+            const progress = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            scoreEl.textContent = String(Math.round(target * eased));
+            if (progress < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
     }
 
     renderReviewList() {
@@ -3535,6 +3573,9 @@ renderImporterPreview() {
             if (el) {
                 if (key === screenName) {
                     el.classList.remove('hidden');
+                    el.classList.remove('screen-view-enter');
+                    void el.offsetWidth;
+                    el.classList.add('screen-view-enter');
                 } else {
                     el.classList.add('hidden');
                 }
@@ -4738,14 +4779,6 @@ YÊU CẦU:
         } catch (e) {
             console.warn("Không thể phát âm thanh fanfare:", e);
         }
-    }
-
-    fireDoubleConfetti() {
-        if (typeof confetti !== 'function') return;
-        confetti({ particleCount: 100, spread: 60, origin: { x: 0.2, y: 0.6 } });
-        setTimeout(() => {
-            confetti({ particleCount: 120, spread: 80, origin: { x: 0.8, y: 0.6 } });
-        }, 250);
     }
 
     /* ============================================================== */

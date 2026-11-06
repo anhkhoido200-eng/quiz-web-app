@@ -41,8 +41,6 @@
 
     <!-- FontAwesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Canvas Confetti cho hiệu ứng chiến thắng -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <!-- SheetJS CDN (Xuất Bảng Điểm Excel .xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Mammoth.js CDN (Bóc tách file Word .docx tự động trích xuất ảnh thật Base64) -->
@@ -487,7 +485,7 @@
 
                 <!-- Dưới cùng: Đường line tiến độ chạy suốt toàn màn hình có hào quang -->
                 <div class="w-full bg-slate-900 h-1.5 overflow-hidden">
-                    <div id="quiz-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-300 shadow-[0_0_12px_rgba(99,102,241,0.6)]" style="width: 0%"></div>
+                    <div id="quiz-progress-bar" class="quiz-progress-bar h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400" style="width: 0%"></div>
                 </div>
             </div>
 
@@ -503,31 +501,31 @@
         <section id="screen-result" class="screen-view hidden transition-all duration-300">
             <div class="max-w-2xl mx-auto space-y-6">
                 <!-- Thẻ điểm vinh danh chính -->
-                <div class="glass-panel-pro rounded-3xl p-6 sm:p-9 text-center shadow-2xl relative overflow-hidden">
-                    <div id="result-badge-container" class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-600 mx-auto flex items-center justify-center text-slate-950 text-3xl shadow-xl shadow-amber-500/30 mb-4 animate-bounce">
+                <div class="glass-panel-pro rounded-3xl p-6 sm:p-9 text-center shadow-2xl relative overflow-hidden result-reveal-panel">
+                    <div id="result-badge-container" class="result-badge w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-600 mx-auto flex items-center justify-center text-slate-950 text-3xl shadow-xl shadow-amber-500/30 mb-4">
                         <i class="fa-solid fa-award"></i>
                     </div>
 
-                    <h2 class="font-heading text-3xl sm:text-4xl font-extrabold text-white mb-1.5 tracking-tight" id="result-title">
+                    <h2 class="result-reveal-item font-heading text-3xl sm:text-4xl font-extrabold text-white mb-1.5 tracking-tight" id="result-title">
                         Hoàn Thành Bài Thi!
                     </h2>
-                    <p class="text-slate-300 text-sm mb-6" id="result-player-greeting">
+                    <p class="result-reveal-item text-slate-300 text-sm mb-6" id="result-player-greeting">
                         Chúc mừng bạn đã hoàn thành xuất sắc bài thi trắc nghiệm.
                     </p>
 
                     <!-- Chỉ số điểm số -->
-                    <div class="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5 mb-6 shadow-inner">
-                        <div class="text-center p-2">
+                    <div class="result-stats-grid grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5 mb-6 shadow-inner">
+                        <div class="result-stat-card text-center p-2">
                             <span class="block text-slate-400 text-xs mb-1">Điểm số</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold gradient-text-hero" id="result-score">0</span>
                             <span class="text-[11px] text-slate-400">/ 100 điểm</span>
                         </div>
-                        <div class="text-center p-2 border-x border-slate-800">
+                        <div class="result-stat-card text-center p-2 border-x border-slate-800">
                             <span class="block text-slate-400 text-xs mb-1">Đúng / Tổng ý</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold text-emerald-400" id="result-correct-ratio">0/0</span>
                             <span class="text-[11px] text-slate-400">ý hỏi</span>
                         </div>
-                        <div class="text-center p-2">
+                        <div class="result-stat-card text-center p-2">
                             <span class="block text-slate-400 text-xs mb-1">Thời gian</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold text-amber-400 font-mono" id="result-time-spent">00:00</span>
                             <span class="text-[11px] text-slate-400">phút:giây</span>
@@ -535,7 +533,7 @@
                     </div>
 
                     <!-- Nút thao tác sau khi xong bài -->
-                    <div class="flex flex-wrap items-center justify-center gap-3">
+                    <div class="result-actions flex flex-wrap items-center justify-center gap-3">
                         <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
                             <i class="fa-solid fa-trophy text-slate-950"></i>
                             <span>Xem Bảng Xếp Hạng</span>
@@ -560,7 +558,7 @@
                 </div>
 
                 <!-- Khu vực xem lại đáp án chi tiết (Review Answers) -->
-                <div id="review-container" class="space-y-4">
+                <div id="review-container" class="result-review-section space-y-4">
                     <h3 class="font-heading text-lg font-bold text-slate-200 flex items-center gap-2">
                         <i class="fa-solid fa-clipboard-check text-indigo-400"></i>
                         <span>Chi Tiết Toàn Bộ Đề & Lời Giải</span>

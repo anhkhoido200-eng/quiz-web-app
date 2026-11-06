@@ -401,16 +401,16 @@ body.light-theme .home-grade-tab.is-active {
 /* Hiệu ứng khi chọn ĐÚNG / SAI trong chế độ Luyện tập */
 .option-selected-correct {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
-    border-color: #34d399 !important;
+    border-color: #34d399;
     color: #ecfdf5 !important;
-    box-shadow: 0 0 25px -3px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 0 25px -3px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .option-selected-wrong {
     background: linear-gradient(135deg, rgba(244, 63, 94, 0.25), rgba(225, 29, 72, 0.15)) !important;
-    border-color: #fb7185 !important;
+    border-color: #fb7185;
     color: #fff1f2 !important;
-    box-shadow: 0 0 25px -3px rgba(244, 63, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 0 25px -3px rgba(244, 63, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* --- Chữ Gradient thời thượng (Trendy Gradient Text) --- */
@@ -678,4 +678,195 @@ body.light-theme .ai-explanation-box strong {
 body.light-theme footer {
     background-color: rgba(255, 255, 255, 0.8) !important;
     border-top-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+/* ================================================================
+   QUIZ MOTION LAYER
+   Short, restrained transitions for feedback without visual noise.
+   ================================================================ */
+:root {
+    --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --motion-fast: 180ms;
+    --motion-standard: 280ms;
+}
+
+.screen-view-enter {
+    animation: screenSlideEnter var(--motion-standard) var(--motion-ease) both;
+}
+
+@keyframes screenSlideEnter {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.question-card-enter {
+    animation: questionSlideEnter 280ms var(--motion-ease) both;
+    animation-delay: min(calc(var(--question-index, 0) * 24ms), 120ms);
+}
+
+.question-list-exit .quiz-question-card {
+    animation: questionSlideExit 110ms var(--motion-ease) both;
+}
+
+@keyframes questionSlideEnter {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes questionSlideExit {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-10px); }
+}
+
+/* Answer tiles: lift on hover and compress on press. */
+.quiz-option-tile {
+    border-color: rgba(100, 116, 139, .32);
+    transition:
+        transform var(--motion-fast) var(--motion-ease),
+        border-color var(--motion-standard) var(--motion-ease),
+        box-shadow var(--motion-standard) var(--motion-ease),
+        background-color var(--motion-standard) var(--motion-ease);
+    will-change: transform;
+}
+
+.quiz-option-tile:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: rgba(165, 180, 252, .72);
+    box-shadow: 0 9px 22px rgba(15, 23, 42, .24), 0 0 0 1px rgba(129, 140, 248, .08);
+}
+
+.quiz-option-tile:active:not(:disabled) {
+    transform: scale(.98);
+}
+
+.quiz-option-tile:focus-visible {
+    outline: 2px solid rgba(129, 140, 248, .85);
+    outline-offset: 2px;
+}
+
+/* Feedback states are deliberately muted and short. */
+.option-selected-correct {
+    animation: correctAnswerFlash 320ms var(--motion-ease) both;
+}
+
+.option-selected-wrong {
+    animation: wrongAnswerShake 300ms var(--motion-ease) both;
+}
+
+@keyframes correctAnswerFlash {
+    0% { border-color: rgba(52, 211, 153, .42); box-shadow: 0 0 0 rgba(52, 211, 153, 0); }
+    45% { border-color: rgba(110, 231, 183, 1); box-shadow: 0 0 0 3px rgba(52, 211, 153, .13), 0 0 20px rgba(16, 185, 129, .24); }
+    100% { border-color: rgba(52, 211, 153, .92); box-shadow: 0 0 0 1px rgba(52, 211, 153, .08), 0 8px 20px rgba(16, 185, 129, .16); }
+}
+
+@keyframes wrongAnswerShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    55% { transform: translateX(4px); }
+    78% { transform: translateX(-2px); }
+}
+
+/* Keep the feedback color while the transient shake animation runs. */
+.quiz-option-tile.option-selected-wrong {
+    background: linear-gradient(135deg, rgba(244, 63, 94, .25), rgba(225, 29, 72, .15)) !important;
+    border-color: #fb7185 !important;
+}
+
+.quiz-option-tile.option-selected-correct {
+    background: linear-gradient(135deg, rgba(16, 185, 129, .25), rgba(5, 150, 105, .15)) !important;
+    border-color: #34d399 !important;
+}
+
+.answer-feedback-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    flex: 0 0 1.35rem;
+    border-radius: 999px;
+    color: #ecfdf5;
+    background: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, .24);
+    animation: answerIconPop 260ms var(--motion-ease) both;
+}
+
+@keyframes answerIconPop {
+    from { opacity: 0; transform: scale(.5); }
+    70% { opacity: 1; transform: scale(1.08); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* The bar moves with its width and keeps a small leading glow. */
+.quiz-progress-bar {
+    position: relative;
+    overflow: visible;
+    transition: width 320ms var(--motion-ease);
+    box-shadow: 0 0 12px rgba(99, 102, 241, .55);
+}
+
+.quiz-progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 1.5rem;
+    height: 100%;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .72);
+    filter: blur(4px);
+    opacity: .7;
+}
+
+/* Result page uses a calm, sequential reveal rather than a bounce. */
+.result-reveal-panel > *,
+.result-review-section {
+    opacity: 0;
+    animation: resultFadeUp 280ms var(--motion-ease) both;
+}
+
+.result-reveal-panel > :nth-child(1) { animation-delay: 40ms; }
+.result-reveal-panel > :nth-child(2) { animation-delay: 90ms; }
+.result-reveal-panel > :nth-child(3) { animation-delay: 140ms; }
+.result-reveal-panel > :nth-child(4) { animation-delay: 190ms; }
+.result-reveal-panel > :nth-child(5) { animation-delay: 240ms; }
+.result-review-section { animation-delay: 300ms; }
+
+.result-stats-grid .result-stat-card,
+.result-actions > * {
+    opacity: 0;
+    animation: resultFadeUp 240ms var(--motion-ease) both;
+}
+
+.result-stats-grid .result-stat-card:nth-child(1) { animation-delay: 170ms; }
+.result-stats-grid .result-stat-card:nth-child(2) { animation-delay: 205ms; }
+.result-stats-grid .result-stat-card:nth-child(3) { animation-delay: 240ms; }
+.result-actions > *:nth-child(1) { animation-delay: 250ms; }
+.result-actions > *:nth-child(2) { animation-delay: 280ms; }
+.result-actions > *:nth-child(3) { animation-delay: 310ms; }
+.result-actions > *:nth-child(4) { animation-delay: 340ms; }
+.result-actions > *:nth-child(5) { animation-delay: 370ms; }
+
+@keyframes resultFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.result-badge {
+    animation: resultBadgeReveal 300ms var(--motion-ease) both;
+}
+
+@keyframes resultBadgeReveal {
+    from { opacity: 0; transform: scale(.86); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
 }
