@@ -12,27 +12,8 @@
         gemini: '00000000-0000-0000-0000-000000000005',
         aiIps: '00000000-0000-0000-0000-000000000006'
     };
-    const SUBJECTS = {
-        5: [
-            { key: 'math5', name: 'Toán 5' }, { key: 'vietnamese5', name: 'Tiếng Việt 5' },
-            { key: 'science5', name: 'Khoa học 5' }, { key: 'history5', name: 'Lịch sử 5' },
-            { key: 'geography5', name: 'Địa lý 5' }, { key: 'english5', name: 'Tiếng Anh 5' }
-        ],
-        11: [
-            { key: 'history', name: 'Lịch Sử 11' }, { key: 'physics', name: 'Vật Lí 11' },
-            { key: 'geography', name: 'Địa Lí 11' }, { key: 'math11', name: 'Toán 11' },
-            { key: 'chemistry11', name: 'Hóa Học 11' }, { key: 'biology11', name: 'Sinh Học 11' },
-            { key: 'english11', name: 'Tiếng Anh 11' }
-        ]
-    };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const AI_TYPE_LABELS = { multiple_choice: 'Trắc nghiệm 4 lựa chọn', true_false: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
-    const SUBJECT_ICONS = {
-        math5: 'fa-calculator', vietnamese5: 'fa-language', science5: 'fa-flask', history5: 'fa-landmark',
-        geography5: 'fa-earth-asia', english5: 'fa-language', history: 'fa-landmark', physics: 'fa-atom',
-        geography: 'fa-earth-americas', math11: 'fa-calculator', chemistry11: 'fa-vial', biology11: 'fa-dna',
-        english11: 'fa-language'
-    };
     const state = {
         client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
@@ -53,9 +34,8 @@
         return Boolean(key && (/^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/i.test(key) || key.length >= 20));
     };
     const subjectName = (key) => {
-        const builtIn = Object.values(SUBJECTS).flat().find((item) => item.key === key);
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
-        return builtIn?.name || dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
+        return dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
     };
     const allSubjects = () => mergeSubjectCatalog(state.subjects)
         .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
@@ -79,7 +59,7 @@
     };
     const gradeOf = (q) => {
         const key = String(q.subject_key || q.subjectKey || q.key || '').toLowerCase();
-        if (Object.values(SUBJECTS[5]).some((item) => item.key.toLowerCase() === key) || /5$/.test(key) || q.grade === '5' || q.grade_level === '5') return '5';
+        if (/5$/.test(key) || q.grade === '5' || q.grade_level === '5') return '5';
         return '11';
     };
     const notify = (message, error = false) => {
@@ -599,7 +579,7 @@
   { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Cách tính hoặc lý do" }
 ]`;
         const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        const models = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
         try {
             let response; let lastError = '';
             for (const model of models) {
@@ -703,7 +683,7 @@
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+            const testModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
             let ok = false;
             let lastError = '';
             for (const model of testModels) {
@@ -795,7 +775,18 @@
     function ensureClass5AccessPanel() {
         const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
         if (!grid || document.getElementById('class5-ip-list')) return;
-        grid.insertAdjacentHTML('beforeend', '<section class="panel class5-access-panel"><div class="panel-title"><div><p class="eyebrow">CLASS 5 ACCESS</p><h2>Quyền riêng Lớp 5</h2><p class="muted-copy">Chỉ các IP bên dưới mới thấy môn Lớp 5. IP khác mặc định chỉ thấy Lớp 11.</p></div><span id="class5-ip-count" class="status-badge safe">0 IP</span></div><div class="inline-form"><input id="class5-ip-input" autocomplete="off" spellcheck="false" placeholder="Nhập địa chỉ IP..."><button id="add-class5-ip" class="button button-primary"><i class="fa-solid fa-user-plus"></i> Cấp quyền</button></div><button id="add-current-class5-ip" class="text-button"><i class="fa-solid fa-location-crosshairs"></i> Cấp quyền cho IP máy này</button><div id="class5-ip-list" class="stack-list"></div></section>');
+        grid.insertAdjacentHTML('beforeend', '<section class="panel class5-access-panel"><div class="panel-title"><div><p class="eyebrow">CLASS 5 ACCESS</p><h2>Quyền riêng Lớp 5</h2><p class="muted-copy">Chỉ các IP bên dưới mới thấy môn Lớp 5. IP khác mặc định chỉ thấy Lớp 11.</p></div><span id="class5-ip-count" class="status-badge safe">0 IP</span></div><div class="inline-form"><input id="class5-ip-input" name="class5-access-ip" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" placeholder="Nhập địa chỉ IP..."><button id="add-class5-ip" class="button button-primary"><i class="fa-solid fa-user-plus"></i> Cấp quyền</button></div><button id="add-current-class5-ip" class="text-button"><i class="fa-solid fa-location-crosshairs"></i> Cấp quyền cho IP máy này</button><div id="class5-ip-list" class="stack-list"></div></section>');
+        const input = $('class5-ip-input');
+        if (input) {
+            input.readOnly = true;
+            input.value = '';
+            input.addEventListener('focus', () => {
+                input.readOnly = false;
+                input.value = '';
+            });
+            requestAnimationFrame(() => { if (document.activeElement !== input) input.value = ''; });
+            setTimeout(() => { if (document.activeElement !== input) input.value = ''; }, 250);
+        }
     }
 
     async function loadGeo() { const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: data.ips || [], grade5Ips: data.grade5Ips || [] }; } catch (error) {} } ensureClass5AccessPanel(); renderGeo(); }

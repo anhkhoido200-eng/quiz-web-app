@@ -7,7 +7,7 @@
 class QuizApp {
     constructor() {
         // Môn học & Đa môn học động (Ghi nhớ môn đã chọn gần nhất)
-        this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || 'history';
+        this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || '';
         this.homeGradeFilter = 'all';
         this.dynamicSubjects = [];
 
@@ -86,7 +86,7 @@ class QuizApp {
 
         // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
         const savedModel = localStorage.getItem('gemini_model');
-        const supportedGeminiModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        const supportedGeminiModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
         if (!supportedGeminiModels.includes(savedModel)) {
             localStorage.setItem('gemini_model', supportedGeminiModels[0]);
         }
@@ -147,38 +147,7 @@ class QuizApp {
     /* ============================================================== */
 
     getDefaultSubjects() {
-        return [
-            {
-                id: 'history',
-                key: 'history',
-                name: 'Lịch Sử 11',
-                semester: 'Giữa Kì 1',
-                icon: 'fa-landmark',
-                gradient: 'indigo',
-                visibility: 'PUBLIC',
-                count: 74
-            },
-            {
-                id: 'physics',
-                key: 'physics',
-                name: 'Vật Lí 11',
-                semester: 'Giữa Kì 1',
-                icon: 'fa-atom',
-                gradient: 'purple',
-                visibility: 'PUBLIC',
-                count: 43
-            },
-            {
-                id: 'geography',
-                key: 'geography',
-                name: 'Địa Lí 11',
-                semester: 'Giữa Kì 1',
-                icon: 'fa-earth-americas',
-                gradient: 'emerald',
-                visibility: 'PRIVATE',
-                count: 52
-            }
-        ];
+        return [];
     }
 
     async loadDynamicSubjects() {
@@ -190,7 +159,7 @@ class QuizApp {
                 cloudAvailable = Boolean(window.dbService.isSupabaseActive);
             }
         } catch (e) {
-            console.warn("Không thể tải môn học từ cloud, dùng dữ liệu mặc định:", e);
+            console.warn("Không thể tải môn học từ cloud, giữ danh sách rỗng:", e);
         }
 
         if ((!Array.isArray(loaded) || loaded.length === 0) && (!navigator.onLine || !cloudAvailable)) {
@@ -295,6 +264,9 @@ class QuizApp {
             this.currentSubject = visibleSubjects[0].key;
             localStorage.setItem('quiz_last_selected_subject', this.currentSubject);
             this.loadQuestionsForCurrentSubject();
+        } else if (visibleSubjects.length === 0) {
+            this.currentSubject = '';
+            localStorage.removeItem('quiz_last_selected_subject');
         }
 
         // Nếu tất cả các môn đều bị ẩn -> Hiện thông báo "Không có bài nào gần đây"
@@ -316,7 +288,7 @@ class QuizApp {
 
         visibleSubjects.forEach(sub => {
             const isSelected = this.currentSubject === sub.key;
-            const subName = sub.name || (sub.key === 'physics' ? 'Vật Lí 11' : (sub.key === 'geography' ? 'Địa Lí 11' : 'Lịch Sử 11'));
+            const subName = sub.name || sub.title || sub.key || 'Môn học';
             const card = document.createElement('button');
             card.type = 'button';
             card.onclick = () => this.selectSubject(sub.key);
@@ -402,7 +374,7 @@ class QuizApp {
 
     getSubjectTitle() {
         const s = this.dynamicSubjects.find(sub => sub.key === this.currentSubject);
-        return s ? s.name : (this.currentSubject === 'physics' ? 'Vật Lí 11' : (this.currentSubject === 'geography' ? 'Địa Lí 11' : 'Lịch Sử 11'));
+        return s ? s.name : 'Ôn tập';
     }
 
     async selectSubject(subjKey) {
@@ -421,6 +393,11 @@ class QuizApp {
     }
 
     async loadQuestionsForCurrentSubject() {
+        if (!this.currentSubject) {
+            this.allQuestions = [];
+            this.renderFilterTabs();
+            return;
+        }
         let questions = [];
         let cloudQuestionsLoaded = false;
 
@@ -2595,7 +2572,7 @@ renderImporterPreview() {
 
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
         if (this.currentSubject === key) {
-            this.currentSubject = this.dynamicSubjects[0] ? this.dynamicSubjects[0].key : 'history';
+            this.currentSubject = this.dynamicSubjects[0] ? this.dynamicSubjects[0].key : '';
             await this.loadQuestionsForCurrentSubject();
         }
 
@@ -4704,7 +4681,7 @@ YÊU CẦU:
 - Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
 
         try {
-            const candidateModels = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+            const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
 
             let res = null;
             let lastErrMsg = "";
