@@ -17,7 +17,7 @@
     const state = {
         client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
-        importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '',
+        importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '', geminiQuotaBlocked: false,
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
@@ -36,6 +36,8 @@
             clearTimeout(timer);
         }
     };
+    const isGeminiQuotaError = (status, message = '') => status === 429 || /resource_exhausted|quota exceeded|rate limit|free[_ -]?tier|billing|limit:\s*0/i.test(String(message));
+    const geminiQuotaMessage = 'Gemini đã hết quota của project/API key hiện tại. Hãy đổi sang API key/project khác, bật billing hoặc chờ quota Google cấp lại; không thể tạo câu hỏi mới lúc này.';
     const parseBool = (value) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
     const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
     const isValidGeminiKey = (value) => {
@@ -531,7 +533,7 @@
     function closeModal(id) { $(id)?.classList.add('hidden'); }
 
     function openImport() {
-        state.importQuestions = []; state.importIndex = 0; state.sourceText = '';
+        state.importQuestions = []; state.importIndex = 0; state.sourceText = ''; state.importError = '';
         if ($('import-text')) $('import-text').value = '';
         if ($('import-preview')) $('import-preview').innerHTML = '<p class="muted-copy">Chọn DOCX/PDF hoặc dán đề, sau đó bấm “Gemini phân tích & giải”.</p>';
         fillLibrarySubjects(); switchView('questions'); openModal('import-modal');
@@ -542,9 +544,51 @@
             const parsed = JSON.parse(text);
             const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.questions) ? parsed.questions : [parsed]);
             const normalized = list.map(normalizeAiQuestion);
+            const structureErrors = validateAiQuestionSet(normalized);
+            if (structureErrors.length) return [];
             state.importIntegrity = validateVerbatimQuestions(normalized, text);
             return normalized;
         } catch (error) { return []; }
+    }
+
+    function extractJsonPayload(raw) {
+        const text = String(raw || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const candidates = [text];
+        const arrayStart = text.indexOf('[');
+        const arrayEnd = text.lastIndexOf(']');
+        if (arrayStart >= 0 && arrayEnd > arrayStart) candidates.push(text.slice(arrayStart, arrayEnd + 1));
+        const objectStart = text.indexOf('{');
+        const objectEnd = text.lastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1));
+        for (const candidate of candidates) {
+            try {
+                const parsed = JSON.parse(candidate);
+                const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.questions) ? parsed.questions : (Array.isArray(parsed.data) ? parsed.data : [parsed]));
+                if (list.length) return list;
+            } catch (error) { /* Try the next JSON boundary. */ }
+        }
+        throw new Error('Gemini trả về dữ liệu không phải JSON hợp lệ hoặc không có câu hỏi.');
+    }
+
+    function persistImportDraft() {
+        try {
+            sessionStorage.setItem('quiz_ai_import_draft', JSON.stringify({ questions: state.importQuestions, sourceText: state.sourceText, subject: state.importSubject, integrity: state.importIntegrity }));
+        } catch (error) { console.warn('Không thể lưu bản nháp AI:', error); }
+    }
+
+    function restoreImportDraft() {
+        try {
+            const draft = JSON.parse(sessionStorage.getItem('quiz_ai_import_draft') || 'null');
+            if (!draft || !Array.isArray(draft.questions) || !draft.questions.length) return false;
+            state.importQuestions = draft.questions.map(normalizeAiQuestion);
+            state.sourceText = draft.sourceText || '';
+            state.importSubject = draft.subject || state.importSubject;
+            state.importIntegrity = draft.integrity || validateVerbatimQuestions(state.importQuestions, state.sourceText);
+            state.importIndex = 0;
+            fillForm(state.importQuestions[0]);
+            renderImportReview();
+            return true;
+        } catch (error) { return false; }
     }
 
     function renderImportReview() {
@@ -597,6 +641,7 @@
     async function analyzeWithGemini() {
         const source = $('import-text')?.value || state.sourceText;
         if (!source) return notify('Chưa có văn bản đề để phân tích.', true);
+        if (state.geminiQuotaBlocked) return notify(geminiQuotaMessage, true);
         const apiKey = await fetchGeminiKey();
         if (!apiKey) return notify('Chưa cấu hình Gemini API Key trong mục Báo cáo & dữ liệu.', true);
         const button = $('ai-analyze-import');
@@ -618,28 +663,35 @@
                     if (response.ok) break;
                     const errorData = await response.json().catch(() => ({}));
                     lastError = errorData?.error?.message || `HTTP ${response.status}`;
+                    if (isGeminiQuotaError(response.status, lastError)) {
+                        state.geminiQuotaBlocked = true;
+                        throw new Error(geminiQuotaMessage);
+                    }
                     if (response.status === 400 || response.status === 401 || response.status === 403) break;
                 } catch (error) {
+                    if (error.message === geminiQuotaMessage) throw error;
                     lastError = error.name === 'AbortError' ? `${model} phản hồi quá 60 giây.` : error.message;
                 }
             }
             if (!response?.ok) throw new Error(lastError || 'Gemini không phản hồi.');
             const data = await response.json();
             const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
-            const clean = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-            const parsed = JSON.parse(clean);
-            state.importQuestions = (Array.isArray(parsed) ? parsed : parsed.questions || []).map(normalizeAiQuestion);
+            const parsedList = extractJsonPayload(raw);
+            state.importQuestions = parsedList.map(normalizeAiQuestion);
             const structureErrors = validateAiQuestionSet(state.importQuestions);
             if (structureErrors.length) throw new Error(`AI trả về đề chưa đủ cấu trúc: ${structureErrors.slice(0, 3).join('; ')}`);
             state.importIndex = 0;
             state.importIntegrity = validateVerbatimQuestions(state.importQuestions, source);
+            state.importError = '';
+            persistImportDraft();
             if (state.importQuestions.length) fillForm(state.importQuestions[0]);
             renderImportReview();
             notify(`Gemini đã phân tích ${state.importQuestions.length} câu. Hãy duyệt trước khi lưu.`);
         } catch (error) {
-            const detail = /api key|api_key|invalid argument|permission denied/i.test(error.message)
+            const detail = isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : /api key|api_key|invalid argument|permission denied/i.test(error.message)
                 ? 'Gemini API Key không hợp lệ hoặc đã hết hạn. Vào Báo cáo & dữ liệu, xóa key cũ, nhập key mới rồi bấm Kiểm tra key.'
                 : error.message;
+            state.importError = detail;
             notify(`AI phân tích thất bại: ${detail}`, true);
         }
         finally {
@@ -651,7 +703,10 @@
     }
 
     async function saveImportQuestions() {
-        if (!state.importQuestions.length) return notify('Chưa có câu hỏi AI để lưu.', true);
+        if (!state.importQuestions.length) {
+            if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi AI. Bấm Lưu vào ngân hàng để tiếp tục.');
+            return notify(state.importError || 'Chưa có câu hỏi AI để lưu. Nếu Gemini hết quota, hãy dán JSON hợp lệ rồi bấm Đọc JSON hoặc đổi API key.', true);
+        }
         if (!state.importIntegrity.valid && !window.confirm('Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?')) return;
         if ($('import-replace')?.checked && !window.confirm('Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp?')) return;
         try {
@@ -665,6 +720,7 @@
                 if (error) throw error;
             }
             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
+            sessionStorage.removeItem('quiz_ai_import_draft');
             closeModal('import-modal'); await loadQuestions();
         } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
     }
@@ -734,6 +790,7 @@
                     }
                     const data = await response.json().catch(() => ({}));
                     lastError = data?.error?.message || `HTTP ${response.status}`;
+                    if (isGeminiQuotaError(response.status, lastError)) throw new Error(geminiQuotaMessage);
                     if (response.status === 400 || response.status === 401 || response.status === 403) break;
                 } catch (err) {
                     lastError = err.message;
@@ -744,7 +801,7 @@
             if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key hợp lệ';
         } catch (error) {
             if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key không hợp lệ';
-            notify(`Gemini API Key không hợp lệ: ${error.message}`, true);
+            notify(isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : `Gemini API Key không hợp lệ: ${error.message}`, true);
         } finally {
             if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra key'; }
         }
@@ -1065,7 +1122,7 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
-        $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('Văn bản đã được giữ nguyên. Hãy dùng Gemini để phân tích câu hỏi.', true); state.importQuestions = list; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); fillForm(list[0]); renderImportReview(); }); $('ai-analyze-import')?.addEventListener('click', analyzeWithGemini); $('save-import')?.addEventListener('click', saveImportQuestions);
+        $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('ai-analyze-import')?.addEventListener('click', analyzeWithGemini); $('save-import')?.addEventListener('click', saveImportQuestions);
         $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = event.target.value; }); $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
