@@ -255,6 +255,7 @@ class DatabaseService {
             try {
                 const { error } = await this.client.from('quiz_logins').update({ last_active: nowIso }).eq('id', loginId);
                 if (error) throw error;
+                console.debug('[DatabaseService] Heartbeat updated:', { loginId, last_active: nowIso });
             } catch (error) {
                 console.warn('[DatabaseService] Không cập nhật được heartbeat:', error);
             }
@@ -485,11 +486,12 @@ class DatabaseService {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('*')
+                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
                     .order('last_active', { ascending: false })
                     .limit(limit);
 
                 if (!error && Array.isArray(data)) {
+                    console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length });
                     // Lọc bỏ toàn bộ các bản ghi hệ thống nội bộ (__...) và systemIds
                     const realLogins = data
                         .filter(isStudentLogin)
@@ -501,6 +503,8 @@ class DatabaseService {
                             device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
                         }));
                     return realLogins;
+                } else if (error) {
+                    console.warn('[DatabaseService] Student monitor query failed:', { message: error.message, code: error.code });
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);

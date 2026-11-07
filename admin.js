@@ -1096,16 +1096,20 @@
             state.adminConfig.masterIp,
             ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)
         ].map((ip) => String(ip || '').trim()).filter(Boolean));
-        const { data, error } = await state.client.from('quiz_logins').select('*').order('last_active', { ascending: false }).limit(200);
-        if (error) return notify(error.message, true);
+        const { data, error } = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).limit(200);
+        if (error) {
+            console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);
+            return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
+        }
+        console.debug('[Quiz Studio Admin] Student monitor refresh:', { fetched: data?.length || 0, refreshedAt: new Date().toISOString() });
         const rows = (data || []).filter((row) => {
             const playerName = String(row.player_name || '').trim();
             const ip = String(row.ip_address || row.client_ip || '').trim();
             return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(ip);
         });
         const nowMs = Date.now();
-        const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && row.last_active && nowMs - new Date(row.last_active).getTime() < 90000);
-        const activeSessions = new Set(online.map((row) => row.session_id || `legacy:${row.ip_address || row.client_ip || ''}:${row.player_name || ''}`));
+        const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && row.last_active && nowMs - new Date(row.last_active).getTime() < 180000);
+        const activeSessions = new Set(online.map((row) => `legacy:${row.ip_address || row.client_ip || ''}:${row.player_name || ''}`));
         animateMetricValue('stat-online', activeSessions.size); $('nav-online-count') && ($('nav-online-count').textContent = activeSessions.size); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
         $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => String(row.status || '').startsWith('BANNED')).length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
         $('students-body') && ($('students-body').innerHTML = rows.map((row) => { const isOnline = online.includes(row); const status = String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline'; const ip = row.ip_address || row.client_ip || ''; const name = row.player_name || 'Học sinh'; return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button></div></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>');
@@ -1229,7 +1233,7 @@
             showApp(); removeGeminiSettingsUi(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
             await syncSubjectQuestionCounts();
-            setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 30000);
+        setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
             denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');
