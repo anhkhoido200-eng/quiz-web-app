@@ -52,6 +52,14 @@
         const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
         return dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
     };
+    // Mã môn có thể được tạo từ JSON cũ với dấu cách/gạch nối/Unicode khác
+    // nhau. Dùng một khóa so sánh ổn định để số câu trên thẻ môn luôn khớp
+    // với ngân hàng, nhưng vẫn giữ nguyên subject_key thật khi ghi Cloud.
+    const subjectMatchKey = (value) => String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
     const allSubjects = () => mergeSubjectCatalog(state.subjects)
         .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
         .filter((item) => item.key);
@@ -360,15 +368,15 @@
 
     async function syncSubjectQuestionCounts() {
         const questionCounts = (state.questions || []).reduce((counts, question) => {
-            const key = String(question.subject_key || question.subjectKey || '').trim();
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
             if (key) counts[key] = (counts[key] || 0) + 1;
             return counts;
         }, {});
-        const changed = state.subjects.some((subject) => Number(subject.count || 0) !== (questionCounts[subject.key || subject.subject_key] || 0));
+        const changed = state.subjects.some((subject) => Number(subject.count || 0) !== (questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0));
         if (!changed) return;
         state.subjects = state.subjects.map((subject) => ({
             ...subject,
-            count: questionCounts[subject.key || subject.subject_key] || 0
+            count: questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0
         }));
         console.debug('[Quiz Studio Admin] Syncing subject question counts:', state.subjects.map((subject) => ({ key: subject.key, count: subject.count })));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
@@ -536,6 +544,45 @@
         const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
         if (error) return notify(`Không thể xóa: ${error.message}`, true);
         notify('Đã xóa câu hỏi.'); if (String(state.editingId) === String(id)) resetForm(); await loadQuestions();
+    }
+
+    async function deleteSubjectQuestions(key) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        const name = subject?.name || key;
+        const currentCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key)).length;
+        if (!currentCount && !window.confirm(`Không thấy câu hỏi đã tải cho môn ${name}. Vẫn kiểm tra và dọn dữ liệu Cloud?`)) return;
+        if (currentCount && !window.confirm(`Xóa toàn bộ ${currentCount} câu hỏi của môn ${name}? Hành động này không thể hoàn tác.`)) return;
+        try {
+            const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
+            if (error) throw error;
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu hỏi chưa xóa được.`);
+            try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            notify(`Đã xóa toàn bộ câu hỏi của môn ${name}.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể xóa câu hỏi môn ${name}: ${error.message}`, true);
+        }
+    }
+
+    async function adoptLegacyQuestions(key) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        const name = subject?.name || key;
+        const legacyCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === 'history').length;
+        if (!legacyCount) return notify('Không còn câu hỏi cũ chưa gán môn.', true);
+        if (!window.confirm(`Gán ${legacyCount} câu hỏi cũ đang ở mã history vào môn ${name}?`)) return;
+        try {
+            const { error } = await state.client.from('quiz_questions').update({ subject_key: key }).eq('subject_key', 'history');
+            if (error) throw error;
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) < legacyCount) throw new Error(`Cloud chỉ xác minh ${count}/${legacyCount} câu đã gán.`);
+            notify(`Đã đồng bộ ${legacyCount} câu hỏi vào môn ${name}.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể đồng bộ câu hỏi vào môn ${name}: ${error.message}`, true);
+        }
     }
 
     async function extractFile(file) {
@@ -985,17 +1032,18 @@
     function renderSubjectCatalog() {
         const subjects = mergeSubjectCatalog(state.subjects);
         const questionCounts = (state.questions || []).reduce((counts, question) => {
-            const key = String(question.subject_key || question.subjectKey || '').trim();
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
             if (key) counts[key] = (counts[key] || 0) + 1;
             return counts;
         }, {});
+        const legacyCount = questionCounts.history || 0;
         console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
             key: subject.key,
             storedCount: Number(subject.count || 0),
-            loadedQuestionCount: questionCounts[subject.key] || 0
+            loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
         })));
         $('subject-count') && ($('subject-count').textContent = subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => { const key = subject.key || subject.subject_key; const count = questionCounts[key] || 0; return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · ${count} câu</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`; }).join('') || '<div class="empty-state">Chưa có môn học.</div>');
+        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => { const key = subject.key || subject.subject_key; const count = questionCounts[subjectMatchKey(key)] || 0; const canAdoptLegacy = subjectMatchKey(key) !== 'history' && legacyCount > 0; return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`; }).join('') || '<div class="empty-state">Chưa có môn học.</div>');
         renderSubjectPrivacy();
     }
 
@@ -1049,13 +1097,13 @@
     async function saveSubjects() {
         state.subjects = (state.subjects || []).filter((item) => item && item.key && item.name);
         const questionCounts = (state.questions || []).reduce((counts, question) => {
-            const key = String(question.subject_key || question.subjectKey || '').trim();
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
             if (key) counts[key] = (counts[key] || 0) + 1;
             return counts;
         }, {});
         state.subjects = state.subjects.map((subject) => ({
             ...subject,
-            count: questionCounts[subject.key || subject.subject_key] || 0
+            count: questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0
         }));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
@@ -1287,9 +1335,9 @@
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
-        $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
+         $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
-        $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
