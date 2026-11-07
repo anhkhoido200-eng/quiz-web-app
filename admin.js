@@ -849,13 +849,13 @@
         $('sidebar')?.classList.remove('is-open');
     }
 
-    function removeGeminiSettingsUi() {
+    function configureAdminLabels() {
         const reportsDescription = document.querySelector('[data-view-panel="reports"] .page-heading p:not(.eyebrow)');
         if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, cấu hình giải thích bài tập, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
         const aiHeading = document.querySelector('.ai-config-panel h2');
         const aiDescription = document.querySelector('.ai-config-panel .muted-copy');
         if (aiHeading) aiHeading.textContent = 'Cấu hình giải thích bài tập';
-        if (aiDescription) aiDescription.textContent = 'API key chỉ dùng cho nút giải thích bài tập trên trang học sinh; không dùng để phân tích đề khi nạp hàng loạt.';
+        if (aiDescription) aiDescription.textContent = 'Nhập Gemini API key để dùng nút “Hỏi AI giải thích chi tiết” trên bài tập. API key được lưu trên Cloud.';
         const quickImport = $('quick-import');
         if (quickImport) {
             const title = quickImport.querySelector('b');
@@ -1230,7 +1230,7 @@
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;
             }
-            showApp(); removeGeminiSettingsUi(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
+            showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
             await syncSubjectQuestionCounts();
         setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
