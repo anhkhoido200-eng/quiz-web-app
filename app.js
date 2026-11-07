@@ -595,11 +595,11 @@ class QuizApp {
         await this.syncAdminIpsConfig();
     }
 
-    async refreshAccessAndSubjects() {
+    async refreshAccessAndSubjects(reloadQuestions = true) {
         await this.fetchClientIp();
         await this.syncClass5Access();
         await this.loadDynamicSubjects();
-        if (this.currentSubject) await this.loadQuestionsForCurrentSubject();
+        if (reloadQuestions && this.currentSubject) await this.loadQuestionsForCurrentSubject();
         this.isAppReady = true;
     }
 
@@ -2919,15 +2919,25 @@ renderImporterPreview() {
 
     renderMath(container) {
         if (!container || typeof renderMathInElement !== 'function') return;
-        try {
-            renderMathInElement(container, {
-                delimiters: [
-                    { left: '$$', right: '$$', display: true },
-                    { left: '$', right: '$', display: false }
-                ],
-                throwOnError: false
-            });
-        } catch (e) { }
+        // KaTeX có thể chiếm main thread khá lâu với đề lớn. Để trình duyệt
+        // vẽ giao diện trước rồi mới xử lý công thức ở frame rảnh kế tiếp.
+        const render = () => {
+            if (!container.isConnected) return;
+            try {
+                renderMathInElement(container, {
+                    delimiters: [
+                        { left: '$$', right: '$$', display: true },
+                        { left: '$', right: '$', display: false }
+                    ],
+                    throwOnError: false
+                });
+            } catch (e) { }
+        };
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(render, { timeout: 250 });
+        } else {
+            requestAnimationFrame(render);
+        }
     }
 
     /**
@@ -3041,10 +3051,19 @@ renderImporterPreview() {
             }
         }
 
-        // 1. Kiểm tra quyền truy cập môn học (Công khai hay Ẩn/Riêng tư)
-        await this.refreshAccessAndSubjects();
+        // 1. Dùng dữ liệu đã tải sẵn để mở bài ngay. Chỉ đồng bộ quyền ở nền,
+        // tránh chặn giao diện bởi các request Supabase tuần tự.
+        let visibleSubjects = this.getHomeVisibleSubjects();
+        if (visibleSubjects.length === 0 || !visibleSubjects.some((subject) => subject.key === this.currentSubject)) {
+            await this.refreshAccessAndSubjects();
+            visibleSubjects = this.getHomeVisibleSubjects();
+        } else {
+            // Cập nhật quyền/môn học ở nền, không reload lại đề đang làm.
+            this.refreshAccessAndSubjects(false).catch((error) => {
+                console.debug('[QuizApp] Background access refresh skipped:', error);
+            });
+        }
         console.debug('[QuizApp] Start quiz requested:', { name, currentSubject: this.currentSubject, visibleSubjects: this.getHomeVisibleSubjects().map((subject) => subject.key), loadedQuestions: this.allQuestions.length, clientIp: this.clientIp, online: navigator.onLine });
-        const visibleSubjects = this.getHomeVisibleSubjects();
 
         if (visibleSubjects.length === 0) {
             alert("⚠️ Hiện tại tất cả các đề thi đều đang được Giáo viên tạm ẩn. Vui lòng quay lại sau!");
@@ -3067,14 +3086,12 @@ renderImporterPreview() {
             await this.fetchClientIp();
         }
 
-        // Khởi tạo bài thi trên Cloud Supabase
+        // Khởi tạo bài thi trên Cloud Supabase ở nền; không bắt học sinh chờ
+        // truy vấn lookup + insert/update trước khi nhìn thấy câu hỏi.
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
-            try {
-                const res = await window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle());
-                this.currentLoginId = (res && res.id) ? res.id : res;
-            } catch (err) {
-                console.warn("Lỗi lưu đăng nhập lên Supabase:", err);
-            }
+            window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle())
+                .then((res) => { this.currentLoginId = (res && res.id) ? res.id : res; })
+                .catch((error) => console.warn("Lỗi lưu đăng nhập lên Supabase:", error));
         }
 
         // Cập nhật Header
@@ -3170,7 +3187,8 @@ renderImporterPreview() {
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            card.className = "glass-card-pro quiz-question-card question-card-enter rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4";
+            const animationClass = filtered.length <= 40 ? ' question-card-enter' : '';
+            card.className = `glass-card-pro quiz-question-card${animationClass} rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4`;
             card.style.setProperty('--question-index', idx);
 
             // Render hình ảnh đính kèm nếu có
