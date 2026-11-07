@@ -88,7 +88,7 @@ class QuizApp {
 
         // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
         const savedModel = localStorage.getItem('gemini_model');
-        const supportedGeminiModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
+        const supportedGeminiModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
         if (!supportedGeminiModels.includes(savedModel)) {
             localStorage.setItem('gemini_model', supportedGeminiModels[0]);
         }
@@ -869,6 +869,10 @@ class QuizApp {
     }
 
     isAiAllowedForCurrentClient() {
+        if (this.isAdminAuthenticated) {
+            console.debug('[QuizApp] AI access granted to authenticated Admin.');
+            return true;
+        }
         const currentIp = (this.clientIp || '').trim();
         if (!currentIp || currentIp.startsWith('Đang')) return false;
 
@@ -4665,8 +4669,8 @@ renderImporterPreview() {
     }
 
     async askAiExplanation(qId) {
-        // Kiểm tra quyền hạn theo IP: Phải là Admin hoặc được Admin cấp quyền IP
-        await this.loadAiIpsConfig();
+        // Admin được dùng trực tiếp; học sinh phải nằm trong whitelist IP.
+        if (!this.isAdminAuthenticated) await this.loadAiIpsConfig();
         if (!this.isAiAllowedForCurrentClient()) {
             alert(`🔒 BẠN CHƯA ĐƯỢC CẤP QUYỀN SỬ DỤNG TRỢ LÝ AI!\n\nĐịa chỉ IP của bạn: ${this.clientIp}\n\nTính năng Trợ lý AI giải thích bài yêu cầu Quản trị viên (Admin) cấp quyền theo địa chỉ IP. Vui lòng gửi địa chỉ IP của bạn cho Admin để được kích hoạt quyền.`);
             return;
@@ -4754,7 +4758,7 @@ YÊU CẦU:
 - Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
 
         try {
-            const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
+            const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
 
             let res = null;
             let lastErrMsg = "";
@@ -4775,6 +4779,7 @@ YÊU CẦU:
                     } else {
                         const errData = await callResp.json().catch(() => ({}));
                         lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
+                        console.debug('[QuizMaster AI] Gemini diagnostic:', { model, status: callResp.status, message: lastErrMsg, isAdmin: this.isAdminAuthenticated, currentIp: this.clientIp });
                         console.warn(`[QuizMaster AI] Model ${model} gặp lỗi (${callResp.status}):`, lastErrMsg);
 
                         // Dừng lặp chỉ khi API Key sai định dạng hoàn toàn

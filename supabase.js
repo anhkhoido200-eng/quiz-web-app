@@ -1904,7 +1904,7 @@ class DatabaseService {
                         id: SYSTEM_RECORDS.GEMINI_CONFIG,
                         player_name: '__GEMINI_CONFIG__',
                         ip_address: 'SYSTEM',
-                        device_info: 'GEMINI_AI_1_5_FLASH',
+                        device_info: 'GEMINI_AI_CURRENT_MODELS',
                         status: 'ACTIVE',
                         score_summary: cleanKey,
                         last_active: nowIso

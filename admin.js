@@ -803,7 +803,7 @@
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
+            const testModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
             let ok = false;
             let lastError = '';
             for (const model of testModels) {
