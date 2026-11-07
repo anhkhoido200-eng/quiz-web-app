@@ -2662,14 +2662,21 @@ renderImporterPreview() {
             if (!confirm(`Xác nhận xóa môn học [${key}] khỏi hệ thống?`)) return;
         }
 
-        this.dynamicSubjects = this.dynamicSubjects.filter(s => s.key !== key);
+        const previousSubjects = this.dynamicSubjects.slice();
         try {
             if (window.dbService && typeof window.dbService.deleteDynamicSubject === 'function') {
-                await window.dbService.deleteDynamicSubject(key);
+                const result = await window.dbService.deleteDynamicSubject(key);
+                if (!result?.success) throw new Error(result?.error || 'Cloud chưa xác minh xóa thành công.');
             }
-        } catch (e) { }
+        } catch (e) {
+            this.dynamicSubjects = previousSubjects;
+            alert(`❌ Không thể xóa môn [${key}]: ${e.message}`);
+            return;
+        }
 
+        this.dynamicSubjects = previousSubjects.filter(s => s.key !== key);
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));
+        try { localStorage.removeItem(`quiz_cache_${key}`); } catch (e) { }
         if (this.currentSubject === key) {
             this.currentSubject = this.dynamicSubjects[0] ? this.dynamicSubjects[0].key : '';
             await this.loadQuestionsForCurrentSubject();

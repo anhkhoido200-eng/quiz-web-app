@@ -742,7 +742,8 @@ class DatabaseService {
 
         // Nếu replaceAll = true, xóa sạch câu hỏi cũ của môn này trước khi insert
         if (replaceAll) {
-            await this.clearQuestionsBySubject(cleanSubject);
+            const deleted = await this.clearQuestionsBySubject(cleanSubject);
+            if (!deleted?.success) return { success: false, count: 0, error: deleted?.error || 'Không thể xóa dữ liệu cũ trước khi nạp.' };
         }
 
         let generatedId = await this.getNextQuestionId();
@@ -851,13 +852,37 @@ class DatabaseService {
      * Xóa toàn bộ câu hỏi của một môn học
      */
     async clearQuestionsBySubject(subjectKey) {
-        if (this.isSupabaseActive && this.client && subjectKey) {
-            try {
-                await this.client.from('quiz_questions').delete().eq('subject_key', subjectKey);
-                return true;
-            } catch (e) {}
+        const cleanSubject = String(subjectKey || '').trim();
+        if (!cleanSubject) return { success: false, count: 0, error: 'Thiếu mã môn học.' };
+        if (!this.isSupabaseActive || !this.client) {
+            return { success: false, count: 0, error: 'Supabase Cloud chưa sẵn sàng.' };
         }
-        return false;
+
+        try {
+            const { error: deleteError } = await this.client
+                .from('quiz_questions')
+                .delete()
+                .eq('subject_key', cleanSubject);
+            if (deleteError) throw deleteError;
+
+            // Không coi request DELETE thành công nếu RLS chặn silently hoặc
+            // còn câu hỏi mồ côi. Chỉ trả success sau khi đọc xác minh count=0.
+            const { count, error: verifyError } = await this.client
+                .from('quiz_questions')
+                .select('id', { count: 'exact', head: true })
+                .eq('subject_key', cleanSubject);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) {
+                throw new Error(`Còn ${count} câu hỏi thuộc môn ${cleanSubject} trên Cloud.`);
+            }
+
+            try { localStorage.removeItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`); } catch (e) {}
+            console.debug('[DatabaseService] Subject questions deleted and verified:', { subjectKey: cleanSubject, count: 0 });
+            return { success: true, count: 0 };
+        } catch (error) {
+            console.error('[DatabaseService] Không thể xóa toàn bộ câu hỏi của môn:', { subjectKey: cleanSubject, error });
+            return { success: false, count: null, error: error.message || 'Không thể xóa ngân hàng câu hỏi.' };
+        }
     }
 
     // =========================================================================
@@ -1653,11 +1678,17 @@ class DatabaseService {
     }
 
     async deleteDynamicSubject(subjectKey) {
-        if (!subjectKey) return;
+        const cleanSubject = String(subjectKey || '').trim();
+        if (!cleanSubject) return { success: false, error: 'Thiếu mã môn học.' };
         let subjects = await this.fetchDynamicSubjects();
-        subjects = subjects.filter(s => s.key !== subjectKey);
-        await this.clearQuestionsBySubject(subjectKey);
-        return await this.saveDynamicSubjects(subjects);
+        const questionDelete = await this.clearQuestionsBySubject(cleanSubject);
+        if (!questionDelete?.success) {
+            throw new Error(questionDelete?.error || 'Không thể xóa ngân hàng câu hỏi; môn học chưa bị xóa.');
+        }
+        subjects = subjects.filter(s => String(s.key || s.subject_key || '') !== cleanSubject);
+        const saved = await this.saveDynamicSubjects(subjects);
+        if (saved?.success === false) throw new Error(saved.error || 'Không thể lưu danh sách môn học.');
+        return { success: true, subjectKey: cleanSubject, deletedQuestions: questionDelete.count || 0 };
     }
 
     // =========================================================================

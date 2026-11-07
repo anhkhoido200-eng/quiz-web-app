@@ -1102,7 +1102,27 @@
             notify('Đã lưu môn học.');
         } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
     }
-    async function deleteSubject(key) { if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return; state.subjects = state.subjects.filter((item) => item.key !== key); await state.client.from('quiz_questions').delete().eq('subject_key', key); await saveSubjects(); notify('Đã xóa môn học.'); }
+    async function deleteSubject(key) {
+        if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return;
+        const previousSubjects = state.subjects.slice();
+        try {
+            // Xóa ngân hàng trước; nếu Cloud không xác minh được count=0 thì
+            // giữ nguyên môn để tránh tạo dữ liệu mồ côi.
+            const { error: deleteError } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
+            if (deleteError) throw deleteError;
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) throw new Error(`Còn ${count} câu hỏi chưa xóa được.`);
+            state.subjects = previousSubjects.filter((item) => item.key !== key);
+            await saveSubjects();
+            try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            notify(`Đã xóa môn ${key} và toàn bộ ngân hàng câu hỏi.`);
+            await loadQuestions();
+        } catch (error) {
+            state.subjects = previousSubjects;
+            throw new Error(`Không thể xóa môn ${key}: ${error.message}`);
+        }
+    }
 
     async function loadStudents() {
         ensureMonitorTable();
