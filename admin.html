@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-    <link rel="stylesheet" href="admin.css?v=2.4">
+    <link rel="stylesheet" href="admin.css?v=2.5">
 </head>
 <body>
     <div id="access-denied" class="access-denied hidden">
@@ -30,11 +30,10 @@
             <nav class="side-nav" aria-label="Khu vực quản trị">
                 <p class="nav-label">WORKSPACE</p>
                 <button class="nav-item is-active" data-view="overview" type="button"><i class="fa-solid fa-grid-2"></i><span>Tổng quan</span></button>
-                <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Ngân hàng câu hỏi</span><em id="nav-question-count">0</em></button>
+                <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Ngân hàng &amp; môn học</span><em id="nav-question-count">0</em></button>
                 <button class="nav-item" data-view="students" type="button"><i class="fa-solid fa-radar"></i><span>Giám sát học sinh</span><em id="nav-online-count">0</em></button>
                 <p class="nav-label nav-label-gap">SYSTEM</p>
                 <button class="nav-item" data-view="access" type="button"><i class="fa-solid fa-user-shield"></i><span>Quyền truy cập</span></button>
-                <button class="nav-item" data-view="subjects" type="button"><i class="fa-solid fa-books"></i><span>Môn học &amp; quyền riêng tư</span></button>
                 <button class="nav-item" data-view="reports" type="button"><i class="fa-solid fa-chart-line"></i><span>Báo cáo &amp; dữ liệu</span></button>
             </nav>
             <div class="sidebar-footer"><div class="maintenance-mini"><span id="maintenance-dot"></span><span><b id="maintenance-mini-label">Hệ thống đang mở</b><small id="maintenance-mini-message">Sẵn sàng phục vụ học sinh</small></span></div><a href="index.html" class="side-home"><i class="fa-solid fa-arrow-up-right-from-square"></i> Trang học sinh</a></div>
@@ -52,7 +51,7 @@
                 </section>
 
                 <section class="view" data-view-panel="questions">
-                    <div class="page-heading compact-heading"><div><p class="eyebrow">QUESTION LIBRARY</p><h1>Ngân hàng câu hỏi</h1><p>Soạn, nạp và quản lý câu hỏi cho tất cả môn học.</p></div><div class="heading-actions"><button id="import-button" class="button button-secondary" type="button"><i class="fa-solid fa-file-import"></i> Nạp hàng loạt</button><button id="new-question-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Câu hỏi mới</button></div></div>
+                    <div class="page-heading compact-heading"><div><p class="eyebrow">CONTENT LIBRARY</p><h1>Ngân hàng câu hỏi &amp; môn học</h1><p>Quản lý câu hỏi, môn học và quyền riêng tư trong cùng một khu vực.</p></div><div class="heading-actions"><button id="import-button" class="button button-secondary" type="button"><i class="fa-solid fa-file-import"></i> Nạp hàng loạt</button><button id="new-question-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Câu hỏi mới</button></div></div>
                     <div class="question-workspace">
                         <section class="panel editor-panel"><div class="panel-title"><div><p class="eyebrow">EDITOR</p><h2 id="form-title">Thêm câu hỏi mới</h2></div><button id="reset-form" class="text-button" type="button">Làm mới</button></div>
                             <form id="question-form" novalidate><input type="hidden" id="question-id"><div class="form-grid two-columns"><label>Đối tượng<select id="grade-select" required><option value="5">Lớp 5</option><option value="11" selected>Lớp 11</option></select></label><label>Môn học<select id="subject-select" required></select></label></div><label>Chuyên đề / bài học<input id="category-input" type="text" placeholder="Ví dụ: Phân số và số thập phân"></label><label>Loại câu hỏi<select id="question-type-select" required><option value="mcq">Trắc nghiệm 4 lựa chọn</option><option value="tf_group">Trắc nghiệm Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select></label><label>Nội dung câu hỏi<textarea id="question-input" rows="4" required placeholder="Nhập nội dung câu hỏi..."></textarea></label><div class="options-heading"><label>4 đáp án</label><span>Chọn nút tròn để đặt đáp án đúng</span></div><div class="answers-grid"><label class="answer-field"><button type="button" class="answer-radio is-selected" data-answer="0"><i class="fa-solid fa-circle-dot"></i></button><b>A</b><input id="option-0" required placeholder="Phương án A"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="1"><i class="fa-regular fa-circle"></i></button><b>B</b><input id="option-1" required placeholder="Phương án B"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="2"><i class="fa-regular fa-circle"></i></button><b>C</b><input id="option-2" required placeholder="Phương án C"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="3"><i class="fa-regular fa-circle"></i></button><b>D</b><input id="option-3" required placeholder="Phương án D"></label></div><div id="dynamic-type-editor"><div id="tf-editor" class="hidden"></div><div id="short-editor" class="hidden"></div></div><label>Giải thích <span class="muted-copy">(tùy chọn)</span><textarea id="explanation-input" rows="3" placeholder="Giải thích đáp án hoặc cách giải..."></textarea></label><div class="form-actions"><button id="cancel-edit" class="button button-secondary hidden" type="button">Hủy sửa</button><button id="submit-question" class="button button-primary" type="submit"><i class="fa-solid fa-cloud-arrow-up"></i> <span id="submit-label">Lưu câu hỏi</span></button></div></form>
@@ -91,6 +90,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="admin.js?v=4.4"></script>
+    <script src="admin.js?v=4.5"></script>
 </body>
 </html>

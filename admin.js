@@ -862,7 +862,8 @@
     }
 
     function switchView(view) {
-        const titles = { overview: 'Tổng quan', questions: 'Ngân hàng câu hỏi', students: 'Giám sát học sinh', access: 'Quyền truy cập', subjects: 'Môn học & quyền riêng tư', reports: 'Báo cáo & dữ liệu' };
+        if (view === 'subjects') view = 'questions';
+        const titles = { overview: 'Tổng quan', questions: 'Ngân hàng & môn học', students: 'Giám sát học sinh', access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' };
         document.querySelectorAll('[data-view-panel]').forEach((panel) => {
             const isActive = panel.dataset.viewPanel === view;
             panel.classList.toggle('is-visible', isActive);
@@ -872,6 +873,28 @@
         document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === view));
         $('view-title') && ($('view-title').textContent = titles[view] || view);
         $('sidebar')?.classList.remove('is-open');
+    }
+
+    function mergeContentLibraryView() {
+        const library = document.querySelector('[data-view-panel="questions"]');
+        const subjects = document.querySelector('[data-view-panel="subjects"]');
+        if (!library || !subjects || subjects.dataset.merged === 'true') return;
+
+        const heading = subjects.querySelector('.page-heading');
+        if (heading) {
+            heading.querySelector('h1')?.replaceChildren(document.createTextNode('Môn học & quyền riêng tư'));
+            const copy = heading.querySelector('p:not(.eyebrow)');
+            if (copy) copy.textContent = 'Tạo môn học, gán quyền riêng tư và nạp câu hỏi vào đúng môn trong cùng một khu vực.';
+            heading.classList.add('content-library-subheading');
+        }
+
+        const divider = document.createElement('div');
+        divider.className = 'content-library-divider';
+        divider.innerHTML = '<span class="eyebrow">SUBJECT CATALOG</span><strong>Môn học &amp; quyền riêng tư</strong><small>Các câu hỏi mới sẽ được đồng bộ theo môn đích đã chọn.</small>';
+        library.appendChild(divider);
+        while (subjects.firstElementChild) library.appendChild(subjects.firstElementChild);
+        subjects.dataset.merged = 'true';
+        subjects.remove();
     }
 
     function configureAdminLabels() {
@@ -937,7 +960,7 @@
     async function removeAiIp(ip) { state.aiIps = state.aiIps.filter((item) => (typeof item === 'string' ? item : item.ip) !== ip); await saveAiIps(); renderAccess(); notify('Đã thu hồi quyền AI.'); }
 
     function ensureClass5AccessPanel() {
-        const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
+        const grid = document.querySelector('[data-view-panel="questions"] .geo-grid') || document.querySelector('[data-view-panel="subjects"] .geo-grid');
         if (!grid || document.getElementById('class5-ip-list')) return;
         grid.insertAdjacentHTML('beforeend', '<section class="panel class5-access-panel"><div class="panel-title"><div><p class="eyebrow">CLASS 5 ACCESS</p><h2>Quyền riêng Lớp 5</h2><p class="muted-copy">Chỉ các IP bên dưới mới thấy môn Lớp 5. IP khác mặc định chỉ thấy Lớp 11.</p></div><span id="class5-ip-count" class="status-badge safe">0 IP</span></div><div class="inline-form"><input id="class5-ip-input" name="class5-access-ip" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" placeholder="Nhập địa chỉ IP..."><button id="add-class5-ip" class="button button-primary"><i class="fa-solid fa-user-plus"></i> Cấp quyền</button></div><button id="add-current-class5-ip" class="text-button"><i class="fa-solid fa-location-crosshairs"></i> Cấp quyền cho IP máy này</button><div id="class5-ip-list" class="stack-list"></div></section>');
         const input = $('class5-ip-input');
@@ -988,7 +1011,7 @@
     }
 
     function upgradePrivacyPanel() {
-        const grid = document.querySelector('[data-view-panel="subjects"] .geo-grid');
+        const grid = document.querySelector('[data-view-panel="questions"] .geo-grid') || document.querySelector('[data-view-panel="subjects"] .geo-grid');
         if (!grid || grid.dataset.upgraded === 'true') { ensureClass5AccessPanel(); renderSubjectPrivacy(); return; }
         grid.dataset.upgraded = 'true';
         ensureClass5AccessPanel();
@@ -1036,6 +1059,8 @@
         }));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
+        const verified = await systemRow(SYSTEM.subjects);
+        if (!verified?.score_summary || JSON.stringify(JSON.parse(verified.score_summary)) !== JSON.stringify(state.subjects)) throw new Error('Cloud chưa xác minh đúng danh sách môn học.');
         fillLibrarySubjects(); await loadSubjects();
     }
 
@@ -1066,7 +1091,7 @@
     }
     function openSubjectDialog(subject = null, opener = null) {
         moveSubjectFormToDialog();
-        switchView('subjects');
+        switchView('questions');
         state.subjectDialogOpener = opener || document.activeElement;
         resetSubjectForm();
         if (subject) {
@@ -1123,6 +1148,7 @@
             throw new Error(`Không thể xóa môn ${key}: ${error.message}`);
         }
     }
+
 
     async function loadStudents() {
         ensureMonitorTable();
@@ -1209,6 +1235,7 @@
 
     function bindEvents() {
         if (state.bound) return; state.bound = true;
+        mergeContentLibraryView();
         injectEditorControls();
         moveSubjectFormToDialog();
         document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));

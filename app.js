@@ -2620,6 +2620,7 @@ renderImporterPreview() {
         }
 
         const existingIdx = this.dynamicSubjects.findIndex(s => s.key === key);
+        const previousSubject = existingIdx >= 0 ? { ...this.dynamicSubjects[existingIdx] } : null;
         const subjectObj = {
             id: key,
             key: key,
@@ -2642,9 +2643,16 @@ renderImporterPreview() {
         try {
             if (window.dbService && typeof window.dbService.saveDynamicSubjects === 'function') {
                 await window.dbService.saveDynamicSubjects(this.dynamicSubjects);
+            } else {
+                throw new Error('Dịch vụ Cloud chưa sẵn sàng.');
             }
         } catch (e) {
+            this.dynamicSubjects = existingIdx >= 0
+                ? this.dynamicSubjects.map((item, index) => index === existingIdx ? previousSubject : item)
+                : this.dynamicSubjects.filter((item) => item.key !== key);
             console.warn("Lưu môn học vào Cloud thất bại:", e);
+            alert(`❌ Không thể đồng bộ môn học: ${e.message}`);
+            return;
         }
 
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(this.dynamicSubjects));

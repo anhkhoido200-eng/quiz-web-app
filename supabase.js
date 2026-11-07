@@ -1651,8 +1651,19 @@ class DatabaseService {
                         last_active: nowIso
                     }], { onConflict: 'id' });
                 if (error) throw error;
+                const { data: verified, error: verifyError } = await this.client
+                    .from('quiz_logins')
+                    .select('score_summary')
+                    .eq('id', SYSTEM_RECORDS.DYNAMIC_SUBJECTS)
+                    .limit(1);
+                if (verifyError) throw verifyError;
+                const verifiedSubjects = JSON.parse(verified?.[0]?.score_summary || '[]');
+                if (!Array.isArray(verifiedSubjects) || JSON.stringify(verifiedSubjects) !== payloadStr) {
+                    throw new Error('Cloud chưa xác minh đúng danh sách môn học vừa lưu.');
+                }
             } catch (e) {
                 console.error("[DatabaseService] Lỗi lưu môn học động:", e);
+                throw e;
             }
         }
 
