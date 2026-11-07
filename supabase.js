@@ -596,6 +596,7 @@ class DatabaseService {
                 const { data, error } = await query;
 
                 if (!error) {
+                    console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: (data || []).length });
                     return (data || []).map(row => ({
                         id: row.id,
                         subjectKey: row.subject_key || 'history',
@@ -611,6 +612,7 @@ class DatabaseService {
                         imageUrl: row.image_url || ''
                     }));
                 }
+                console.warn('[DatabaseService] Questions query failed:', { subjectKey, error: error?.message, code: error?.code, details: error?.details });
                 throw error;
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi fetch questions từ Supabase:", err);
@@ -1228,6 +1230,7 @@ class DatabaseService {
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi lấy cấu hình phân quyền môn Địa:", e);
             }
+            console.debug('[DatabaseService] Geo config fetch result:', { mode, ips, grade5Ips, error: undefined });
             return { mode, ips, grade5Ips };
         }
 

@@ -62,6 +62,8 @@ class QuizApp {
 
         // Dữ liệu bóc tách từ bộ nạp đề
         this.parsedImportQuestions = [];
+        this.isAppReady = false;
+        this.isLoadingQuestions = false;
 
         // Tiện ích Debounce tối ưu hiệu năng chống giật lag
         this.debouncedSearchAdminQuestions = this.debounce(() => {
@@ -140,6 +142,13 @@ class QuizApp {
         this.updateTotalQuestionDisplay();
         await this.initMaintenance();
         this.startRealtimeHeartbeat();
+        this.isAppReady = true;
+        const startButton = document.getElementById('btn-start-quiz');
+        if (startButton) {
+            startButton.disabled = false;
+            startButton.removeAttribute('aria-busy');
+            startButton.classList.remove('opacity-60', 'cursor-wait');
+        }
     }
 
     /* ============================================================== */
@@ -174,6 +183,12 @@ class QuizApp {
 
         this.dynamicSubjects = loaded;
         localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(loaded));
+        console.debug('[QuizApp] Dynamic subjects loaded:', {
+            online: navigator.onLine,
+            cloudAvailable,
+            currentSubject: this.currentSubject,
+            subjects: loaded.map((subject) => ({ key: subject?.key, name: subject?.name, grade: this.getSubjectGrade(subject), visibility: subject?.visibility, count: subject?.count }))
+        });
 
         this.renderHomeSubjects();
         this.populateSubjectDropdowns();
@@ -218,6 +233,12 @@ class QuizApp {
             const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || sub.is_public === false;
             const canViewPrivate = this.isAdminAuthenticated || canViewPrivateByIp || (grade === '5' && canViewGrade5);
             return canViewGrade && (!isPrivate || canViewPrivate);
+        });
+        console.debug('[QuizApp] Visible subject decision:', {
+            currentIp,
+            canViewGrade5,
+            homeGradeFilter: this.homeGradeFilter,
+            subjects: (this.dynamicSubjects || []).map((sub) => ({ key: sub?.key, detectedGrade: this.getSubjectGrade(sub), visibility: sub?.visibility, visible: allowedSubjects.includes(sub) }))
         });
         const filter = this.getHomeGradeFilter();
         return filter === 'all'
@@ -388,6 +409,7 @@ class QuizApp {
 
     async selectSubject(subjKey) {
         const selected = (this.dynamicSubjects || []).find((subject) => subject.key === subjKey);
+        console.debug('[QuizApp] Subject selection requested:', { subjKey, selected, currentSubject: this.currentSubject, visible: this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey) });
         if (!selected || !this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey)) {
             this.showToastNotification('Môn học này không thuộc khu vực được cấp quyền trên thiết bị hiện tại.');
             return;
@@ -409,6 +431,9 @@ class QuizApp {
         }
         let questions = [];
         let cloudQuestionsLoaded = false;
+        this.isLoadingQuestions = true;
+        const subjectAtStart = this.currentSubject;
+        console.debug('[QuizApp] Loading questions:', { subject: this.currentSubject, online: navigator.onLine, supabaseActive: Boolean(window.dbService?.isSupabaseActive) });
 
         // 1. Thử lấy từ Supabase Cloud nếu Online
         if (navigator.onLine) {
@@ -418,6 +443,7 @@ class QuizApp {
                     if (Array.isArray(cloudQuestions)) {
                         cloudQuestionsLoaded = Boolean(window.dbService.isSupabaseActive);
                         questions = cloudQuestions;
+                        console.debug('[QuizApp] Cloud questions loaded:', { subject: this.currentSubject, count: questions.length });
                         // Lưu cache ngoại tuyến vào localStorage
                         try {
                             localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(questions));
@@ -453,7 +479,13 @@ class QuizApp {
             }
         }
 
+        if (this.currentSubject !== subjectAtStart) {
+            this.isLoadingQuestions = false;
+            return;
+        }
         this.allQuestions = this.normalizeQuestions(questions);
+        this.isLoadingQuestions = false;
+        console.debug('[QuizApp] Questions load completed:', { subject: this.currentSubject, count: this.allQuestions.length, cloudQuestionsLoaded, source: cloudQuestionsLoaded ? 'cloud' : (questions.length ? 'cache-or-bundled' : 'empty') });
 
         // Cập nhật số lượng câu hỏi vào danh sách môn học
         const targetSub = this.dynamicSubjects.find(s => s.key === this.currentSubject);
@@ -561,6 +593,14 @@ class QuizApp {
 
         // Đồng bộ danh sách IP Admin từ Supabase
         await this.syncAdminIpsConfig();
+    }
+
+    async refreshAccessAndSubjects() {
+        await this.fetchClientIp();
+        await this.syncClass5Access();
+        await this.loadDynamicSubjects();
+        if (this.currentSubject) await this.loadQuestionsForCurrentSubject();
+        this.isAppReady = true;
     }
 
     hasAdminIpAccess() {
@@ -2979,7 +3019,24 @@ renderImporterPreview() {
         this.playerName = name;
         localStorage.setItem('quiz_user_name', name);
 
+        const startButton = document.getElementById('btn-start-quiz');
+        if (!this.isAppReady || this.isLoadingQuestions) {
+            if (startButton) {
+                startButton.disabled = true;
+                startButton.setAttribute('aria-busy', 'true');
+                startButton.classList.add('opacity-60', 'cursor-wait');
+            }
+            await this.loadQuestionsForCurrentSubject();
+            if (startButton) {
+                startButton.disabled = false;
+                startButton.removeAttribute('aria-busy');
+                startButton.classList.remove('opacity-60', 'cursor-wait');
+            }
+        }
+
         // 1. Kiểm tra quyền truy cập môn học (Công khai hay Ẩn/Riêng tư)
+        await this.refreshAccessAndSubjects();
+        console.debug('[QuizApp] Start quiz requested:', { name, currentSubject: this.currentSubject, visibleSubjects: this.getHomeVisibleSubjects().map((subject) => subject.key), loadedQuestions: this.allQuestions.length, clientIp: this.clientIp, online: navigator.onLine });
         const visibleSubjects = this.getHomeVisibleSubjects();
 
         if (visibleSubjects.length === 0) {
