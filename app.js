@@ -64,6 +64,8 @@ class QuizApp {
         this.parsedImportQuestions = [];
         this.isAppReady = false;
         this.isLoadingQuestions = false;
+        this.questionSyncChannel = null;
+        this.questionSyncPoll = null;
 
         // Tiện ích Debounce tối ưu hiệu năng chống giật lag
         this.debouncedSearchAdminQuestions = this.debounce(() => {
@@ -142,6 +144,7 @@ class QuizApp {
         this.updateTotalQuestionDisplay();
         await this.initMaintenance();
         this.startRealtimeHeartbeat();
+        this.startRealtimeQuestionSync();
         this.isAppReady = true;
         const startButton = document.getElementById('btn-start-quiz');
         if (startButton) {
@@ -593,6 +596,39 @@ class QuizApp {
 
         // Đồng bộ danh sách IP Admin từ Supabase
         await this.syncAdminIpsConfig();
+    }
+
+    startRealtimeQuestionSync() {
+        const service = window.dbService;
+        if (!service?.isSupabaseActive || !service.client) return;
+
+        // Supabase Realtime giúp các tab học sinh nhận bộ đề mới ngay sau khi
+        // Admin insert/delete. Không phụ thuộc cache hoặc lần tải trang kế tiếp.
+        try {
+            this.questionSyncChannel = service.client
+                .channel('quiz-questions-live-sync')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_questions' }, (payload) => {
+                    const changedSubject = payload?.new?.subject_key || payload?.old?.subject_key;
+                    if (!changedSubject || changedSubject === this.currentSubject) {
+                        this.loadQuestionsForCurrentSubject().catch((error) => console.debug('[QuizApp] Realtime question refresh skipped:', error));
+                    }
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins', filter: 'id=eq.00000000-0000-0000-0000-000000000004' }, () => {
+                    this.loadDynamicSubjects().catch((error) => console.debug('[QuizApp] Realtime subject refresh skipped:', error));
+                })
+                .subscribe((status) => console.debug('[QuizApp] Question realtime status:', status));
+        } catch (error) {
+            console.warn('[QuizApp] Không bật được Realtime, dùng polling dự phòng:', error);
+        }
+
+        // Dự phòng cho project chưa bật Realtime publication.
+        this.questionSyncPoll = window.setInterval(() => {
+            if (document.hidden || this.isLoadingQuestions || !this.currentSubject) return;
+            this.loadQuestionsForCurrentSubject().catch(() => {});
+        }, 10000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this.currentSubject) this.loadQuestionsForCurrentSubject().catch(() => {});
+        }, { passive: true });
     }
 
     async refreshAccessAndSubjects(reloadQuestions = true) {

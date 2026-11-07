@@ -242,7 +242,14 @@
         }
         if ($('import-subject-select')) {
             $('import-subject-select').innerHTML = allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
-            $('import-subject-select').value = state.importSubject;
+            // Luôn giữ state theo đúng môn đang hiển thị. Nếu state cũ là
+            // "history" nhưng Admin chọn môn khác, trước đây dữ liệu vẫn bị
+            // ghi nhầm vào history khiến app học sinh không tìm thấy.
+            const selectedSubject = allSubjects().some((item) => item.key === state.importSubject)
+                ? state.importSubject
+                : (allSubjects()[0]?.key || '');
+            $('import-subject-select').value = selectedSubject;
+            state.importSubject = selectedSubject;
         }
         if ($('leaderboard-subject')) $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
     }
@@ -736,17 +743,35 @@
         if (!state.importIntegrity.valid && !window.confirm('Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?')) return;
         if ($('import-replace')?.checked && !window.confirm('Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp?')) return;
         try {
+            const selectedSubject = String($('import-subject-select')?.value || state.importSubject || '').trim();
+            if (!selectedSubject) throw new Error('Chưa chọn môn đích cho bộ câu hỏi.');
+            // Quan trọng: dùng đúng giá trị mới nhất từ dropdown, không dùng
+            // state cũ còn sót lại từ lần import trước.
+            state.importSubject = selectedSubject;
             if ($('import-replace')?.checked) {
-                const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', state.importSubject);
+                const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', selectedSubject);
                 if (error) throw error;
             }
             const firstId = await nextQuestionId();
-            const records = state.importQuestions.map((item, index) => toRecord(item, state.importSubject, firstId + index));
+            const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
             for (let index = 0; index < records.length; index += 50) {
                 const { error } = await state.client.from('quiz_questions').insert(records.slice(index, index + 50));
                 if (error) throw error;
             }
-             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
+            // Đọc lại ngay sau khi ghi để không báo thành công giả khi RLS,
+            // subject_key hoặc payload có vấn đề.
+            const { data: verified, error: verifyError } = await state.client
+                .from('quiz_questions')
+                .select('id, subject_key')
+                .eq('subject_key', selectedSubject)
+                .order('id', { ascending: true });
+            if (verifyError) throw verifyError;
+            const verifiedCount = Array.isArray(verified) ? verified.length : 0;
+            if (verifiedCount < records.length) {
+                throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu ở môn ${selectedSubject}.`);
+            }
+            console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, cloudCount: verifiedCount });
+            notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
              sessionStorage.removeItem('quiz_import_draft');
              closeModal('import-modal'); await loadQuestions();
         } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
@@ -1184,7 +1209,7 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
-         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
+         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
