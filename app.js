@@ -3061,6 +3061,31 @@ renderImporterPreview() {
         return typeof text === 'string' ? text : String(text ?? '');
     }
 
+    escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[character]));
+    }
+
+    hasSubmittedAnswer(qId) {
+        return Object.prototype.hasOwnProperty.call(this.userAnswers || {}, qId);
+    }
+
+    isShortAnswerCorrect(question, value) {
+        if (!question || value === undefined || value === null) return false;
+        const normalizedValue = String(value).trim().toLowerCase();
+        if (!normalizedValue) return false;
+
+        const acceptedValues = [question.correctValue, ...(Array.isArray(question.acceptedValues) ? question.acceptedValues : [])]
+            .map((accepted) => String(accepted ?? '').trim().toLowerCase())
+            .filter(Boolean);
+        return acceptedValues.includes(normalizedValue);
+    }
+
     /* ============================================================== */
     /* 9. THỰC HIỆN LÀM BÀI TRẮC NGHIỆM & TÍNH ĐIỂM                    */
     /* ============================================================== */
@@ -3374,7 +3399,29 @@ renderImporterPreview() {
 
             // 3. Dạng Câu Trả Lời Ngắn (Short Answer)
             else if (q.qType === 'short_answer') {
-                const userVal = this.userAnswers[q.id] || '';
+                const hasSubmitted = this.hasSubmittedAnswer(q.id);
+                const userVal = hasSubmitted ? String(this.userAnswers[q.id] ?? '') : '';
+                const isCorrect = hasSubmitted && this.isShortAnswerCorrect(q, userVal);
+                const correctValue = String(q.correctValue ?? '').trim() || String(q.acceptedValues?.[0] ?? '').trim();
+                const shortFeedbackHtml = hasSubmitted ? `
+                    <div class="short-answer-feedback ${this.isExamMode ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
+                        <div class="short-answer-feedback-title">
+                            <i class="fa-solid ${this.isExamMode ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
+                            <span>${this.isExamMode ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
+                        </div>
+                        <div class="short-answer-feedback-line">
+                            <span>Bạn nhập:</span>
+                            <strong>${this.escapeHtml(userVal)}</strong>
+                        </div>
+                        ${!this.isExamMode ? `
+                            <div class="short-answer-feedback-line">
+                                <span>Đáp án đúng:</span>
+                                <strong>${correctValue ? this.formatScientificNotation(correctValue) : 'Chưa thiết lập'}</strong>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : '';
+
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs">Câu ${idx + 1} (Trả lời ngắn)</span>
@@ -3383,11 +3430,13 @@ renderImporterPreview() {
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${userVal}" onchange="app.saveShortAnswer(${q.id}, this.value)" placeholder="Nhập đáp án của bạn..." class="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono">
-                        <button type="button" onclick="app.saveShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">
-                            Ghi nhận
+                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onchange="app.saveShortAnswer(${q.id}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${q.id}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <button type="button" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onclick="app.saveShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
+                            <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
+                            <span>${hasSubmitted ? 'Đã ghi nhận' : 'Ghi nhận'}</span>
                         </button>
                     </div>
+                    ${shortFeedbackHtml}
                     ${aiButtonHtml}
                 `;
             }
@@ -3403,10 +3452,14 @@ renderImporterPreview() {
     selectOption(qId, oIdx) {
         const q = this.allQuestions.find(item => item.id === qId);
         if (!q) return;
+        if (this.hasSubmittedAnswer(qId)) {
+            console.debug('[QuizApp] Bỏ qua lần chọn trắc nghiệm thứ hai:', { qId, existing: this.userAnswers[qId] });
+            return;
+        }
 
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
-        this.renderAllQuestions(true);
+        this.renderAllQuestions(true, true);
         this.updateLiveStats();
     }
 
@@ -3430,10 +3483,19 @@ renderImporterPreview() {
     }
 
     saveShortAnswer(qId, val) {
-        if (!val || !val.trim()) return;
-        this.userAnswers[qId] = val.trim();
+        const question = this.allQuestions.find(item => item.id === qId);
+        if (!question || question.qType !== 'short_answer') return;
+        if (this.hasSubmittedAnswer(qId)) {
+            console.debug('[QuizApp] Bỏ qua lần nhập trả lời ngắn thứ hai:', { qId, existing: this.userAnswers[qId] });
+            return;
+        }
+
+        const normalizedValue = String(val ?? '').trim();
+        if (!normalizedValue) return;
+        this.userAnswers[qId] = normalizedValue;
+        console.debug('[QuizApp] Đã ghi nhận trả lời ngắn:', { qId, answered: true });
         this.saveAutoSaveProgress();
-        this.renderAllQuestions(true);
+        this.renderAllQuestions(true, true);
         this.updateLiveStats();
     }
 
