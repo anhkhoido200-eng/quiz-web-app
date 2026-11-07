@@ -857,6 +857,7 @@ class QuizApp {
     /* -------------------------------------------------------------- */
 
     async loadAiIpsConfig() {
+        if (Array.isArray(this.allowedAiIps) && this.aiIpsLoadedAt && Date.now() - this.aiIpsLoadedAt < 60000) return this.allowedAiIps;
         let loaded = [];
         try {
             if (window.dbService && typeof window.dbService.fetchAiIpsConfig === 'function') {
@@ -866,6 +867,8 @@ class QuizApp {
             console.warn("Không thể tải danh sách IP cấp quyền AI:", e);
         }
         this.allowedAiIps = Array.isArray(loaded) ? loaded : [];
+        this.aiIpsLoadedAt = Date.now();
+        return this.allowedAiIps;
     }
 
     isAiAllowedForCurrentClient() {
@@ -4577,6 +4580,7 @@ renderImporterPreview() {
     /* ============================================================== */
 
     async loadGlobalGeminiApiKey() {
+        if (this.geminiApiKey) return this.geminiApiKey;
         try {
             if (window.dbService && typeof window.dbService.fetchGeminiApiKey === 'function') {
                 const cloudKey = await window.dbService.fetchGeminiApiKey();
@@ -4739,23 +4743,12 @@ renderImporterPreview() {
             studentAnswerText = (sIdx !== undefined && q.options) ? `${optChars[sIdx]}. ${q.options[sIdx]}` : "Chưa chọn đáp án";
         }
 
-        const prompt = `Bạn là trợ lý học tập thông minh, chuyên giải thích bài ngắn gọn và cực kỳ dễ hiểu cho học sinh Việt Nam.
-Hãy giải thích câu hỏi sau một cách NGẮN GỌN, TRỌNG TÂM, DỄ HIỂU NHẤT (khoảng 3 - 5 câu, tuyệt đối không viết dài dòng):
-
-- Môn học: ${this.getSubjectTitle()}
-- Câu hỏi: ${q.question}
-${optionsText ? `- Các phương án:\n${optionsText}` : ''}
-- Đáp án đúng: ${correctText}
-${studentAnswerText ? `- Học sinh chọn: ${studentAnswerText}` : ''}
-
-CẤU TRÚC GIẢI THÍCH (ngắn gọn, trực tiếp, rõ ràng):
-✅ **Vì sao đúng?**: Nêu bản chất/lý do cốt lõi trong 1-2 câu ngắn gọn, dễ hiểu nhất.
-💡 **Bẫy cần tránh (nếu có)**: Chỉ ra điểm học sinh hay nhầm lẫn trong 1 câu ngắn.
-⚡ **Mẹo nhớ nhanh**: 1 câu từ khóa / mẹo nhớ ngay lập tức.
-
-YÊU CẦU:
-- Văn phong tự nhiên, súc tích, dễ hiểu như gia sư dạy 1 kèm 1, tuyệt đối không viết văn dài dòng hay lý thuyết lan man.
-- Nếu có công thức toán/lý, bắt buộc kẹp công thức LaTeX giữa dấu $ (ví dụ $v = \\omega A$, $x^2$).`;
+        const prompt = `Bạn là gia sư Việt Nam. Giải thích ngắn gọn 3-5 câu, dễ hiểu.
+Môn: ${this.getSubjectTitle()}
+Câu hỏi: ${q.question}
+${optionsText ? `Phương án:\n${optionsText}\n` : ''}Đáp án đúng: ${correctText}
+Học sinh chọn: ${studentAnswerText}
+Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo nhớ nhanh. Không lan man.`;
 
         try {
             const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
@@ -4765,13 +4758,24 @@ YÊU CẦU:
 
             for (const model of candidateModels) {
                 try {
-                    const callResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 20000);
+                    const startedAt = performance.now();
+                    let callResp;
+                    try {
+                        callResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            signal: controller.signal,
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: prompt }] }],
+                                generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
+                            })
+                        });
+                    } finally {
+                        clearTimeout(timeoutId);
+                    }
+                    console.debug('[QuizMaster AI] Gemini response timing:', { model, elapsedMs: Math.round(performance.now() - startedAt), status: callResp?.status || 'network-error' });
 
                     if (callResp.ok) {
                         res = callResp;
@@ -4789,13 +4793,11 @@ YÊU CẦU:
                         }
 
                         // Nếu do lỗi server bận/quá tải (503), quota (429), chờ nhẹ rồi fallback
-                        if (callResp.status === 503 || callResp.status === 429) {
-                            await new Promise(resolve => setTimeout(resolve, 800));
-                        }
+                        if (callResp.status === 503 || callResp.status === 429) await new Promise(resolve => setTimeout(resolve, 250));
                         continue;
                     }
                 } catch (netErr) {
-                    lastErrMsg = netErr.message;
+                    lastErrMsg = netErr.name === 'AbortError' ? `Model ${model} phản hồi quá 20 giây.` : netErr.message;
                     console.warn(`[QuizMaster AI] Lỗi mạng khi gọi ${model}:`, netErr);
                 }
             }
