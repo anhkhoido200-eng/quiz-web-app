@@ -1211,6 +1211,8 @@ class DatabaseService {
                                 if (parsed.mode) mode = parsed.mode;
                                 if (Array.isArray(parsed.ips)) ips = parsed.ips;
                                 if (Array.isArray(parsed.grade5Ips)) grade5Ips = parsed.grade5Ips;
+                                else if (Array.isArray(parsed.grade5_ips)) grade5Ips = parsed.grade5_ips;
+                                else if (Array.isArray(parsed.class5Ips)) grade5Ips = parsed.class5Ips;
                             }
                         } catch (e) {}
                     }
@@ -1219,6 +1221,8 @@ class DatabaseService {
                 localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
                 localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
             } catch (e) {}
+            grade5Ips = grade5Ips.map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+            console.debug('[DatabaseService] Loaded Grade 5 access config from Supabase:', { mode, ips, grade5Ips });
             return { mode, ips, grade5Ips };
                 }
             } catch (e) {
@@ -1235,6 +1239,8 @@ class DatabaseService {
             grade5Ips = grade5Raw ? JSON.parse(grade5Raw) : [];
         } catch (e) {}
 
+        grade5Ips = grade5Ips.map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+        console.debug('[DatabaseService] Loaded Grade 5 access config from localStorage:', { mode, ips, grade5Ips });
         return { mode, ips, grade5Ips };
     }
 

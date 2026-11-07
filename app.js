@@ -190,15 +190,21 @@ class QuizApp {
     }
 
     canViewGrade5() {
-        const currentIp = String(this.clientIp || '').trim();
+        const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const currentIp = normalizeIp(this.clientIp);
+        const allowedIps = Array.isArray(this.class5AllowedIps) ? this.class5AllowedIps.map(normalizeIp).filter(Boolean) : [];
+        const matched = Boolean(currentIp && !currentIp.startsWith('Đang') && allowedIps.includes(currentIp));
+        console.debug('[QuizApp] Grade 5 access check:', { currentIp, allowedIps, matched, isAdminAuthenticated: this.isAdminAuthenticated });
         return Boolean(
             this.isAdminAuthenticated ||
-            (currentIp && !currentIp.startsWith('Đang') && this.class5AllowedIps.includes(currentIp))
+            matched
         );
     }
 
     getHomeGradeFilter() {
-        return ['all', '5', '11'].includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
+        const canViewGrade5 = this.canViewGrade5();
+        if (!canViewGrade5 && this.homeGradeFilter === '5') this.homeGradeFilter = 'all';
+        return (canViewGrade5 ? ['all', '5', '11'] : ['all', '11']).includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
     }
 
     getHomeVisibleSubjects() {
@@ -224,8 +230,9 @@ class QuizApp {
             if (window.dbService && typeof window.dbService.fetchGeoConfig === 'function') {
                 const config = await window.dbService.fetchGeoConfig();
                 this.allowedGeoIps = Array.isArray(config?.ips) ? config.ips : [];
-                this.class5AllowedIps = Array.isArray(config?.grade5Ips) ? config.grade5Ips : [];
+                this.class5AllowedIps = Array.isArray(config?.grade5Ips) ? config.grade5Ips : (Array.isArray(config?.grade5_ips) ? config.grade5_ips : []);
                 this.geoMode = config?.mode || 'PUBLIC';
+                console.debug('[QuizApp] Loaded Grade 5 access config:', { currentIp: this.clientIp, config, class5AllowedIps: this.class5AllowedIps });
             }
         } catch (error) {
             this.allowedGeoIps = [];
@@ -234,6 +241,7 @@ class QuizApp {
         }
 
         this.homeGradeFilter = this.getHomeGradeFilter();
+        console.debug('[QuizApp] Rendering Grade 5 visibility:', { currentIp: this.clientIp, canViewGrade5: this.canViewGrade5(), homeGradeFilter: this.homeGradeFilter });
         this.renderHomeSubjects();
     }
 
@@ -245,11 +253,12 @@ class QuizApp {
         const activeGrade = this.getHomeGradeFilter();
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
-            tabs.innerHTML = ['all', '5', '11'].map((grade) => {
+            const canViewGrade5 = this.canViewGrade5();
+            const grades = canViewGrade5 ? ['all', '5', '11'] : ['all', '11'];
+            tabs.innerHTML = grades.map((grade) => {
                     const label = grade === 'all' ? 'Tất cả' : `Lớp ${grade}`;
                     const active = activeGrade === grade;
-                    const locked = grade === '5' && !this.isAdminAuthenticated && !this.canViewGrade5();
-                    return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''} ${locked ? 'is-locked' : ''}" data-grade-filter="${grade}" ${locked ? 'disabled title="Lớp 5 chưa được cấp quyền"' : ''}>${locked ? '<i class="fa-solid fa-lock"></i>' : ''}${label}</button>`;
+                    return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
                 }).join('');
             tabs.querySelectorAll('[data-grade-filter]:not(:disabled)').forEach((button) => {
                 button.addEventListener('click', () => {
@@ -547,6 +556,8 @@ class QuizApp {
         // Cập nhật nhãn IP hiện tại
         const myIpEl = document.getElementById('admin-my-ip-display');
         if (myIpEl) myIpEl.textContent = this.clientIp;
+
+        console.debug('[QuizApp] Detected public IP:', this.clientIp);
 
         // Đồng bộ danh sách IP Admin từ Supabase
         await this.syncAdminIpsConfig();
