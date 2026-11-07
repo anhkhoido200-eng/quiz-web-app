@@ -1,4 +1,4 @@
-/* Quiz Studio Control Center. Question editor, strict AI import and system controls. */
+/* Quiz Studio Control Center. Question editor, strict import and system controls. */
 (() => {
     const CONFIG = {
         url: localStorage.getItem('quiz_supabase_url') || 'https://qotfikuiwmruicsvsbgq.supabase.co',
@@ -13,11 +13,10 @@
         aiIps: '00000000-0000-0000-0000-000000000006'
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
-    const AI_TYPE_LABELS = { multiple_choice: 'Trắc nghiệm 4 lựa chọn', true_false: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const state = {
         client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
-        importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '', geminiQuotaBlocked: false,
+        importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
@@ -186,17 +185,14 @@
             }
         }
         const importModal = $('import-modal');
-        if (importModal && !$('ai-analyze-import')) {
-            const actions = importModal.querySelector('.modal-actions');
-            const aiButton = document.createElement('button');
-            aiButton.id = 'ai-analyze-import';
-            aiButton.className = 'button button-purple';
-            aiButton.type = 'button';
-            aiButton.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích & giải';
-            actions?.insertBefore(aiButton, $('save-import'));
-        }
+        $('ai-analyze-import')?.remove();
+        const importTitle = importModal?.querySelector('.modal-header p:not(.eyebrow)');
+        if (importTitle) importTitle.textContent = 'Dán JSON câu hỏi đã có sẵn hoặc chọn file JSON/TXT.';
+        const importDropzone = importModal?.querySelector('.dropzone span');
+        if (importDropzone) importDropzone.textContent = 'Kéo thả hoặc chọn file JSON hoặc TXT';
+        if ($('import-text')) $('import-text').placeholder = 'Dán JSON câu hỏi tại đây...';
         const file = $('import-file');
-        if (file) file.accept = '.docx,.pdf,.json,.csv,.xlsx,.xls,.txt';
+        if (file) file.accept = '.json,.txt';
         injectGeminiControls();
         injectAdminStyles();
     }
@@ -439,7 +435,7 @@
         state.editingId = normalized.id || null;
         state.type = normalized.qType;
         $('question-id') && ($('question-id').value = normalized.id || '');
-        $('form-title') && ($('form-title').textContent = normalized.id ? `Sửa câu hỏi #${normalized.id}` : 'Duyệt câu hỏi từ AI');
+        $('form-title') && ($('form-title').textContent = normalized.id ? `Sửa câu hỏi #${normalized.id}` : 'Duyệt câu hỏi từ JSON');
         $('submit-label') && ($('submit-label').textContent = normalized.id ? 'Cập nhật câu hỏi' : 'Lưu câu hỏi');
         $('cancel-edit')?.classList.toggle('hidden', !normalized.id);
         if ($('grade-select')) $('grade-select').value = grade;
@@ -492,7 +488,8 @@
         const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && q.correct_value.length > 0));
         if (!valid) return notify('Vui lòng nhập đủ nội dung theo loại câu hỏi.', true);
         try {
-            const record = toRecord(q, q.subject_key, state.editingId || undefined);
+            const recordId = state.editingId || await nextQuestionId();
+            const record = toRecord(q, q.subject_key, recordId);
             const { error } = await state.client.from('quiz_questions').upsert(record, { onConflict: 'id' }).select();
             if (error) throw error;
             notify(state.editingId ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.');
@@ -509,28 +506,6 @@
 
     async function extractFile(file) {
         const name = file.name.toLowerCase();
-        if (name.endsWith('.docx')) {
-            if (!window.mammoth) throw new Error('Chưa tải được bộ đọc Word.');
-            const result = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-            return result.value;
-        }
-        if (name.endsWith('.pdf')) {
-            if (!window.pdfjsLib) throw new Error('Chưa tải được bộ đọc PDF.');
-            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-            const pages = [];
-            if (window.pdfjsLib.GlobalWorkerOptions) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-                const page = await pdf.getPage(pageNumber);
-                const content = await page.getTextContent();
-                pages.push(content.items.map((item) => `${item.str}${item.hasEOL ? '\n' : ' '}`).join('').trim());
-            }
-            return pages.join('\n');
-        }
-        if (/\.(xlsx|xls)$/.test(name)) {
-            if (!window.XLSX) throw new Error('Chưa tải được bộ đọc Excel.');
-            const book = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
-            return book.SheetNames.map((sheet) => window.XLSX.utils.sheet_to_csv(book.Sheets[sheet])).join('\n');
-        }
         return file.text();
     }
 
@@ -540,7 +515,7 @@
     function openImport() {
         state.importQuestions = []; state.importIndex = 0; state.sourceText = ''; state.importError = '';
         if ($('import-text')) $('import-text').value = '';
-        if ($('import-preview')) $('import-preview').innerHTML = '<p class="muted-copy">Chọn DOCX/PDF hoặc dán đề, sau đó bấm “Gemini phân tích & giải”.</p>';
+        if ($('import-preview')) $('import-preview').innerHTML = '<p class="muted-copy">Dán JSON câu hỏi rồi bấm “Đọc JSON” để xem trước và lưu.</p>';
         fillLibrarySubjects(); switchView('questions'); openModal('import-modal');
     }
 
@@ -572,18 +547,18 @@
                 if (list.length) return list;
             } catch (error) { /* Try the next JSON boundary. */ }
         }
-        throw new Error('Gemini trả về dữ liệu không phải JSON hợp lệ hoặc không có câu hỏi.');
+        throw new Error('Dữ liệu không phải JSON hợp lệ hoặc không có câu hỏi.');
     }
 
     function persistImportDraft() {
         try {
-            sessionStorage.setItem('quiz_ai_import_draft', JSON.stringify({ questions: state.importQuestions, sourceText: state.sourceText, subject: state.importSubject, integrity: state.importIntegrity }));
-        } catch (error) { console.warn('Không thể lưu bản nháp AI:', error); }
+            sessionStorage.setItem('quiz_import_draft', JSON.stringify({ questions: state.importQuestions, sourceText: state.sourceText, subject: state.importSubject, integrity: state.importIntegrity }));
+        } catch (error) { console.warn('Không thể lưu bản nháp nhập câu hỏi:', error); }
     }
 
     function restoreImportDraft() {
         try {
-            const draft = JSON.parse(sessionStorage.getItem('quiz_ai_import_draft') || 'null');
+            const draft = JSON.parse(sessionStorage.getItem('quiz_import_draft') || 'null');
             if (!draft || !Array.isArray(draft.questions) || !draft.questions.length) return false;
             state.importQuestions = draft.questions.map(normalizeAiQuestion);
             state.sourceText = draft.sourceText || '';
@@ -599,12 +574,12 @@
     function renderImportReview() {
         const root = $('import-preview');
         if (!root) return;
-        if (!state.importQuestions.length) { root.innerHTML = '<p class="muted-copy">Chưa có kết quả phân tích.</p>'; return; }
+        if (!state.importQuestions.length) { root.innerHTML = '<p class="muted-copy">Chưa có câu hỏi đã đọc.</p>'; return; }
         const q = normalizeAiQuestion(state.importQuestions[state.importIndex]);
-        const type = AI_TYPE_LABELS[q.type] || TYPE_LABELS[q.qType] || TYPE_LABELS.mcq;
+        const type = TYPE_LABELS[q.qType] || TYPE_LABELS.mcq;
         const detail = q.qType === 'tf_group' ? q.statements.map((item) => `<div class="tf-preview-row"><b>${esc(item.key)}</b><span>${htmlText(item.text)}</span><span class="tf-preview-answer ${item.answer ? '' : 'false'}">${item.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('') : q.qType === 'short_answer' ? `<div class="item-option is-correct">Đáp án: ${esc(q.correctValue)}</div>` : q.options.map((item, index) => `<div class="preview-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(item)}</span></div>`).join('');
-        const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Strict mode: văn bản và thứ tự được hiển thị đúng theo phản hồi JSON của Gemini. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không khớp nguyên văn một số trường sau khi chuẩn hóa khoảng trắng: ${esc(state.importIntegrity.errors.join(' | '))}. Khi bấm lưu, Admin sẽ được hỏi xác nhận tiếp tục.</span></div>`;
-        root.innerHTML = `<div class="ai-review"><div class="ai-review-toolbar"><b>Đã phân tích ${state.importIndex + 1}/${state.importQuestions.length} câu · ${esc(type)}</b><div><button type="button" class="button button-secondary compact" data-import-prev ${state.importIndex === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button> <button type="button" class="button button-secondary compact" data-import-next ${state.importIndex === state.importQuestions.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="ai-review-list">${state.importQuestions.map((item, index) => `<button type="button" class="ai-review-index ${index === state.importIndex ? 'is-active' : ''}" data-import-index="${index}">Câu ${index + 1}</button>`).join('')}</div><div class="ai-review-question"><b>${htmlText(q.question)}</b><div style="margin-top:9px">${detail}</div><p class="muted-copy">${htmlText(q.explanation)}</p></div>${integrity}</div>`;
+        const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Giữ nguyên nội dung và thứ tự theo JSON đã đọc. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không khớp nguyên văn một số trường sau khi chuẩn hóa khoảng trắng: ${esc(state.importIntegrity.errors.join(' | '))}. Khi bấm lưu, Admin sẽ được hỏi xác nhận tiếp tục.</span></div>`;
+        root.innerHTML = `<div class="ai-review"><div class="ai-review-toolbar"><b>Câu ${state.importIndex + 1}/${state.importQuestions.length} · ${esc(type)}</b><div><button type="button" class="button button-secondary compact" data-import-prev ${state.importIndex === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button> <button type="button" class="button button-secondary compact" data-import-next ${state.importIndex === state.importQuestions.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="ai-review-list">${state.importQuestions.map((item, index) => `<button type="button" class="ai-review-index ${index === state.importIndex ? 'is-active' : ''}" data-import-index="${index}">Câu ${index + 1}</button>`).join('')}</div><div class="ai-review-question"><b>${htmlText(q.question)}</b><div style="margin-top:9px">${detail}</div><p class="muted-copy">${htmlText(q.explanation)}</p></div>${integrity}</div>`;
     }
 
     function validateVerbatimQuestions(questions, source) {
@@ -643,7 +618,10 @@
         return errors;
     }
 
+    /* Gemini is intentionally not used for question import. */
     async function analyzeWithGemini() {
+        return notify('Gemini phân tích đề đã được tắt. Hãy dán JSON rồi bấm Đọc JSON.', true);
+        /* if (false) {
         const source = $('import-text')?.value || state.sourceText;
         if (!source) return notify('Chưa có văn bản đề để phân tích.', true);
         if (state.geminiQuotaBlocked) return notify(geminiQuotaMessage, true);
@@ -705,12 +683,13 @@
                 button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích & giải';
             }
         }
+        } */
     }
 
     async function saveImportQuestions() {
         if (!state.importQuestions.length) {
-            if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi AI. Bấm Lưu vào ngân hàng để tiếp tục.');
-            return notify(state.importError || 'Chưa có câu hỏi AI để lưu. Nếu Gemini hết quota, hãy dán JSON hợp lệ rồi bấm Đọc JSON hoặc đổi API key.', true);
+            if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi. Bấm Lưu vào ngân hàng để tiếp tục.');
+            return notify(state.importError || 'Chưa có câu hỏi để lưu. Hãy dán JSON hợp lệ rồi bấm Đọc JSON.', true);
         }
         if (!state.importIntegrity.valid && !window.confirm('Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?')) return;
         if ($('import-replace')?.checked && !window.confirm('Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp?')) return;
@@ -719,33 +698,36 @@
                 const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', state.importSubject);
                 if (error) throw error;
             }
-            const records = state.importQuestions.map((item) => toRecord(item, state.importSubject, undefined));
+            const firstId = await nextQuestionId();
+            const records = state.importQuestions.map((item, index) => toRecord(item, state.importSubject, firstId + index));
             for (let index = 0; index < records.length; index += 50) {
                 const { error } = await state.client.from('quiz_questions').insert(records.slice(index, index + 50));
                 if (error) throw error;
             }
             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
-            sessionStorage.removeItem('quiz_ai_import_draft');
+            sessionStorage.removeItem('quiz_import_draft');
             closeModal('import-modal'); await loadQuestions();
         } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
     }
 
     async function handleImportFile(file) {
         if (!file) return;
-        const input = $('import-file');
-        const button = $('ai-analyze-import');
-        if (input) input.disabled = true;
-        if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-file-arrow-up fa-beat"></i> Đang đọc file...'; }
         try {
-            state.sourceText = await extractFile(file);
-            if (!state.sourceText.trim()) throw new Error('File không có lớp văn bản để đọc. Nếu là PDF scan ảnh, hãy OCR trước.');
-            $('import-text').value = state.sourceText;
-            notify(`Đã đọc ${file.name}. Gemini đang tự phân tích câu hỏi và đáp án...`);
-            await analyzeWithGemini();
+            const source = await file.text();
+            $('import-text').value = source;
+            const list = parseJsonInput(source);
+            if (!list.length) throw new Error('File không chứa JSON câu hỏi hợp lệ.');
+            state.sourceText = source;
+            state.importQuestions = list;
+            state.importError = '';
+            state.importIndex = 0;
+            state.importIntegrity = validateVerbatimQuestions(list, source);
+            persistImportDraft();
+            fillForm(list[0]);
+            renderImportReview();
+            notify(`Đã đọc ${list.length} câu từ ${file.name}.`);
         } catch (error) {
-            notify(`Không thể đọc hoặc phân tích file: ${error.message}`, true);
-        } finally {
-            if (input) input.disabled = false;
+            notify(`Không thể đọc file: ${error.message}`, true);
         }
     }
 
@@ -826,18 +808,21 @@
     }
 
     function removeGeminiSettingsUi() {
-        document.querySelector('.ai-config-panel')?.remove();
         const reportsDescription = document.querySelector('[data-view-panel="reports"] .page-heading p:not(.eyebrow)');
-        if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
+        if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, cấu hình giải thích bài tập, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
+        const aiHeading = document.querySelector('.ai-config-panel h2');
+        const aiDescription = document.querySelector('.ai-config-panel .muted-copy');
+        if (aiHeading) aiHeading.textContent = 'Cấu hình giải thích bài tập';
+        if (aiDescription) aiDescription.textContent = 'API key chỉ dùng cho nút giải thích bài tập trên trang học sinh; không dùng để phân tích đề khi nạp hàng loạt.';
         const quickImport = $('quick-import');
         if (quickImport) {
             const title = quickImport.querySelector('b');
             const description = quickImport.querySelector('small');
-            if (title) title.textContent = 'Phân tích đề gửi vào';
-            if (description) description.textContent = 'Text, JSON, Word, PDF, Excel';
+            if (title) title.textContent = 'Nạp JSON câu hỏi';
+            if (description) description.textContent = 'JSON hoặc TXT';
         }
         const importButton = $('import-button');
-        if (importButton) importButton.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Phân tích đề';
+        if (importButton) importButton.innerHTML = '<i class="fa-solid fa-file-import"></i> Nạp JSON';
     }
 
     async function loadMaintenance() {
@@ -1142,8 +1127,8 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
-        $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('ai-analyze-import')?.addEventListener('click', analyzeWithGemini); $('save-import')?.addEventListener('click', saveImportQuestions);
-        $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = event.target.value; }); $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
+         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
+         $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
         $('maintenance-toggle')?.addEventListener('change', () => runAction(toggleMaintenance)); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; runAction(toggleMaintenance); } });

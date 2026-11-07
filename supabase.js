@@ -689,6 +689,8 @@ class DatabaseService {
 
         if (qObj.id !== undefined && qObj.id !== null && qObj.id !== '' && Number.isInteger(Number(qObj.id))) {
             record.id = Number(qObj.id);
+        } else {
+            record.id = await this.getNextQuestionId();
         }
 
         if (this.isSupabaseActive && this.client) {
@@ -737,6 +739,7 @@ class DatabaseService {
             await this.clearQuestionsBySubject(cleanSubject);
         }
 
+        let generatedId = await this.getNextQuestionId();
         const records = questionsList.map((q) => {
             let correctInt = 0;
             const rawCorrect = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : q.correctAnswer);
@@ -759,8 +762,11 @@ class DatabaseService {
                 return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
             }) : [];
 
+            const hasId = q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id));
+            const id = hasId ? Number(q.id) : generatedId++;
+            if (!hasId) q.id = id;
             return {
-                ...(q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id)) ? { id: Number(q.id) } : {}),
+                id,
                 subject_key: cleanSubject,
                 category: q.category || 'Bài tập',
                 q_type: q.qType || q.type || 'mcq',
