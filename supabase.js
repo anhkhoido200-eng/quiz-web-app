@@ -681,7 +681,7 @@ class DatabaseService {
             statements: qObj.statements || [],
             correct: correctInt,
             answer: correctInt,
-            correct_value: qObj.correctValue !== undefined ? String(qObj.correctValue) : String(qObj.correct_value || ''),
+            correct_value: qObj.correctValue !== undefined ? String(qObj.correctValue) : String(qObj.correct_value || qObj.correctAnswer || qObj.answer || qObj.correct || ''),
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
             updated_at: new Date().toISOString()

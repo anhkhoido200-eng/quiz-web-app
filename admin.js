@@ -344,10 +344,29 @@
             $('health-content') && ($('health-content').textContent = `${state.questions.length} câu hỏi đã tải`);
             $('health-content-badge') && ($('health-content-badge').textContent = 'Đã tải');
             $('health-content-badge')?.classList.replace('pending', 'safe');
+            await syncSubjectQuestionCounts();
         } catch (error) {
             setConnection(false, 'Không thể kết nối');
             notify(`Lỗi tải câu hỏi: ${error.message}`, true);
         }
+    }
+
+    async function syncSubjectQuestionCounts() {
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = String(question.subject_key || question.subjectKey || '').trim();
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        const changed = state.subjects.some((subject) => Number(subject.count || 0) !== (questionCounts[subject.key || subject.subject_key] || 0));
+        if (!changed) return;
+        state.subjects = state.subjects.map((subject) => ({
+            ...subject,
+            count: questionCounts[subject.key || subject.subject_key] || 0
+        }));
+        console.debug('[Quiz Studio Admin] Syncing subject question counts:', state.subjects.map((subject) => ({ key: subject.key, count: subject.count })));
+        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) console.warn('[Quiz Studio Admin] Không thể lưu số câu theo môn:', error.message);
+        renderSubjectCatalog();
     }
 
     function animateMetricValue(id, target) {
@@ -454,12 +473,20 @@
     }
 
     function normalizeAiQuestion(raw) {
-        const type = raw?.type === 'multiple_choice' ? 'mcq' : raw?.type === 'true_false' ? 'tf_group' : (raw?.type || raw?.q_type || raw?.qType || 'mcq');
+        const rawType = String(raw?.type ?? raw?.q_type ?? raw?.qType ?? '').trim().toLowerCase().replace(/[-\s]/g, '_');
+        const inferredShortAnswer = !rawType && (raw?.answer !== undefined || raw?.correctAnswer !== undefined || raw?.correct_value !== undefined || raw?.correctValue !== undefined || raw?.acceptedAnswer !== undefined || raw?.acceptedValues !== undefined) && !Array.isArray(raw?.options) && !Array.isArray(raw?.subQuestions) && !Array.isArray(raw?.statements);
+        const type = rawType === 'multiple_choice' || rawType === 'multiplechoice' || rawType === 'mcq' ? 'mcq' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf_group' || rawType === 'tf' ? 'tf_group' : rawType === 'short_answer' || rawType === 'short' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'shortanswer' || rawType === 'tra_loi_ngan' || rawType === 'trả_lời_ngắn' || rawType === 'text_answer' || rawType === 'free_text' || inferredShortAnswer ? 'short_answer' : 'mcq';
         if (type === 'tf_group') {
             const rawStatements = Array.isArray(raw?.subQuestions) ? raw.subQuestions : (Array.isArray(raw?.statements) ? raw.statements : []);
             return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
         }
-        if (type === 'short_answer') return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? '', options: [], statements: [], correctValue: raw?.correctAnswer ?? raw?.correct_value ?? raw?.correctValue ?? '', explanation: raw?.explanation ?? '' };
+        if (type === 'short_answer') {
+            const rawAcceptedValues = raw?.acceptedValues ?? raw?.accepted_values;
+            const acceptedValues = Array.isArray(rawAcceptedValues) ? rawAcceptedValues : rawAcceptedValues !== undefined && rawAcceptedValues !== null ? [rawAcceptedValues] : [];
+            const rawAnswer = raw?.correctAnswer ?? raw?.correct_answer ?? raw?.correct_value ?? raw?.correctValue ?? raw?.acceptedAnswer ?? raw?.accepted_answer ?? raw?.answer ?? raw?.correct ?? raw?.value ?? acceptedValues[0] ?? '';
+            const answerValue = rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer) ? (rawAnswer.value ?? rawAnswer.answer ?? rawAnswer.text ?? '') : Array.isArray(rawAnswer) ? rawAnswer[0] ?? '' : rawAnswer;
+            return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? raw?.prompt ?? raw?.text ?? '', options: [], statements: [], correctValue: String(answerValue ?? ''), acceptedValues: acceptedValues.map((value) => String(value)), explanation: raw?.explanation ?? '' };
+        }
         return { ...raw, qType: 'mcq', q_type: 'mcq', question: raw?.question ?? '', options: Array.isArray(raw?.options) ? raw.options : [], statements: [], correct: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), correctAnswer: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), explanation: raw?.explanation ?? '' };
     }
 
@@ -520,15 +547,30 @@
     }
 
     function parseJsonInput(text) {
+        state.importError = '';
         try {
             const parsed = JSON.parse(text);
             const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.questions) ? parsed.questions : [parsed]);
             const normalized = list.map(normalizeAiQuestion);
             const structureErrors = validateAiQuestionSet(normalized);
-            if (structureErrors.length) return [];
+            if (structureErrors.length) {
+                state.importError = structureErrors.slice(0, 3).join('; ');
+                console.warn('[Quiz Studio Admin] JSON import rejected:', {
+                    errors: structureErrors,
+                    rawTypes: list.map((item) => item?.type ?? item?.q_type ?? item?.qType ?? null),
+                    normalizedTypes: normalized.map((item) => item.qType),
+                    keys: list.map((item) => Object.keys(item || {})),
+                    shortAnswerValues: normalized.map((item) => item.qType === 'short_answer' ? item.correctValue : undefined)
+                });
+                return [];
+            }
             state.importIntegrity = validateVerbatimQuestions(normalized, text);
             return normalized;
-        } catch (error) { return []; }
+        } catch (error) {
+            state.importError = `JSON lỗi cú pháp: ${error.message}`;
+            console.warn('[Quiz Studio Admin] JSON import parse error:', error.message);
+            return [];
+        }
     }
 
     function extractJsonPayload(raw) {
@@ -704,9 +746,9 @@
                 const { error } = await state.client.from('quiz_questions').insert(records.slice(index, index + 50));
                 if (error) throw error;
             }
-            notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
-            sessionStorage.removeItem('quiz_import_draft');
-            closeModal('import-modal'); await loadQuestions();
+             notify(`Đã lưu ${records.length} câu hỏi, giữ nguyên thứ tự.`);
+             sessionStorage.removeItem('quiz_import_draft');
+             closeModal('import-modal'); await loadQuestions();
         } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
     }
 
@@ -894,8 +936,18 @@
 
     function renderSubjectCatalog() {
         const subjects = mergeSubjectCatalog(state.subjects);
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = String(question.subject_key || question.subjectKey || '').trim();
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
+            key: subject.key,
+            storedCount: Number(subject.count || 0),
+            loadedQuestionCount: questionCounts[subject.key] || 0
+        })));
         $('subject-count') && ($('subject-count').textContent = subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · ${Number(subject.count || 0)} câu</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`).join('') || '<div class="empty-state">Chưa có môn học.</div>');
+        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => { const key = subject.key || subject.subject_key; const count = questionCounts[key] || 0; return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · ${count} câu</p><div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-pen"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}"><i class="fa-solid fa-trash"></i></button></div></div></article>`; }).join('') || '<div class="empty-state">Chưa có môn học.</div>');
         renderSubjectPrivacy();
     }
 
@@ -903,6 +955,7 @@
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
         state.subjects = mergeSubjectCatalog(state.subjects);
+        await syncSubjectQuestionCounts();
         fillSubjects($('grade-select')?.value || '11');
         fillLibrarySubjects();
         renderSubjectCatalog();
@@ -1127,7 +1180,7 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
-         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify('JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
+         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
@@ -1175,6 +1228,7 @@
             }
             showApp(); removeGeminiSettingsUi(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
+            await syncSubjectQuestionCounts();
             setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 30000);
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);

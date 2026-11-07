@@ -464,7 +464,8 @@ class QuizApp {
             if (!item.id) item.id = idx + 1;
 
             // 1. Chuẩn hóa dạng câu hỏi
-            item.qType = item.qType || item.type || 'mcq';
+            const rawType = String(item.qType || item.type || '').trim().toLowerCase().replace(/[-\s]/g, '_');
+            item.qType = rawType === 'short' || rawType === 'short_answer' || rawType === 'shortanswer' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'tra_loi_ngan' || rawType === 'text_answer' || rawType === 'free_text' ? 'short_answer' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf' ? 'tf_group' : rawType || 'mcq';
 
             // 2. Chuẩn hóa nội dung câu hỏi
             if (typeof item.question === 'string') {
@@ -488,7 +489,11 @@ class QuizApp {
 
             // 4. Chuẩn hóa và ràng buộc chặt chẽ đáp án đúng (A, B, C, D -> 0, 1, 2, 3)
             if (item.qType === 'short_answer') {
-                item.correctValue = String(item.correctValue !== undefined ? item.correctValue : (item.correct || item.answer || '')).trim();
+                const rawAccepted = item.acceptedValues !== undefined ? item.acceptedValues : item.accepted_values;
+                const acceptedValues = Array.isArray(rawAccepted) ? rawAccepted : rawAccepted !== undefined && rawAccepted !== null ? [rawAccepted] : [];
+                const rawValue = item.correctValue !== undefined ? item.correctValue : (item.correct_value !== undefined ? item.correct_value : (item.correctAnswer !== undefined ? item.correctAnswer : (item.acceptedAnswer !== undefined ? item.acceptedAnswer : (item.answer !== undefined ? item.answer : (item.correct !== undefined ? item.correct : acceptedValues[0] || '')))));
+                item.correctValue = String(rawValue && typeof rawValue === 'object' ? (rawValue.value ?? rawValue.answer ?? rawValue.text ?? '') : rawValue).trim();
+                item.acceptedValues = acceptedValues.map(value => String(value));
                 item.correct = 0;
                 item.answer = 0;
                 item.correctAnswer = item.correctValue;
