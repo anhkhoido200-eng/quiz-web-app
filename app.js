@@ -4579,8 +4579,8 @@ renderImporterPreview() {
     /* 14. TRỢ LÝ AI GEMINI (GEMINI 2.5 FLASH API INTEGRATION)        */
     /* ============================================================== */
 
-    async loadGlobalGeminiApiKey() {
-        if (this.geminiApiKey) return this.geminiApiKey;
+    async loadGlobalGeminiApiKey(forceRefresh = false) {
+        if (this.geminiApiKey && !forceRefresh) return this.geminiApiKey;
         try {
             if (window.dbService && typeof window.dbService.fetchGeminiApiKey === 'function') {
                 const cloudKey = await window.dbService.fetchGeminiApiKey();
@@ -4594,6 +4594,24 @@ renderImporterPreview() {
         }
         this.geminiApiKey = '';
         return this.geminiApiKey;
+    }
+
+    async getAvailableGeminiModels(apiKey) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        let response;
+        try {
+            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { cache: 'no-store', signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!response.ok) throw new Error(`Không thể đọc danh sách model Gemini (HTTP ${response.status}).`);
+        const data = await response.json();
+        return (data.models || [])
+            .filter((model) => Array.isArray(model.supportedGenerationMethods) && model.supportedGenerationMethods.includes('generateContent'))
+            .map((model) => String(model.name || '').replace(/^models\//, ''))
+            .filter((name) => /^gemini-.*flash/i.test(name) && !/image|audio|tts|live|robotics|embedding/i.test(name))
+            .sort((a, b) => a.localeCompare(b));
     }
 
     openAiSettingsModal() {
@@ -4680,10 +4698,7 @@ renderImporterPreview() {
             return;
         }
 
-        let apiKey = this.geminiApiKey || '';
-        if (!apiKey) {
-            apiKey = await this.loadGlobalGeminiApiKey();
-        }
+        let apiKey = await this.loadGlobalGeminiApiKey(true);
 
         if (!apiKey) {
             if (this.isAdminAuthenticated) {
@@ -4751,7 +4766,15 @@ Học sinh chọn: ${studentAnswerText}
 Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo nhớ nhanh. Không lan man.`;
 
         try {
-            const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
+            let candidateModels = [];
+            try {
+                candidateModels = await this.getAvailableGeminiModels(apiKey);
+            } catch (modelListError) {
+                console.warn('[QuizMaster AI] Không đọc được model list, dùng model mặc định:', modelListError.message);
+                candidateModels = ['gemini-3.8-flash'];
+            }
+            candidateModels = candidateModels.slice(0, 3);
+            if (!candidateModels.length) candidateModels = ['gemini-3.8-flash'];
 
             let res = null;
             let lastErrMsg = "";
@@ -4793,7 +4816,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                         }
 
                         // Nếu do lỗi server bận/quá tải (503), quota (429), chờ nhẹ rồi fallback
-                        if (callResp.status === 503 || callResp.status === 429) await new Promise(resolve => setTimeout(resolve, 250));
+                        if (callResp.status === 429 || callResp.status === 503) await new Promise(resolve => setTimeout(resolve, 250));
                         continue;
                     }
                 } catch (netErr) {
@@ -4803,7 +4826,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
             }
 
             if (!res || !res.ok) {
-                throw new Error(lastErrMsg || "Không thể kết nối đến máy chủ Google Gemini.");
+                const quota = /quota exceeded|resource_exhausted|rate limit|free tier/i.test(lastErrMsg);
+                throw new Error(quota ? 'Model Gemini đã thử đang hết quota hoặc bị giới hạn tốc độ. Kiểm tra quota theo model và project trong Google AI Studio; các key cùng project dùng chung quota.' : (lastErrMsg || "Không thể kết nối đến máy chủ Google Gemini."));
             }
 
             const data = await res.json();

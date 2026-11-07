@@ -786,7 +786,7 @@
         if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza hoặc AQ.', true);
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'ACTIVE', score_summary: key, last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(`Không thể lưu API Key: ${error.message}`, true);
-        $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud.');
+        $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud. Hãy tải lại trang học sinh để nhận key mới.');
     }
 
     async function clearGeminiKey() {
