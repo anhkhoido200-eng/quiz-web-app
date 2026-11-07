@@ -66,6 +66,7 @@ class QuizApp {
         this.isLoadingQuestions = false;
         this.questionSyncChannel = null;
         this.questionSyncPoll = null;
+        this.quizHeaderResizeObserver = null;
 
         // Tiện ích Debounce tối ưu hiệu năng chống giật lag
         this.debouncedSearchAdminQuestions = this.debounce(() => {
@@ -104,6 +105,30 @@ class QuizApp {
         };
 
         this.init();
+    }
+
+    syncQuizHeaderOffset() {
+        const header = document.getElementById('quiz-sticky-header');
+        const questions = document.getElementById('questions-container');
+        if (!header || !questions) return;
+
+        const headerHeight = Math.ceil(header.getBoundingClientRect().height);
+        // Keep the existing desktop spacing, but use the actual wrapped mobile
+        // header height so the first card can never sit underneath the bar.
+        questions.style.setProperty('--quiz-header-height', `${headerHeight}px`);
+        questions.style.paddingTop = `${headerHeight + (window.innerWidth <= 640 ? 16 : 32)}px`;
+    }
+
+    observeQuizHeader() {
+        const header = document.getElementById('quiz-sticky-header');
+        if (!header) return;
+        this.syncQuizHeaderOffset();
+        if (this.quizHeaderResizeObserver) this.quizHeaderResizeObserver.disconnect();
+        if (typeof ResizeObserver === 'function') {
+            this.quizHeaderResizeObserver = new ResizeObserver(() => this.syncQuizHeaderOffset());
+            this.quizHeaderResizeObserver.observe(header);
+        }
+        window.addEventListener('resize', () => this.syncQuizHeaderOffset(), { passive: true });
     }
 
     /**
@@ -3126,6 +3151,7 @@ renderImporterPreview() {
         this.loadAutoSaveProgress();
 
         this.switchScreen('quiz');
+        this.observeQuizHeader();
         this.renderAllQuestions();
         this.startStopwatch();
         this.updateLiveStats();
