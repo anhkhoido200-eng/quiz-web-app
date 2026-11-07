@@ -429,6 +429,72 @@ body.light-theme .home-grade-tab.is-active {
     box-shadow: 0 0 25px -3px rgba(244, 63, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
+/* --- Nút Đúng/Sai: chọn một lần, phản hồi mượt, không rung layout --- */
+.tf-choice-button {
+    min-width: 4.7rem;
+    min-height: 2.25rem;
+    transform: translateZ(0);
+    transition:
+        transform 260ms cubic-bezier(.22, 1, .36, 1),
+        opacity 220ms ease,
+        color 220ms ease,
+        background-color 220ms ease,
+        border-color 220ms ease,
+        box-shadow 260ms cubic-bezier(.22, 1, .36, 1);
+    will-change: transform, opacity;
+}
+
+.tf-choice-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: rgba(165, 180, 252, .78);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .24);
+}
+
+.tf-choice-button:active:not(:disabled) {
+    transform: translateY(0) scale(.98);
+}
+
+.tf-choice-button:disabled {
+    pointer-events: none;
+    cursor: default;
+}
+
+.tf-choice-button.is-locked {
+    opacity: .38;
+    filter: saturate(.55);
+}
+
+.tf-choice-button.is-selected {
+    animation: tfChoiceReveal 320ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.tf-choice-button.is-selected-correct {
+    background: linear-gradient(135deg, rgba(16, 185, 129, .9), rgba(5, 150, 105, .82)) !important;
+    border-color: rgba(110, 231, 183, .95) !important;
+    color: #ecfdf5 !important;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, .24), 0 0 0 2px rgba(52, 211, 153, .12);
+}
+
+.tf-choice-button.is-selected-wrong {
+    background: linear-gradient(135deg, rgba(244, 63, 94, .9), rgba(225, 29, 72, .82)) !important;
+    border-color: rgba(253, 164, 175, .95) !important;
+    color: #fff1f2 !important;
+    box-shadow: 0 8px 20px rgba(244, 63, 94, .22), 0 0 0 2px rgba(251, 113, 133, .1);
+}
+
+.tf-choice-button.is-exam-selected {
+    background: linear-gradient(135deg, rgba(99, 102, 241, .95), rgba(79, 70, 229, .86)) !important;
+    border-color: rgba(165, 180, 252, .95) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, .24), 0 0 0 2px rgba(129, 140, 248, .12);
+}
+
+@keyframes tfChoiceReveal {
+    from { opacity: .72; transform: scale(.94); }
+    65% { opacity: 1; transform: scale(1.035); }
+    to { opacity: 1; transform: scale(1); }
+}
+
 /* --- Chữ Gradient thời thượng (Trendy Gradient Text) --- */
 .gradient-text-hero {
     background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 50%, #f472b6 100%);

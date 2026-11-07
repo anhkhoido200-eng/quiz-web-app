@@ -3191,7 +3191,7 @@ renderImporterPreview() {
         localStorage.removeItem(`${prefix}${this.playerName}`);
     }
 
-    renderAllQuestions(skipExitAnimation = false) {
+    renderAllQuestions(skipExitAnimation = false, skipEnterAnimation = false) {
         const container = document.getElementById('questions-container');
         if (!container) return;
 
@@ -3231,7 +3231,7 @@ renderImporterPreview() {
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            const animationClass = filtered.length <= 40 ? ' question-card-enter' : '';
+            const animationClass = !skipEnterAnimation && filtered.length <= 40 ? ' question-card-enter' : '';
             card.className = `glass-card-pro quiz-question-card${animationClass} rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4`;
             card.style.setProperty('--question-index', idx);
 
@@ -3343,17 +3343,24 @@ renderImporterPreview() {
                         }
                     }
 
+                    const trueStateClass = val === true
+                        ? `is-selected ${!this.isExamMode ? (st.answer === true ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
+                        : (isAnswered ? 'is-locked' : '');
+                    const falseStateClass = val === false
+                        ? `is-selected ${!this.isExamMode ? (st.answer === false ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
+                        : (isAnswered ? 'is-locked' : '');
+
                     return `
-                                <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                                <div class="tf-statement-row p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
                                     <div class="flex items-start gap-2 flex-1">
                                         <span class="font-bold text-indigo-400">${String.fromCharCode(97 + sIdx)})</span>
                                         <span class="text-slate-200 font-medium">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" class="btn-3d px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${trueBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, false)" class="btn-3d px-3 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer ${falseBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, false)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -3404,10 +3411,21 @@ renderImporterPreview() {
     }
 
     selectTfOption(qId, stmtIdx, isTrue) {
-        if (!this.userAnswers[qId]) this.userAnswers[qId] = {};
-        this.userAnswers[qId][stmtIdx] = isTrue;
+        const currentAnswers = this.userAnswers[qId];
+        const hasExistingAnswer = currentAnswers && typeof currentAnswers === 'object'
+            && Object.prototype.hasOwnProperty.call(currentAnswers, stmtIdx);
+        if (hasExistingAnswer) {
+            console.debug('[QuizApp] Bỏ qua lần chọn Đúng/Sai thứ hai:', { qId, stmtIdx, existing: currentAnswers[stmtIdx] });
+            return;
+        }
+
+        if (!currentAnswers || typeof currentAnswers !== 'object' || Array.isArray(currentAnswers)) {
+            this.userAnswers[qId] = {};
+        }
+        this.userAnswers[qId][stmtIdx] = Boolean(isTrue);
+        console.debug('[QuizApp] Đã ghi nhận lựa chọn Đúng/Sai:', { qId, stmtIdx, answer: Boolean(isTrue) });
         this.saveAutoSaveProgress();
-        this.renderAllQuestions(true);
+        this.renderAllQuestions(true, true);
         this.updateLiveStats();
     }
 
