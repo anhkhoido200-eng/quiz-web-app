@@ -546,6 +546,25 @@
         notify('Đã xóa câu hỏi.'); if (String(state.editingId) === String(id)) resetForm(); await loadQuestions();
     }
 
+    async function deleteAllQuestions() {
+        const total = state.questions.length;
+        if (!window.confirm(`Xóa toàn bộ ${total} câu hỏi trong ngân hàng? Hành động này không thể hoàn tác.`)) return;
+        try {
+            const { error } = await state.client.from('quiz_questions').delete().not('id', 'is', null);
+            if (error) throw error;
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true });
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu chưa xóa.`);
+            state.questions = [];
+            notify(`Đã xóa toàn bộ ${total} câu hỏi.`);
+            renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
+            await syncSubjectQuestionCounts();
+        } catch (error) {
+            notify(`Không thể xóa toàn bộ ngân hàng: ${error.message}`, true);
+            await loadQuestions();
+        }
+    }
+
     async function deleteSubjectQuestions(key) {
         const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
         const name = subject?.name || key;
@@ -1290,7 +1309,7 @@
         document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
         $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
         $('theme-toggle')?.addEventListener('click', () => { document.body.classList.toggle('dark'); localStorage.setItem('quiz_admin_dark', document.body.classList.contains('dark') ? 'true' : 'false'); });
-        $('refresh-button')?.addEventListener('click', () => Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]));
+         $('refresh-button')?.addEventListener('click', () => Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()])); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
         $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
         $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
         $('question-form')?.addEventListener('input', (event) => {
