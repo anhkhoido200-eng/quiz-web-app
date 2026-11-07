@@ -598,6 +598,20 @@ class QuizApp {
         await this.syncAdminIpsConfig();
     }
 
+    async showMyIp() {
+        if (!this.clientIp || this.clientIp.startsWith('Đang') || this.clientIp === 'Chưa xác định') {
+            await this.fetchClientIp();
+        }
+
+        const ip = String(this.clientIp || '').trim();
+        if (!ip || ip === 'Chưa xác định' || ip.startsWith('Đang')) {
+            alert('Chưa xác định được IP của bạn. Vui lòng thử lại sau giây lát.');
+            return;
+        }
+
+        alert(`Địa chỉ IP của bạn là:\n\n${ip}\n\nHãy gửi địa chỉ này cho Admin để được cấp quyền.`);
+    }
+
     startRealtimeQuestionSync() {
         const service = window.dbService;
         if (!service?.isSupabaseActive || !service.client) return;
