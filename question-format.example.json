@@ -1,0 +1,13 @@
+{
+  "qType": "mcq",
+  "category": "Phân số và số thập phân",
+  "question": "Phân số nào dưới đây là phân số thập phân?",
+  "options": [
+    { "text": "3/10", "math": "\\frac{3}{10}" },
+    { "text": "4/5", "math": "\\frac{4}{5}" },
+    { "text": "7/20", "math": "\\frac{7}{20}" },
+    { "text": "1/3", "math": "\\frac{1}{3}" }
+  ],
+  "correct": 0,
+  "explanation": "Mẫu số của phân số thập phân là 10, 100, 1000, ..."
+}

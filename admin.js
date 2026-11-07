@@ -24,7 +24,54 @@
     };
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
-    const htmlText = (value, fallback = '') => esc(value || fallback).replace(/\r?\n/g, '<br>');
+    const notationText = (value) => {
+        if (typeof MathNotation !== 'undefined' && typeof MathNotation.readValue === 'function') {
+            return MathNotation.readValue(value).text;
+        }
+        if (value && typeof value === 'object') return String(value.text ?? value.value ?? value.content ?? '');
+        return String(value ?? '');
+    };
+    const storageText = (value) => {
+        if (value && typeof value === 'object') {
+            const math = value.math ?? value.latex ?? value.formula;
+            if (math !== undefined && math !== null && String(math).trim()) {
+                const source = String(math).trim();
+                return /^\$[^$]+\$$|^\$\$[\s\S]*\$\$$/.test(source) ? source : `$${source}$`;
+            }
+            return String(value.text ?? value.value ?? value.content ?? '');
+        }
+        return String(value ?? '');
+    };
+    const formatNotation = (value, fallback = '') => {
+        const source = value || fallback;
+        return typeof MathNotation !== 'undefined' && typeof MathNotation.format === 'function'
+            ? MathNotation.format(source)
+            : String(source ?? '');
+    };
+    const htmlText = (value, fallback = '') => esc(formatNotation(value, fallback)).replace(/\r?\n/g, '<br>');
+    const renderMath = (root) => {
+        if (!root) return;
+        if (typeof renderMathInElement !== 'function') {
+            if (!root.dataset.mathRenderRetry) root.dataset.mathRenderRetry = '0';
+            const retry = Number(root.dataset.mathRenderRetry);
+            if (retry < 20) {
+                root.dataset.mathRenderRetry = String(retry + 1);
+                window.setTimeout(() => renderMath(root), 50);
+            }
+            return;
+        }
+        try {
+            renderMathInElement(root, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false }
+                ],
+                throwOnError: false
+            });
+        } catch (error) {
+            console.warn('[Quiz Studio Admin] Math rendering failed:', error);
+        }
+    };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const fetchWithTimeout = async (url, options = {}, timeoutMs = 60000) => {
         const controller = new AbortController();
@@ -321,6 +368,7 @@
             body = `<div>${q.options.map((option, index) => `<div class="preview-option ${index === state.answer ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(option, `Phương án ${'ABCD'[index]}`)}</span></div>`).join('')}</div>`;
         }
         card.innerHTML = `<div class="preview-meta"><span>${esc(TYPE_LABELS[state.type].toUpperCase())}</span><span>${esc(subjectName(q.subject_key))}</span></div><h3>${htmlText(q.question, 'Nội dung câu hỏi sẽ hiển thị ở đây')}</h3>${body}`;
+        renderMath(card);
     }
 
     function setAnswer(index) {
@@ -341,7 +389,7 @@
 
     function normalizeRow(row) {
         const qType = row.q_type || row.qType || 'mcq';
-        const statements = Array.isArray(row.statements) ? row.statements.map((item, index) => ({ key: item.key || item.id || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: item.text ?? item.content ?? '', answer: parseBool(item.answer ?? item.correctAnswer) })) : [];
+        const statements = Array.isArray(row.statements) ? row.statements.map((item, index) => ({ key: item.key || item.id || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.text ?? item.content ?? '', math: item.math ?? item.latex ?? item.formula } : item.text ?? item.content ?? '', answer: parseBool(item.answer ?? item.correctAnswer) })) : [];
         return { ...row, subjectKey: row.subject_key, qType, q_type: qType, options: Array.isArray(row.options) ? row.options : [], statements, correct: Number(row.correct ?? row.answer ?? 0), answer: Number(row.answer ?? row.correct ?? 0), correctValue: row.correct_value ?? row.correctValue ?? '', explanation: row.explanation || '' };
     }
 
@@ -438,11 +486,12 @@
         list.innerHTML = rows.map((q) => {
             const grade = gradeOf(q);
             let answerPreview = '';
-            if (q.qType === 'tf_group') answerPreview = `<div class="item-statements">${q.statements.map((s) => `<div class="item-statement"><b>${esc(s.key)}.</b>${esc(s.text)} <strong>${s.answer ? 'Đúng' : 'Sai'}</strong></div>`).join('')}</div>`;
-            else if (q.qType === 'short_answer') answerPreview = `<div class="item-option is-correct">Đáp án: ${esc(q.correctValue)}</div>`;
-            else answerPreview = `<div class="item-options">${q.options.slice(0, 4).map((option, index) => `<span class="item-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}.</b> ${esc(option)}</span>`).join('')}</div>`;
+            if (q.qType === 'tf_group') answerPreview = `<div class="item-statements">${q.statements.map((s) => `<div class="item-statement"><b>${esc(s.key)}.</b>${htmlText(s.text)} <strong>${s.answer ? 'Đúng' : 'Sai'}</strong></div>`).join('')}</div>`;
+            else if (q.qType === 'short_answer') answerPreview = `<div class="item-option is-correct">Đáp án: ${htmlText(q.correctValue)}</div>`;
+            else answerPreview = `<div class="item-options">${q.options.slice(0, 4).map((option, index) => `<span class="item-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}.</b> ${htmlText(option)}</span>`).join('')}</div>`;
             return `<article class="question-item"><div class="question-item-head"><div class="question-tags"><span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span><span class="tag">${esc(subjectName(q.subject_key))}</span>${typeChip(q)}</div><span class="tag">#${esc(q.id)}</span></div><h3>${htmlText(q.question)}</h3>${answerPreview}<div class="question-item-footer"><small>${esc(q.category || 'Ôn tập')}</small><div class="item-actions"><button class="edit-button" data-edit="${esc(q.id)}"><i class="fa-solid fa-pen"></i> Sửa</button><button class="delete-button" data-delete="${esc(q.id)}"><i class="fa-solid fa-trash"></i> Xóa</button></div></div></article>`;
         }).join('');
+        renderMath(list);
     }
 
     function renderRecentActivity() {
@@ -450,6 +499,7 @@
         if (!list) return;
         const rows = state.questions.slice(-5).reverse();
         list.innerHTML = rows.length ? rows.map((q) => `<div class="activity-item"><i class="fa-solid ${q.qType === 'tf_group' ? 'fa-list-check' : q.qType === 'short_answer' ? 'fa-keyboard' : 'fa-list-radio'}"></i><span><b>${esc(TYPE_LABELS[q.qType] || 'Câu hỏi')} · ${esc(subjectName(q.subject_key))}</b><small>${htmlText(q.question).slice(0, 90)}${String(q.question).length > 90 ? '...' : ''}</small></span></div>`).join('') : '<div class="empty-state"><p>Chưa có hoạt động.</p></div>';
+        renderMath(list);
     }
 
     function resetForm() {
@@ -475,14 +525,14 @@
         if ($('grade-select')) $('grade-select').value = grade;
         fillSubjects(grade, normalized.subject_key || state.importSubject);
         if ($('category-input')) $('category-input').value = normalized.category || '';
-        if ($('question-input')) $('question-input').value = normalized.question || '';
-        if ($('explanation-input')) $('explanation-input').value = normalized.explanation || '';
-        [0, 1, 2, 3].forEach((index) => { if ($(`option-${index}`)) $(`option-${index}`).value = normalized.options?.[index] || ''; });
+        if ($('question-input')) $('question-input').value = storageText(normalized.question);
+        if ($('explanation-input')) $('explanation-input').value = storageText(normalized.explanation);
+        [0, 1, 2, 3].forEach((index) => { if ($(`option-${index}`)) $(`option-${index}`).value = storageText(normalized.options?.[index]); });
         state.answer = Number(normalized.correctAnswer ?? normalized.correct ?? 0);
         state.tfAnswers = (normalized.statements || []).map((item) => parseBool(item.answer ?? item.correctAnswer));
         while (state.tfAnswers.length < 4) state.tfAnswers.push(true);
         ensureTypeEditor(normalized.qType); setAnswer(state.answer);
-        if (normalized.qType === 'tf_group') normalized.statements.forEach((item, index) => { if ($(`tf-${index}`)) $(`tf-${index}`).value = item.text || ''; });
+        if (normalized.qType === 'tf_group') normalized.statements.forEach((item, index) => { if ($(`tf-${index}`)) $(`tf-${index}`).value = storageText(item.text); });
         if (normalized.qType === 'short_answer' && $('correct-value-input')) $('correct-value-input').value = normalized.correctValue || '';
         renderPreview();
     }
@@ -493,7 +543,7 @@
         const type = rawType === 'multiple_choice' || rawType === 'multiplechoice' || rawType === 'mcq' ? 'mcq' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf_group' || rawType === 'tf' ? 'tf_group' : rawType === 'short_answer' || rawType === 'short' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'shortanswer' || rawType === 'tra_loi_ngan' || rawType === 'trả_lời_ngắn' || rawType === 'text_answer' || rawType === 'free_text' || inferredShortAnswer ? 'short_answer' : 'mcq';
         if (type === 'tf_group') {
             const rawStatements = Array.isArray(raw?.subQuestions) ? raw.subQuestions : (Array.isArray(raw?.statements) ? raw.statements : []);
-            return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
+            return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.content ?? item.text ?? '', math: item.math ?? item.latex ?? item.formula } : item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
         }
         if (type === 'short_answer') {
             const rawAcceptedValues = raw?.acceptedValues ?? raw?.accepted_values;
@@ -509,8 +559,8 @@
         const normalized = normalizeAiQuestion(q);
         const record = {
             ...(id ? { id: Number(id) } : {}), subject_key: subjectKey || normalized.subject_key || 'history', category: normalized.category || 'Bài tập',
-            q_type: normalized.qType, question: normalized.question, options: normalized.qType === 'mcq' ? normalized.options : [],
-            statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: item.text ?? item.content ?? '', answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
+            q_type: normalized.qType, question: storageText(normalized.question), options: normalized.qType === 'mcq' ? normalized.options.map(storageText) : [],
+            statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: storageText(item.text ?? item.content), answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
             correct: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             answer: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? '') : '',
@@ -695,6 +745,7 @@
         const detail = q.qType === 'tf_group' ? q.statements.map((item) => `<div class="tf-preview-row"><b>${esc(item.key)}</b><span>${htmlText(item.text)}</span><span class="tf-preview-answer ${item.answer ? '' : 'false'}">${item.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('') : q.qType === 'short_answer' ? `<div class="item-option is-correct">Đáp án: ${esc(q.correctValue)}</div>` : q.options.map((item, index) => `<div class="preview-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(item)}</span></div>`).join('');
         const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Giữ nguyên nội dung và thứ tự theo JSON đã đọc. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không khớp nguyên văn một số trường sau khi chuẩn hóa khoảng trắng: ${esc(state.importIntegrity.errors.join(' | '))}. Khi bấm lưu, Admin sẽ được hỏi xác nhận tiếp tục.</span></div>`;
         root.innerHTML = `<div class="ai-review"><div class="ai-review-toolbar"><b>Câu ${state.importIndex + 1}/${state.importQuestions.length} · ${esc(type)}</b><div><button type="button" class="button button-secondary compact" data-import-prev ${state.importIndex === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button> <button type="button" class="button button-secondary compact" data-import-next ${state.importIndex === state.importQuestions.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="ai-review-list">${state.importQuestions.map((item, index) => `<button type="button" class="ai-review-index ${index === state.importIndex ? 'is-active' : ''}" data-import-index="${index}">Câu ${index + 1}</button>`).join('')}</div><div class="ai-review-question"><b>${htmlText(q.question)}</b><div style="margin-top:9px">${detail}</div><p class="muted-copy">${htmlText(q.explanation)}</p></div>${integrity}</div>`;
+        renderMath(root);
     }
 
     function validateVerbatimQuestions(questions, source) {
@@ -708,9 +759,9 @@
         };
         questions.forEach((raw, index) => {
             const q = normalizeAiQuestion(raw);
-            check(q.question, `Câu ${index + 1}: câu hỏi`);
-            if (q.qType === 'mcq') q.options.forEach((value, optionIndex) => check(value, `Câu ${index + 1}: phương án ${'ABCD'[optionIndex]}`));
-            if (q.qType === 'tf_group') q.statements.forEach((value, statementIndex) => check(value.text ?? value.content, `Câu ${index + 1}: ý ${'abcd'[statementIndex]}`));
+            check(notationText(q.question), `Câu ${index + 1}: câu hỏi`);
+            if (q.qType === 'mcq') q.options.forEach((value, optionIndex) => check(notationText(value), `Câu ${index + 1}: phương án ${'ABCD'[optionIndex]}`));
+            if (q.qType === 'tf_group') q.statements.forEach((value, statementIndex) => check(notationText(value.text ?? value.content), `Câu ${index + 1}: ý ${'abcd'[statementIndex]}`));
         });
         return { valid: errors.length === 0, errors };
     }
@@ -719,12 +770,12 @@
         const errors = [];
         questions.forEach((question, index) => {
             const q = normalizeAiQuestion(question);
-            if (!q.question.trim()) errors.push(`Câu ${index + 1} thiếu nội dung`);
+            if (!notationText(q.question).trim()) errors.push(`Câu ${index + 1} thiếu nội dung`);
             if (q.qType === 'mcq') {
-                if (q.options.length !== 4 || q.options.some((option) => !String(option).trim())) errors.push(`Câu ${index + 1} MCQ phải đủ A/B/C/D`);
+                if (q.options.length !== 4 || q.options.some((option) => !notationText(option).trim())) errors.push(`Câu ${index + 1} MCQ phải đủ A/B/C/D`);
                 if (!Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3) errors.push(`Câu ${index + 1} MCQ thiếu đáp án đúng`);
             } else if (q.qType === 'tf_group') {
-                if (q.statements.length !== 4 || q.statements.some((statement) => !String(statement.text || '').trim())) errors.push(`Câu ${index + 1} Đúng/Sai phải đủ a/b/c/d`);
+                if (q.statements.length !== 4 || q.statements.some((statement) => !notationText(statement.text).trim())) errors.push(`Câu ${index + 1} Đúng/Sai phải đủ a/b/c/d`);
                 if (q.statements.some((statement) => typeof statement.answer !== 'boolean')) errors.push(`Câu ${index + 1} Đúng/Sai thiếu đáp án`);
             } else if (q.qType === 'short_answer' && !String(q.correctValue || '').trim()) {
                 errors.push(`Câu ${index + 1} trả lời ngắn thiếu đáp án`);

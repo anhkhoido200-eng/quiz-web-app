@@ -512,8 +512,8 @@ class QuizApp {
             item.qType = rawType === 'short' || rawType === 'short_answer' || rawType === 'shortanswer' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'tra_loi_ngan' || rawType === 'text_answer' || rawType === 'free_text' ? 'short_answer' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf' ? 'tf_group' : rawType || 'mcq';
 
             // 2. Chuẩn hóa nội dung câu hỏi
-            if (typeof item.question === 'string') {
-                item.question = this.formatScientificNotation(item.question.trim());
+            if (item.question !== undefined && item.question !== null) {
+                item.question = this.formatScientificNotation(item.question);
             }
 
             // 3. Chuẩn hóa 4 phương án options: Hỗ trợ cả mảng và object { A, B, C, D }, loại bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
@@ -523,8 +523,14 @@ class QuizApp {
             }
             if (Array.isArray(rawOpts)) {
                 item.options = rawOpts.map(opt => {
-                    if (typeof opt !== 'string') return String(opt || '');
-                    const cleanOpt = opt.replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
+                    if (opt && typeof opt === 'object') {
+                        const rawText = opt.text ?? opt.value ?? opt.content ?? '';
+                        if (opt.math ?? opt.latex ?? opt.formula) {
+                            return this.formatScientificNotation(opt);
+                        }
+                        return this.formatScientificNotation(String(rawText).replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim());
+                    }
+                    const cleanOpt = String(opt || '').replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
                     return this.formatScientificNotation(cleanOpt);
                 });
             } else {
@@ -544,8 +550,12 @@ class QuizApp {
             } else if (item.qType === 'tf_group') {
                 if (!Array.isArray(item.statements)) item.statements = [];
                 item.statements = item.statements.map(st => {
-                    if (!st || typeof st !== 'object') return { text: String(st || ''), answer: true };
-                    return { text: this.formatScientificNotation(String(st.text || '').trim()), answer: this._parseBoolAnswer(st.answer) };
+                    if (!st || typeof st !== 'object') return { text: this.formatScientificNotation(String(st || '')), answer: true };
+                    const statementText = st.text ?? st.content ?? '';
+                    const statementValue = st.math ?? st.latex ?? st.formula
+                        ? { text: statementText, math: st.math ?? st.latex ?? st.formula }
+                        : String(statementText).trim();
+                    return { text: this.formatScientificNotation(statementValue), answer: this._parseBoolAnswer(st.answer) };
                 });
                 item.correct = 0;
                 item.answer = 0;
@@ -2983,11 +2993,20 @@ renderImporterPreview() {
     }
 
     renderMath(container) {
-        if (!container || typeof renderMathInElement !== 'function') return;
+        if (!container) return;
         // KaTeX có thể chiếm main thread khá lâu với đề lớn. Để trình duyệt
         // vẽ giao diện trước rồi mới xử lý công thức ở frame rảnh kế tiếp.
         const render = () => {
             if (!container.isConnected) return;
+            if (typeof renderMathInElement !== 'function') {
+                if (!container.dataset.mathRenderRetry) container.dataset.mathRenderRetry = '0';
+                const retry = Number(container.dataset.mathRenderRetry);
+                if (retry < 20) {
+                    container.dataset.mathRenderRetry = String(retry + 1);
+                    window.setTimeout(render, 50);
+                }
+                return;
+            }
             try {
                 renderMathInElement(container, {
                     delimiters: [
@@ -3011,76 +3030,10 @@ renderImporterPreview() {
      * thành chuẩn LaTeX / KaTeX sắc nét, loại bỏ triệt để các ký hiệu // thô kệch.
      */
     formatScientificNotation(text) {
-        if (!text || typeof text !== 'string') return text;
-
-        let s = text;
-
-        // 1. Bảo vệ các đoạn LaTeX đã có sẵn giữa $$...$$ hoặc $...$
-        const latexTokens = [];
-        s = s.replace(/(\$\$[\s\S]*?\$\$|\$[^\$]+?\$)/g, (m) => {
-            latexTokens.push(m);
-            return '___LATEX_TOKEN_' + (latexTokens.length - 1) + '___';
-        });
-
-        // 2. Hình học: Đường thẳng / Mặt phẳng song song: AB // CD, d1 // d2, (P) // (Q), (alpha) // (beta)
-        s = s.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 $\\parallel$ $2');
-
-        // 3. Hóa học: Phản ứng thuận nghịch: Thay thế // hoặc <=> hoặc <-> hoặc ⇌ hoặc ⇄ thành \rightleftharpoons
-        s = s.replace(/\s*(?:\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
-
-        // Mũi tên phản ứng hóa học một chiều: -> hoặc ──> hoặc --->
-        s = s.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' $\\rightarrow$ ');
-
-        // Mũi tên suy ra / tương đương trong toán: => hoặc <==>
-        s = s.replace(/\s*=>\s*/g, ' $\\Rightarrow$ ');
-
-        // 4. Ký hiệu so sánh toán học
-        s = s.replace(/\s*>=\s*/g, ' $\\ge$ ');
-        s = s.replace(/\s*<=\s*/g, ' $\\le$ ');
-        s = s.replace(/\s*!=\s*/g, ' $\\ne$ ');
-        s = s.replace(/\s*\+-\s*/g, ' $\\pm$ ');
-
-        // 5. Nhiệt động học / Hóa học: Delta H, Delta_r H298^0
-        s = s.replace(/\b(?:Delta|Δ)\s*([rR])\s*H(?:\s*298)?(?:\s*\^?0)?\b/g, '$\\Delta_r H_{298}^\\circ$');
-        s = s.replace(/(?<!\\)\b(?:Delta|Δ)\s*H\b/g, '$\\Delta H$');
-        s = s.replace(/(?<!\\)\b(?:Delta|Δ)\b/g, '$\\Delta$');
-
-        // 6. Hằng số cân bằng hóa học KC, Kp
-        s = s.replace(/\bK[Cc]\b/g, '$K_C$');
-        s = s.replace(/\bK[Pp]\b/g, '$K_p$');
-
-        // 7. Độ C (°C, ^oC, *C sau số)
-        s = s.replace(/(\d+)\s*(?:°C|\^oC|\*C)/g, '$1$^{\\circ}\\text{C}$');
-
-        // 8. Đơn vị đo lường có số mũ (Vật lý / Toán / Địa lý): m^2, cm^2, km^2, m^3, m/s^2, cm/s^2
-        s = s.replace(/\b(km|cm|dm|mm|m)\^?2\b/g, '$\\text{$1}^2$');
-        s = s.replace(/\b(km|cm|dm|mm|m)\^?3\b/g, '$\\text{$1}^3$');
-        s = s.replace(/\b(m|cm|km)\/s\^?2\b/g, '$\\text{$1}/\\text{s}^2$');
-
-        // 9. Công thức hóa học phổ biến khi gõ thô:
-        s = s.replace(/\bH2O\b/g, '$\\text{H}_2\\text{O}$');
-        s = s.replace(/\bCO2\b/g, '$\\text{CO}_2$');
-        s = s.replace(/\bH2SO4\b/g, '$\\text{H}_2\\text{SO}_4$');
-        s = s.replace(/\bCaCO3\b/g, '$\\text{CaCO}_3$');
-        s = s.replace(/\bSO2\b/g, '$\\text{SO}_2$');
-        s = s.replace(/\bNH3\b/g, '$\\text{NH}_3$');
-        s = s.replace(/\bN2\b/g, '$\\text{N}_2$');
-        s = s.replace(/\bO2\b/g, '$\\text{O}_2$');
-        s = s.replace(/\bH2\b/g, '$\\text{H}_2$');
-        s = s.replace(/\bCl2\b/g, '$\\text{Cl}_2$');
-        s = s.replace(/\bI2\b/g, '$\\text{I}_2$');
-        s = s.replace(/\bFe2O3\b/g, '$\\text{Fe}_2\\text{O}_3$');
-        s = s.replace(/\bAl2O3\b/g, '$\\text{Al}_2\\text{O}_3$');
-        s = s.replace(/\bBaSO4\b/g, '$\\text{BaSO}_4$');
-
-        // Phân số dạng gõ nhanh (7/100, 3 / 4) hiển thị thành tử số / mẫu số.
-        // Chỉ bắt các phân số số học độc lập, không ảnh hưởng ngày tháng hay đơn vị.
-        s = s.replace(/(?<![\w.])(\d+)\s*\/\s*(\d+)(?![\w.])/g, '$\\frac{$1}{$2}$');
-
-        // 10. Khôi phục lại các token LaTeX nguyên bản
-        s = s.replace(/___LATEX_TOKEN_(\d+)___/g, (m, idx) => latexTokens[parseInt(idx, 10)]);
-
-        return s;
+        if (typeof MathNotation !== 'undefined' && typeof MathNotation.format === 'function') {
+            return MathNotation.format(text);
+        }
+        return typeof text === 'string' ? text : String(text ?? '');
     }
 
     /* ============================================================== */

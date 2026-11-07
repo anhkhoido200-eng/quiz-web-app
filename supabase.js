@@ -599,7 +599,7 @@ class DatabaseService {
 
                 const { data, error } = await query;
 
-                if (!error) {
+        if (!error) {
                     console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: (data || []).length });
                     return (data || []).map(row => ({
                         id: row.id,
@@ -674,8 +674,10 @@ class DatabaseService {
             rawOptions = [rawOptions.A || '', rawOptions.B || '', rawOptions.C || '', rawOptions.D || ''];
         }
         const cleanOptions = Array.isArray(rawOptions) ? rawOptions.map(opt => {
-            if (typeof opt !== 'string') return String(opt || '');
-            return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+            if (opt && typeof opt === 'object') {
+                return { ...opt };
+            }
+            return String(opt || '').replace(/^[A-D][\s.):-]\s*/i, '').trim();
         }) : [];
 
         const record = {
@@ -765,8 +767,10 @@ class DatabaseService {
                 rawOptions = [rawOptions.A || '', rawOptions.B || '', rawOptions.C || '', rawOptions.D || ''];
             }
             const cleanOptions = Array.isArray(rawOptions) ? rawOptions.map(opt => {
-                if (typeof opt !== 'string') return String(opt || '');
-                return opt.replace(/^[A-D][\s.):-]\s*/i, '').trim();
+                if (opt && typeof opt === 'object') {
+                    return { ...opt };
+                }
+                return String(opt || '').replace(/^[A-D][\s.):-]\s*/i, '').trim();
             }) : [];
 
             const hasId = q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id));
