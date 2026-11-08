@@ -67,6 +67,7 @@ class QuizApp {
         this.questionSyncChannel = null;
         this.questionSyncPoll = null;
         this.quizHeaderResizeObserver = null;
+        this.studentNoticeTimer = null;
 
         // Tiện ích Debounce tối ưu hiệu năng chống giật lag
         this.debouncedSearchAdminQuestions = this.debounce(() => {
@@ -2957,11 +2958,11 @@ renderImporterPreview() {
     /* ============================================================== */
 
     setExamMode(isExam) {
-        this.isExamMode = false;
+        this.isExamMode = Boolean(isExam);
         const ind = document.getElementById('exam-mode-indicator-text');
         if (ind) {
-            ind.textContent = "Chế độ Luyện Tập (Xem đáp án ngay)";
-            ind.className = "text-[11px] font-bold text-emerald-400";
+            ind.textContent = this.isExamMode ? "Chế độ Thi thử (Ẩn đáp án)" : "Chế độ Luyện Tập (Xem đáp án ngay)";
+            ind.className = this.isExamMode ? "text-[11px] font-bold text-amber-400" : "text-[11px] font-bold text-emerald-400";
         }
     }
 
@@ -3270,7 +3271,7 @@ renderImporterPreview() {
             // Nút Hỏi AI dùng chung cho chế độ Luyện tập
             const aiButtonHtml = !this.isExamMode ? `
                 <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${JSON.stringify(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
@@ -3316,7 +3317,7 @@ renderImporterPreview() {
                         : '';
 
                     return `
-                                <button type="button" onclick="app.selectOption(${q.id}, ${oIdx})" ${isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${JSON.stringify(q.id)}, ${oIdx})" ${isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                     ${feedbackIcon}
@@ -3382,10 +3383,10 @@ renderImporterPreview() {
                                         <span class="text-slate-200 font-medium">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, true)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" onclick="app.selectTfOption(${q.id}, ${sIdx}, false)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -3430,8 +3431,8 @@ renderImporterPreview() {
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onchange="app.saveShortAnswer(${q.id}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${q.id}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
-                        <button type="button" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onclick="app.saveShortAnswer(${q.id}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onchange="app.saveShortAnswer(${JSON.stringify(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${JSON.stringify(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <button type="button" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onclick="app.saveShortAnswer(${JSON.stringify(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
                             <span>${hasSubmitted ? 'Đã ghi nhận' : 'Ghi nhận'}</span>
                         </button>
@@ -3450,7 +3451,7 @@ renderImporterPreview() {
     }
 
     selectOption(qId, oIdx) {
-        const q = this.allQuestions.find(item => item.id === qId);
+        const q = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!q) return;
         if (this.hasSubmittedAnswer(qId)) {
             console.debug('[QuizApp] Bỏ qua lần chọn trắc nghiệm thứ hai:', { qId, existing: this.userAnswers[qId] });
@@ -3459,11 +3460,14 @@ renderImporterPreview() {
 
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
+        const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
+        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
         this.updateLiveStats();
     }
 
     selectTfOption(qId, stmtIdx, isTrue) {
+        qId = this.allQuestions.find(item => String(item.id) === String(qId))?.id ?? qId;
         const currentAnswers = this.userAnswers[qId];
         const hasExistingAnswer = currentAnswers && typeof currentAnswers === 'object'
             && Object.prototype.hasOwnProperty.call(currentAnswers, stmtIdx);
@@ -3478,12 +3482,14 @@ renderImporterPreview() {
         this.userAnswers[qId][stmtIdx] = Boolean(isTrue);
         console.debug('[QuizApp] Đã ghi nhận lựa chọn Đúng/Sai:', { qId, stmtIdx, answer: Boolean(isTrue) });
         this.saveAutoSaveProgress();
+        const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
+        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
         this.updateLiveStats();
     }
 
     saveShortAnswer(qId, val) {
-        const question = this.allQuestions.find(item => item.id === qId);
+        const question = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!question || question.qType !== 'short_answer') return;
         if (this.hasSubmittedAnswer(qId)) {
             console.debug('[QuizApp] Bỏ qua lần nhập trả lời ngắn thứ hai:', { qId, existing: this.userAnswers[qId] });
@@ -3495,7 +3501,9 @@ renderImporterPreview() {
         this.userAnswers[qId] = normalizedValue;
         console.debug('[QuizApp] Đã ghi nhận trả lời ngắn:', { qId, answered: true });
         this.saveAutoSaveProgress();
+        const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
+        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
         this.updateLiveStats();
     }
 
@@ -4088,18 +4096,17 @@ renderImporterPreview() {
         const cleanContent = typeof content === 'string' ? content.trim() : '';
         if (cleanContent.length < 2) return;
         text.textContent = cleanContent;
+        this.hideStudentNotice();
         banner.classList.remove('hidden');
-
         let secondsLeft = 5;
         if (timer) timer.textContent = `${secondsLeft}s`;
         if (bar) bar.style.width = '100%';
 
-        const interval = setInterval(() => {
+        this.studentNoticeTimer = setInterval(() => {
             secondsLeft--;
             if (timer) timer.textContent = `${secondsLeft}s`;
             if (bar) bar.style.width = `${(secondsLeft / 5) * 100}%`;
             if (secondsLeft <= 0) {
-                clearInterval(interval);
                 this.hideStudentNotice();
             }
         }, 1000);
@@ -4107,6 +4114,10 @@ renderImporterPreview() {
 
     hideStudentNotice() {
         const banner = document.getElementById('student-notice-banner');
+        if (this.studentNoticeTimer) {
+            clearInterval(this.studentNoticeTimer);
+            this.studentNoticeTimer = null;
+        }
         if (banner) banner.classList.add('hidden');
     }
 

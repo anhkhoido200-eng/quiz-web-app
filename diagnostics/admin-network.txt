@@ -1,0 +1,15 @@
+72. [GET] https://api.ipify.org/?format=json => [200] 
+74. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000001&limit=1 => [200] 
+75. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_questions?select=*&order=id.asc => [200] 
+76. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000001&limit=1 => [200] 
+77. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000003&limit=1 => [200] 
+78. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000001&limit=1 => [200] 
+79. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000002&limit=1 => [200] 
+80. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000004&limit=1 => [200] 
+85. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=id%2Cplayer_name%2Cip_address%2Cdevice_info%2Cstatus%2Cscore_summary%2Clast_active%2Ccreated_at&order=last_active.desc&limit=200 => [200] 
+86. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000006&limit=1 => [200] 
+87. [POST] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?on_conflict=id => [200] 
+88. [POST] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?on_conflict=id => [200] 
+90. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=*&id=eq.00000000-0000-0000-0000-000000000001&limit=1
+
+Note: 21 static requests not shown, run with "static" option to see them.

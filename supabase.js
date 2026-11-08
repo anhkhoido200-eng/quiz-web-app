@@ -376,35 +376,43 @@ class DatabaseService {
             if (!Array.isArray(queue) || queue.length === 0) return 0;
 
             let syncedCount = 0;
+            const remaining = [];
             for (const item of queue) {
+                let synced = false;
                 try {
                     if (item.type === 'updateProgress' && item.payload) {
                         const { loginId, statusText, scoreText, last_active } = item.payload;
                         if (loginId && !String(loginId).startsWith('local_')) {
-                            await this.client.from('quiz_logins').update({
+                            const { error } = await this.client.from('quiz_logins').update({
                                 status: statusText,
                                 score_summary: scoreText,
                                 last_active: last_active || new Date().toISOString()
                             }).eq('id', loginId);
+                            if (error) throw error;
                             syncedCount++;
+                            synced = true;
                         }
                     } else if (item.type === 'updateStatus' && item.payload) {
                         const { loginId, status, scoreSummary, last_active } = item.payload;
                         if (loginId && !String(loginId).startsWith('local_')) {
-                            await this.client.from('quiz_logins').update({
+                            const { error } = await this.client.from('quiz_logins').update({
                                 status: status,
                                 score_summary: scoreSummary,
                                 last_active: last_active || new Date().toISOString()
                             }).eq('id', loginId);
+                            if (error) throw error;
                             syncedCount++;
+                            synced = true;
                         }
                     }
                 } catch (err) {
                     console.warn("[OfflineSync] Lỗi sync item:", err);
                 }
+                if (!synced) remaining.push(item);
             }
 
-            localStorage.removeItem('quiz_offline_sync_queue');
+            if (remaining.length) localStorage.setItem('quiz_offline_sync_queue', JSON.stringify(remaining));
+            else localStorage.removeItem('quiz_offline_sync_queue');
             return syncedCount;
         } catch (e) {
             console.warn("[OfflineSync] Lỗi syncPendingOfflineData:", e);

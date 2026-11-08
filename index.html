@@ -567,7 +567,7 @@
             </div>
             <p class="text-xs text-slate-400 mb-3">Nhập mật mã quản trị viên. Hệ thống sẽ <strong>tự động ghi nhớ vĩnh viễn quyền Admin trên thiết bị này</strong> để các lần sau bạn vào thẳng mà không cần nhập lại hay chọn IP!</p>
             <div class="space-y-3">
-                <input type="password" id="admin-pass-input" placeholder="Nhập mã bí mật..." 
+                <input type="password" id="admin-pass-input" autocomplete="current-password" placeholder="Nhập mã bí mật..." 
                     class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
                 <p id="admin-auth-error" class="hidden text-rose-400 text-xs">Mã bí mật không chính xác!</p>
                 <div class="flex items-center justify-end gap-2 pt-2">
@@ -1445,7 +1445,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             <i class="fa-solid fa-eye mr-0.5"></i> Hiện/Ẩn mã
                         </button>
                     </div>
-                    <input type="password" id="supabase-key-input" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
+                    <input type="password" id="supabase-key-input" autocomplete="off" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
@@ -1549,7 +1549,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             Lấy key miễn phí <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                         </a>
                     </label>
-                    <input type="password" id="gemini-api-key-input" placeholder="Dán mã API Key tại đây..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
+                    <input type="password" id="gemini-api-key-input" autocomplete="off" placeholder="Dán mã API Key tại đây..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
                 </div>
 
                 <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 space-y-1">

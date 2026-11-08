@@ -1,0 +1,72 @@
+- generic [active] [ref=f1e1] [box=0,0,914,1258]:
+  - text:   
+  - generic [ref=f1e2] [box=0,0,914,1258]:
+    - complementary [ref=f1e3] [box=0,0,254,888]:
+      - link "Quiz Studio Control Center" [ref=f1e4] [cursor=pointer] [box=15,25,223,38]:
+        - /url: index.html
+        - generic [ref=f1e6] [box=74,26,94,37]:
+          - strong [ref=f1e7] [box=74,26,94,22]: Quiz Studio
+          - generic [ref=f1e8] [box=74,50,94,13]: Control Center
+      - generic [ref=f1e9] [box=22,91,209,54]:
+        - generic [ref=f1e10] [box=33,103,30,30]: 
+        - generic [ref=f1e12] [box=72,104,96,29]:
+          - generic [ref=f1e13] [box=72,104,96,14]: Admin workspace
+          - generic [ref=f1e14] [box=72,121,96,12]: 14.164.221.205
+        - generic [ref=f1e15] [box=208,103,12,12]: 
+      - navigation "Khu vực quản trị" [ref=f1e16] [box=15,164,223,285]:
+        - paragraph [ref=f1e17] [box=15,168,223,12]: WORKSPACE
+        - button "Tổng quan" [ref=f1e18] [cursor=pointer] [box=15,192,223,38]
+        - button " Ngân hàng & môn học 29" [ref=f1e20] [cursor=pointer] [box=15,234,223,39]:
+          - generic [ref=f1e21] [box=27,247,17,13]: 
+          - generic [ref=f1e22] [box=55,246,127,16]: Ngân hàng & môn học
+          - emphasis [ref=f1e23] [box=202,245,24,17]: "29"
+        - button "Giám sát học sinh 1" [ref=f1e24] [cursor=pointer] [box=15,277,223,39]:
+          - generic [ref=f1e25] [box=55,289,103,16]: Giám sát học sinh
+          - emphasis [ref=f1e26] [box=211,288,15,17]: "1"
+        - paragraph [ref=f1e27] [box=15,345,223,12]: SYSTEM
+        - button " Quyền truy cập" [ref=f1e28] [cursor=pointer] [box=15,369,223,38]:
+          - generic [ref=f1e29] [box=27,382,17,13]: 
+          - generic [ref=f1e30] [box=55,380,89,16]: Quyền truy cập
+        - button " Báo cáo & dữ liệu" [ref=f1e31] [cursor=pointer] [box=15,411,223,38]:
+          - generic [ref=f1e32] [box=27,424,17,13]: 
+          - generic [ref=f1e33] [box=55,422,100,16]: Báo cáo & dữ liệu
+      - generic [ref=f1e34] [box=15,777,223,94]:
+        - generic [ref=f1e37] [box=44,789,110,28]:
+          - generic [ref=f1e38] [box=44,789,110,13]: Hệ thống đang mở
+          - generic [ref=f1e39] [box=44,805,110,12]: Sẵn sàng phục vụ học sinh
+        - link " Trang học sinh" [ref=f1e40] [cursor=pointer] [box=15,839,223,32]:
+          - /url: index.html
+          - generic [ref=f1e41] [box=26,850,11,11]: 
+          - text: Trang học sinh
+    - main [ref=f1e42] [box=254,0,660,1258]:
+      - generic [ref=f1e43] [box=254,0,660,74]:
+        - text: 
+        - generic [ref=f1e44] [box=285,29,170,16]:
+          - generic [ref=f1e45] [box=285,29,83,16]: Control Center
+          - generic [ref=f1e46] [box=377,32,6,9]: 
+          - generic [ref=f1e47] [box=393,29,62,16]: Tổng quan
+        - generic [ref=f1e48] [box=672,19,211,36]:
+          - generic [ref=f1e49] [box=672,30,62,14]: Đã đồng bộ
+          - button "" [ref=f1e50] [cursor=pointer] [box=745,19,35,35]
+          - button " Đồng bộ" [ref=f1e52] [cursor=pointer] [box=791,19,93,36]:
+            - generic [ref=f1e53] [box=803,31,12,12]: 
+            - generic [ref=f1e54] [box=823,29,49,16]: Đồng bộ
+      - generic [ref=f1e55] [box=254,74,660,1184]:
+        - generic [ref=f1e56] [box=285,111,599,1055]:
+          - generic [ref=f1e57] [box=285,111,599,79]:
+            - generic [ref=f1e58] [box=285,111,358,79]
+            - generic [ref=f1e62] [box=674,152,209,38]
+          - generic [ref=f1e66] [box=285,216,599,214]:
+            - article [ref=f1e67] [box=285,216,292,100]
+            - article [ref=f1e74] [box=591,216,292,100]
+            - article [ref=f1e81] [box=285,330,292,100]
+            - article [ref=f1e88] [box=591,330,292,100]
+          - generic [ref=f1e95] [box=285,451,599,290]:
+            - generic [ref=f1e96] [box=285,451,320,290]
+            - generic [ref=f1e125] [box=622,451,262,290]
+          - generic [ref=f1e138] [box=285,758,599,408]:
+            - generic [ref=f1e139] [box=285,758,262,408]
+            - generic [ref=f1e165] [box=563,758,320,408]
+        - text:  +                                                                  +                                                    +                      
+  - text:        
+  - status [box=858,848,32,24]

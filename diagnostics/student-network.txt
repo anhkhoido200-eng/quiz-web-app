@@ -1,0 +1,11 @@
+27. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=id%2Cplayer_name%2Cip_address%2Cdevice_info%2Cstatus%2Cscore_summary%2Clast_active%2Ccreated_at&status=like.BANNED%25&order=last_active.desc => [200] 
+28. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=score_summary&id=eq.00000000-0000-0000-0000-000000000004&limit=1 => [200] 
+29. [GET] https://api.ipify.org/?format=json => [200] 
+30. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=device_info%2Cscore_summary&id=eq.00000000-0000-0000-0000-000000000001&limit=1 => [200] 
+31. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_questions?select=*&order=id.asc&subject_key=eq.math5 => [200] 
+32. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=device_info%2Cscore_summary&id=eq.00000000-0000-0000-0000-000000000002&limit=1 => [200] 
+33. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=status%2Cscore_summary&id=eq.00000000-0000-0000-0000-000000000006&limit=1 => [200] 
+34. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_questions?select=*&order=id.asc&subject_key=eq.math5 => [200] 
+35. [GET] https://qotfikuiwmruicsvsbgq.supabase.co/rest/v1/quiz_logins?select=device_info%2Cstatus%2Cscore_summary%2Clast_active&id=eq.00000000-0000-0000-0000-000000000003&limit=1 => [200] 
+
+Note: 26 static requests not shown, run with "static" option to see them.

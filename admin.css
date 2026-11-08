@@ -33,3 +33,13 @@ dialog.subject-dialog{width:min(680px,calc(100vw - 32px));max-height:min(760px,c
 
 /* Gemini key remains available to Admin for the exercise explanation assistant. */
 .ai-config-panel{display:block}
+
+/* Admin controls settle in place instead of bouncing on every selection. */
+.answer-radio,.tf-choice,.button,.text-button,.subject-grade-button,.nav-item {
+    transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+.answer-radio:active,.tf-choice:active,.button:active,.text-button:active { transform: none; }
+.preview-option,.tf-preview-row { min-height: 42px; }
+@media (prefers-reduced-motion: reduce) {
+    .answer-radio,.tf-choice,.button,.text-button,.subject-grade-button,.nav-item { transition: none !important; }
+}

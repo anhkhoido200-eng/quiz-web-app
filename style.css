@@ -972,6 +972,22 @@ body.light-theme footer {
     to { opacity: 1; transform: scale(1); }
 }
 
+/* Stable answer feedback: keep the card geometry fixed and avoid replayed bounces. */
+.quiz-option-tile {
+    transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
+    transform: translateZ(0);
+    will-change: border-color, background-color, box-shadow;
+}
+.quiz-option-tile:hover:not(:disabled),
+.quiz-option-tile:active:not(:disabled) { transform: translateZ(0); }
+.option-selected-correct, .option-selected-wrong { animation: none !important; }
+.quiz-option-content { min-width: 0; }
+.quiz-question-card img { display: block; aspect-ratio: 16 / 9; min-height: 8rem; object-fit: contain; background: rgba(15, 23, 42, .35); }
+.quiz-sticky-header { contain: layout style; }
+@media (prefers-reduced-motion: reduce) {
+    .quiz-progress-bar, .tf-choice-button, .answer-submit-button, .short-answer-feedback { transition: none !important; animation: none !important; }
+}
+
 /* The bar moves with its width and keeps a small leading glow. */
 .quiz-progress-bar {
     position: relative;
