@@ -1638,6 +1638,39 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
         </div>
     </div>
 
+    <!-- ======================================================= -->
+    <!-- MODAL 11: HỘP THOẠI XÁC NHẬN TÙY CHỈNH (CUSTOM CONFIRM) -->
+    <!-- ======================================================= -->
+    <div id="modal-custom-confirm" class="fixed inset-0 z-[200000] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 select-none">
+        <div id="custom-confirm-card" class="confirm-modal-card rounded-3xl max-w-md w-full overflow-hidden relative">
+            <div id="custom-confirm-accent-bar" class="h-1.5 w-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"></div>
+            <div class="p-6 space-y-4">
+                <div class="flex items-start gap-4">
+                    <div id="custom-confirm-icon-wrap" class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-400 flex items-center justify-center text-xl shrink-0 shadow-lg">
+                        <i id="custom-confirm-icon" class="fa-solid fa-circle-question"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <span id="custom-confirm-badge" class="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-1">Xác nhận thao tác</span>
+                        <h3 id="custom-confirm-title" class="font-heading font-extrabold text-white text-base sm:text-lg leading-snug">Bạn có chắc chắn không?</h3>
+                    </div>
+                    <button type="button" id="custom-confirm-close-btn" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
+                <div class="flex items-center justify-end gap-2.5 pt-1">
+                    <button type="button" id="custom-confirm-cancel-btn" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-200 font-heading font-bold text-xs sm:text-sm transition cursor-pointer">
+                        Hủy bỏ
+                    </button>
+                    <button type="button" id="custom-confirm-ok-btn" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl text-slate-950 font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer">
+                        <i id="custom-confirm-ok-icon" class="fa-solid fa-check"></i>
+                        <span id="custom-confirm-ok-text">Đồng ý</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ -->
     <script src="questions.js?v=4.0"></script>
     <script src="physics_questions.js?v=4.0"></script>

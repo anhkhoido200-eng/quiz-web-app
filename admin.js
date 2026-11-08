@@ -73,6 +73,89 @@
         }
     };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const confirmDialog = (options = {}) => {
+        const opts = typeof options === 'string' ? { message: options } : (options || {});
+        const msg = String(opts.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?');
+        const isDanger = opts.variant ? opts.variant === 'danger' : /xóa|dọn|backup/i.test(msg);
+        const variant = opts.variant || (isDanger ? 'danger' : 'warning');
+
+        let modal = document.getElementById('admin-confirm-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'admin-confirm-modal';
+            modal.className = 'admin-confirm-backdrop hidden';
+            modal.innerHTML = `
+                <div class="admin-confirm-card" role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title">
+                    <div id="admin-confirm-accent" class="admin-confirm-accent"></div>
+                    <div class="admin-confirm-body">
+                        <div class="admin-confirm-head">
+                            <span id="admin-confirm-icon" class="admin-confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                            <div class="admin-confirm-title-wrap">
+                                <p id="admin-confirm-eyebrow" class="eyebrow">CONFIRM ACTION</p>
+                                <h3 id="admin-confirm-title">Xác nhận thao tác</h3>
+                            </div>
+                            <button type="button" id="admin-confirm-close" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div id="admin-confirm-message" class="admin-confirm-message"></div>
+                        <div class="admin-confirm-actions">
+                            <button type="button" id="admin-confirm-cancel" class="button button-secondary">Hủy bỏ</button>
+                            <button type="button" id="admin-confirm-ok" class="button button-primary"><i class="fa-solid fa-check"></i> <span id="admin-confirm-ok-text">Xác nhận</span></button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        const accentEl = document.getElementById('admin-confirm-accent');
+        const iconWrap = document.getElementById('admin-confirm-icon');
+        const eyebrowEl = document.getElementById('admin-confirm-eyebrow');
+        const titleEl = document.getElementById('admin-confirm-title');
+        const msgEl = document.getElementById('admin-confirm-message');
+        const cancelBtn = document.getElementById('admin-confirm-cancel');
+        const okBtn = document.getElementById('admin-confirm-ok');
+        const okText = document.getElementById('admin-confirm-ok-text');
+        const closeBtn = document.getElementById('admin-confirm-close');
+
+        if (accentEl) accentEl.className = `admin-confirm-accent ${variant === 'danger' ? 'is-danger' : (variant === 'warning' ? 'is-warning' : '')}`;
+        if (iconWrap) {
+            iconWrap.className = `admin-confirm-icon ${variant === 'danger' ? 'is-danger' : (variant === 'warning' ? 'is-warning' : '')}`;
+            iconWrap.innerHTML = `<i class="fa-solid ${opts.icon || (variant === 'danger' ? 'fa-trash-can' : 'fa-triangle-exclamation')}"></i>`;
+        }
+        if (eyebrowEl) eyebrowEl.textContent = opts.eyebrow || (variant === 'danger' ? 'DANGER ZONE' : 'CONFIRM ACTION');
+        if (titleEl) titleEl.textContent = opts.title || (variant === 'danger' ? 'Xác nhận xóa dữ liệu?' : 'Xác nhận thao tác?');
+        if (msgEl) msgEl.textContent = msg;
+        if (cancelBtn) cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
+        if (okBtn) okBtn.className = `button ${variant === 'danger' ? 'button-danger-solid' : (variant === 'warning' ? 'button-warning-solid' : 'button-primary')}`;
+        if (okText) okText.textContent = opts.confirmText || (variant === 'danger' ? 'Xác nhận xóa' : 'Đồng ý');
+
+        modal.classList.remove('hidden');
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                modal.classList.add('hidden');
+                window.removeEventListener('keydown', onKey, true);
+                modal.onclick = null;
+                if (okBtn) okBtn.onclick = null;
+                if (cancelBtn) cancelBtn.onclick = null;
+                if (closeBtn) closeBtn.onclick = null;
+                resolve(result);
+            };
+            const onKey = (e) => {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+                else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+            };
+            window.addEventListener('keydown', onKey, true);
+            modal.onclick = (e) => { if (e.target === modal) finish(false); };
+            if (okBtn) okBtn.onclick = () => finish(true);
+            if (cancelBtn) cancelBtn.onclick = () => finish(false);
+            if (closeBtn) closeBtn.onclick = () => finish(false);
+            setTimeout(() => { (variant === 'danger' ? cancelBtn : okBtn)?.focus(); }, 20);
+        });
+    };
     const fetchWithTimeout = async (url, options = {}, timeoutMs = 60000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -592,7 +675,7 @@
     }
 
     async function deleteQuestion(id) {
-        if (!window.confirm(`Xóa câu hỏi #${id}? Hành động này không thể hoàn tác.`)) return;
+        if (!(await confirmDialog({ title: `Xóa câu hỏi #${id}?`, message: `Xóa câu hỏi #${id}? Hành động này không thể hoàn tác.`, confirmText: 'Xóa câu hỏi', variant: 'danger' }))) return;
         const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
         if (error) return notify(`Không thể xóa: ${error.message}`, true);
         notify('Đã xóa câu hỏi.'); if (String(state.editingId) === String(id)) resetForm(); await loadQuestions();
@@ -600,7 +683,7 @@
 
     async function deleteAllQuestions() {
         const total = state.questions.length;
-        if (!window.confirm(`Xóa toàn bộ ${total} câu hỏi trong ngân hàng? Hành động này không thể hoàn tác.`)) return;
+        if (!(await confirmDialog({ title: 'Xóa toàn bộ ngân hàng câu hỏi?', message: `Xóa toàn bộ ${total} câu hỏi trong ngân hàng? Hành động này không thể hoàn tác.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
         try {
             const { error } = await state.client.from('quiz_questions').delete().not('id', 'is', null);
             if (error) throw error;
@@ -621,8 +704,8 @@
         const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
         const name = subject?.name || key;
         const currentCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key)).length;
-        if (!currentCount && !window.confirm(`Không thấy câu hỏi đã tải cho môn ${name}. Vẫn kiểm tra và dọn dữ liệu Cloud?`)) return;
-        if (currentCount && !window.confirm(`Xóa toàn bộ ${currentCount} câu hỏi của môn ${name}? Hành động này không thể hoàn tác.`)) return;
+        if (!currentCount && !(await confirmDialog({ title: 'Kiểm tra & Dọn dữ liệu Cloud?', message: `Không thấy câu hỏi đã tải cho môn ${name}. Vẫn kiểm tra và dọn dữ liệu Cloud?`, confirmText: 'Dọn dữ liệu', variant: 'warning' }))) return;
+        if (currentCount && !(await confirmDialog({ title: `Xóa đề môn ${name}?`, message: `Xóa toàn bộ ${currentCount} câu hỏi của môn ${name}? Hành động này không thể hoàn tác.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
         try {
             const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
             if (error) throw error;
@@ -642,7 +725,7 @@
         const name = subject?.name || key;
         const legacyCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === 'history').length;
         if (!legacyCount) return notify('Không còn câu hỏi cũ chưa gán môn.', true);
-        if (!window.confirm(`Gán ${legacyCount} câu hỏi cũ đang ở mã history vào môn ${name}?`)) return;
+        if (!(await confirmDialog({ title: 'Gán câu hỏi cũ vào môn học?', message: `Gán ${legacyCount} câu hỏi cũ đang ở mã history vào môn ${name}?`, confirmText: 'Gán ngay', variant: 'primary', icon: 'fa-layer-group' }))) return;
         try {
             const { error } = await state.client.from('quiz_questions').update({ subject_key: key }).eq('subject_key', 'history');
             if (error) throw error;
@@ -859,8 +942,8 @@
             if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi. Bấm Lưu vào ngân hàng để tiếp tục.');
             return notify(state.importError || 'Chưa có câu hỏi để lưu. Hãy dán JSON hợp lệ rồi bấm Đọc JSON.', true);
         }
-        if (!state.importIntegrity.valid && !window.confirm('Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?')) return;
-        if ($('import-replace')?.checked && !window.confirm('Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp?')) return;
+        if (!state.importIntegrity.valid && !(await confirmDialog({ title: 'Tiếp tục lưu câu hỏi?', message: 'Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?', confirmText: 'Vẫn tiếp tục lưu', variant: 'warning' }))) return;
+        if ($('import-replace')?.checked && !(await confirmDialog({ title: 'Ghi đè câu hỏi cũ?', message: 'Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp bộ đề mới?', confirmText: 'Xóa cũ & Nạp mới', variant: 'danger' }))) return;
         try {
             const selectedSubject = String($('import-subject-select')?.value || state.importSubject || '').trim();
             if (!selectedSubject) throw new Error('Chưa chọn môn đích cho bộ câu hỏi.');
@@ -934,7 +1017,7 @@
     }
 
     async function clearGeminiKey() {
-        if (!window.confirm('Xóa Gemini API Key dùng chung?')) return;
+        if (!(await confirmDialog({ title: 'Xóa Gemini API Key?', message: 'Xóa Gemini API Key dùng chung khỏi toàn hệ thống?', confirmText: 'Xóa API Key', variant: 'danger', icon: 'fa-key' }))) return;
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'INACTIVE', score_summary: '', last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(error.message, true);
         localStorage.removeItem('gemini_api_key'); notify('Đã xóa Gemini API Key.');
@@ -1248,7 +1331,7 @@
         } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
     }
     async function deleteSubject(key) {
-        if (!window.confirm(`Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này?`)) return;
+        if (!(await confirmDialog({ title: `Xóa môn ${key}?`, message: `Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này khỏi hệ thống?`, confirmText: 'Xóa môn học', variant: 'danger' }))) return;
         const previousSubjects = state.subjects.slice();
         try {
             // Xóa ngân hàng trước; nếu Cloud không xác minh được count=0 thì
@@ -1326,7 +1409,7 @@
         notify(`Đã gửi thông báo riêng tới IP ${targetIp}.`);
     }
     async function clearStudentLogins() {
-        if (!window.confirm('Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.')) return;
+        if (!(await confirmDialog({ title: 'Xóa lịch sử học sinh?', message: 'Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.', confirmText: 'Xóa lịch sử', variant: 'danger' }))) return;
         const systemIds = Object.values(SYSTEM);
         const adminIps = new Set([
             state.adminConfig.masterIp,
@@ -1473,7 +1556,7 @@
          document.addEventListener('click', (event) => { const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice]'); if (!target) return; if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow)); else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow)); else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName)); });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
-        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!window.confirm('Backup và xóa lịch sử làm bài của học sinh?')) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
+        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const adminIps = new Set([state.adminConfig.masterIp, ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)].map((ip) => String(ip || '').trim()).filter(Boolean)); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__') && !adminIps.has(String(row.ip_address || '').trim())); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
          $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });

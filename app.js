@@ -153,6 +153,166 @@ class QuizApp {
         }
     }
 
+    ensureConfirmModalExists() {
+        let modal = document.getElementById('modal-custom-confirm');
+        if (modal) return modal;
+        modal = document.createElement('div');
+        modal.id = 'modal-custom-confirm';
+        modal.className = 'fixed inset-0 z-[200000] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 select-none';
+        modal.innerHTML = `
+            <div id="custom-confirm-card" class="confirm-modal-card rounded-3xl max-w-md w-full overflow-hidden relative">
+                <div id="custom-confirm-accent-bar" class="h-1.5 w-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"></div>
+                <div class="p-6 space-y-4">
+                    <div class="flex items-start gap-4">
+                        <div id="custom-confirm-icon-wrap" class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-400 flex items-center justify-center text-xl shrink-0 shadow-lg">
+                            <i id="custom-confirm-icon" class="fa-solid fa-circle-question"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <span id="custom-confirm-badge" class="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-1">Xác nhận thao tác</span>
+                            <h3 id="custom-confirm-title" class="font-heading font-extrabold text-white text-base sm:text-lg leading-snug">Bạn có chắc chắn không?</h3>
+                        </div>
+                        <button type="button" id="custom-confirm-close-btn" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0" aria-label="Đóng">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
+                    <div class="flex items-center justify-end gap-2.5 pt-1">
+                        <button type="button" id="custom-confirm-cancel-btn" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-200 font-heading font-bold text-xs sm:text-sm transition cursor-pointer">
+                            Hủy bỏ
+                        </button>
+                        <button type="button" id="custom-confirm-ok-btn" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl text-slate-950 font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer">
+                            <i id="custom-confirm-ok-icon" class="fa-solid fa-check"></i>
+                            <span id="custom-confirm-ok-text">Đồng ý</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    showConfirmModal(options = {}) {
+        const opts = typeof options === 'string' ? { message: options } : (options || {});
+        const rawMsg = String(opts.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?');
+        const isDangerDefault = /xóa|chặn|thu hồi|bảo trì|dọn dẹp/i.test(rawMsg);
+        const variant = opts.variant || (isDangerDefault ? 'danger' : 'warning');
+
+        const themes = {
+            warning: {
+                accent: 'h-1.5 w-full bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500',
+                iconWrap: 'w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
+                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-1',
+                badgeText: 'Xác nhận thao tác',
+                icon: 'fa-solid fa-triangle-exclamation',
+                okBtn: 'btn-3d btn-3d-amber px-5 py-2.5 rounded-xl text-slate-950 font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
+            },
+            danger: {
+                accent: 'h-1.5 w-full bg-gradient-to-r from-rose-500 via-red-500 to-orange-500',
+                iconWrap: 'w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/35 text-rose-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
+                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 mb-1',
+                badgeText: 'Cảnh báo quan trọng',
+                icon: 'fa-solid fa-trash-can',
+                okBtn: 'btn-3d btn-3d-rose px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
+            },
+            primary: {
+                accent: 'h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400',
+                iconWrap: 'w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/35 text-indigo-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
+                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mb-1',
+                badgeText: 'Xác nhận hệ thống',
+                icon: 'fa-solid fa-circle-question',
+                okBtn: 'btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
+            },
+            success: {
+                accent: 'h-1.5 w-full bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500',
+                iconWrap: 'w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
+                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 mb-1',
+                badgeText: 'Hoàn tất & Đồng bộ',
+                icon: 'fa-solid fa-circle-check',
+                okBtn: 'btn-3d btn-3d-emerald px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
+            }
+        };
+
+        const theme = themes[variant] || themes.warning;
+        const modal = this.ensureConfirmModalExists();
+        const card = document.getElementById('custom-confirm-card');
+        const accentBar = document.getElementById('custom-confirm-accent-bar');
+        const iconWrap = document.getElementById('custom-confirm-icon-wrap');
+        const iconEl = document.getElementById('custom-confirm-icon');
+        const badgeEl = document.getElementById('custom-confirm-badge');
+        const titleEl = document.getElementById('custom-confirm-title');
+        const msgEl = document.getElementById('custom-confirm-message');
+        const cancelBtn = document.getElementById('custom-confirm-cancel-btn');
+        const okBtn = document.getElementById('custom-confirm-ok-btn');
+        const okIcon = document.getElementById('custom-confirm-ok-icon');
+        const okText = document.getElementById('custom-confirm-ok-text');
+        const closeBtn = document.getElementById('custom-confirm-close-btn');
+
+        if (accentBar) accentBar.className = theme.accent;
+        if (iconWrap) iconWrap.className = theme.iconWrap;
+        if (iconEl) iconEl.className = opts.icon || theme.icon;
+        if (badgeEl) {
+            badgeEl.className = theme.badge;
+            badgeEl.textContent = opts.badge || theme.badgeText;
+        }
+        if (titleEl) titleEl.textContent = opts.title || 'Xác nhận thực hiện?';
+        if (msgEl) msgEl.textContent = rawMsg;
+        if (cancelBtn) cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
+        if (okBtn) okBtn.className = theme.okBtn;
+        if (okIcon) okIcon.className = opts.okIcon || 'fa-solid fa-check';
+        if (okText) okText.textContent = opts.confirmText || 'Đồng ý';
+
+        if (card) {
+            card.style.animation = 'none';
+            void card.offsetWidth;
+            card.style.animation = '';
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                window.removeEventListener('keydown', onKeyDown, true);
+                modal.onclick = null;
+                if (okBtn) okBtn.onclick = null;
+                if (cancelBtn) cancelBtn.onclick = null;
+                if (closeBtn) closeBtn.onclick = null;
+                resolve(result);
+            };
+
+            const onKeyDown = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    finish(false);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    finish(true);
+                }
+            };
+
+            window.addEventListener('keydown', onKeyDown, true);
+            modal.onclick = (e) => {
+                if (e.target === modal) finish(false);
+            };
+            if (okBtn) okBtn.onclick = () => finish(true);
+            if (cancelBtn) cancelBtn.onclick = () => finish(false);
+            if (closeBtn) closeBtn.onclick = () => finish(false);
+
+            setTimeout(() => {
+                if (variant === 'danger' && cancelBtn) cancelBtn.focus();
+                else if (okBtn) okBtn.focus();
+            }, 20);
+        });
+    }
+
     /**
      * Khởi tạo toàn bộ ứng dụng
      */
@@ -794,8 +954,16 @@ class QuizApp {
         this.promptAdminAuth();
     }
 
-    adminLogout() {
-        if (!confirm("Bạn có chắc muốn đăng xuất quyền Admin trên thiết bị này?\n(Để vào lại, bạn sẽ cần nhập lại mật khẩu Admin)")) return;
+    async adminLogout() {
+        if (!(await this.showConfirmModal({
+            title: 'Đăng xuất quyền Admin?',
+            badge: 'Bảo mật Admin',
+            message: 'Bạn có chắc muốn đăng xuất quyền Admin trên thiết bị này?\n(Để vào lại, bạn sẽ cần xác thực lại quyền Admin)',
+            confirmText: 'Đăng xuất',
+            cancelText: 'Ở lại',
+            variant: 'warning',
+            icon: 'fa-solid fa-right-from-bracket'
+        }))) return;
         this.isAdminAuthenticated = false;
         localStorage.removeItem('quiz_is_admin');
         localStorage.removeItem('quiz_admin_authenticated');
@@ -805,7 +973,15 @@ class QuizApp {
     }
 
     async adminSaveCurrentIpAsMaster() {
-        if (!confirm(`Xác nhận lưu địa chỉ IP [${this.clientIp}] làm Master Admin vĩnh viễn?\nIP này sẽ luôn được bảo vệ và không thể bị thu hồi quyền.`)) {
+        if (!(await this.showConfirmModal({
+            title: 'Thiết lập Master Admin?',
+            badge: 'Quyền tối cao',
+            message: `Xác nhận lưu địa chỉ IP [${this.clientIp}] làm Master Admin vĩnh viễn?\nIP này sẽ luôn được bảo vệ và không thể bị thu hồi quyền.`,
+            confirmText: 'Lưu Master IP',
+            cancelText: 'Hủy bỏ',
+            variant: 'warning',
+            icon: 'fa-solid fa-crown'
+        }))) {
             return;
         }
 
@@ -861,7 +1037,15 @@ class QuizApp {
             return;
         }
 
-        if (!confirm(`Bạn có chắc chắn muốn thu hồi quyền Admin của IP: ${ip}?`)) return;
+        if (!(await this.showConfirmModal({
+            title: 'Thu hồi quyền Admin?',
+            badge: 'Quản lý truy cập',
+            message: `Bạn có chắc chắn muốn thu hồi quyền Admin của địa chỉ IP: ${ip}?`,
+            confirmText: 'Thu hồi quyền',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-user-shield'
+        }))) return;
 
         try {
             if (window.dbService && typeof window.dbService.removeAdminIp === 'function') {
@@ -1037,7 +1221,15 @@ class QuizApp {
     }
 
     async adminRevokeAiIp(ip) {
-        if (!confirm(`Bạn có chắc muốn thu hồi quyền sử dụng Trợ lý AI của IP: ${ip}?`)) return;
+        if (!(await this.showConfirmModal({
+            title: 'Thu hồi quyền Trợ lý AI?',
+            badge: 'Quyền AI',
+            message: `Bạn có chắc muốn thu hồi quyền sử dụng Trợ lý AI của IP: ${ip}?`,
+            confirmText: 'Thu hồi AI',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-wand-magic-sparkles'
+        }))) return;
         this.allowedAiIps = (this.allowedAiIps || []).filter(item => (typeof item === 'string' ? item : item.ip) !== ip);
         try {
             if (window.dbService && typeof window.dbService.saveAiIpsConfig === 'function') {
@@ -1239,7 +1431,16 @@ class QuizApp {
 
     async adminToggleMaintenance(enabled) {
         if (enabled) {
-            if (!confirm("⚠️ BẬT CHẾ ĐỘ BẢO TRÌ?\n\n- Toàn bộ máy học sinh sẽ bị KHÓA MÀN HÌNH ngay lập tức trong 3 giây.\n- Admin vẫn có toàn quyền sử dụng.")) {
+            const confirmed = await this.showConfirmModal({
+                title: 'Bật Chế Độ Bảo Trì?',
+                badge: 'Khóa hệ thống',
+                message: '• Toàn bộ máy học sinh sẽ bị KHÓA MÀN HÌNH ngay lập tức trong 3 giây.\n• Admin vẫn có toàn quyền sử dụng bình thường.',
+                confirmText: 'Khóa Web Ngay',
+                cancelText: 'Hủy bỏ',
+                variant: 'danger',
+                icon: 'fa-solid fa-power-off'
+            });
+            if (!confirmed) {
                 const toggle = document.getElementById('admin-maintenance-toggle');
                 if (toggle) toggle.checked = false;
                 return;
@@ -2200,7 +2401,15 @@ renderImporterPreview() {
         const cleanQuestions = this.normalizeQuestions(this.parsedImportQuestions);
         const count = cleanQuestions.length;
 
-        if (!confirm(`Bạn có chắc chắn muốn lưu ${count} câu hỏi vào môn [${targetSubject}]?`)) return;
+        if (!(await this.showConfirmModal({
+            title: 'Lưu câu hỏi vào ngân hàng?',
+            badge: 'Nạp đề thi',
+            message: `Bạn có chắc chắn muốn lưu ${count} câu hỏi vào môn [${targetSubject}]?`,
+            confirmText: `Lưu ${count} câu`,
+            cancelText: 'Kiểm tra lại',
+            variant: 'primary',
+            icon: 'fa-solid fa-file-import'
+        }))) return;
 
         const saveBtn = document.getElementById('btn-importer-save');
         const originalText = saveBtn ? saveBtn.innerHTML : '';
@@ -2275,7 +2484,15 @@ renderImporterPreview() {
             return;
         }
 
-        if (!confirm(`Xác nhận lưu toàn bộ ${count} câu hỏi của môn [${this.getSubjectTitle()}] lên Supabase Cloud?\nMọi thí sinh sẽ lập tức nhận được đề thi này.`)) {
+        if (!(await this.showConfirmModal({
+            title: 'Đồng bộ đề lên Cloud?',
+            badge: 'Supabase Cloud',
+            message: `Xác nhận lưu toàn bộ ${count} câu hỏi của môn [${this.getSubjectTitle()}] lên Supabase Cloud?\nMọi thí sinh sẽ lập tức nhận được đề thi này.`,
+            confirmText: 'Đồng bộ ngay',
+            cancelText: 'Hủy bỏ',
+            variant: 'success',
+            icon: 'fa-solid fa-cloud-arrow-up'
+        }))) {
             return;
         }
 
@@ -2290,7 +2507,15 @@ renderImporterPreview() {
     }
 
     async clearSubjectQuestions() {
-        if (!confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA TOÀN BỘ câu hỏi của môn [${this.getSubjectTitle()}]?\nThao tác này không thể hoàn tác.`)) {
+        if (!(await this.showConfirmModal({
+            title: 'Xóa toàn bộ câu hỏi môn này?',
+            badge: 'Cảnh báo xóa dữ liệu',
+            message: `Bạn có chắc chắn muốn XÓA TOÀN BỘ câu hỏi của môn [${this.getSubjectTitle()}]?\nThao tác này không thể hoàn tác.`,
+            confirmText: 'Xóa toàn bộ',
+            cancelText: 'Giữ lại',
+            variant: 'danger',
+            icon: 'fa-solid fa-trash-can'
+        }))) {
             return;
         }
 
@@ -2719,11 +2944,19 @@ renderImporterPreview() {
     }
 
     async adminDeleteSubject(key) {
-        if (['history', 'physics'].includes(key)) {
-            if (!confirm(`Môn [${key}] là môn cơ sở mặc định. Bạn có chắc muốn xóa không?`)) return;
-        } else {
-            if (!confirm(`Xác nhận xóa môn học [${key}] khỏi hệ thống?`)) return;
-        }
+        const isDefault = ['history', 'physics'].includes(key);
+        const ok = await this.showConfirmModal({
+            title: 'Xóa môn học khỏi hệ thống?',
+            badge: isDefault ? 'Môn mặc định' : 'Quản lý môn học',
+            message: isDefault
+                ? `Môn [${key}] là môn cơ sở mặc định. Bạn có chắc chắn muốn xóa môn này không?`
+                : `Xác nhận xóa môn học [${key}] khỏi hệ thống?`,
+            confirmText: 'Xóa môn học',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-layer-group'
+        });
+        if (!ok) return;
 
         const previousSubjects = this.dynamicSubjects.slice();
         try {
@@ -2948,7 +3181,15 @@ renderImporterPreview() {
     }
 
     async adminArchiveAndClearExam() {
-        if (!confirm("⚠️ XÁC NHẬN DỌN DẸP KỲ THI CŨ?\n\n- Toàn bộ kết quả thi của học sinh cũ sẽ bị xóa sạch.\n- Hệ thống sẽ tự động tải trước 1 file Backup JSON để lưu trữ.\n- Cấu hình IP Admin và ngân hàng câu hỏi được giữ nguyên.")) {
+        if (!(await this.showConfirmModal({
+            title: 'Dọn dẹp dữ liệu kỳ thi cũ?',
+            badge: 'Sao lưu & Làm sạch',
+            message: '• Toàn bộ kết quả thi của học sinh cũ sẽ bị xóa sạch.\n• Hệ thống sẽ tự động tải trước 1 file Backup JSON để lưu trữ.\n• Cấu hình IP Admin và ngân hàng câu hỏi được giữ nguyên.',
+            confirmText: 'Sao lưu & Dọn dẹp',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-broom'
+        }))) {
             return;
         }
 
@@ -3629,7 +3870,7 @@ renderImporterPreview() {
         clearInterval(this.timerInterval);
     }
 
-    confirmSubmit() {
+    async confirmSubmit() {
         const questions = this.allQuestions || [];
         let totalItems = 0;
         let attemptedCount = 0;
@@ -3651,14 +3892,22 @@ renderImporterPreview() {
         });
 
         const unattempted = totalItems - attemptedCount;
-        let msg = `Bạn đã hoàn thành ${attemptedCount}/${totalItems} ý hỏi.`;
-        if (unattempted > 0) {
-            msg += ` Còn ${unattempted} ý chưa trả lời. Bạn có chắc muốn nộp bài ngay bây giờ?`;
-        } else {
-            msg += ` Bạn đã trả lời hết toàn bộ bài thi! Bạn có muốn nộp bài để xem điểm tổng kết?`;
-        }
+        const isComplete = unattempted <= 0;
+        const msg = isComplete
+            ? `Bạn đã hoàn thành đầy đủ ${attemptedCount}/${totalItems} ý hỏi!\nBạn có muốn nộp bài ngay để xem điểm tổng kết và lời giải chi tiết?`
+            : `Bạn đã hoàn thành ${attemptedCount}/${totalItems} ý hỏi (vẫn còn ${unattempted} ý chưa trả lời).\nBạn có chắc chắn muốn nộp bài ngay bây giờ?`;
 
-        if (confirm(msg)) {
+        const ok = await this.showConfirmModal({
+            title: isComplete ? 'Hoàn tất & Nộp bài thi?' : 'Nộp bài khi chưa làm hết?',
+            badge: isComplete ? 'Sẵn sàng chấm điểm' : `Còn ${unattempted} ý trống`,
+            message: msg,
+            confirmText: isComplete ? 'Nộp bài & Xem điểm' : 'Nộp bài ngay',
+            cancelText: isComplete ? 'Kiểm tra lại' : 'Làm tiếp',
+            variant: isComplete ? 'success' : 'warning',
+            icon: isComplete ? 'fa-solid fa-circle-check' : 'fa-solid fa-paper-plane',
+            okIcon: 'fa-solid fa-paper-plane'
+        });
+        if (ok) {
             this.finishQuiz();
         }
     }
@@ -3883,13 +4132,22 @@ renderImporterPreview() {
         this.switchScreen('home');
     }
 
-    returnToHome() {
+    async returnToHome() {
         // Bug 4 Fix: Chỉ cảnh báo khi đang ở màn hình thi 'quiz' và đã trả lời câu hỏi
         const isCurrentlyQuiz = this.screens.quiz && !this.screens.quiz.classList.contains('hidden');
         const hasAnswers = Object.keys(this.userAnswers).length > 0;
 
         if (isCurrentlyQuiz && hasAnswers) {
-            if (!confirm("Bạn đang làm bài dở. Quay lại màn hình chính sẽ kết thúc bài thi này. Bạn có chắc không?")) {
+            const ok = await this.showConfirmModal({
+                title: 'Rời khỏi bài thi đang làm?',
+                badge: 'Đổi môn học',
+                message: 'Bạn đang làm bài dở. Quay lại màn hình chính sẽ kết thúc lượt làm bài này.\nBạn có chắc chắn muốn rời đi không?',
+                confirmText: 'Về màn hình chính',
+                cancelText: 'Ở lại làm tiếp',
+                variant: 'warning',
+                icon: 'fa-solid fa-house-chimney'
+            });
+            if (!ok) {
                 return;
             }
         }
@@ -3898,8 +4156,18 @@ renderImporterPreview() {
         this.switchScreen('home');
     }
 
-    resetCurrentQuiz() {
-        if (!confirm("Làm lại từ đầu sẽ xóa toàn bộ đáp án của bài thi hiện tại. Bạn có chắc không?")) return;
+    async resetCurrentQuiz() {
+        const ok = await this.showConfirmModal({
+            title: 'Làm lại bài thi từ đầu?',
+            badge: 'Làm mới bài thi',
+            message: 'Làm lại từ đầu sẽ xóa toàn bộ đáp án đã chọn của bài thi hiện tại.\nBạn có chắc chắn muốn bắt đầu lại không?',
+            confirmText: 'Làm lại ngay',
+            cancelText: 'Tiếp tục làm bài',
+            variant: 'warning',
+            icon: 'fa-solid fa-rotate-left',
+            okIcon: 'fa-solid fa-rotate-left'
+        });
+        if (!ok) return;
         this.userAnswers = {};
         this.clearAutoSaveProgress();
         this.switchScreen('quiz');
@@ -4287,7 +4555,15 @@ renderImporterPreview() {
     }
 
     async adminClearAllLogins() {
-        if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử đăng nhập?")) return;
+        if (!(await this.showConfirmModal({
+            title: 'Xóa toàn bộ lịch sử đăng nhập?',
+            badge: 'Dọn dẹp phiên',
+            message: 'Bạn có chắc chắn muốn xóa toàn bộ danh sách phiên đăng nhập và lịch sử làm bài của học sinh?',
+            confirmText: 'Xóa lịch sử',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-trash-can'
+        }))) return;
         try {
             if (window.dbService && typeof window.dbService.clearAllLogins === 'function') {
                 await window.dbService.clearAllLogins();
@@ -4332,7 +4608,15 @@ renderImporterPreview() {
     }
 
     async adminBanStudentIp(ip) {
-        if (!confirm(`Bạn có chắc chắn muốn CHẶN NGAY LẬP TỨC địa chỉ IP: ${ip}?`)) return;
+        if (!(await this.showConfirmModal({
+            title: 'Chặn khẩn cấp địa chỉ IP?',
+            badge: 'An ninh phòng thi',
+            message: `Bạn có chắc chắn muốn CHẶN NGAY LẬP TỨC địa chỉ IP: ${ip}?\nThiết bị này sẽ bị khóa màn hình ngay lập tức.`,
+            confirmText: 'Chặn IP ngay',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-ban'
+        }))) return;
         try {
             if (window.dbService && typeof window.dbService.banIp === 'function') {
                 await window.dbService.banIp(ip, "Gian lận / Vi phạm quy chế phòng thi");
@@ -4347,7 +4631,15 @@ renderImporterPreview() {
     }
 
     async adminUnbanStudentIp(ip) {
-        if (!confirm(`Bạn có chắc chắn muốn MỞ CHẶN cho địa chỉ IP: ${ip}?`)) return;
+        if (!(await this.showConfirmModal({
+            title: 'Mở khóa địa chỉ IP?',
+            badge: 'Khôi phục truy cập',
+            message: `Bạn có chắc chắn muốn MỞ CHẶN cho địa chỉ IP: ${ip} để học sinh tiếp tục vào làm bài?`,
+            confirmText: 'Mở khóa IP',
+            cancelText: 'Hủy bỏ',
+            variant: 'success',
+            icon: 'fa-solid fa-lock-open'
+        }))) return;
         try {
             if (window.dbService && typeof window.dbService.unbanIp === 'function') {
                 await window.dbService.unbanIp(ip);
@@ -4512,8 +4804,16 @@ renderImporterPreview() {
         }
     }
 
-    clearSupabaseConfig() {
-        if (!confirm("Bạn có chắc chắn muốn khôi phục về cấu hình Supabase Cloud mặc định của hệ thống?")) return;
+    async clearSupabaseConfig() {
+        if (!(await this.showConfirmModal({
+            title: 'Khôi phục cấu hình Cloud gốc?',
+            badge: 'Supabase Cloud',
+            message: 'Bạn có chắc chắn muốn khôi phục về cấu hình Supabase Cloud mặc định của hệ thống?',
+            confirmText: 'Khôi phục mặc định',
+            cancelText: 'Hủy bỏ',
+            variant: 'warning',
+            icon: 'fa-solid fa-arrow-rotate-left'
+        }))) return;
         localStorage.removeItem('quiz_supabase_url');
         localStorage.removeItem('quiz_supabase_key');
         localStorage.removeItem('supabase_url');
@@ -4715,7 +5015,15 @@ renderImporterPreview() {
     }
 
     async adminDeleteQuestion(qId) {
-        if (!confirm(`Bạn có chắc muốn xóa câu hỏi #${qId}?`)) return;
+        if (!(await this.showConfirmModal({
+            title: `Xóa câu hỏi #${qId}?`,
+            badge: 'Ngân hàng câu hỏi',
+            message: `Bạn có chắc chắn muốn xóa vĩnh viễn câu hỏi #${qId} khỏi ngân hàng đề?`,
+            confirmText: 'Xóa câu hỏi',
+            cancelText: 'Giữ lại',
+            variant: 'danger',
+            icon: 'fa-solid fa-trash-can'
+        }))) return;
         this.allQuestions = this.allQuestions.filter(q => q.id !== qId);
         try {
             if (window.dbService && typeof window.dbService.deleteQuestion === 'function') {
@@ -4871,7 +5179,15 @@ renderImporterPreview() {
             alert("🔒 Chỉ Quản trị viên mới được xóa Gemini API Key.");
             return;
         }
-        if (!confirm("Bạn có chắc muốn xóa API Key khỏi toàn bộ hệ thống?")) return;
+        if (!(await this.showConfirmModal({
+            title: 'Xóa khóa AI khỏi hệ thống?',
+            badge: 'Cấu hình Gemini AI',
+            message: 'Bạn có chắc chắn muốn xóa Gemini API Key khỏi toàn bộ hệ thống?',
+            confirmText: 'Xóa API Key',
+            cancelText: 'Hủy bỏ',
+            variant: 'danger',
+            icon: 'fa-solid fa-key'
+        }))) return;
         localStorage.removeItem('gemini_api_key');
         this.geminiApiKey = '';
         const input = document.getElementById('gemini-api-key-input');
@@ -5187,8 +5503,16 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         }
     }
 
-    clearPersonalHistory() {
-        if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ 10 bài làm gần nhất trong lịch sử cá nhân?")) return;
+    async clearPersonalHistory() {
+        if (!(await this.showConfirmModal({
+            title: 'Xóa nhật ký ôn tập cá nhân?',
+            badge: 'Lịch sử làm bài',
+            message: 'Bạn có chắc chắn muốn xóa toàn bộ 10 bài làm gần nhất trong lịch sử cá nhân trên thiết bị này?',
+            confirmText: 'Xóa lịch sử',
+            cancelText: 'Giữ lại',
+            variant: 'danger',
+            icon: 'fa-solid fa-clock-rotate-left'
+        }))) return;
         localStorage.removeItem('quiz_my_history');
         this.renderMyHistoryModal();
     }

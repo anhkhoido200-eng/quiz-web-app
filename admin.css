@@ -43,3 +43,23 @@ dialog.subject-dialog{width:min(680px,calc(100vw - 32px));max-height:min(760px,c
 @media (prefers-reduced-motion: reduce) {
     .answer-radio,.tf-choice,.button,.text-button,.subject-grade-button,.nav-item { transition: none !important; }
 }
+
+/* Custom confirmation modal for Control Center */
+.admin-confirm-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:18px;background:rgba(12,17,32,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.admin-confirm-card{width:min(440px,100%);background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:0 28px 80px rgba(15,23,42,.28);overflow:hidden;animation:adminViewEnter .22s cubic-bezier(.22,1,.36,1) both}
+.admin-confirm-accent{height:5px;background:linear-gradient(90deg,var(--primary),var(--primary-2))}
+.admin-confirm-accent.is-danger{background:linear-gradient(90deg,#ef4444,#f97316)}
+.admin-confirm-accent.is-warning{background:linear-gradient(90deg,#f59e0b,#ea580c)}
+.admin-confirm-body{padding:22px}
+.admin-confirm-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px}
+.admin-confirm-icon{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:18px;flex:0 0 44px;color:var(--primary);background:var(--primary-soft)}
+.admin-confirm-icon.is-danger{color:var(--red);background:#ffe7e8}
+.admin-confirm-icon.is-warning{color:var(--orange);background:#fff3d7}
+body.dark .admin-confirm-icon.is-danger{background:rgba(229,72,77,.18);color:#ff8b90}
+body.dark .admin-confirm-icon.is-warning{background:rgba(229,139,8,.18);color:#fbbf24}
+.admin-confirm-title-wrap{flex:1;min-width:0}
+.admin-confirm-title-wrap h3{font:700 18px 'Space Grotesk';margin:3px 0 0;color:var(--text)}
+.admin-confirm-message{padding:13px 14px;border-radius:13px;background:var(--surface-2);border:1px solid var(--line);color:var(--text);font-size:12.5px;line-height:1.58;white-space:pre-line}
+.admin-confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+.button-danger-solid{background:linear-gradient(135deg,#e5484d,#c92a2a);color:#fff;box-shadow:0 8px 18px rgba(229,72,77,.28)}
+.button-warning-solid{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 8px 18px rgba(245,158,11,.28)}
