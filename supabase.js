@@ -50,6 +50,7 @@ class DatabaseService {
     constructor() {
         this.client = null;
         this.isSupabaseActive = false;
+        this.serverClockOffsetMs = 0;
         this.init();
     }
 
@@ -65,6 +66,7 @@ class DatabaseService {
             try {
                 this.client = window.supabase.createClient(storedUrl, storedKey);
                 this.isSupabaseActive = true;
+                this.syncServerClock();
                 console.log("%c[DatabaseService] QuizMaster Pro v4.0 - Đã kích hoạt Supabase Cloud!", "color: #10b981; font-weight: bold;");
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi kết nối Supabase, fallback về Local:", err);
@@ -75,6 +77,34 @@ class DatabaseService {
             this.client = null;
             this.isSupabaseActive = false;
         }
+    }
+
+    async syncServerClock() {
+        if (!this.url || !this.anonKey) return;
+        try {
+            const t0 = Date.now();
+            const res = await fetch(`${this.url}/rest/v1/quiz_questions?select=id&limit=1`, {
+                method: 'HEAD',
+                headers: { apikey: this.anonKey },
+                signal: AbortSignal.timeout(4000)
+            });
+            const dateHeader = res.headers?.get('date');
+            if (dateHeader) {
+                const serverMs = new Date(dateHeader).getTime();
+                const t1 = Date.now();
+                const midClientMs = Math.round((t0 + t1) / 2);
+                if (!Number.isNaN(serverMs) && Math.abs(serverMs - midClientMs) > 60000) {
+                    this.serverClockOffsetMs = serverMs - midClientMs;
+                    console.debug('[DatabaseService] Đã hiệu chuẩn lệch đồng hồ thiết bị:', { offsetMinutes: Math.round(this.serverClockOffsetMs / 60000) });
+                } else {
+                    this.serverClockOffsetMs = 0;
+                }
+            }
+        } catch (e) {}
+    }
+
+    getNowIso() {
+        return new Date(Date.now() + (this.serverClockOffsetMs || 0)).toISOString();
     }
 
     saveConfig(url, anonKey) {
@@ -160,7 +190,7 @@ class DatabaseService {
             sessionId = `fallback_${cleanIp}_${cleanName}`.replace(/[^a-z0-9_.-]/gi, '_');
         }
 
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
 
         const record = {
             player_name: cleanName,
@@ -190,7 +220,9 @@ class DatabaseService {
                 return item.session_id === sessionId || (cleanIp !== 'Chưa xác định' && item.ip_address === cleanIp && itemName === normName);
             });
             if (existingLocal) {
-                Object.assign(existingLocal, record, { id: existingLocal.id, created_at: existingLocal.created_at || nowIso });
+                const preservedSummary = scoreSummary || existingLocal.score_summary || '';
+                const preservedStatus = String(existingLocal.status || '').startsWith('BANNED') ? existingLocal.status : status;
+                Object.assign(existingLocal, record, { id: existingLocal.id, status: preservedStatus, score_summary: preservedSummary, created_at: existingLocal.created_at || nowIso });
                 record.id = existingLocal.id;
             } else {
                 localLogs.unshift(record);
@@ -208,7 +240,7 @@ class DatabaseService {
                 if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                     const { data: byName } = await this.client
                         .from('quiz_logins')
-                        .select('id, player_name, ip_address, score_summary, last_active')
+                        .select('id, player_name, ip_address, status, score_summary, last_active')
                         .ilike('player_name', cleanName)
                         .order('last_active', { ascending: false })
                         .limit(20);
@@ -218,7 +250,7 @@ class DatabaseService {
                 } else if (cleanIp && cleanIp !== 'Chưa xác định') {
                     const { data: byIp } = await this.client
                         .from('quiz_logins')
-                        .select('id, player_name, ip_address, score_summary, last_active')
+                        .select('id, player_name, ip_address, status, score_summary, last_active')
                         .eq('ip_address', cleanIp)
                         .eq('player_name', 'Khách truy cập')
                         .order('last_active', { ascending: false })
@@ -230,14 +262,19 @@ class DatabaseService {
 
                 if (existingRows.length > 0) {
                     const targetRow = existingRows[0];
-                    const nextSummary = scoreSummary || targetRow.score_summary || '';
+                    const existingBanned = existingRows.find((r) => String(r.status || '').startsWith('BANNED'));
+                    const existingScored = existingRows.find((r) => /điểm/i.test(String(r.score_summary || '')));
+                    const nextStatus = existingBanned ? existingBanned.status : status;
+                    const nextSummary = (scoreSummary && /điểm/i.test(scoreSummary))
+                        ? scoreSummary
+                        : (existingScored?.score_summary || scoreSummary || targetRow.score_summary || '');
                     const { error: updateError } = await this.client
                         .from('quiz_logins')
                         .update({
                             player_name: cleanName,
                             ip_address: cleanIp,
                             device_info: cleanDevice,
-                            status,
+                            status: nextStatus,
                             score_summary: nextSummary,
                             last_active: nowIso
                         })
@@ -294,7 +331,7 @@ class DatabaseService {
     }
 
     async heartbeat(loginId) {
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
         if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
             try {
                 const { error } = await this.client.from('quiz_logins').update({ last_active: nowIso }).eq('id', loginId);
@@ -354,7 +391,7 @@ class DatabaseService {
      * Cập nhật trạng thái làm bài của thí sinh
      */
     async updateLoginStatus(loginId, status, scoreSummary = "") {
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
 
         // Cập nhật Cloud Supabase (kèm hàng đợi khi offline)
         if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
@@ -369,7 +406,8 @@ class DatabaseService {
                             score_summary: scoreSummary,
                             last_active: nowIso
                         })
-                        .eq('id', loginId);
+                        .eq('id', loginId)
+                        .not('status', 'like', 'BANNED%');
                 } catch (e) {
                     this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
                 }
@@ -381,7 +419,9 @@ class DatabaseService {
             let list = this._getLocalLogins();
             if (list.length > 0) {
                 const item = list.find(l => l.id === loginId) || list[0];
-                item.status = status;
+                if (!String(item.status || '').startsWith('BANNED')) {
+                    item.status = status;
+                }
                 item.score_summary = scoreSummary;
                 item.last_active = nowIso;
                 localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(list));
@@ -469,7 +509,7 @@ class DatabaseService {
      */
     async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName) {
         if (!loginId) return;
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
         const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
         const subj = subjectName || 'Lịch Sử 11';
         const statusText = `[${subj}] Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`;
@@ -479,8 +519,12 @@ class DatabaseService {
             let list = this._getLocalLogins();
             const idx = list.findIndex(l => l.id === loginId);
             if (idx !== -1) {
-                list[idx].status = statusText;
-                list[idx].score_summary = scoreText;
+                if (!String(list[idx].status || '').startsWith('BANNED')) {
+                    list[idx].status = statusText;
+                }
+                if (!/điểm/i.test(String(list[idx].score_summary || ''))) {
+                    list[idx].score_summary = scoreText;
+                }
                 list[idx].last_active = nowIso;
                 localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(list));
             }
@@ -491,14 +535,22 @@ class DatabaseService {
                 this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
             } else {
                 try {
+                    const { data: currentRow } = await this.client
+                        .from('quiz_logins')
+                        .select('score_summary')
+                        .eq('id', loginId)
+                        .limit(1);
+                    const prevSummary = String(currentRow?.[0]?.score_summary || '');
+                    const nextSummary = /điểm/i.test(prevSummary) ? prevSummary : scoreText;
                     await this.client
                         .from('quiz_logins')
                         .update({
                             status: statusText,
-                            score_summary: scoreText,
+                            score_summary: nextSummary,
                             last_active: nowIso
                         })
-                        .eq('id', loginId);
+                        .eq('id', loginId)
+                        .not('status', 'like', 'BANNED%');
                 } catch (e) {
                     this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
                 }
@@ -1197,7 +1249,7 @@ class DatabaseService {
         const cleanTargetIp = String(targetIp || 'ALL').trim() || 'ALL';
         const cleanTargetName = String(targetName || '').trim();
 
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
         const noticeId = this.generateUUID();
 
         // Không truyền created_at từ client để PostgreSQL tự gán now() chuẩn server,
@@ -1224,6 +1276,11 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
+                // Dọn các thông báo cũ trước khi chèn thông báo mới để bảng quiz_logins luôn sạch
+                await this.client
+                    .from('quiz_logins')
+                    .delete()
+                    .eq('player_name', '__SYSTEM_NOTICE__');
                 const { error } = await this.client
                     .from('quiz_logins')
                     .insert([record]);

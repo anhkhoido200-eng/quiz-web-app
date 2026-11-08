@@ -330,7 +330,8 @@
         const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
         const masterIp = String(config.masterIp || '').trim();
         if (masterIp || allowed.length) return notify('Hệ thống đã có whitelist Admin. Hãy dùng tài khoản/IP được cấp.', true);
-        const password = window.prompt('Nhập mật khẩu Admin để thiết lập lần đầu:');
+        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để thiết lập quyền Master lần đầu cho thiết bị này:', placeholder: 'Nhập mật khẩu Admin...', confirmText: 'Xác nhận', icon: 'fa-key' });
+        if (password === null) return;
         if (password !== '034569') return notify('Mật khẩu Admin không đúng.', true);
         const payload = { masterIp: state.clientIp, allowedIps: [{ ip: state.clientIp, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
@@ -427,7 +428,13 @@
             $('import-subject-select').value = selectedSubject;
             state.importSubject = selectedSubject;
         }
-        if ($('leaderboard-subject')) $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+        if ($('leaderboard-subject')) {
+            const prevLeaderSub = $('leaderboard-subject').value || '';
+            $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+            if (prevLeaderSub && allSubjects().some((item) => item.key === prevLeaderSub)) {
+                $('leaderboard-subject').value = prevLeaderSub;
+            }
+        }
     }
 
     function ensureTypeEditor(type = state.type) {
@@ -598,8 +605,8 @@
         const keyword = ($('search-input')?.value || '').toLowerCase();
         const rows = state.questions.filter((q) => {
             const typeMatch = state.typeFilter === 'all' || (state.typeFilter === 'mcq' && q.qType === 'mcq') || (state.typeFilter === 'tf_group' && q.qType === 'tf_group') || (state.typeFilter === 'short_answer' && q.qType === 'short_answer');
-            const text = `${q.question} ${q.explanation} ${(q.options || []).join(' ')} ${(q.statements || []).map((s) => s.text).join(' ')}`.toLowerCase();
-            return (state.grade === 'all' || gradeOf(q) === state.grade) && (state.subject === 'all' || q.subject_key === state.subject) && typeMatch && (!keyword || text.includes(keyword));
+            const text = `${notationText(q.question)} ${notationText(q.explanation)} ${(q.options || []).map(notationText).join(' ')} ${(q.statements || []).map((s) => notationText(s.text)).join(' ')}`.toLowerCase();
+            return (state.grade === 'all' || gradeOf(q) === state.grade) && (state.subject === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(state.subject)) && typeMatch && (!keyword || text.includes(keyword));
         });
         $('library-count') && ($('library-count').textContent = rows.length);
         $('result-summary') && ($('result-summary').textContent = `${rows.length} kết quả`);
@@ -621,7 +628,18 @@
         const list = $('recent-activity');
         if (!list) return;
         const rows = state.questions.slice(-5).reverse();
-        list.innerHTML = rows.length ? rows.map((q) => `<div class="activity-item"><i class="fa-solid ${q.qType === 'tf_group' ? 'fa-list-check' : q.qType === 'short_answer' ? 'fa-keyboard' : 'fa-list-radio'}"></i><span><b>${esc(TYPE_LABELS[q.qType] || 'Câu hỏi')} · ${esc(subjectName(q.subject_key))}</b><small>${htmlText(q.question).slice(0, 90)}${String(q.question).length > 90 ? '...' : ''}</small></span></div>`).join('') : '<div class="empty-state"><p>Chưa có hoạt động.</p></div>';
+        const safeSnippet = (rawQuestion) => {
+            const raw = notationText(rawQuestion).replace(/\s+/g, ' ').trim();
+            if (raw.length <= 95) return htmlText(raw);
+            let cut = raw.slice(0, 95);
+            const dollarCount = (cut.match(/(?<!\\)\$/g) || []).length;
+            if (dollarCount % 2 !== 0) {
+                const lastDollar = cut.lastIndexOf('$');
+                if (lastDollar >= 0) cut = cut.slice(0, lastDollar).trim();
+            }
+            return `${htmlText(cut)}...`;
+        };
+        list.innerHTML = rows.length ? rows.map((q) => `<div class="activity-item"><i class="fa-solid ${q.qType === 'tf_group' ? 'fa-list-check' : q.qType === 'short_answer' ? 'fa-keyboard' : 'fa-list-radio'}"></i><span><b>${esc(TYPE_LABELS[q.qType] || 'Câu hỏi')} · ${esc(subjectName(q.subject_key))}</b><small>${safeSnippet(q.question)}</small></span></div>`).join('') : '<div class="empty-state"><p>Chưa có hoạt động.</p></div>';
         renderMath(list);
     }
 
@@ -1169,7 +1187,10 @@
 
     async function toggleMaintenance() {
         const active = Boolean($('maintenance-toggle')?.checked); let message = state.maintenance.message;
-        if (active && !message) message = window.prompt('Lời nhắn khi bảo trì:', 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!') || 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        if (active && !message) {
+            const prompted = await promptDialog({ title: 'Lời nhắn khi bảo trì', eyebrow: 'MAINTENANCE MODE', message: 'Nhập nội dung thông báo hiển thị cho học sinh khi hệ thống tạm khóa:', defaultValue: 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!', confirmText: 'Bật bảo trì', icon: 'fa-screwdriver-wrench' });
+            message = (prompted && prompted.trim()) ? prompted.trim() : 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        }
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.maintenance, player_name: '__SYSTEM_MAINTENANCE__', ip_address: 'SYSTEM', device_info: active ? 'ON' : 'OFF', status: active ? 'ACTIVE' : 'INACTIVE', score_summary: message || 'Website đang mở.', last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) return notify(error.message, true);
         state.maintenance = { isActive: active, message }; await loadMaintenance(); notify(active ? 'Đã bật chế độ bảo trì.' : 'Đã mở lại website.');
@@ -1420,10 +1441,22 @@
         }
         if (state.isClearingStudents) return;
         const nowMs = Date.now();
+        const normalizeTimestamp = (iso) => {
+            if (!iso) return 0;
+            let ts = new Date(iso).getTime();
+            if (Number.isNaN(ts) || ts <= 0) return 0;
+            // Nếu đồng hồ trên máy học sinh bị cài nhanh hơn thực tế theo giờ/ngày (ví dụ lệch +14h hoặc +24h),
+            // tự động hiệu chuẩn theo bội số 30 phút để tính đúng thời gian hoạt động thực tế.
+            if (ts > nowMs + 120000) {
+                const halfHourSteps = Math.round((ts - nowMs) / 1800000);
+                if (halfHourSteps > 0) ts -= halfHourSteps * 1800000;
+                if (ts > nowMs + 120000) ts -= 1800000;
+            }
+            return ts;
+        };
         const safeRowTime = (row) => {
-            const la = row.last_active ? new Date(row.last_active).getTime() : 0;
-            const ca = row.created_at ? new Date(row.created_at).getTime() : 0;
-            if (la > nowMs + 120000 && ca > 0) return ca;
+            const la = normalizeTimestamp(row.last_active);
+            const ca = normalizeTimestamp(row.created_at);
             return la || ca || 0;
         };
         const rawRows = (data || []).filter((row) => {
@@ -1447,16 +1480,28 @@
         }
         const rows = Array.from(seenStudents.values());
 
+        // Danh sách IP bị chặn (bao gồm cả IP chặn thủ công __BANNED_IP__ chưa từng đăng nhập)
+        const bannedMap = new Map();
+        (data || []).forEach((row) => {
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+            if (!ip || ip === 'SYSTEM' || ip === 'ALL') return;
+            if (String(row.status || '').startsWith('BANNED') || row.player_name === '__BANNED_IP__') {
+                if (!bannedMap.has(ip)) bannedMap.set(ip, row);
+            }
+        });
+        const banned = Array.from(bannedMap.values());
+        const bannedIpSet = new Set(bannedMap.keys());
+
         if (!state.studentPulseMap) state.studentPulseMap = new Map();
         const online = rows.filter((row) => {
-            if (String(row.status || '').startsWith('BANNED')) return false;
-            const normName = String(row.player_name || '').trim().toLowerCase();
             const normIp = String(row.ip_address || row.client_ip || '').trim();
+            if (String(row.status || '').startsWith('BANNED') || bannedIpSet.has(normIp)) return false;
+            const normName = String(row.player_name || '').trim().toLowerCase();
             const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${normIp}`;
             const sig = `${row.last_active || ''}|${row.status || ''}|${row.score_summary || ''}|${normIp}`;
             const prev = state.studentPulseMap.get(key);
             const rowTime = safeRowTime(row);
-            const isRecentByClock = rowTime > 0 && Math.abs(nowMs - rowTime) < 180000;
+            const isRecentByClock = rowTime > 0 && (nowMs - rowTime) >= -120000 && (nowMs - rowTime) < 180000;
             if (!prev) {
                 state.studentPulseMap.set(key, {
                     sig,
@@ -1477,7 +1522,6 @@
         $('student-count') && ($('student-count').textContent = `${rows.length} phiên`);
         $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
 
-        const banned = rows.filter((row) => String(row.status || '').startsWith('BANNED'));
         const nextStatsHtml = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${banned.length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`;
         if ($('monitor-stats') && state.lastMonitorStatsHtml !== nextStatsHtml) {
             state.lastMonitorStatsHtml = nextStatsHtml;
@@ -1486,10 +1530,12 @@
 
         const nextBodyHtml = rows.map((row) => {
             const isOnline = online.includes(row);
-            const status = String(row.status || '').startsWith('BANNED') ? 'banned' : isOnline ? 'online' : 'offline';
-            const ip = row.ip_address || row.client_ip || '';
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+            const isRowBanned = String(row.status || '').startsWith('BANNED') || bannedIpSet.has(ip);
+            const status = isRowBanned ? 'banned' : isOnline ? 'online' : 'offline';
             const name = row.player_name || 'Học sinh';
-            return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${row.last_active ? new Date(row.last_active).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button><button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button></div></td></tr>`;
+            const displayTimeMs = safeRowTime(row);
+            return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${displayTimeMs ? new Date(displayTimeMs).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button><button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button></div></td></tr>`;
         }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>';
 
         if ($('students-body') && state.lastStudentsBodyHtml !== nextBodyHtml) {
@@ -1508,7 +1554,7 @@
         if ($('students-body')) return;
         const stats = $('monitor-stats');
         if (!stats) return;
-        stats.insertAdjacentHTML('afterend', '<section class="panel monitor-table-panel"><div class="panel-title"><div><p class="eyebrow">PRESENCE</p><h2>Phiên truy cập và địa chỉ IP</h2></div><span class="info-badge">Heartbeat 30 giây</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"><tr><td colspan="6" class="empty-state">Đang tải dữ liệu...</td></tr></tbody></table></div></section>');
+        stats.insertAdjacentHTML('afterend', '<section class="panel monitor-table-panel"><div class="panel-title"><div><p class="eyebrow">PRESENCE</p><h2>Phiên truy cập và địa chỉ IP</h2></div><span class="info-badge">Heartbeat 20 giây</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"><tr><td colspan="6" class="empty-state">Đang tải dữ liệu...</td></tr></tbody></table></div></section>');
     }
 
     async function broadcastNotice() {
@@ -1525,6 +1571,7 @@
                 timestamp: Date.now()
             }));
         } catch (e) {}
+        await state.client.from('quiz_logins').delete().eq('player_name', '__SYSTEM_NOTICE__');
         const { error } = await state.client.from('quiz_logins').insert({
             id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
@@ -1566,6 +1613,7 @@
                 timestamp: Date.now()
             }));
         } catch (e) {}
+        await state.client.from('quiz_logins').delete().eq('player_name', '__SYSTEM_NOTICE__');
         const { error } = await state.client.from('quiz_logins').insert({
             id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
@@ -1583,11 +1631,12 @@
         state.isClearingStudents = true;
         try {
             const systemIds = Object.values(SYSTEM);
-            const { data, error: selectError } = await state.client.from('quiz_logins').select('id, player_name, ip_address');
+            const { data, error: selectError } = await state.client.from('quiz_logins').select('id, player_name, ip_address, status');
             if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập: ${selectError.message}`);
             const ids = (data || []).filter((row) => {
                 const playerName = String(row.player_name || '').trim();
-                return !systemIds.includes(row.id) && (!playerName.startsWith('__') || playerName === '__SYSTEM_NOTICE__');
+                const isBanned = String(row.status || '').startsWith('BANNED') || playerName === '__BANNED_IP__';
+                return !systemIds.includes(row.id) && !isBanned && (!playerName.startsWith('__') || playerName === '__SYSTEM_NOTICE__');
             }).map((row) => row.id).filter(Boolean);
             if (ids.length) {
                 const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
@@ -1627,8 +1676,8 @@
         notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
         await loadStudents();
     }
-    async function banIp(ip, reason = '') { if (!ip) return; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${reason || 'Vi phạm quy chế ôn tập'}`, score_summary: reason || 'Vi phạm quy chế ôn tập', last_active: now }).eq('ip_address', ip).select(); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: ip, device_info: 'Manual Ban', status: `BANNED: ${reason || 'Vi phạm quy chế ôn tập'}`, score_summary: reason, last_active: now }); if (error) return notify(error.message, true); } notify(`Đã chặn IP ${ip}.`); loadStudents(); }
-    async function unbanIp(ip) { const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', ip); if (error) return notify(error.message, true); await state.client.from('quiz_logins').update({ status: 'Đang ôn tập', last_active: new Date().toISOString() }).eq('ip_address', ip).like('status', 'BANNED%'); notify(`Đã mở khóa IP ${ip}.`); loadStudents(); }
+    async function banIp(ip, reason = '') { if (!ip) return; const cleanIp = String(ip).trim(); const cleanReason = reason || 'Vi phạm quy chế ôn tập'; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }).eq('ip_address', cleanIp).select(); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: cleanIp, device_info: 'Manual Ban', status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }); if (error) return notify(error.message, true); } if ($('ban-ip-input')) $('ban-ip-input').value = ''; if ($('ban-reason-input')) $('ban-reason-input').value = ''; state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã chặn IP ${cleanIp}.`); await loadStudents(); }
+    async function unbanIp(ip) { const cleanIp = String(ip || '').trim(); if (!cleanIp) return; const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', cleanIp); if (error) return notify(error.message, true); await state.client.from('quiz_logins').update({ status: 'Đang ôn tập', last_active: new Date().toISOString() }).eq('ip_address', cleanIp).like('status', 'BANNED%'); state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã mở khóa IP ${cleanIp}.`); await loadStudents(); }
 
     function exportJson(name, payload) { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); URL.revokeObjectURL(link.href); }
     function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
@@ -1682,7 +1731,8 @@
                         scoreSummary: item.score_summary,
                         submittedAt: item.last_active || item.created_at
                     };
-                    const key = `${String(item.player_name || '').toLowerCase().trim()}___${item.ip_address || ''}`;
+                    const normName = String(item.player_name || '').toLowerCase().trim();
+                    const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${item.ip_address || ''}`;
                     const prev = bestMap.get(key);
                     if (!prev || prev.score < rec.score || (prev.score === rec.score && parseTimeSec(rec.timeSpent) < parseTimeSec(prev.timeSpent))) {
                         bestMap.set(key, rec);
@@ -1755,7 +1805,7 @@
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
          document.addEventListener('click', (event) => { const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice], #students-body [data-delete-student-name]'); if (!target) return; if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow)); else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow)); else if (target.dataset.deleteStudentName !== undefined) runAction(() => deleteStudentSession(target.dataset.deleteStudentName, target.dataset.deleteStudentIp)); else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName)); });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
-        $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
+        $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__')); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });

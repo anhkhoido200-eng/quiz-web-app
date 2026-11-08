@@ -211,6 +211,9 @@ class QuizApp {
                         </div>
                     </div>
                     <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
+                    <div id="custom-confirm-input-wrap" class="hidden">
+                        <input id="custom-confirm-input" type="text" autocomplete="off" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-white text-xs sm:text-sm" placeholder="Nhập nội dung...">
+                    </div>
                     <div class="flex items-center justify-end gap-2.5 pt-1">
                         <button type="button" id="custom-confirm-cancel-btn" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-200 font-heading font-bold text-xs sm:text-sm transition cursor-pointer">
                             Hủy bỏ
@@ -281,6 +284,8 @@ class QuizApp {
         const copyValue = document.getElementById('custom-confirm-copy-value');
         const inlineCopyBtn = document.getElementById('custom-confirm-inline-copy-btn');
         const msgEl = document.getElementById('custom-confirm-message');
+        const inputWrap = document.getElementById('custom-confirm-input-wrap');
+        const inputEl = document.getElementById('custom-confirm-input');
         const cancelBtn = document.getElementById('custom-confirm-cancel-btn');
         const okBtn = document.getElementById('custom-confirm-ok-btn');
         const okIcon = document.getElementById('custom-confirm-ok-icon');
@@ -296,6 +301,17 @@ class QuizApp {
         }
         if (titleEl) titleEl.textContent = opts.title || 'Xác nhận thực hiện?';
         if (msgEl) msgEl.textContent = rawMsg;
+        if (inputWrap && inputEl) {
+            if (opts.withInput) {
+                inputWrap.classList.remove('hidden');
+                inputEl.type = opts.inputType || 'text';
+                inputEl.placeholder = opts.placeholder || 'Nhập nội dung...';
+                inputEl.value = opts.defaultValue !== undefined ? String(opts.defaultValue) : '';
+            } else {
+                inputWrap.classList.add('hidden');
+                inputEl.value = '';
+            }
+        }
 
         if (copyBox) {
             if (opts.copyValue) {
@@ -355,7 +371,11 @@ class QuizApp {
                 if (cancelBtn) cancelBtn.onclick = null;
                 if (closeBtn) closeBtn.onclick = null;
                 if (inlineCopyBtn) inlineCopyBtn.onclick = null;
-                resolve(result);
+                if (opts.withInput) {
+                    resolve(result ? String(inputEl ? inputEl.value : '') : null);
+                } else {
+                    resolve(result);
+                }
             };
 
             const handleOk = async () => {
@@ -389,9 +409,27 @@ class QuizApp {
             if (closeBtn) closeBtn.onclick = () => finish(false);
 
             setTimeout(() => {
-                if (variant === 'danger' && cancelBtn && !opts.hideCancel) cancelBtn.focus();
-                else if (okBtn) okBtn.focus();
+                if (opts.withInput && inputEl) {
+                    inputEl.focus();
+                    inputEl.select();
+                } else if (variant === 'danger' && cancelBtn && !opts.hideCancel) {
+                    cancelBtn.focus();
+                } else if (okBtn) {
+                    okBtn.focus();
+                }
             }, 20);
+        });
+    }
+
+    showPromptModal(options = {}) {
+        const opts = typeof options === 'string' ? { message: options } : (options || {});
+        return this.showConfirmModal({
+            variant: 'primary',
+            title: 'Nhập thông tin',
+            badge: 'Nhập dữ liệu',
+            confirmText: 'Xác nhận',
+            ...opts,
+            withInput: true
         });
     }
 
@@ -454,12 +492,12 @@ class QuizApp {
         this.initNetworkListeners();
         this.initEventListeners();
         this.updateSoundIcons();
-        await this.loadBannedIpsList();
-        await this.loadDynamicSubjects();
         await this.fetchClientIp();
+        await this.loadBannedIpsList();
         await this.syncClass5Access();
-        this.checkSavedUser();
         await this.loadAiIpsConfig();
+        await this.loadDynamicSubjects();
+        this.checkSavedUser();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
         this.renderFilterTabs();
@@ -532,7 +570,12 @@ class QuizApp {
         const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         const currentIp = normalizeIp(this.clientIp);
         const allowedIps = Array.isArray(this.class5AllowedIps) ? this.class5AllowedIps.map(normalizeIp).filter(Boolean) : [];
-        const matched = Boolean(currentIp && !currentIp.startsWith('Đang') && allowedIps.includes(currentIp));
+        const hasRelayWhitelist = allowedIps.some((ip) => ip.startsWith('104.28.'));
+        const matched = Boolean(
+            currentIp &&
+            !currentIp.startsWith('đang') &&
+            (allowedIps.includes(currentIp) || (hasRelayWhitelist && currentIp.startsWith('104.28.')))
+        );
         console.debug('[QuizApp] Grade 5 access check:', { currentIp, allowedIps, matched, isAdminAuthenticated: this.isAdminAuthenticated });
         return Boolean(
             this.isAdminAuthenticated ||
@@ -665,11 +708,11 @@ class QuizApp {
                 </div>
                 <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
-                    <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${subName}</p>
+                    <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(subName)}</p>
                 </div>
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
-                    <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${sub.semester || 'Đề cương'}</span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${this.escapeHtml(sub.semester || 'Đề cương')}</span>
                     <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 0} câu</span>
                 </div>
             `;
@@ -1315,11 +1358,10 @@ class QuizApp {
         const currentIp = (this.clientIp || '').trim();
         if (!currentIp || currentIp.startsWith('Đang')) return false;
 
-        // Kiểm tra trong danh sách IP được Admin cấp quyền AI
-        return (this.allowedAiIps || []).some(item => {
-            const ip = typeof item === 'string' ? item : item.ip;
-            return ip && ip.trim() === currentIp;
-        });
+        // Kiểm tra trong danh sách IP được Admin cấp quyền AI (hỗ trợ cả dải iCloud Private Relay / WARP 104.28.x.x nếu đã cấp)
+        const cleanList = (this.allowedAiIps || []).map(item => String((typeof item === 'string' ? item : item?.ip) || '').trim()).filter(Boolean);
+        const hasRelayAi = cleanList.some(ip => ip.startsWith('104.28.'));
+        return cleanList.includes(currentIp) || (hasRelayAi && currentIp.startsWith('104.28.'));
     }
 
     async adminToggleStudentAiRole(ip, studentName) {
@@ -1622,7 +1664,14 @@ class QuizApp {
     }
 
     async adminEditMaintenanceMsg() {
-        const newMsg = prompt("Nhập nội dung lời nhắn bảo trì hiển thị cho thí sinh:", this.maintenanceMessage);
+        const newMsg = await this.showPromptModal({
+            title: 'Đổi lời nhắn bảo trì',
+            badge: 'Chế độ bảo trì',
+            message: 'Nhập nội dung lời nhắn bảo trì hiển thị cho thí sinh khi hệ thống tạm khóa:',
+            defaultValue: this.maintenanceMessage,
+            confirmText: 'Lưu lời nhắn',
+            icon: 'fa-solid fa-screwdriver-wrench'
+        });
         if (newMsg !== null && newMsg.trim() !== '') {
             this.maintenanceMessage = newMsg.trim();
             try {
@@ -2352,7 +2401,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.renderImporterPreview();
     }
 
-renderImporterPreview() {
+    renderImporterPreview() {
         const tbody = document.getElementById('importer-preview-tbody');
         const countBadge = document.getElementById('importer-preview-count');
         const saveBtn = document.getElementById('btn-importer-save');
@@ -4132,7 +4181,7 @@ renderImporterPreview() {
             window.dbService.updateLoginStatus(
                 this.currentLoginId,
                 `[${subjTitle}] Đã nộp bài`,
-                `Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm) - ${timeStr}`
+                `[${subjTitle}] Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm) - ${timeStr}`
             );
         }
 
@@ -4678,9 +4727,22 @@ renderImporterPreview() {
             if (badgeCount) badgeCount.textContent = list.length;
 
             const nowMs = Date.now();
+            const normalizeStudentTime = (iso) => {
+                if (!iso) return 0;
+                let ts = new Date(iso).getTime();
+                if (Number.isNaN(ts) || ts <= 0) return 0;
+                if (ts > nowMs + 120000) {
+                    const steps = Math.round((ts - nowMs) / 1800000);
+                    if (steps > 0) ts -= steps * 1800000;
+                    if (ts > nowMs + 120000) ts -= 1800000;
+                }
+                return ts;
+            };
             const activeNow = list.filter(s => {
-                const diffMs = s.last_active ? (nowMs - new Date(s.last_active).getTime()) : 9999999;
-                return diffMs <= 180000; // Hoạt động trong 3 phút qua
+                const ts = normalizeStudentTime(s.last_active || s.created_at);
+                if (!ts) return false;
+                const diffMs = nowMs - ts;
+                return diffMs >= -120000 && diffMs <= 180000; // Hoạt động trong 3 phút qua
             });
 
             // Render Thẻ đếm số thí sinh trực tuyến & tổng lượt
@@ -4715,12 +4777,11 @@ renderImporterPreview() {
                 const name = (student.player_name && student.player_name.trim()) ? student.player_name.trim() : 'Khách truy cập';
                 const rawDev = student.device_info || '';
                 const device = (rawDev && rawDev !== '-' && rawDev !== 'Chưa rõ') ? rawDev : 'Trình duyệt Web';
-                const timeStr = student.last_active
-                    ? new Date(student.last_active).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    : (student.created_at ? new Date(student.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
-
-                const lastMs = student.last_active ? new Date(student.last_active).getTime() : 0;
-                const isOnline = lastMs && ((nowMs - lastMs) <= 180000);
+                const lastMs = normalizeStudentTime(student.last_active || student.created_at);
+                const timeStr = lastMs
+                    ? new Date(lastMs).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : '—';
+                const isOnline = Boolean(lastMs && (nowMs - lastMs) >= -120000 && (nowMs - lastMs) <= 180000);
 
                 const statusBadge = isOnline
                     ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0">
@@ -4951,7 +5012,16 @@ renderImporterPreview() {
     }
 
     async adminEmergencyUnban() {
-        const pass = prompt("Nhập mật khẩu Admin để mở khóa khẩn cấp:");
+        const pass = await this.showPromptModal({
+            title: 'Mở khóa IP khẩn cấp',
+            badge: 'Khẩn cấp',
+            message: 'Nhập mật khẩu Admin để mở khóa IP cho thiết bị này:',
+            placeholder: 'Nhập mật khẩu Admin...',
+            inputType: 'password',
+            confirmText: 'Mở khóa ngay',
+            icon: 'fa-solid fa-key'
+        });
+        if (pass === null) return;
         if (pass === this.adminSecretPass) {
             try {
                 if (window.dbService && typeof window.dbService.unbanIp === 'function') {
