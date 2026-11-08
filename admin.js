@@ -191,7 +191,7 @@
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
     const allSubjects = () => mergeSubjectCatalog(state.subjects)
-        .map((item) => ({ key: item.key || item.subject_key, name: item.name || item.title || item.key }))
+        .map((item) => ({ ...item, key: item.key || item.subject_key, name: item.name || item.title || item.key }))
         .filter((item) => item.key);
     const builtinSubjects = () => [];
     const mergeSubjectCatalog = (configured) => {
@@ -211,8 +211,17 @@
         return /(?:^|[^0-9])5(?:$|[^0-9])/.test(source) || /5$/.test(subject?.key || '') ? '5' : '11';
     };
     const gradeOf = (q) => {
-        const key = String(q.subject_key || q.subjectKey || q.key || '').toLowerCase();
-        if (/5$/.test(key) || q.grade === '5' || q.grade_level === '5') return '5';
+        if (String(q?.grade || q?.grade_level || '') === '5') return '5';
+        if (String(q?.grade || q?.grade_level || '') === '11') return '11';
+        const key = String(q?.subject_key || q?.subjectKey || q?.key || '').trim();
+        const matchKey = subjectMatchKey(key);
+        const subjects = allSubjects();
+        const matchedSubject = subjects.find((s) => subjectMatchKey(s.key || s.subject_key) === matchKey);
+        if (matchedSubject) return subjectGrade(matchedSubject);
+        if (subjects.length > 0 && subjects.every((s) => subjectGrade(s) === '5')) return '5';
+        if (subjects.length > 0 && subjects.every((s) => subjectGrade(s) === '11')) return '11';
+        const lowerKey = key.toLowerCase();
+        if (/(?:^|[^0-9])5(?:$|[^0-9])/.test(lowerKey) || /5$/.test(lowerKey)) return '5';
         return '11';
     };
     const notify = (message, error = false) => {
@@ -1211,6 +1220,8 @@
         fillLibrarySubjects();
         renderSubjectCatalog();
         upgradePrivacyPanel();
+        renderStats();
+        renderLibrary();
     }
 
     function upgradePrivacyPanel() {
@@ -1376,11 +1387,27 @@
             return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
         }
         console.debug('[Quiz Studio Admin] Student monitor refresh:', { fetched: data?.length || 0, refreshedAt: new Date().toISOString() });
-        const rows = (data || []).filter((row) => {
+        const rawRows = (data || []).filter((row) => {
             const playerName = String(row.player_name || '').trim();
             const ip = String(row.ip_address || row.client_ip || '').trim();
             return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(ip);
         });
+        const seenStudents = new Map();
+        const duplicateRowIds = [];
+        for (const row of rawRows) {
+            const normName = String(row.player_name || '').trim().toLowerCase();
+            const normIp = String(row.ip_address || row.client_ip || '').trim();
+            const dedupeKey = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${normIp}`;
+            if (!seenStudents.has(dedupeKey)) {
+                seenStudents.set(dedupeKey, row);
+            } else if (row.id) {
+                duplicateRowIds.push(row.id);
+            }
+        }
+        if (duplicateRowIds.length > 0) {
+            state.client.from('quiz_logins').delete().in('id', duplicateRowIds).then(() => {}).catch(() => {});
+        }
+        const rows = Array.from(seenStudents.values());
         const nowMs = Date.now();
         const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && row.last_active && nowMs - new Date(row.last_active).getTime() < 180000);
         const activeSessions = new Set(online.map((row) => `legacy:${row.ip_address || row.client_ip || ''}:${row.player_name || ''}`));
@@ -1512,7 +1539,7 @@
         document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
         $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
         $('theme-toggle')?.addEventListener('click', () => { document.body.classList.toggle('dark'); localStorage.setItem('quiz_admin_dark', document.body.classList.contains('dark') ? 'true' : 'false'); });
-         $('refresh-button')?.addEventListener('click', () => Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()])); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
+         $('refresh-button')?.addEventListener('click', () => Promise.all([loadSubjects(), loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()])); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
         $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
         $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
         $('question-form')?.addEventListener('input', (event) => {
@@ -1573,7 +1600,8 @@
                 return;
             }
             showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
-            await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo(), loadSubjects()]);
+            await loadSubjects();
+            await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();
         setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
         } catch (error) {

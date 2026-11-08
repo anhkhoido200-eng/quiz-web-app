@@ -183,7 +183,12 @@ class DatabaseService {
 
             let localLogs = this._getLocalLogins();
             record.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            const existingLocal = localLogs.find((item) => item.session_id === sessionId);
+            const normName = cleanName.toLowerCase();
+            const existingLocal = localLogs.find((item) => {
+                const itemName = String(item.player_name || '').trim().toLowerCase();
+                if (normName && normName !== 'khách truy cập' && itemName === normName) return true;
+                return item.session_id === sessionId || (cleanIp !== 'Chưa xác định' && item.ip_address === cleanIp && itemName === normName);
+            });
             if (existingLocal) {
                 Object.assign(existingLocal, record, { id: existingLocal.id, created_at: existingLocal.created_at || nowIso });
                 record.id = existingLocal.id;
@@ -193,23 +198,62 @@ class DatabaseService {
             localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localLogs.slice(0, 100)));
         } catch (e) {}
 
-        // 2. Lưu Supabase Cloud cho Admin giám sát
+        // 2. Lưu Supabase Cloud cho Admin giám sát (Cập nhật thẳng bản ghi cũ của học sinh thay vì tạo dòng mới)
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data: existing, error: lookupError } = await this.client
-                    .from('quiz_logins')
-                    .select('id, created_at')
-                    .eq('session_id', sessionId)
-                    .limit(1);
+                const systemIds = Object.values(SYSTEM_RECORDS);
+                let existingRows = [];
 
-                if (!lookupError && existing && existing[0]) {
-                    const { error: updateError } = await this.client.from('quiz_logins').update({
-                        player_name: cleanName, ip_address: cleanIp, device_info: cleanDevice,
-                        status, score_summary: scoreSummary, last_active: nowIso
-                    }).eq('id', existing[0].id);
+                // Tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập) để gộp về 1 dòng mới nhất duy nhất
+                if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
+                    const { data: byName } = await this.client
+                        .from('quiz_logins')
+                        .select('id, player_name, ip_address, score_summary, last_active')
+                        .ilike('player_name', cleanName)
+                        .order('last_active', { ascending: false })
+                        .limit(20);
+                    if (Array.isArray(byName)) {
+                        existingRows = byName.filter((r) => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
+                    }
+                } else if (cleanIp && cleanIp !== 'Chưa xác định') {
+                    const { data: byIp } = await this.client
+                        .from('quiz_logins')
+                        .select('id, player_name, ip_address, score_summary, last_active')
+                        .eq('ip_address', cleanIp)
+                        .eq('player_name', 'Khách truy cập')
+                        .order('last_active', { ascending: false })
+                        .limit(10);
+                    if (Array.isArray(byIp)) {
+                        existingRows = byIp.filter((r) => !systemIds.includes(r.id));
+                    }
+                }
+
+                if (existingRows.length > 0) {
+                    const targetRow = existingRows[0];
+                    const nextSummary = scoreSummary || targetRow.score_summary || '';
+                    const { error: updateError } = await this.client
+                        .from('quiz_logins')
+                        .update({
+                            player_name: cleanName,
+                            ip_address: cleanIp,
+                            device_info: cleanDevice,
+                            status,
+                            score_summary: nextSummary,
+                            last_active: nowIso
+                        })
+                        .eq('id', targetRow.id);
+
+                    // Xóa các dòng trùng lặp cũ hơn của cùng học sinh để bảng giám sát luôn gọn
+                    if (existingRows.length > 1) {
+                        const duplicateIds = existingRows.slice(1).map((r) => r.id).filter(Boolean);
+                        if (duplicateIds.length) {
+                            this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {});
+                        }
+                    }
+
                     if (!updateError) {
-                        const resObj = { id: existing[0].id, success: true };
-                        resObj.toString = () => existing[0].id;
+                        const resObj = { id: targetRow.id, success: true };
+                        resObj.toString = () => targetRow.id;
                         return resObj;
                     }
                 }
@@ -510,7 +554,24 @@ class DatabaseService {
                             player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
                             device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
                         }));
-                    return realLogins;
+                    const seenKeys = new Set();
+                    const duplicateIds = [];
+                    const deduped = [];
+                    for (const row of realLogins) {
+                        const normName = String(row.player_name || '').trim().toLowerCase();
+                        const normIp = String(row.ip_address || '').trim().toLowerCase();
+                        const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${normIp}`;
+                        if (seenKeys.has(key)) {
+                            if (row.id) duplicateIds.push(row.id);
+                        } else {
+                            seenKeys.add(key);
+                            deduped.push(row);
+                        }
+                    }
+                    if (duplicateIds.length > 0) {
+                        this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {});
+                    }
+                    return deduped;
                 } else if (error) {
                     console.warn('[DatabaseService] Student monitor query failed:', { message: error.message, code: error.code });
                 }
