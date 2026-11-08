@@ -153,6 +153,31 @@ class QuizApp {
         }
     }
 
+    async copyTextToClipboard(text) {
+        const value = String(text || '').trim();
+        if (!value) return false;
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+        } catch (e) { }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = value;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand('copy');
+            ta.remove();
+            return Boolean(ok);
+        } catch (e) {
+            return false;
+        }
+    }
+
     ensureConfirmModalExists() {
         let modal = document.getElementById('modal-custom-confirm');
         if (modal) return modal;
@@ -174,6 +199,16 @@ class QuizApp {
                         <button type="button" id="custom-confirm-close-btn" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0" aria-label="Đóng">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
+                    </div>
+                    <div id="custom-confirm-copy-box" class="hidden p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/70 border border-cyan-500/40 shadow-inner">
+                        <span id="custom-confirm-copy-label" class="block text-[10px] font-extrabold uppercase tracking-wider text-cyan-300/90 mb-1">Địa chỉ IP hiện tại của bạn</span>
+                        <div class="flex items-center justify-between gap-2">
+                            <code id="custom-confirm-copy-value" class="font-mono font-extrabold text-base sm:text-lg text-white tracking-wider select-all break-all">0.0.0.0</code>
+                            <button type="button" id="custom-confirm-inline-copy-btn" class="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 text-cyan-200 border border-cyan-400/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0">
+                                <i class="fa-regular fa-copy"></i>
+                                <span>Copy IP</span>
+                            </button>
+                        </div>
                     </div>
                     <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
                     <div class="flex items-center justify-end gap-2.5 pt-1">
@@ -219,8 +254,8 @@ class QuizApp {
                 accent: 'h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400',
                 iconWrap: 'w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/35 text-indigo-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
                 badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mb-1',
-                badgeText: 'Xác nhận hệ thống',
-                icon: 'fa-solid fa-circle-question',
+                badgeText: 'Thông tin hệ thống',
+                icon: 'fa-solid fa-circle-info',
                 okBtn: 'btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
             },
             success: {
@@ -241,6 +276,10 @@ class QuizApp {
         const iconEl = document.getElementById('custom-confirm-icon');
         const badgeEl = document.getElementById('custom-confirm-badge');
         const titleEl = document.getElementById('custom-confirm-title');
+        const copyBox = document.getElementById('custom-confirm-copy-box');
+        const copyLabel = document.getElementById('custom-confirm-copy-label');
+        const copyValue = document.getElementById('custom-confirm-copy-value');
+        const inlineCopyBtn = document.getElementById('custom-confirm-inline-copy-btn');
         const msgEl = document.getElementById('custom-confirm-message');
         const cancelBtn = document.getElementById('custom-confirm-cancel-btn');
         const okBtn = document.getElementById('custom-confirm-ok-btn');
@@ -257,7 +296,39 @@ class QuizApp {
         }
         if (titleEl) titleEl.textContent = opts.title || 'Xác nhận thực hiện?';
         if (msgEl) msgEl.textContent = rawMsg;
-        if (cancelBtn) cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
+
+        if (copyBox) {
+            if (opts.copyValue) {
+                copyBox.classList.remove('hidden');
+                if (copyLabel) copyLabel.textContent = opts.copyLabel || 'Địa chỉ IP hiện tại của bạn';
+                if (copyValue) copyValue.textContent = String(opts.copyValue);
+                if (inlineCopyBtn) {
+                    inlineCopyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy IP</span>';
+                    inlineCopyBtn.onclick = async () => {
+                        const copied = await this.copyTextToClipboard(opts.copyValue);
+                        if (copied) {
+                            inlineCopyBtn.innerHTML = '<i class="fa-solid fa-check text-emerald-300"></i><span>Đã chép!</span>';
+                            this.showToastNotification(`✅ Đã sao chép IP: ${opts.copyValue}`, 'success');
+                            setTimeout(() => {
+                                if (inlineCopyBtn) inlineCopyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy IP</span>';
+                            }, 2000);
+                        }
+                    };
+                }
+            } else {
+                copyBox.classList.add('hidden');
+                if (inlineCopyBtn) inlineCopyBtn.onclick = null;
+            }
+        }
+
+        if (cancelBtn) {
+            if (opts.hideCancel) {
+                cancelBtn.classList.add('hidden');
+            } else {
+                cancelBtn.classList.remove('hidden');
+                cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
+            }
+        }
         if (okBtn) okBtn.className = theme.okBtn;
         if (okIcon) okIcon.className = opts.okIcon || 'fa-solid fa-check';
         if (okText) okText.textContent = opts.confirmText || 'Đồng ý';
@@ -283,7 +354,18 @@ class QuizApp {
                 if (okBtn) okBtn.onclick = null;
                 if (cancelBtn) cancelBtn.onclick = null;
                 if (closeBtn) closeBtn.onclick = null;
+                if (inlineCopyBtn) inlineCopyBtn.onclick = null;
                 resolve(result);
+            };
+
+            const handleOk = async () => {
+                if (opts.copyOnConfirm && opts.copyValue) {
+                    const copied = await this.copyTextToClipboard(opts.copyValue);
+                    if (copied) {
+                        this.showToastNotification(`✅ Đã sao chép IP: ${opts.copyValue}`, 'success');
+                    }
+                }
+                finish(true);
             };
 
             const onKeyDown = (e) => {
@@ -294,7 +376,7 @@ class QuizApp {
                 } else if (e.key === 'Enter') {
                     e.preventDefault();
                     e.stopPropagation();
-                    finish(true);
+                    handleOk();
                 }
             };
 
@@ -302,14 +384,65 @@ class QuizApp {
             modal.onclick = (e) => {
                 if (e.target === modal) finish(false);
             };
-            if (okBtn) okBtn.onclick = () => finish(true);
+            if (okBtn) okBtn.onclick = handleOk;
             if (cancelBtn) cancelBtn.onclick = () => finish(false);
             if (closeBtn) closeBtn.onclick = () => finish(false);
 
             setTimeout(() => {
-                if (variant === 'danger' && cancelBtn) cancelBtn.focus();
+                if (variant === 'danger' && cancelBtn && !opts.hideCancel) cancelBtn.focus();
                 else if (okBtn) okBtn.focus();
             }, 20);
+        });
+    }
+
+    showAlertModal(options = {}) {
+        const opts = typeof options === 'string' ? { message: options } : (options || {});
+        const raw = String(opts.message || '');
+        const cleanMsg = raw.replace(/^(?:✅|⚠️|❌|🔒|✨|👑|⏰)s*/, '');
+        let variant = opts.variant || 'primary';
+        let icon = opts.icon || 'fa-solid fa-circle-info';
+        let title = opts.title || 'Thông báo hệ thống';
+        let badge = opts.badge || 'Thông báo';
+
+        if (!opts.variant) {
+            if (/^✅|thành công|đã lưu|đã mở|đã cấp/i.test(raw)) {
+                variant = 'success';
+                icon = 'fa-solid fa-circle-check';
+                title = opts.title || 'Thao tác thành công';
+                badge = opts.badge || 'Hoàn tất';
+            } else if (/^❌|lỗi|không thể|không hợp lệ|không chính xác/i.test(raw)) {
+                variant = 'danger';
+                icon = 'fa-solid fa-circle-exclamation';
+                title = opts.title || 'Đã xảy ra lỗi';
+                badge = opts.badge || 'Cảnh báo lỗi';
+            } else if (/^⚠️|^🔒|^⏰|vui lòng|chưa|hết giờ|tạm ẩn/i.test(raw)) {
+                variant = 'warning';
+                icon = /^🔒/.test(raw) ? 'fa-solid fa-lock' : (/^⏰/.test(raw) ? 'fa-solid fa-clock' : 'fa-solid fa-triangle-exclamation');
+                title = opts.title || (/^🔒/.test(raw) ? 'Yêu cầu quyền truy cập' : 'Lưu ý từ hệ thống');
+                badge = opts.badge || 'Chú ý';
+            } else if (/^👑/.test(raw)) {
+                variant = 'warning';
+                icon = 'fa-solid fa-crown';
+                title = opts.title || 'Master Admin';
+                badge = opts.badge || 'Quyền tối cao';
+            } else if (/^✨/.test(raw)) {
+                variant = 'primary';
+                icon = 'fa-solid fa-wand-magic-sparkles';
+                title = opts.title || 'Trợ lý AI Sư Phạm';
+                badge = opts.badge || 'Gemini AI';
+            }
+        }
+
+        return this.showConfirmModal({
+            ...opts,
+            title,
+            badge,
+            message: cleanMsg,
+            variant,
+            icon,
+            hideCancel: opts.hideCancel !== undefined ? opts.hideCancel : true,
+            confirmText: opts.confirmText || 'Đã hiểu',
+            okIcon: opts.okIcon || 'fa-solid fa-check'
         });
     }
 
@@ -803,11 +936,29 @@ class QuizApp {
 
         const ip = String(this.clientIp || '').trim();
         if (!ip || ip === 'Chưa xác định' || ip.startsWith('Đang')) {
-            alert('Chưa xác định được IP của bạn. Vui lòng thử lại sau giây lát.');
+            await this.showAlertModal({
+                title: 'Chưa nhận diện được IP',
+                badge: 'Kiểm tra kết nối',
+                message: 'Chưa xác định được địa chỉ IP của bạn. Vui lòng kiểm tra kết nối mạng và thử lại sau giây lát.',
+                variant: 'warning',
+                icon: 'fa-solid fa-wifi'
+            });
             return;
         }
 
-        alert(`Địa chỉ IP của bạn là:\n\n${ip}\n\nHãy gửi địa chỉ này cho Admin để được cấp quyền.`);
+        await this.showConfirmModal({
+            title: 'Địa chỉ IP thiết bị của bạn',
+            badge: 'Định danh thiết bị',
+            copyValue: ip,
+            copyLabel: 'Địa chỉ IP hiện tại của bạn',
+            copyOnConfirm: true,
+            message: 'Hãy bấm nút Copy IP và gửi địa chỉ này cho Quản trị viên (Admin) để được cấp quyền truy cập hoặc mở khóa tính năng.',
+            confirmText: 'Sao chép IP',
+            cancelText: 'Đóng',
+            okIcon: 'fa-regular fa-copy',
+            icon: 'fa-solid fa-network-wired',
+            variant: 'primary'
+        });
     }
 
     startRealtimeQuestionSync() {
@@ -998,11 +1149,11 @@ class QuizApp {
                 });
                 localStorage.setItem('quiz_is_admin', 'true');
                 localStorage.setItem('quiz_admin_authenticated', 'true');
-                alert("👑 Đã lưu IP máy này làm Master Admin vĩnh viễn thành công!");
+                this.showAlertModal("👑 Đã lưu IP máy này làm Master Admin vĩnh viễn thành công!");
                 this.renderAdminIpsTab();
             }
         } catch (e) {
-            alert("Lỗi khi lưu Master Admin: " + e.message);
+            this.showAlertModal("Lỗi khi lưu Master Admin: " + e.message);
         }
     }
 
@@ -1013,7 +1164,7 @@ class QuizApp {
         const name = nameInput ? nameInput.value.trim() : 'Admin';
 
         if (!ip) {
-            alert("Vui lòng nhập địa chỉ IP cần cấp quyền.");
+            this.showAlertModal("Vui lòng nhập địa chỉ IP cần cấp quyền.");
             return;
         }
 
@@ -1023,17 +1174,17 @@ class QuizApp {
                 if (!this.allowedAdminIps.includes(ip)) this.allowedAdminIps.push(ip);
                 if (ipInput) ipInput.value = '';
                 if (nameInput) nameInput.value = '';
-                alert(`Đã cấp quyền Admin thành công cho IP: ${ip} (${name})`);
+                this.showAlertModal(`Đã cấp quyền Admin thành công cho IP: ${ip} (${name})`);
                 this.renderAdminIpsTab();
             }
         } catch (e) {
-            alert("Lỗi cấp quyền Admin: " + e.message);
+            this.showAlertModal("Lỗi cấp quyền Admin: " + e.message);
         }
     }
 
     async adminRevokeAdminIp(ip) {
         if (ip === this.masterAdminIp) {
-            alert("⚠️ IP này là Master Admin nên không thể thu hồi!");
+            this.showAlertModal("⚠️ IP này là Master Admin nên không thể thu hồi!");
             return;
         }
 
@@ -1051,11 +1202,11 @@ class QuizApp {
             if (window.dbService && typeof window.dbService.removeAdminIp === 'function') {
                 await window.dbService.removeAdminIp(ip);
                 this.allowedAdminIps = this.allowedAdminIps.filter(item => item !== ip);
-                alert(`Đã thu hồi quyền Admin của IP: ${ip}`);
+                this.showAlertModal(`Đã thu hồi quyền Admin của IP: ${ip}`);
                 this.renderAdminIpsTab();
             }
         } catch (e) {
-            alert("Lỗi thu hồi quyền: " + e.message);
+            this.showAlertModal("Lỗi thu hồi quyền: " + e.message);
         }
     }
 
@@ -1117,10 +1268,10 @@ class QuizApp {
                 if (window.dbService && typeof window.dbService.addAdminIp === 'function') {
                     await window.dbService.addAdminIp(ip, studentName || 'Học sinh');
                     if (!this.allowedAdminIps.includes(ip)) this.allowedAdminIps.push(ip);
-                    alert(`Đã cấp quyền Admin thành công cho: ${studentName} (${ip})`);
+                    this.showAlertModal(`Đã cấp quyền Admin thành công cho: ${studentName} (${ip})`);
                 }
             } catch (e) {
-                alert("Lỗi cấp quyền: " + e.message);
+                this.showAlertModal("Lỗi cấp quyền: " + e.message);
             }
         }
         this.renderAdminStudentsList();
@@ -1172,11 +1323,11 @@ class QuizApp {
         if (existingIdx !== -1) {
             // Đang có -> Thu hồi
             this.allowedAiIps.splice(existingIdx, 1);
-            alert(`Đã thu hồi quyền sử dụng Trợ lý AI của: ${studentName || 'Học sinh'} (${cleanIp})`);
+            this.showAlertModal(`Đã thu hồi quyền sử dụng Trợ lý AI của: ${studentName || 'Học sinh'} (${cleanIp})`);
         } else {
             // Chưa có -> Cấp quyền
             this.allowedAiIps.push({ ip: cleanIp, name: studentName || 'Học sinh', grantedAt: new Date().toISOString() });
-            alert(`✨ Đã cấp quyền sử dụng Trợ lý AI thành công cho: ${studentName || 'Học sinh'} (${cleanIp})!`);
+            this.showAlertModal(`✨ Đã cấp quyền sử dụng Trợ lý AI thành công cho: ${studentName || 'Học sinh'} (${cleanIp})!`);
         }
 
         try {
@@ -1196,13 +1347,13 @@ class QuizApp {
         const name = nameInput ? nameInput.value.trim() : 'Học sinh';
 
         if (!ip) {
-            alert("Vui lòng nhập địa chỉ IP cần cấp quyền Trợ lý AI.");
+            this.showAlertModal("Vui lòng nhập địa chỉ IP cần cấp quyền Trợ lý AI.");
             return;
         }
 
         const exists = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip);
         if (exists) {
-            alert(`Địa chỉ IP ${ip} đã được cấp quyền Trợ lý AI từ trước.`);
+            this.showAlertModal(`Địa chỉ IP ${ip} đã được cấp quyền Trợ lý AI từ trước.`);
             return;
         }
 
@@ -1215,7 +1366,7 @@ class QuizApp {
 
         if (ipInput) ipInput.value = '';
         if (nameInput) nameInput.value = '';
-        alert(`✨ Đã cấp quyền Trợ lý AI cho IP: ${ip} (${name}) thành công!`);
+        this.showAlertModal(`✨ Đã cấp quyền Trợ lý AI cho IP: ${ip} (${name}) thành công!`);
         this.renderAdminAiIpsList();
         this.renderAdminStudentsList();
     }
@@ -1453,7 +1604,7 @@ class QuizApp {
                 await window.dbService.setMaintenanceStatus(enabled, this.maintenanceMessage);
             }
         } catch (e) {
-            alert("Lỗi cập nhật bảo trì lên Cloud: " + e.message);
+            this.showAlertModal("Lỗi cập nhật bảo trì lên Cloud: " + e.message);
         }
 
         this.updateAdminMaintenanceUI();
@@ -1629,7 +1780,7 @@ Giải thích: Biên độ A = 5 cm.`;
         // Bảo mật 08: Giới hạn dung lượng file tối đa (15MB) chống tràn RAM trình duyệt
         const MAX_FILE_SIZE = 15 * 1024 * 1024;
         if (file.size > MAX_FILE_SIZE) {
-            alert("⚠️ Dung lượng file quá lớn (" + (file.size / (1024 * 1024)).toFixed(1) + "MB). Tối đa cho phép là 15MB.");
+            this.showAlertModal("⚠️ Dung lượng file quá lớn (" + (file.size / (1024 * 1024)).toFixed(1) + "MB). Tối đa cho phép là 15MB.");
             if (event.target) event.target.value = '';
             return;
         }
@@ -1638,7 +1789,7 @@ Giải thích: Biên độ A = 5 cm.`;
         // Bảo mật 07: Whitelist định dạng file cho phép
         const isAllowedExtension = fileName.endsWith('.json') || fileName.endsWith('.docx') || fileName.endsWith('.pdf') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
         if (!isAllowedExtension) {
-            alert("⚠️ Định dạng file không hợp lệ. Vui lòng chỉ tải lên file .docx, .pdf, .xlsx, .xls hoặc .json!");
+            this.showAlertModal("⚠️ Định dạng file không hợp lệ. Vui lòng chỉ tải lên file .docx, .pdf, .xlsx, .xls hoặc .json!");
             if (event.target) event.target.value = '';
             return;
         }
@@ -1652,16 +1803,16 @@ Giải thích: Biên độ A = 5 cm.`;
                         this.parsedImportQuestions = this.normalizeQuestions(parsed);
                         this.renderImporterPreview();
                     } else {
-                        alert("File JSON không hợp lệ (Phải là một mảng câu hỏi).");
+                        this.showAlertModal("File JSON không hợp lệ (Phải là một mảng câu hỏi).");
                     }
                 } catch (err) {
-                    alert("Lỗi đọc file JSON: " + err.message);
+                    this.showAlertModal("Lỗi đọc file JSON: " + err.message);
                 }
             };
             reader.readAsText(file);
         } else if (fileName.endsWith('.docx')) {
             if (typeof mammoth === 'undefined') {
-                alert("Thư viện bóc tách Word Mammoth chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
+                this.showAlertModal("Thư viện bóc tách Word Mammoth chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
                 return;
             }
 
@@ -1697,7 +1848,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 } catch (err) {
                     console.error("Lỗi đọc file Word .docx:", err);
-                    alert("Lỗi đọc file Word (.docx): " + err.message);
+                    this.showAlertModal("Lỗi đọc file Word (.docx): " + err.message);
                 } finally {
                     // Giải phóng bộ nhớ RAM tránh tụt FPS khi file chứa nhiều ảnh Base64
                     if (event && event.target) event.target.value = '';
@@ -1706,7 +1857,7 @@ Giải thích: Biên độ A = 5 cm.`;
             reader.readAsArrayBuffer(file);
         } else if (fileName.endsWith('.pdf')) {
             if (typeof pdfjsLib === 'undefined') {
-                alert("Thư viện bóc tách PDF chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
+                this.showAlertModal("Thư viện bóc tách PDF chưa sẵn sàng. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
                 return;
             }
 
@@ -1741,13 +1892,13 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 } catch (err) {
                     console.error("Lỗi đọc file PDF:", err);
-                    alert("Lỗi đọc file PDF (.pdf): " + err.message);
+                    this.showAlertModal("Lỗi đọc file PDF (.pdf): " + err.message);
                 }
             };
             reader.readAsArrayBuffer(file);
         } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
             if (typeof XLSX === 'undefined') {
-                alert("Thư viện SheetJS chưa sẵn sàng, vui lòng tải lại trang.");
+                this.showAlertModal("Thư viện SheetJS chưa sẵn sàng, vui lòng tải lại trang.");
                 return;
             }
             const reader = new FileReader();
@@ -1760,12 +1911,12 @@ Giải thích: Biên độ A = 5 cm.`;
                     this.parsedImportQuestions = this.convertExcelRowsToQuestions(json);
                     this.renderImporterPreview();
                 } catch (err) {
-                    alert("Lỗi đọc file Excel: " + err.message);
+                    this.showAlertModal("Lỗi đọc file Excel: " + err.message);
                 }
             };
             reader.readAsArrayBuffer(file);
         } else {
-            alert("Định dạng file không được hỗ trợ. Vui lòng chọn file Word (.docx), PDF (.pdf), Excel (.xlsx/.xls) hoặc JSON (.json).");
+            this.showAlertModal("Định dạng file không được hỗ trợ. Vui lòng chọn file Word (.docx), PDF (.pdf), Excel (.xlsx/.xls) hoặc JSON (.json).");
         }
     }
 
@@ -2182,7 +2333,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const rawText = textarea ? textarea.value.trim() : '';
 
         if (!rawText) {
-            alert("Vui lòng dán nội dung văn bản đề thi vào ô trước khi phân tích.");
+            this.showAlertModal("Vui lòng dán nội dung văn bản đề thi vào ô trước khi phân tích.");
             return;
         }
 
@@ -2388,7 +2539,7 @@ renderImporterPreview() {
         }
 
         if (!this.parsedImportQuestions || this.parsedImportQuestions.length === 0) {
-            alert("Không có câu hỏi nào để lưu.");
+            this.showAlertModal("Không có câu hỏi nào để lưu.");
             return;
         }
 
@@ -2462,13 +2613,13 @@ renderImporterPreview() {
             this.renderAdminSubjectsList();
 
             if (cloudOk) {
-                alert(`✅ Đã lưu thành công ${count} câu hỏi vào môn [${targetSubject}] lên toàn hệ thống Cloud & mọi thiết bị!`);
+                this.showAlertModal(`✅ Đã lưu thành công ${count} câu hỏi vào môn [${targetSubject}] lên toàn hệ thống Cloud & mọi thiết bị!`);
             } else {
-                alert(`⚠️ Đã lưu ${count} câu hỏi vào máy này thành công.\nLưu ý Cloud báo: ${errMsg}`);
+                this.showAlertModal(`⚠️ Đã lưu ${count} câu hỏi vào máy này thành công.\nLưu ý Cloud báo: ${errMsg}`);
             }
         } catch (e) {
             console.error("Lỗi khi lưu câu hỏi:", e);
-            alert("Lỗi khi lưu câu hỏi vào cơ sở dữ liệu: " + e.message);
+            this.showAlertModal("Lỗi khi lưu câu hỏi vào cơ sở dữ liệu: " + e.message);
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;
@@ -2480,7 +2631,7 @@ renderImporterPreview() {
     async seedCurrentSubjectToCloud() {
         const count = this.allQuestions ? this.allQuestions.length : 0;
         if (count === 0) {
-            alert("Môn học này hiện chưa có câu hỏi nào để lưu lên Cloud.");
+            this.showAlertModal("Môn học này hiện chưa có câu hỏi nào để lưu lên Cloud.");
             return;
         }
 
@@ -2499,10 +2650,10 @@ renderImporterPreview() {
         try {
             if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
                 await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
-                alert(`✅ Đã lưu ${count} câu hỏi môn [${this.getSubjectTitle()}] lên Supabase Cloud thành công!`);
+                this.showAlertModal(`✅ Đã lưu ${count} câu hỏi môn [${this.getSubjectTitle()}] lên Supabase Cloud thành công!`);
             }
         } catch (e) {
-            alert("Lỗi lưu đề lên Cloud: " + e.message);
+            this.showAlertModal("Lỗi lưu đề lên Cloud: " + e.message);
         }
     }
 
@@ -2526,9 +2677,9 @@ renderImporterPreview() {
             this.allQuestions = [];
             this.renderAdminQuestionsList();
             this.updateNavbarAndBadge();
-            alert("Đã xóa toàn bộ câu hỏi của môn này.");
+            this.showAlertModal("Đã xóa toàn bộ câu hỏi của môn này.");
         } catch (e) {
-            alert("Lỗi xóa đề: " + e.message);
+            this.showAlertModal("Lỗi xóa đề: " + e.message);
         }
     }
 
@@ -2698,7 +2849,7 @@ renderImporterPreview() {
             this.renderAdminQuestionsList();
             console.error('Lỗi đồng bộ đáp án lên Cloud:', error);
             this.showToastNotification(`Không thể đồng bộ đáp án lên Cloud: ${error.message}`, 'error');
-            alert(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
+            this.showAlertModal(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
         }
     }
 
@@ -2721,7 +2872,7 @@ renderImporterPreview() {
             this.renderAdminQuestionsList();
             console.error('Lỗi đồng bộ đáp án Đúng/Sai lên Cloud:', error);
             this.showToastNotification(`Không thể đồng bộ đáp án lên Cloud: ${error.message}`, 'error');
-            alert(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
+            this.showAlertModal(`Không thể đồng bộ đáp án câu #${q.id} lên Supabase Cloud.\n${error.message}`);
         }
     }
 
@@ -2895,7 +3046,7 @@ renderImporterPreview() {
         radios.forEach(r => { if (r.checked) visibility = r.value; });
 
         if (!name || !key) {
-            alert("Vui lòng nhập Tên môn học và Mã định danh (key).");
+            this.showAlertModal("Vui lòng nhập Tên môn học và Mã định danh (key).");
             return;
         }
 
@@ -2931,7 +3082,7 @@ renderImporterPreview() {
                 ? this.dynamicSubjects.map((item, index) => index === existingIdx ? previousSubject : item)
                 : this.dynamicSubjects.filter((item) => item.key !== key);
             console.warn("Lưu môn học vào Cloud thất bại:", e);
-            alert(`❌ Không thể đồng bộ môn học: ${e.message}`);
+            this.showAlertModal(`❌ Không thể đồng bộ môn học: ${e.message}`);
             return;
         }
 
@@ -2940,7 +3091,7 @@ renderImporterPreview() {
         this.renderAdminSubjectsList();
         this.renderHomeSubjects();
         this.populateSubjectDropdowns();
-        alert(`✅ Đã lưu môn học [${name}] thành công!`);
+        this.showAlertModal(`✅ Đã lưu môn học [${name}] thành công!`);
     }
 
     async adminDeleteSubject(key) {
@@ -2966,7 +3117,7 @@ renderImporterPreview() {
             }
         } catch (e) {
             this.dynamicSubjects = previousSubjects;
-            alert(`❌ Không thể xóa môn [${key}]: ${e.message}`);
+            this.showAlertModal(`❌ Không thể xóa môn [${key}]: ${e.message}`);
             return;
         }
 
@@ -2989,7 +3140,7 @@ renderImporterPreview() {
 
     async adminExportScoreboardExcel() {
         if (typeof XLSX === 'undefined') {
-            alert("Thư viện SheetJS chưa được tải hoàn tất. Vui lòng thử lại sau vài giây.");
+            this.showAlertModal("Thư viện SheetJS chưa được tải hoàn tất. Vui lòng thử lại sau vài giây.");
             return;
         }
 
@@ -3000,7 +3151,7 @@ renderImporterPreview() {
             }
 
             if (!Array.isArray(data) || data.length === 0) {
-                alert("Hiện chưa có dữ liệu kết quả thi nào để xuất Excel.");
+                this.showAlertModal("Hiện chưa có dữ liệu kết quả thi nào để xuất Excel.");
                 return;
             }
 
@@ -3025,7 +3176,7 @@ renderImporterPreview() {
             const dateStr = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `BangDiem_QuizMaster_Pro_${dateStr}.xlsx`);
         } catch (e) {
-            alert("Lỗi xuất bảng điểm Excel: " + e.message);
+            this.showAlertModal("Lỗi xuất bảng điểm Excel: " + e.message);
         }
     }
 
@@ -3176,7 +3327,7 @@ renderImporterPreview() {
             downloadAnchor.click();
             downloadAnchor.remove();
         } catch (e) {
-            alert("Lỗi sao lưu JSON: " + e.message);
+            this.showAlertModal("Lỗi sao lưu JSON: " + e.message);
         }
     }
 
@@ -3199,11 +3350,11 @@ renderImporterPreview() {
         try {
             if (window.dbService && typeof window.dbService.archiveAndClearExamData === 'function') {
                 await window.dbService.archiveAndClearExamData();
-                alert("✅ Đã dọn dẹp sạch sẽ dữ liệu kỳ thi cũ. Hệ thống đã sẵn sàng cho kỳ thi mới!");
+                this.showAlertModal("✅ Đã dọn dẹp sạch sẽ dữ liệu kỳ thi cũ. Hệ thống đã sẵn sàng cho kỳ thi mới!");
                 this.renderAdminStudentsList();
             }
         } catch (e) {
-            alert("Lỗi dọn dẹp dữ liệu: " + e.message);
+            this.showAlertModal("Lỗi dọn dẹp dữ liệu: " + e.message);
         }
     }
 
@@ -3390,18 +3541,18 @@ renderImporterPreview() {
         console.debug('[QuizApp] Start quiz requested:', { name, currentSubject: this.currentSubject, visibleSubjects: this.getHomeVisibleSubjects().map((subject) => subject.key), loadedQuestions: this.allQuestions.length, clientIp: this.clientIp, online: navigator.onLine });
 
         if (visibleSubjects.length === 0) {
-            alert("⚠️ Hiện tại tất cả các đề thi đều đang được Giáo viên tạm ẩn. Vui lòng quay lại sau!");
+            this.showAlertModal("⚠️ Hiện tại tất cả các đề thi đều đang được Giáo viên tạm ẩn. Vui lòng quay lại sau!");
             return;
         }
 
         if (!visibleSubjects.some((subject) => subject.key === this.currentSubject)) {
-            alert(`⚠️ Môn [${this.getSubjectTitle()}] không thuộc khu vực được cấp quyền trên thiết bị hiện tại.`);
+            this.showAlertModal(`⚠️ Môn [${this.getSubjectTitle()}] không thuộc khu vực được cấp quyền trên thiết bị hiện tại.`);
             await this.selectSubject(visibleSubjects[0].key);
             return;
         }
 
         if (!this.allQuestions || this.allQuestions.length === 0) {
-            alert(`⚠️ Môn [${this.getSubjectTitle()}] hiện chưa có câu hỏi nào trong hệ thống!`);
+            this.showAlertModal(`⚠️ Môn [${this.getSubjectTitle()}] hiện chưa có câu hỏi nào trong hệ thống!`);
             return;
         }
 
@@ -3847,7 +3998,7 @@ renderImporterPreview() {
                 this.examSecondsRemaining--;
                 if (this.examSecondsRemaining <= 0) {
                     clearInterval(this.timerInterval);
-                    alert("⏰ ĐÃ HẾT GIỜ LÀM BÀI! Hệ thống đang tự động nộp bài của bạn.");
+                    this.showAlertModal("⏰ ĐÃ HẾT GIỜ LÀM BÀI! Hệ thống đang tự động nộp bài của bạn.");
                     this.finishQuiz();
                     return;
                 }
@@ -4570,7 +4721,7 @@ renderImporterPreview() {
                 this.renderAdminStudentsList();
             }
         } catch (e) {
-            alert("Lỗi: " + e.message);
+            this.showAlertModal("Lỗi: " + e.message);
         }
     }
 
@@ -4583,10 +4734,10 @@ renderImporterPreview() {
             if (window.dbService && typeof window.dbService.broadcastNotice === 'function') {
                 await window.dbService.broadcastNotice(text);
                 if (input) input.value = '';
-                alert("Đã phát thông báo thành công đến tất cả thí sinh!");
+                this.showAlertModal("Đã phát thông báo thành công đến tất cả thí sinh!");
             }
         } catch (e) {
-            alert("Lỗi phát thông báo: " + e.message);
+            this.showAlertModal("Lỗi phát thông báo: " + e.message);
         }
     }
 
@@ -4600,7 +4751,7 @@ renderImporterPreview() {
         const input = document.getElementById('admin-ban-ip-input');
         const ip = input ? input.value.trim() : '';
         if (!ip) {
-            alert("Vui lòng nhập địa chỉ IP cần chặn.");
+            this.showAlertModal("Vui lòng nhập địa chỉ IP cần chặn.");
             return;
         }
         await this.adminBanStudentIp(ip);
@@ -4620,13 +4771,13 @@ renderImporterPreview() {
         try {
             if (window.dbService && typeof window.dbService.banIp === 'function') {
                 await window.dbService.banIp(ip, "Gian lận / Vi phạm quy chế phòng thi");
-                alert(`Đã kích hoạt lệnh chặn đối với IP: ${ip}!`);
+                this.showAlertModal(`Đã kích hoạt lệnh chặn đối với IP: ${ip}!`);
                 await this.loadBannedIpsList();
                 this.renderAdminStudentsList();
                 this.renderAdminBannedIpsList();
             }
         } catch (e) {
-            alert("Lỗi chặn IP: " + e.message);
+            this.showAlertModal("Lỗi chặn IP: " + e.message);
         }
     }
 
@@ -4643,13 +4794,13 @@ renderImporterPreview() {
         try {
             if (window.dbService && typeof window.dbService.unbanIp === 'function') {
                 await window.dbService.unbanIp(ip);
-                alert(`✅ Đã mở chặn thành công cho IP: ${ip}!`);
+                this.showAlertModal(`✅ Đã mở chặn thành công cho IP: ${ip}!`);
                 await this.loadBannedIpsList();
                 this.renderAdminStudentsList();
                 this.renderAdminBannedIpsList();
             }
         } catch (e) {
-            alert("Lỗi mở chặn IP: " + e.message);
+            this.showAlertModal("Lỗi mở chặn IP: " + e.message);
         }
     }
 
@@ -4719,14 +4870,14 @@ renderImporterPreview() {
             try {
                 if (window.dbService && typeof window.dbService.unbanIp === 'function') {
                     await window.dbService.unbanIp(this.clientIp);
-                    alert("Đã gỡ chặn IP thành công! Đang tải lại trang...");
+                    await this.showAlertModal("Đã gỡ chặn IP thành công! Đang tải lại trang...");
                     location.reload();
                 }
             } catch (e) {
-                alert("Lỗi mở khóa: " + e.message);
+                this.showAlertModal("Lỗi mở khóa: " + e.message);
             }
         } else {
-            alert("Mật khẩu không chính xác!");
+            this.showAlertModal("Mật khẩu không chính xác!");
         }
     }
 
@@ -4778,7 +4929,7 @@ renderImporterPreview() {
         const key = keyInput ? keyInput.value.trim() : '';
 
         if (!url || !key) {
-            alert("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
+            this.showAlertModal("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
             return;
         }
 
@@ -4797,10 +4948,10 @@ renderImporterPreview() {
                     }
                 }
             }
-            alert("✅ Đã lưu kết nối Supabase Cloud thành công!");
+            this.showAlertModal("✅ Đã lưu kết nối Supabase Cloud thành công!");
             this.closeSettingsModal();
         } catch (e) {
-            alert("Lỗi lưu cấu hình: " + e.message);
+            this.showAlertModal("Lỗi lưu cấu hình: " + e.message);
         }
     }
 
@@ -4821,7 +4972,7 @@ renderImporterPreview() {
         if (window.dbService && typeof window.dbService.clearConfig === 'function') {
             window.dbService.clearConfig();
         }
-        alert("✅ Đã khôi phục cài đặt gốc! Đang tải lại trang...");
+        await this.showAlertModal("✅ Đã khôi phục cài đặt gốc! Đang tải lại trang...");
         location.reload();
     }
 
@@ -4928,7 +5079,7 @@ renderImporterPreview() {
         const questionText = textInput ? textInput.value.trim() : '';
 
         if (!questionText) {
-            alert("Vui lòng nhập nội dung câu hỏi.");
+            this.showAlertModal("Vui lòng nhập nội dung câu hỏi.");
             return;
         }
 
@@ -4990,7 +5141,7 @@ renderImporterPreview() {
             }
             console.error("Lỗi lưu câu hỏi lên Cloud:", error);
             this.showToastNotification(`Không thể đồng bộ câu hỏi lên Cloud: ${error.message}`, 'error');
-            alert(`Không thể lưu câu hỏi lên Supabase Cloud.\n${error.message}`);
+            this.showAlertModal(`Không thể lưu câu hỏi lên Supabase Cloud.\n${error.message}`);
             return;
         }
         if (targetSubject === this.currentSubject) {
@@ -5120,7 +5271,7 @@ renderImporterPreview() {
 
     openAiSettingsModal() {
         if (!this.isAdminAuthenticated) {
-            alert("🔒 Tính năng cấu hình Gemini API Key chỉ dành riêng cho Quản trị viên (Admin).");
+            this.showAlertModal("🔒 Tính năng cấu hình Gemini API Key chỉ dành riêng cho Quản trị viên (Admin).");
             return;
         }
         const modal = document.getElementById('modal-ai-settings');
@@ -5146,13 +5297,13 @@ renderImporterPreview() {
 
     async saveAiApiKey() {
         if (!this.isAdminAuthenticated) {
-            alert("🔒 Chỉ Quản trị viên mới được thay đổi Gemini API Key.");
+            this.showAlertModal("🔒 Chỉ Quản trị viên mới được thay đổi Gemini API Key.");
             return;
         }
         const input = document.getElementById('gemini-api-key-input');
         const key = (input ? input.value : '').trim();
         if (!key) {
-            alert("Vui lòng dán mã Google Gemini API Key để lưu.");
+            this.showAlertModal("Vui lòng dán mã Google Gemini API Key để lưu.");
             return;
         }
         this.geminiApiKey = key;
@@ -5167,16 +5318,16 @@ renderImporterPreview() {
         }
 
         if (cloudSuccess) {
-            alert("✅ Đã lưu khóa AI trên Cloud. Học sinh chỉ sử dụng được khi IP đã được cấp quyền AI.");
+            this.showAlertModal("✅ Đã lưu khóa AI trên Cloud. Học sinh chỉ sử dụng được khi IP đã được cấp quyền AI.");
         } else {
-            alert("✅ Đã lưu khóa Gemini API Key lên Cloud.");
+            this.showAlertModal("✅ Đã lưu khóa Gemini API Key lên Cloud.");
         }
         this.closeAiSettingsModal();
     }
 
     async clearAiApiKey() {
         if (!this.isAdminAuthenticated) {
-            alert("🔒 Chỉ Quản trị viên mới được xóa Gemini API Key.");
+            this.showAlertModal("🔒 Chỉ Quản trị viên mới được xóa Gemini API Key.");
             return;
         }
         if (!(await this.showConfirmModal({
@@ -5199,14 +5350,26 @@ renderImporterPreview() {
             }
         } catch (e) {}
 
-        alert("Đã xóa API Key khỏi hệ thống.");
+        this.showAlertModal("Đã xóa API Key khỏi hệ thống.");
     }
 
     async askAiExplanation(qId) {
         // Admin được dùng trực tiếp; học sinh phải nằm trong whitelist IP.
         if (!this.isAdminAuthenticated) await this.loadAiIpsConfig();
         if (!this.isAiAllowedForCurrentClient()) {
-            alert(`🔒 BẠN CHƯA ĐƯỢC CẤP QUYỀN SỬ DỤNG TRỢ LÝ AI!\n\nĐịa chỉ IP của bạn: ${this.clientIp}\n\nTính năng Trợ lý AI giải thích bài yêu cầu Quản trị viên (Admin) cấp quyền theo địa chỉ IP. Vui lòng gửi địa chỉ IP của bạn cho Admin để được kích hoạt quyền.`);
+            await this.showConfirmModal({
+                title: 'Chưa được cấp quyền Trợ lý AI',
+                badge: 'Yêu cầu quyền AI',
+                copyValue: this.clientIp || 'Chưa xác định',
+                copyLabel: 'Địa chỉ IP của bạn',
+                copyOnConfirm: true,
+                message: 'Tính năng Trợ lý AI giải thích bài yêu cầu Quản trị viên (Admin) cấp quyền theo địa chỉ IP. Hãy sao chép địa chỉ IP trên và gửi cho Admin để được kích hoạt quyền!',
+                confirmText: 'Sao chép IP',
+                cancelText: 'Đóng',
+                okIcon: 'fa-regular fa-copy',
+                icon: 'fa-solid fa-lock',
+                variant: 'warning'
+            });
             return;
         }
 
@@ -5214,17 +5377,17 @@ renderImporterPreview() {
 
         if (!apiKey) {
             if (this.isAdminAuthenticated) {
-                alert("✨ Chưa cấu hình Gemini API Key. Hãy nhập khóa trong khu vực Admin, sau đó cấp quyền AI cho từng IP.");
+                this.showAlertModal("✨ Chưa cấu hình Gemini API Key. Hãy nhập khóa trong khu vực Admin, sau đó cấp quyền AI cho từng IP.");
                 this.openAiSettingsModal();
             } else {
-                alert("✨ Trợ lý AI đang chờ giáo viên/quản trị viên cấu hình khóa API chung. Vui lòng báo quản trị viên cài đặt!");
+                this.showAlertModal("✨ Trợ lý AI đang chờ giáo viên/quản trị viên cấu hình khóa API chung. Vui lòng báo quản trị viên cài đặt!");
             }
             return;
         }
 
         const q = (this.allQuestions || []).find(item => item.id == qId);
         if (!q) {
-            alert("Không tìm thấy dữ liệu câu hỏi.");
+            this.showAlertModal("Không tìm thấy dữ liệu câu hỏi.");
             return;
         }
 
@@ -5690,7 +5853,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         this.renderAdminSubjectsList();
         this.renderHomeSubjects();
         this.populateSubjectDropdowns();
-        alert(`Đã đổi môn [${sub.name}] sang trạng thái: ${nextVis === 'PUBLIC' ? 'CÔNG KHAI' : 'RIÊNG TƯ'}`);
+        this.showAlertModal(`Đã đổi môn [${sub.name}] sang trạng thái: ${nextVis === 'PUBLIC' ? 'CÔNG KHAI' : 'RIÊNG TƯ'}`);
     }
 
     initEventListeners() {

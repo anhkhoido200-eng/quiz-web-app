@@ -1098,6 +1098,25 @@ body.light-theme .btn-3d-slate {
     box-shadow: 0 3px 0 #cbd5e1, 0 6px 12px -3px rgba(15, 23, 42, 0.08);
 }
 
+body.light-theme #custom-confirm-copy-box {
+    background: linear-gradient(135deg, #eef2ff, #ecfeff);
+    border-color: #67e8f9;
+}
+
+body.light-theme #custom-confirm-copy-label {
+    color: #0e7490 !important;
+}
+
+body.light-theme #custom-confirm-copy-value {
+    color: #0f172a !important;
+}
+
+body.light-theme #custom-confirm-inline-copy-btn {
+    background: #06b6d4;
+    color: #ffffff !important;
+    border-color: #0891b2;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
