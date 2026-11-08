@@ -557,21 +557,15 @@ class DatabaseService {
                             device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
                         }));
                     const seenKeys = new Set();
-                    const duplicateIds = [];
                     const deduped = [];
                     for (const row of realLogins) {
                         const normName = String(row.player_name || '').trim().toLowerCase();
                         const normIp = String(row.ip_address || '').trim().toLowerCase();
                         const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${normIp}`;
-                        if (seenKeys.has(key)) {
-                            if (row.id) duplicateIds.push(row.id);
-                        } else {
+                        if (!seenKeys.has(key)) {
                             seenKeys.add(key);
                             deduped.push(row);
                         }
-                    }
-                    if (duplicateIds.length > 0) {
-                        this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {});
                     }
                     return deduped;
                 } else if (error) {
@@ -616,20 +610,15 @@ class DatabaseService {
      * Xóa sạch toàn bộ lịch sử đăng nhập học sinh (bảo toàn cấu hình hệ thống)
      */
     async clearAllLogins() {
+        const systemIds = Object.values(SYSTEM_RECORDS);
         if (this.isSupabaseActive && this.client) {
-            const adminConfig = await this.fetchAdminIpsConfig();
-            const adminIps = new Set([
-                adminConfig?.masterIp,
-                ...(Array.isArray(adminConfig?.ips) ? adminConfig.ips : []),
-                ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
-            ].map(ip => String(ip || '').trim()).filter(Boolean));
             const { data, error: selectError } = await this.client
                 .from('quiz_logins')
                 .select('id, player_name, ip_address');
             if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập trước khi xóa: ${selectError.message}`);
 
             const ids = (data || [])
-                .filter(item => !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim()))
+                .filter(item => !systemIds.includes(item.id) && (!String(item.player_name || '').startsWith('__') || item.player_name === '__SYSTEM_NOTICE__'))
                 .map(item => item.id)
                 .filter(Boolean);
             if (ids.length > 0) {

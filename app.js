@@ -902,20 +902,30 @@ class QuizApp {
     /* 2. NHẬN DIỆN IP ADMIN & PHÂN QUYỀN (PASSWORDLESS ADMIN IP)     */
     /* ============================================================== */
 
-    async fetchClientIp() {
-        try {
-            const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3500) });
-            const data = await res.json();
-            if (data && data.ip) {
-                this.clientIp = data.ip;
+    async fetchClientIp(forceRefresh = false) {
+        const cachedIp = !forceRefresh ? sessionStorage.getItem('quiz_stable_client_ip') : '';
+        if (cachedIp && cachedIp !== 'Chưa xác định' && !cachedIp.startsWith('Đang')) {
+            this.clientIp = cachedIp;
+        } else {
+            const endpoints = [
+                'https://api4.ipify.org?format=json',
+                'https://api.ipify.org?format=json',
+                'https://ipapi.co/json/'
+            ];
+            for (const url of endpoints) {
+                try {
+                    const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+                    const data = await res.json();
+                    const detected = String(data?.ip || '').trim();
+                    if (detected) {
+                        this.clientIp = detected;
+                        sessionStorage.setItem('quiz_stable_client_ip', detected);
+                        break;
+                    }
+                } catch (e) { }
             }
-        } catch (e) {
-            try {
-                const res2 = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3500) });
-                const data2 = await res2.json();
-                if (data2 && data2.ip) this.clientIp = data2.ip;
-            } catch (e2) {
-                if (this.clientIp.startsWith('Đang')) this.clientIp = "Chưa xác định";
+            if (!this.clientIp || this.clientIp.startsWith('Đang')) {
+                this.clientIp = 'Chưa xác định';
             }
         }
 
@@ -4533,7 +4543,7 @@ renderImporterPreview() {
         setInterval(async () => {
             if (!window.dbService) return;
 
-            if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 30000) {
+            if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 20000) {
                 this.presenceHeartbeatAt = Date.now();
                 await window.dbService.heartbeat?.(this.currentLoginId);
             }
