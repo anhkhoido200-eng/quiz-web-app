@@ -8,11 +8,12 @@
 (function (global) {
     'use strict';
 
-    const TO_SUPERSCRIPT = {
-        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-        '+': '⁺', '-': '⁻', '(': '⁽', ')': '⁾'
+    const SUPERSCRIPTS = {
+        '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+        '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+        '⁺': '+', '⁻': '-', '⁽': '(', '⁾': ')'
     };
+    const SUPERSCRIPT_PATTERN = '[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾]+';
     const MATH_BLOCK_PATTERN = /(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g;
 
     function readValue(value) {
@@ -49,15 +50,10 @@
         return value.replace(/___MATH_TOKEN_(\d+)___/g, (match, index) => tokens[Number(index)] ?? match);
     }
 
-    function toSuperscript(value) {
-        return [...String(value)].map((char) => TO_SUPERSCRIPT[char] ?? char).join('');
-    }
-
-    function escapeHtmlOutsideMath(value) {
-        return value
-            .replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+    function latexAtom(value) {
+        return String(value)
+            .replace(new RegExp(`(${SUPERSCRIPT_PATTERN})`, 'g'), (match) => `^{${[...match].map((char) => SUPERSCRIPTS[char]).join('')}}`)
+            .replace(/([A-Za-zα-ωΑ-Ωℓ])\^(\d+)/g, '$1^{$2}');
     }
 
     function format(value) {
@@ -68,46 +64,78 @@
         let source = input.text;
         const tokens = [];
 
-        // Never rewrite an explicitly supplied LaTeX block ($...$ or $$...$$).
+        // Never rewrite an explicitly supplied LaTeX block.
         source = protectMathBlocks(source, tokens);
 
-        // Geometry, chemistry, implication, comparison, and sign symbols -> Unicode.
-        source = source.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 ∥ $2');
-        source = source.replace(/\s*(?:\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' ⇔ ');
-        source = source.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' → ');
-        source = source.replace(/\s*=>\s*/g, ' ⇒ ');
-        source = source.replace(/\s*>=\s*/g, ' ≥ ');
-        source = source.replace(/\s*<=\s*/g, ' ≤ ');
-        source = source.replace(/\s*!=\s*/g, ' ≠ ');
-        source = source.replace(/\s*\+-\s*/g, ' ± ');
+        // Numeric and simple symbolic fractions. This covers old text such as
+        // 3/10, 1 / 2π, v²/ω⁴, 1 / 0,4, 2,5 / 3,6, and g / ℓ without cutting
+        // Vietnamese decimals or multi-part slash expressions (e.g. USD/người/năm).
+        source = source.replace(/\b(cm|km|m)\s*\/\s*s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
+        source = protectMathBlocks(source, tokens);
 
-        // Chemistry and thermodynamics -> Unicode.
-        source = source.replace(/(?:Delta|Δ)\s*([rR])\s*H(?:\s*298)?(?:\s*\^?0)?/g, 'ΔᵣH°₂₉₈');
-        source = source.replace(/(?<!\\)(?:Delta|Δ)\s*H\b/g, 'ΔH');
-        source = source.replace(/(?<!\\)\bDelta\b/g, 'Δ');
+        source = source.replace(/(?<![\p{L}\p{N}_/])(?<!\d[.,])(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?![\p{L}\p{N}_/])(?![.,]\d)/gu, (match, numerator, denominator, offset, whole) => {
+            // Keep calendar dates and multi-part slash sequences unchanged.
+            if (/\/\s*$/.test(whole.slice(0, offset)) || /^\s*\//.test(whole.slice(offset + match.length))) return match;
+            return `$\\frac{${numerator}}{${denominator}}$`;
+        });
+        source = protectMathBlocks(source, tokens);
 
-        // Units and common chemical formulas -> Unicode.
-        source = source.replace(/(\d+)\s*(?:°C|\^oC|\*C)/g, '$1°C');
-        source = source.replace(/\b(cm|km|m)\s*\/\s*s\^?2\b/g, '$1/s²');
-        source = source.replace(/\b(cm|km|m)\s*\/\s*s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, '$1/s$2');
-        source = source.replace(/\b(km|cm|dm|mm|m)\^?2\b/g, '$1²');
-        source = source.replace(/\b(km|cm|dm|mm|m)\^?3\b/g, '$1³');
+        const atom = '(?:\\d+(?:[.,]\\d+)?[A-Za-zα-ωΑ-Ωℓ]?|[A-Za-zα-ωΑ-Ωℓ](?:_[A-Za-z0-9]+)?(?:\\^?\\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)?)';
+        source = source.replace(new RegExp(`(?<![\\p{L}\\p{N}_/])(?<!\\d[.,])(${atom})\\s*\\/\\s*(${atom})(?![\\p{L}\\p{N}_/])(?![.,]\\d)`, 'gu'), (match, numerator, denominator, offset, whole) => {
+            if (/\/\s*$/.test(whole.slice(0, offset)) || /^\s*\//.test(whole.slice(offset + match.length))) return match;
+            return `$\\frac{${latexAtom(numerator)}}{${latexAtom(denominator)}}$`;
+        });
 
+        // Protect generated fractions before applying the remaining notation
+        // rules so their LaTeX commands cannot be rewritten as plain text.
+        source = protectMathBlocks(source, tokens);
+
+        // Geometry, chemistry, implication, comparison, and sign symbols.
+        source = source.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 $\\parallel$ $2');
+        source = source.replace(/\s*(?:\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
+        source = source.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' $\\rightarrow$ ');
+        source = source.replace(/\s*=>\s*/g, ' $\\Rightarrow$ ');
+        source = source.replace(/\s*>=\s*/g, ' $\\ge$ ');
+        source = source.replace(/\s*<=\s*/g, ' $\\le$ ');
+        source = source.replace(/\s*!=\s*/g, ' $\\ne$ ');
+        source = source.replace(/\s*\+-\s*/g, ' $\\pm$ ');
+
+        // Chemistry and thermodynamics.
+        source = source.replace(/(?:Delta|Δ)\s*([rR])\s*H(?:\s*298)?(?:\s*\^?0)?/g, '$\\Delta_r H_{298}^\\circ$');
+        source = protectMathBlocks(source, tokens);
+        source = source.replace(/(?<!\\)(?:Delta|Δ)\s*H/g, '$\\Delta H$');
+        source = protectMathBlocks(source, tokens);
+        source = source.replace(/(?<!\\)(?:Delta|Δ)/g, '$\\Delta$');
+        source = protectMathBlocks(source, tokens);
+        source = source.replace(/\bK[Cc]\b/g, '$K_C$');
+        source = source.replace(/\bK[Pp]\b/g, '$K_p$');
+
+        // Units and common chemical formulas. Use a real fraction for rates.
+        source = source.replace(/(\d+)\s*(?:°C|\^oC|\*C)/g, (_, number) => `$${number}^{\\circ}\\text{C}$`);
+        source = source.replace(/\b(m|cm|km)\/s\^?2\b/g, (_, unit) => `$\\frac{\\text{${unit}}}{\\text{s}^2}$`);
+        source = source.replace(/\b(cm|km|m)\/s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
+        source = source.replace(/\b(km|cm|dm|mm|m)\^?2\b/g, (_, unit) => `$\\text{${unit}}^2$`);
+        source = source.replace(/\b(km|cm|dm|mm|m)\^?3\b/g, (_, unit) => `$\\text{${unit}}^3$`);
         const chemicalFormulae = {
-            H2O: 'H₂O', CO2: 'CO₂', H2SO4: 'H₂SO₄',
-            CaCO3: 'CaCO₃', SO2: 'SO₂', NH3: 'NH₃', N2: 'N₂',
-            O2: 'O₂', H2: 'H₂', Cl2: 'Cl₂', I2: 'I₂',
-            Fe2O3: 'Fe₂O₃', Al2O3: 'Al₂O₃', BaSO4: 'BaSO₄'
+            H2O: '$\\text{H}_2\\text{O}$', CO2: '$\\text{CO}_2$', H2SO4: '$\\text{H}_2\\text{SO}_4$',
+            CaCO3: '$\\text{CaCO}_3$', SO2: '$\\text{SO}_2$', NH3: '$\\text{NH}_3$', N2: '$\\text{N}_2$',
+            O2: '$\\text{O}_2$', H2: '$\\text{H}_2$', Cl2: '$\\text{Cl}_2$', I2: '$\\text{I}_2$',
+            Fe2O3: '$\\text{Fe}_2\\text{O}_3$', Al2O3: '$\\text{Al}_2\\text{O}_3$', BaSO4: '$\\text{BaSO}_4$'
         };
         Object.entries(chemicalFormulae).forEach(([formula, replacement]) => {
             source = source.replace(new RegExp(`\\b${formula}\\b`, 'g'), replacement);
         });
 
-        // Convert plain caret exponents (e.g. x^2, 10^-3) to Unicode superscripts.
-        source = source.replace(/(?<![\w$])([A-Za-zα-ωΑ-Ω]|\d+)\^([+-]?\d+)(?!\w)/g, (_, base, exponent) => `${base}${toSuperscript(exponent)}`);
+        // Preserve Unicode superscripts already displaying correctly.
+        source = protectMathBlocks(source, tokens);
+        source = source.replace(/(?<![\w$])([A-Za-zα-ωΑ-Ω])\^(\d+)(?!\w)/g, (_, base, exponent) => `$${base}^{${exponent}}$`);
+        source = protectMathBlocks(source, tokens);
 
-        // Escape &, <, > outside explicit $...$ blocks so expressions like "v < 0" or "A > 0" are never swallowed by HTML parsing.
-        source = escapeHtmlOutsideMath(source);
+        // Escape &, <, > outside explicit/generated $...$ math blocks so text like "v < 0" or "A > 0" is not swallowed by HTML parsing.
+        source = source
+            .replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
 
         return restoreMathBlocks(source, tokens);
     }

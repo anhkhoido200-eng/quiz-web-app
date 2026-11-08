@@ -3056,8 +3056,9 @@ renderImporterPreview() {
                 });
             } catch (e) { }
         };
-        if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(render, { timeout: 250 });
+        container.dataset.mathRenderRetry = '0';
+        if (typeof renderMathInElement === 'function') {
+            render();
         } else {
             requestAnimationFrame(render);
         }

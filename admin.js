@@ -23,7 +23,7 @@
         importIntegrity: { valid: true, errors: [] }
     };
     const $ = (id) => document.getElementById(id);
-    const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+    const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     const notationText = (value) => {
         if (typeof MathNotation !== 'undefined' && typeof MathNotation.readValue === 'function') {
             return MathNotation.readValue(value).text;
