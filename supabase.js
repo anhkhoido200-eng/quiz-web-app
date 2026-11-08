@@ -757,6 +757,21 @@ class DatabaseService {
         }
 
         let generatedId = await this.getNextQuestionId();
+        const otherSubjectIds = new Set();
+        const usedIdsInBatch = new Set();
+        if (this.isSupabaseActive && this.client && !replaceAll) {
+            try {
+                const { data: existingRows } = await this.client
+                    .from('quiz_questions')
+                    .select('id, subject_key');
+                (existingRows || []).forEach(row => {
+                    if (row && row.id !== undefined && row.subject_key !== cleanSubject) {
+                        otherSubjectIds.add(Number(row.id));
+                    }
+                });
+            } catch (e) { }
+        }
+
         const records = questionsList.map((q) => {
             let correctInt = 0;
             const rawCorrect = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : q.correctAnswer);
@@ -781,9 +796,19 @@ class DatabaseService {
                 return String(opt || '').replace(/^[A-D][\s.):-]\s*/i, '').trim();
             }) : [];
 
-            const hasId = q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id));
-            const id = hasId ? Number(q.id) : generatedId++;
-            if (!hasId) q.id = id;
+            const rawIdNum = (q.id !== undefined && q.id !== null && q.id !== '' && Number.isInteger(Number(q.id)) && Number(q.id) > 0)
+                ? Number(q.id)
+                : null;
+            const canReuseId = !replaceAll
+                && rawIdNum !== null
+                && !otherSubjectIds.has(rawIdNum)
+                && !usedIdsInBatch.has(rawIdNum);
+            while (otherSubjectIds.has(generatedId) || usedIdsInBatch.has(generatedId)) {
+                generatedId++;
+            }
+            const id = canReuseId ? rawIdNum : generatedId++;
+            usedIdsInBatch.add(id);
+            q.id = id;
             return {
                 id,
                 subject_key: cleanSubject,
@@ -853,9 +878,13 @@ class DatabaseService {
     async deleteQuestion(qId) {
         if (this.isSupabaseActive && this.client && qId) {
             try {
-                await this.client.from('quiz_questions').delete().eq('id', qId);
+                const { error } = await this.client.from('quiz_questions').delete().eq('id', qId);
+                if (error) throw error;
                 return true;
-            } catch (e) {}
+            } catch (e) {
+                console.error("[DatabaseService] Lỗi khi xóa câu hỏi:", e);
+                throw e;
+            }
         }
         return false;
     }
@@ -1723,6 +1752,31 @@ class DatabaseService {
      */
     async fetchLeaderboard(subjectKey = '', limit = 10) {
         const logins = await this.getLoginHistory(350);
+        let dynamicSubjectName = '';
+        if (subjectKey) {
+            const appSubjects = (typeof window !== 'undefined' && Array.isArray(window.app?.dynamicSubjects))
+                ? window.app.dynamicSubjects
+                : [];
+            let matchedSub = appSubjects.find(s => (s.key || s.subject_key) === subjectKey);
+            if (!matchedSub) {
+                try {
+                    const cachedSubs = JSON.parse(localStorage.getItem(STORAGE_KEYS.DYNAMIC_SUBJECTS) || '[]');
+                    if (Array.isArray(cachedSubs)) {
+                        matchedSub = cachedSubs.find(s => (s.key || s.subject_key) === subjectKey);
+                    }
+                } catch (e) { }
+            }
+            if (!matchedSub && typeof this.fetchDynamicSubjects === 'function') {
+                try {
+                    const fetchedSubs = await this.fetchDynamicSubjects();
+                    if (Array.isArray(fetchedSubs)) {
+                        matchedSub = fetchedSubs.find(s => (s.key || s.subject_key) === subjectKey);
+                    }
+                } catch (e) { }
+            }
+            dynamicSubjectName = String(matchedSub?.name || matchedSub?.title || '').trim().toLowerCase();
+        }
+
         // Lọc các bản ghi đã nộp bài
         const submitted = logins.filter(item => {
             const status = (item.status || "").toLowerCase();
@@ -1732,6 +1786,7 @@ class DatabaseService {
 
             if (subjectKey) {
                 const combined = status + " " + summary;
+                if (dynamicSubjectName && combined.includes(dynamicSubjectName)) return true;
                 if (subjectKey === 'geography' && (combined.includes('địa') || combined.includes('/67'))) return true;
                 if (subjectKey === 'physics' && (combined.includes('lí') || combined.includes('vật') || combined.includes('/52') || combined.includes('/43'))) return true;
                 if (subjectKey === 'history' && (combined.includes('sử') || combined.includes('/101') || combined.includes('/74'))) return true;
@@ -1740,6 +1795,13 @@ class DatabaseService {
             }
             return true;
         });
+
+        const parseTimeSeconds = (t) => {
+            if (!t || typeof t !== 'string') return Number.MAX_SAFE_INTEGER;
+            const m = t.match(/^(\d{1,3}):(\d{2})$/);
+            if (!m) return Number.MAX_SAFE_INTEGER;
+            return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+        };
 
         // Trích xuất điểm số & thời gian
         const parsedResults = submitted.map(item => {
@@ -1784,19 +1846,29 @@ class DatabaseService {
             };
         });
 
-        // Lọc trùng theo Tên + IP, chỉ giữ lượt thi điểm cao nhất
+        // Lọc trùng theo Tên + IP, chỉ giữ lượt thi điểm cao nhất (nếu bằng điểm thì lấy thời gian làm bài nhanh hơn)
         const studentBestMap = new Map();
         parsedResults.forEach(res => {
             const key = `${res.playerName.toLowerCase().trim()}___${res.ipAddress}`;
-            if (!studentBestMap.has(key) || studentBestMap.get(key).score < res.score) {
+            const existing = studentBestMap.get(key);
+            if (
+                !existing ||
+                existing.score < res.score ||
+                (existing.score === res.score && parseTimeSeconds(res.timeSpent) < parseTimeSeconds(existing.timeSpent))
+            ) {
                 studentBestMap.set(key, res);
             }
         });
 
         const uniqueResults = Array.from(studentBestMap.values());
-        // Sắp xếp: Điểm cao nhất lên đầu, nếu bằng điểm thì ai nộp trước xếp trước
+        // Sắp xếp: Điểm cao nhất lên đầu, nếu bằng điểm thì ưu tiên thời gian làm bài nhanh hơn (timeSpent) trước rồi mới tới submittedAt
         uniqueResults.sort((a, b) => {
-            if (b.score !== a.score) return b.score - a.score;
+            const scoreValA = Number(a.score) || 0;
+            const scoreValB = Number(b.score) || 0;
+            if (scoreValB !== scoreValA) return scoreValB - scoreValA;
+            const timeA = parseTimeSeconds(a.timeSpent);
+            const timeB = parseTimeSeconds(b.timeSpent);
+            if (timeA !== timeB) return timeA - timeB;
             return new Date(a.submittedAt) - new Date(b.submittedAt);
         });
 

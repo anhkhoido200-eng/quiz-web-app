@@ -41,6 +41,7 @@ class QuizApp {
         this.adminSecretPass = '034569';
         this.allowedAdminIps = [];
         this.masterAdminIp = '';
+        this.adminIpConfig = { masterIp: '', allowedIps: [] };
 
         // Phân quyền sử dụng Trợ lý AI theo địa chỉ IP
         this.allowedAiIps = [];
@@ -92,7 +93,7 @@ class QuizApp {
 
         // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
         const savedModel = localStorage.getItem('gemini_model');
-        const supportedGeminiModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
+        const supportedGeminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         if (!supportedGeminiModels.includes(savedModel)) {
             localStorage.setItem('gemini_model', supportedGeminiModels[0]);
         }
@@ -168,6 +169,7 @@ class QuizApp {
         await this.loadAiIpsConfig();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
+        this.renderFilterTabs();
         await this.initMaintenance();
         this.startRealtimeHeartbeat();
         this.startRealtimeQuestionSync();
@@ -709,6 +711,7 @@ class QuizApp {
                 else if (Array.isArray(cfg.allowedIps)) ips = cfg.allowedIps.map(x => typeof x === 'string' ? x : x.ip);
                 this.allowedAdminIps = ips.filter(Boolean);
                 this.masterAdminIp = cfg.masterIp || '';
+                this.adminIpConfig = { masterIp: this.masterAdminIp, allowedIps: this.allowedAdminIps };
             }
         } catch (e) {
             console.warn("Không thể tải danh sách IP Admin:", e);
@@ -767,9 +770,11 @@ class QuizApp {
     }
 
     promptAdminAuth() {
-        if (this.isAdminAuthenticated && this.hasAdminIpAccess()) {
-            this.isAdminAuthenticated = true;
-            this.updateAdminUIVisibility();
+        if (!this.adminIpConfig?.masterIp || (this.isAdminAuthenticated && this.hasAdminIpAccess()) || this.hasAdminIpAccess()) {
+            if (this.hasAdminIpAccess()) {
+                this.isAdminAuthenticated = true;
+                this.updateAdminUIVisibility();
+            }
             window.location.href = 'admin.html';
             return;
         }
@@ -2839,6 +2844,12 @@ renderImporterPreview() {
 
         // Render Podium Top 3 (Thứ tự hiển thị thị giác: Top 2 bên trái, Top 1 ở giữa cao nhất, Top 3 bên phải)
         if (podiumContainer) {
+            const top2Name = top2 ? this.escapeHtml(top2.player_name || top2.playerName || 'Thí sinh') : '';
+            const top2Time = top2 ? this.escapeHtml(top2.time_spent || top2.timeSpent || '—') : '';
+            const top1Name = top1 ? this.escapeHtml(top1.player_name || top1.playerName || 'Thí sinh') : '';
+            const top1Time = top1 ? this.escapeHtml(top1.time_spent || top1.timeSpent || '—') : '';
+            const top3Name = top3 ? this.escapeHtml(top3.player_name || top3.playerName || 'Thí sinh') : '';
+            const top3Time = top3 ? this.escapeHtml(top3.time_spent || top3.timeSpent || '—') : '';
             podiumContainer.innerHTML = `
                 <!-- Top 2: Bạc -->
                 <div class="flex flex-col items-center">
@@ -2848,9 +2859,9 @@ renderImporterPreview() {
                         </div>
                         <div class="w-full podium-silver p-2.5 rounded-2xl text-center space-y-1">
                             <span class="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-slate-700 text-slate-200">Hạng 2</span>
-                            <p class="font-bold text-white text-xs truncate" title="${top2.player_name || top2.playerName || 'Thí sinh'}">${top2.player_name || top2.playerName || 'Thí sinh'}</p>
+                            <p class="font-bold text-white text-xs truncate" title="${top2Name}">${top2Name}</p>
                             <p class="font-extrabold text-amber-300 text-sm">${top2.score || 0}đ</p>
-                            <p class="text-[10px] text-slate-400 font-mono">${top2.time_spent || top2.timeSpent || '—'}</p>
+                            <p class="text-[10px] text-slate-400 font-mono">${top2Time}</p>
                         </div>
                     ` : '<div class="h-24"></div>'}
                 </div>
@@ -2863,9 +2874,9 @@ renderImporterPreview() {
                         </div>
                         <div class="w-full podium-gold p-3.5 rounded-2xl text-center space-y-1.5">
                             <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-amber-500 text-slate-950 shadow">Thủ Khoa</span>
-                            <p class="font-extrabold text-white text-xs sm:text-sm truncate" title="${top1.player_name || top1.playerName || 'Thí sinh'}">${top1.player_name || top1.playerName || 'Thí sinh'}</p>
+                            <p class="font-extrabold text-white text-xs sm:text-sm truncate" title="${top1Name}">${top1Name}</p>
                             <p class="font-extrabold text-amber-300 text-base sm:text-lg">${top1.score || 0}đ</p>
-                            <p class="text-[10px] text-amber-200/80 font-mono">${top1.time_spent || top1.timeSpent || '—'}</p>
+                            <p class="text-[10px] text-amber-200/80 font-mono">${top1Time}</p>
                         </div>
                     ` : '<div class="h-28"></div>'}
                 </div>
@@ -2878,9 +2889,9 @@ renderImporterPreview() {
                         </div>
                         <div class="w-full podium-bronze p-2.5 rounded-2xl text-center space-y-1">
                             <span class="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-900 text-amber-200">Hạng 3</span>
-                            <p class="font-bold text-white text-xs truncate" title="${top3.player_name || top3.playerName || 'Thí sinh'}">${top3.player_name || top3.playerName || 'Thí sinh'}</p>
+                            <p class="font-bold text-white text-xs truncate" title="${top3Name}">${top3Name}</p>
                             <p class="font-extrabold text-amber-300 text-sm">${top3.score || 0}đ</p>
-                            <p class="text-[10px] text-slate-400 font-mono">${top3.time_spent || top3.timeSpent || '—'}</p>
+                            <p class="text-[10px] text-slate-400 font-mono">${top3Time}</p>
                         </div>
                     ` : '<div class="h-24"></div>'}
                 </div>
@@ -2896,12 +2907,14 @@ renderImporterPreview() {
             } else {
                 nextTops.forEach((item, idx) => {
                     const rank = idx + 4;
+                    const itemName = this.escapeHtml(item.player_name || item.playerName || 'Thí sinh');
+                    const itemTime = this.escapeHtml(item.time_spent || item.timeSpent || '—');
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td class="py-2.5 px-3 text-center font-bold text-slate-400">#${rank}</td>
-                        <td class="py-2.5 px-3 font-semibold text-white max-w-[140px] truncate">${item.player_name || item.playerName || 'Thí sinh'}</td>
+                        <td class="py-2.5 px-3 font-semibold text-white max-w-[140px] truncate" title="${itemName}">${itemName}</td>
                         <td class="py-2.5 px-3 text-center font-bold text-emerald-400">${item.score || 0}đ</td>
-                        <td class="py-2.5 px-3 text-right font-mono text-slate-400">${item.time_spent || item.timeSpent || '—'}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-slate-400">${itemTime}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -3822,7 +3835,7 @@ renderImporterPreview() {
                 ${ansReview}
                 ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${this.formatScientificNotation(q.explanation)}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
-                    <button type="button" onclick="app.askAiExplanation(${q.id})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                    <button type="button" onclick='app.askAiExplanation(${JSON.stringify(q.id)})' id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
@@ -3897,6 +3910,18 @@ renderImporterPreview() {
 
     filterQuestions(filterKey) {
         this.currentFilter = filterKey;
+        const container = document.getElementById('quiz-filter-tabs-container');
+        if (container) {
+            container.querySelectorAll('.filter-tab-btn').forEach(btn => {
+                const isActive = btn.getAttribute('data-filter') === filterKey;
+                btn.classList.toggle('bg-indigo-600', isActive);
+                btn.classList.toggle('text-white', isActive);
+                btn.classList.toggle('shadow-md', isActive);
+                btn.classList.toggle('bg-slate-800', !isActive);
+                btn.classList.toggle('hover:bg-slate-700', !isActive);
+                btn.classList.toggle('text-slate-300', !isActive);
+            });
+        }
         // Bug 3 Fix: Luôn chuyển sang màn hình 'quiz' để người dùng nhìn thấy câu hỏi đã lọc
         this.switchScreen('quiz');
         this.renderAllQuestions();
@@ -3982,12 +4007,20 @@ renderImporterPreview() {
     renderFilterTabs() {
         const container = document.getElementById('quiz-filter-tabs-container');
         if (!container) return;
-        container.innerHTML = `
-            <button onclick="app.filterQuestions('all')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-indigo-600 text-white cursor-pointer" data-filter="all">Tất cả</button>
-            <button onclick="app.filterQuestions('mcq')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="mcq">Trắc nghiệm</button>
-            <button onclick="app.filterQuestions('tf')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="tf">Đúng / Sai</button>
-            <button onclick="app.filterQuestions('short')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer" data-filter="short">Trả lời ngắn</button>
-        `;
+        const activeFilter = this.currentFilter || 'all';
+        const tabs = [
+            { key: 'all', label: 'Tất cả' },
+            { key: 'mcq', label: 'Trắc nghiệm' },
+            { key: 'tf', label: 'Đúng / Sai' },
+            { key: 'short', label: 'Trả lời ngắn' }
+        ];
+        container.innerHTML = tabs.map(t => {
+            const isActive = t.key === activeFilter;
+            const stateClass = isActive
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300';
+            return `<button onclick="app.filterQuestions('${t.key}')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition ${stateClass} cursor-pointer" data-filter="${t.key}">${t.label}</button>`;
+        }).join('');
     }
 
     /* ============================================================== */
@@ -4203,33 +4236,40 @@ renderImporterPreview() {
 
                 const isAiGranted = (this.allowedAiIps || []).some(item => (typeof item === 'string' ? item : item.ip) === ip);
 
+                const safeName = this.escapeHtml(name);
+                const safeIp = this.escapeHtml(ip);
+                const safeDevice = this.escapeHtml(device);
+                const safeScoreInfo = this.escapeHtml(scoreInfo);
+                const jsIp = this.escapeHtml(String(ip).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+                const jsName = this.escapeHtml(String(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+
                 rowsHtml += `
                     <tr class="hover:bg-slate-800/40 transition">
                         <td class="py-2.5 px-3">
                             <div class="flex items-center gap-2">
                                 ${displayBadge}
-                                <span class="font-bold text-white text-xs truncate max-w-[150px]" title="${name}">${name}</span>
+                                <span class="font-bold text-white text-xs truncate max-w-[150px]" title="${safeName}">${safeName}</span>
                             </div>
                         </td>
-                        <td class="py-2.5 px-3 font-mono text-amber-300 text-xs">${ip}</td>
-                        <td class="py-2.5 px-3 text-slate-300 text-xs">${device}</td>
+                        <td class="py-2.5 px-3 font-mono text-amber-300 text-xs">${safeIp}</td>
+                        <td class="py-2.5 px-3 text-slate-300 text-xs">${safeDevice}</td>
                         <td class="py-2.5 px-3 text-center text-slate-400 text-xs font-mono">${timeStr}</td>
                         <td class="py-2.5 px-3 text-center">
-                            <span class="px-2.5 py-1 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-200 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/30'} font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${scoreInfo}">
-                                ${scoreInfo}
+                            <span class="px-2.5 py-1 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-200 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/30'} font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${safeScoreInfo}">
+                                ${safeScoreInfo}
                             </span>
                         </td>
                         <td class="py-2.5 px-3 text-right">
                             <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                                <button onclick="app.adminToggleStudentAiRole('${ip}', '${name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-purple-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
+                                <button onclick="app.adminToggleStudentAiRole('${jsIp}', '${jsName}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-purple-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
                                     <i class="fa-solid fa-wand-magic-sparkles mr-1 ${isAiGranted ? 'text-amber-300' : 'text-slate-400'}"></i> ${isAiGranted ? 'Đã có AI' : 'Cấp AI'}
                                 </button>
                                 ${isBanned ? `
-                                    <button onclick="app.adminUnbanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để mở chặn cho IP này">
+                                    <button onclick="app.adminUnbanStudentIp('${jsIp}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để mở chặn cho IP này">
                                         <i class="fa-solid fa-lock-open mr-1"></i> Mở Chặn
                                     </button>
                                 ` : `
-                                    <button onclick="app.adminBanStudentIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để chặn ngay IP này">
+                                    <button onclick="app.adminBanStudentIp('${jsIp}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer" title="Bấm để chặn ngay IP này">
                                         <i class="fa-solid fa-ban mr-1"></i> Chặn IP
                                     </button>
                                 `}
@@ -4677,10 +4717,12 @@ renderImporterPreview() {
         if (!confirm(`Bạn có chắc muốn xóa câu hỏi #${qId}?`)) return;
         this.allQuestions = this.allQuestions.filter(q => q.id !== qId);
         try {
-            if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
-                await window.dbService.saveQuestionsBulk(this.currentSubject, this.allQuestions, true);
+            if (window.dbService && typeof window.dbService.deleteQuestion === 'function') {
+                await window.dbService.deleteQuestion(qId);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Lỗi khi xóa câu hỏi trên Cloud:", e);
+        }
 
         try {
             localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(this.allQuestions));
@@ -4924,10 +4966,10 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 candidateModels = await this.getAvailableGeminiModels(apiKey);
             } catch (modelListError) {
                 console.warn('[QuizMaster AI] Không đọc được model list, dùng model mặc định:', modelListError.message);
-                candidateModels = ['gemini-3.8-flash'];
+                candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
             }
             candidateModels = candidateModels.slice(0, 3);
-            if (!candidateModels.length) candidateModels = ['gemini-3.8-flash'];
+            if (!candidateModels.length) candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
             let res = null;
             let lastErrMsg = "";

@@ -947,7 +947,7 @@
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
+            const testModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
             let ok = false;
             let lastError = '';
             for (const model of testModels) {
@@ -1351,7 +1351,74 @@
     function exportJson(name, payload) { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); URL.revokeObjectURL(link.href); }
     function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
     function exportExcel() { if (!window.XLSX) return exportJson('quiz-questions.json', state.questions); const rows = state.questions.map((q) => ({ ID: q.id, Mon: subjectName(q.subject_key), Loai: TYPE_LABELS[q.qType], CauHoi: q.question, DapAn: q.qType === 'mcq' ? 'ABCD'[q.correct] : q.qType === 'short_answer' ? q.correctValue : q.statements.map((s) => `${s.key}:${s.answer ? 'Đúng' : 'Sai'}`).join(', '), GiaiThich: q.explanation })); const book = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(book, window.XLSX.utils.json_to_sheet(rows), 'Questions'); window.XLSX.writeFile(book, `quiz-questions-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất bảng câu hỏi Excel.'); }
-    async function loadLeaderboard() { const subject = $('leaderboard-subject')?.value; let query = state.client.from('quiz_logins').select('*').order('last_active', { ascending: false }).limit(100); if (subject) query = query.ilike('score_summary', `%${subject}%`); const { data, error } = await query; if (error) return notify(error.message, true); const rows = (data || []).filter((row) => !Object.values(SYSTEM).includes(row.id)).slice(0, 10); $('leaderboard-content').innerHTML = `<div class="leaderboard-list">${rows.map((row, index) => `<div class="leader-row"><strong>#${index + 1}</strong><span>${esc(row.player_name || 'Học sinh')}</span><b>${esc(row.score_summary || '—')}</b><small>${row.last_active ? new Date(row.last_active).toLocaleDateString('vi-VN') : ''}</small></div>`).join('') || '<div class="empty-state">Chưa có kết quả.</div>'}</div>`; }
+    async function loadLeaderboard() {
+        const subject = $('leaderboard-subject')?.value || '';
+        try {
+            let rows = [];
+            if (window.dbService && typeof window.dbService.fetchLeaderboard === 'function') {
+                rows = await window.dbService.fetchLeaderboard(subject, 10);
+            } else {
+                const { data, error } = await state.client.from('quiz_logins').select('*').order('last_active', { ascending: false }).limit(350);
+                if (error) return notify(error.message, true);
+                const subObj = state.subjects.find((s) => (s.key || s.subject_key) === subject);
+                const subName = String(subObj?.name || subObj?.title || '').trim().toLowerCase();
+                const parseTimeSec = (t) => {
+                    const m = String(t || '').match(/^(\d{1,3}):(\d{2})$/);
+                    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : Number.MAX_SAFE_INTEGER;
+                };
+                const submitted = (data || []).filter((item) => {
+                    if (Object.values(SYSTEM).includes(item.id) || String(item.player_name || '').startsWith('__')) return false;
+                    const status = String(item.status || '').toLowerCase();
+                    const summary = String(item.score_summary || '').toLowerCase();
+                    const isFinished = status.includes('đã nộp') || status.includes('hoàn thành') || summary.includes('điểm');
+                    if (!isFinished) return false;
+                    if (subject) {
+                        const combined = `${status} ${summary}`;
+                        if (subName && combined.includes(subName)) return true;
+                        if (subject === 'geography' && (combined.includes('địa') || combined.includes('/67'))) return true;
+                        if (subject === 'physics' && (combined.includes('lí') || combined.includes('vật') || combined.includes('/52') || combined.includes('/43'))) return true;
+                        if (subject === 'history' && (combined.includes('sử') || combined.includes('/101') || combined.includes('/74'))) return true;
+                        if (combined.includes(subject.toLowerCase())) return true;
+                        return false;
+                    }
+                    return true;
+                });
+                const bestMap = new Map();
+                submitted.forEach((item) => {
+                    const scoreMatch = String(item.score_summary || '').match(/(\d+(?:\.\d+)?)\s*điểm/i);
+                    let score = scoreMatch ? parseFloat(scoreMatch[1]) : 0;
+                    const ratioMatch = String(item.score_summary || '').match(/đúng\s*(\d+)\/(\d+)/i) || String(item.status || '').match(/(\d+)\/(\d+)/i);
+                    if (ratioMatch && !score && parseInt(ratioMatch[2], 10) > 0) {
+                        score = Math.round((parseInt(ratioMatch[1], 10) / parseInt(ratioMatch[2], 10)) * 100) / 10;
+                    }
+                    const timeMatch = String(item.score_summary || '').match(/-\s*(\d{1,2}:\d{2})/);
+                    const timeSpent = timeMatch ? timeMatch[1] : '—';
+                    const rec = {
+                        ...item,
+                        score,
+                        timeSpent,
+                        scoreSummary: item.score_summary,
+                        submittedAt: item.last_active || item.created_at
+                    };
+                    const key = `${String(item.player_name || '').toLowerCase().trim()}___${item.ip_address || ''}`;
+                    const prev = bestMap.get(key);
+                    if (!prev || prev.score < rec.score || (prev.score === rec.score && parseTimeSec(rec.timeSpent) < parseTimeSec(prev.timeSpent))) {
+                        bestMap.set(key, rec);
+                    }
+                });
+                rows = Array.from(bestMap.values()).sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score;
+                    const tA = parseTimeSec(a.timeSpent);
+                    const tB = parseTimeSec(b.timeSpent);
+                    if (tA !== tB) return tA - tB;
+                    return new Date(a.submittedAt) - new Date(b.submittedAt);
+                }).slice(0, 10);
+            }
+            $('leaderboard-content').innerHTML = `<div class="leaderboard-list">${rows.map((row, index) => `<div class="leader-row"><strong>#${index + 1}</strong><span>${esc(row.player_name || row.playerName || 'Học sinh')}</span><b>${esc(row.scoreSummary || row.score_summary || (row.score !== undefined ? `${row.score} điểm` : '—'))}</b><small>${esc(row.timeSpent || row.time_spent || (row.submittedAt ? new Date(row.submittedAt).toLocaleDateString('vi-VN') : (row.last_active ? new Date(row.last_active).toLocaleDateString('vi-VN') : '')))}</small></div>`).join('') || '<div class="empty-state">Chưa có kết quả.</div>'}</div>`;
+        } catch (error) {
+            notify(error.message || 'Lỗi tải bảng xếp hạng', true);
+        }
+    }
 
     function bindEvents() {
         if (state.bound) return; state.bound = true;
