@@ -97,6 +97,7 @@
                             <button type="button" id="admin-confirm-close" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
                         </div>
                         <div id="admin-confirm-message" class="admin-confirm-message"></div>
+                        <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
                         <div class="admin-confirm-actions">
                             <button type="button" id="admin-confirm-cancel" class="button button-secondary">Hủy bỏ</button>
                             <button type="button" id="admin-confirm-ok" class="button button-primary"><i class="fa-solid fa-check"></i> <span id="admin-confirm-ok-text">Xác nhận</span></button>
@@ -112,6 +113,7 @@
         const eyebrowEl = document.getElementById('admin-confirm-eyebrow');
         const titleEl = document.getElementById('admin-confirm-title');
         const msgEl = document.getElementById('admin-confirm-message');
+        const inputEl = document.getElementById('admin-confirm-input');
         const cancelBtn = document.getElementById('admin-confirm-cancel');
         const okBtn = document.getElementById('admin-confirm-ok');
         const okText = document.getElementById('admin-confirm-ok-text');
@@ -125,6 +127,16 @@
         if (eyebrowEl) eyebrowEl.textContent = opts.eyebrow || (variant === 'danger' ? 'DANGER ZONE' : 'CONFIRM ACTION');
         if (titleEl) titleEl.textContent = opts.title || (variant === 'danger' ? 'Xác nhận xóa dữ liệu?' : 'Xác nhận thao tác?');
         if (msgEl) msgEl.textContent = msg;
+        if (inputEl) {
+            if (opts.withInput) {
+                inputEl.classList.remove('hidden');
+                inputEl.placeholder = opts.placeholder || 'Nhập nội dung...';
+                inputEl.value = opts.defaultValue || '';
+            } else {
+                inputEl.classList.add('hidden');
+                inputEl.value = '';
+            }
+        }
         if (cancelBtn) cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
         if (okBtn) okBtn.className = `button ${variant === 'danger' ? 'button-danger-solid' : (variant === 'warning' ? 'button-warning-solid' : 'button-primary')}`;
         if (okText) okText.textContent = opts.confirmText || (variant === 'danger' ? 'Xác nhận xóa' : 'Đồng ý');
@@ -133,7 +145,7 @@
 
         return new Promise((resolve) => {
             let settled = false;
-            const finish = (result) => {
+            const finish = (confirmed) => {
                 if (settled) return;
                 settled = true;
                 modal.classList.add('hidden');
@@ -142,7 +154,11 @@
                 if (okBtn) okBtn.onclick = null;
                 if (cancelBtn) cancelBtn.onclick = null;
                 if (closeBtn) closeBtn.onclick = null;
-                resolve(result);
+                if (opts.withInput) {
+                    resolve(confirmed ? String(inputEl?.value || '') : null);
+                } else {
+                    resolve(confirmed);
+                }
             };
             const onKey = (e) => {
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
@@ -153,9 +169,13 @@
             if (okBtn) okBtn.onclick = () => finish(true);
             if (cancelBtn) cancelBtn.onclick = () => finish(false);
             if (closeBtn) closeBtn.onclick = () => finish(false);
-            setTimeout(() => { (variant === 'danger' ? cancelBtn : okBtn)?.focus(); }, 20);
+            setTimeout(() => {
+                if (opts.withInput && inputEl) { inputEl.focus(); inputEl.select(); }
+                else (variant === 'danger' ? cancelBtn : okBtn)?.focus();
+            }, 20);
         });
     };
+    const promptDialog = (options = {}) => confirmDialog({ ...options, withInput: true, variant: options.variant || 'primary' });
     const fetchWithTimeout = async (url, options = {}, timeoutMs = 60000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -1387,11 +1407,21 @@
             return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
         }
         console.debug('[Quiz Studio Admin] Student monitor refresh:', { fetched: data?.length || 0, refreshedAt: new Date().toISOString() });
+        const nowMs = Date.now();
+        const safeRowTime = (row) => {
+            const la = row.last_active ? new Date(row.last_active).getTime() : 0;
+            const ca = row.created_at ? new Date(row.created_at).getTime() : 0;
+            // Nếu đồng hồ máy học sinh bị lệch tương lai (> 2 phút), ưu tiên created_at chuẩn server
+            if (la > nowMs + 120000 && ca > 0) return ca;
+            return la || ca || 0;
+        };
         const rawRows = (data || []).filter((row) => {
             const playerName = String(row.player_name || '').trim();
             const ip = String(row.ip_address || row.client_ip || '').trim();
-            return !systemIds.includes(row.id) && !playerName.startsWith('__') && !adminIps.has(ip);
-        });
+            if (systemIds.includes(row.id) || playerName.startsWith('__')) return false;
+            if ((!playerName || playerName.toLowerCase() === 'khách truy cập') && adminIps.has(ip)) return false;
+            return true;
+        }).sort((a, b) => safeRowTime(b) - safeRowTime(a));
         const seenStudents = new Map();
         const duplicateRowIds = [];
         for (const row of rawRows) {
@@ -1408,8 +1438,7 @@
             state.client.from('quiz_logins').delete().in('id', duplicateRowIds).then(() => {}).catch(() => {});
         }
         const rows = Array.from(seenStudents.values());
-        const nowMs = Date.now();
-        const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && row.last_active && nowMs - new Date(row.last_active).getTime() < 180000);
+        const online = rows.filter((row) => !String(row.status || '').startsWith('BANNED') && safeRowTime(row) > 0 && Math.abs(nowMs - safeRowTime(row)) < 180000);
         const activeSessions = new Set(online.map((row) => `legacy:${row.ip_address || row.client_ip || ''}:${row.player_name || ''}`));
         animateMetricValue('stat-online', activeSessions.size); $('nav-online-count') && ($('nav-online-count').textContent = activeSessions.size); $('student-count') && ($('student-count').textContent = `${rows.length} phiên`); $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
         $('monitor-stats') && ($('monitor-stats').innerHTML = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${rows.filter((row) => String(row.status || '').startsWith('BANNED')).length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`);
@@ -1425,15 +1454,72 @@
         stats.insertAdjacentHTML('afterend', '<section class="panel monitor-table-panel"><div class="panel-title"><div><p class="eyebrow">PRESENCE</p><h2>Phiên truy cập và địa chỉ IP</h2></div><span class="info-badge">Heartbeat 30 giây</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"><tr><td colspan="6" class="empty-state">Đang tải dữ liệu...</td></tr></tbody></table></div></section>');
     }
 
-    async function broadcastNotice() { const message = $('notice-input')?.value.trim(); if (!message) return notify('Nhập nội dung thông báo.', true); const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: 'ALL', device_info: '5s', status: 'ACTIVE', score_summary: message, last_active: new Date().toISOString() }); if (error) return notify(error.message, true); $('notice-input').value = ''; notify('Đã phát thông báo tới học sinh.'); }
+    async function broadcastNotice() {
+        const message = $('notice-input')?.value.trim();
+        if (!message) return notify('Nhập nội dung thông báo.', true);
+        const noticeId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
+        try {
+            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
+                id: noticeId,
+                message,
+                targetIp: 'ALL',
+                targetName: '',
+                timestamp: Date.now()
+            }));
+        } catch (e) {}
+        const { error } = await state.client.from('quiz_logins').insert({
+            id: noticeId,
+            player_name: '__SYSTEM_NOTICE__',
+            ip_address: 'ALL',
+            device_info: 'ALL',
+            status: 'ACTIVE',
+            score_summary: message,
+            last_active: nowIso
+        });
+        if (error) return notify(`Không thể phát thông báo: ${error.message}`, true);
+        if ($('notice-input')) $('notice-input').value = '';
+        notify('Đã phát thông báo tới toàn bộ học sinh.');
+    }
     async function sendPrivateNotice(ip, name = 'Học sinh') {
         const targetIp = String(ip || '').trim();
-        if (!targetIp || targetIp === 'Chưa xác định' || targetIp === '—') return notify('Không xác định được IP học sinh.', true);
-        const message = window.prompt(`Nhập thông báo riêng cho ${name} (${targetIp}):`, '');
+        const cleanName = String(name || 'Học sinh').trim();
+        if ((!targetIp || targetIp === 'Chưa xác định' || targetIp === '—') && !cleanName) {
+            return notify('Không xác định được học sinh nhận thông báo.', true);
+        }
+        const message = await promptDialog({
+            title: `Thông báo riêng cho ${cleanName}`,
+            eyebrow: 'PRIVATE NOTICE',
+            message: `Tin nhắn sẽ bật nổi bật trên màn hình của ${cleanName}${targetIp ? ` (IP: ${targetIp})` : ''}.`,
+            placeholder: 'Nhập nội dung nhắc nhở...',
+            confirmText: 'Gửi thông báo',
+            variant: 'primary',
+            icon: 'fa-paper-plane'
+        });
         if (message === null || !message.trim()) return;
-        const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__SYSTEM_NOTICE__', ip_address: targetIp, device_info: '5s', status: 'ACTIVE', score_summary: message.trim(), last_active: new Date().toISOString() });
+        const cleanMsg = message.trim();
+        const noticeId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
+        try {
+            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
+                id: noticeId,
+                message: cleanMsg,
+                targetIp: targetIp || 'ALL',
+                targetName: cleanName,
+                timestamp: Date.now()
+            }));
+        } catch (e) {}
+        const { error } = await state.client.from('quiz_logins').insert({
+            id: noticeId,
+            player_name: '__SYSTEM_NOTICE__',
+            ip_address: targetIp || 'ALL',
+            device_info: cleanName || '5s',
+            status: 'ACTIVE',
+            score_summary: cleanMsg,
+            last_active: nowIso
+        });
         if (error) return notify(`Không thể gửi thông báo riêng: ${error.message}`, true);
-        notify(`Đã gửi thông báo riêng tới IP ${targetIp}.`);
+        notify(`Đã gửi thông báo riêng tới ${cleanName}.`);
     }
     async function clearStudentLogins() {
         if (!(await confirmDialog({ title: 'Xóa lịch sử học sinh?', message: 'Xóa toàn bộ lịch sử học sinh? Cấu hình hệ thống sẽ được giữ lại.', confirmText: 'Xóa lịch sử', variant: 'danger' }))) return;
@@ -1557,7 +1643,7 @@
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
-        $('maintenance-toggle')?.addEventListener('change', () => runAction(toggleMaintenance)); $('edit-maintenance')?.addEventListener('click', () => { const message = window.prompt('Lời nhắn bảo trì:', state.maintenance.message); if (message !== null) { state.maintenance.message = message; runAction(toggleMaintenance); } });
+        $('maintenance-toggle')?.addEventListener('change', () => runAction(toggleMaintenance)); $('edit-maintenance')?.addEventListener('click', async () => { const message = await promptDialog({ title: 'Đổi lời nhắn bảo trì', eyebrow: 'MAINTENANCE MESSAGE', message: 'Nhập nội dung hiển thị cho học sinh khi hệ thống tạm khóa:', defaultValue: state.maintenance.message, confirmText: 'Lưu lời nhắn', variant: 'primary', icon: 'fa-screwdriver-wrench' }); if (message !== null && message.trim()) { state.maintenance.message = message.trim(); runAction(toggleMaintenance); } });
         $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true))); $('add-ai-ip')?.addEventListener('click', () => addAiIp().catch((error) => notify(error.message, true)));
         $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
         document.addEventListener('click', (event) => {
@@ -1574,9 +1660,10 @@
             if (addClass5) { const input = $('class5-ip-input'); runAction(() => addClass5Ip(input?.value).then(() => { if (input) input.value = ''; })); }
             if (addCurrentClass5) runAction(() => addClass5Ip(state.clientIp));
             if (removeClass5) runAction(() => removeClass5Ip(removeClass5.dataset.removeClass5));
-            if (notice && $('notice-input')) $('notice-input').value = notice.dataset.notice;
+            if (notice && $('notice-input')) { $('notice-input').value = notice.dataset.notice; runAction(broadcastNotice); }
         });
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
+        $('notice-input')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); runAction(broadcastNotice); } });
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
          $('refresh-students')?.addEventListener('click', () => runAction(loadStudents));
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));

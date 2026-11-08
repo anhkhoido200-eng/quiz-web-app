@@ -4447,7 +4447,88 @@ renderImporterPreview() {
     /* 11. GIÁM SÁT MÁY & CHẶN IP & REALTIME HEARTBEAT               */
     /* ============================================================== */
 
+    getActiveStudentName() {
+        return String(this.playerName || document.getElementById('player-name-input')?.value || localStorage.getItem('quiz_user_name') || localStorage.getItem('quiz_saved_player_name') || '').trim();
+    }
+
+    markNoticeSeen(noticeId) {
+        if (!noticeId) return;
+        if (!this.seenNoticeIds) {
+            try {
+                this.seenNoticeIds = new Set(JSON.parse(sessionStorage.getItem('quiz_seen_notice_ids') || '[]'));
+            } catch (e) {
+                this.seenNoticeIds = new Set();
+            }
+        }
+        this.seenNoticeIds.add(String(noticeId));
+        this.lastReceivedNoticeId = String(noticeId);
+        try {
+            const arr = Array.from(this.seenNoticeIds).slice(-50);
+            sessionStorage.setItem('quiz_seen_notice_ids', JSON.stringify(arr));
+        } catch (e) { }
+    }
+
+    async checkSystemNotice(isInitialBaseline = false) {
+        if (!window.dbService || typeof window.dbService.getSystemNotice !== 'function') return;
+        if (!this.seenNoticeIds) {
+            try {
+                this.seenNoticeIds = new Set(JSON.parse(sessionStorage.getItem('quiz_seen_notice_ids') || '[]'));
+            } catch (e) {
+                this.seenNoticeIds = new Set();
+            }
+        }
+        const currentPlayer = this.getActiveStudentName();
+        const notice = await window.dbService.getSystemNotice(this.clientIp, currentPlayer);
+        if (!notice || !(notice.content || notice.message) || notice.active === false) return;
+
+        const noticeId = String(notice.id || notice.timestamp || notice.content || notice.message);
+        if (this.seenNoticeIds.has(noticeId) || this.lastReceivedNoticeId === noticeId) return;
+
+        if (isInitialBaseline) {
+            let isBrandNewLocal = false;
+            try {
+                const rawLocal = localStorage.getItem('quiz_latest_system_notice');
+                if (rawLocal) {
+                    const parsed = JSON.parse(rawLocal);
+                    if (parsed && String(parsed.id) === noticeId && parsed.timestamp && (Date.now() - Number(parsed.timestamp) <= 12000)) {
+                        isBrandNewLocal = true;
+                    }
+                }
+            } catch (e) { }
+            this.markNoticeSeen(noticeId);
+            if (isBrandNewLocal) {
+                this.showStudentNotice(notice.content || notice.message);
+            }
+            return;
+        }
+
+        this.markNoticeSeen(noticeId);
+        this.showStudentNotice(notice.content || notice.message);
+    }
+
     startRealtimeHeartbeat() {
+        this.checkSystemNotice(true).catch(() => { });
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'quiz_latest_system_notice' && event.newValue) {
+                this.checkSystemNotice(false).catch(() => { });
+            }
+        });
+
+        try {
+            if (window.dbService?.client && typeof window.dbService.client.channel === 'function' && !this.noticeRealtimeChannel) {
+                this.noticeRealtimeChannel = window.dbService.client
+                    .channel('quiz-system-notices-live')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'quiz_logins' }, (payload) => {
+                        const row = payload?.new;
+                        if (row && row.player_name === '__SYSTEM_NOTICE__') {
+                            this.checkSystemNotice(false).catch(() => { });
+                        }
+                    })
+                    .subscribe();
+            }
+        } catch (e) { }
+
         // Kiểm tra quyền thường xuyên nhưng chỉ ghi heartbeat hiện diện mỗi 30 giây.
         setInterval(async () => {
             if (!window.dbService) return;
@@ -4503,26 +4584,17 @@ renderImporterPreview() {
 
             // 5. Kiểm tra thông báo từ Giám thị
             try {
-                if (typeof window.dbService.getSystemNotice === 'function') {
-                    const notice = await window.dbService.getSystemNotice(this.clientIp);
-                    if (notice && (notice.content || notice.message) && (notice.active !== false)) {
-                        const noticeId = notice.id || notice.timestamp || notice.content || notice.message;
-                        if (this.lastReceivedNoticeId !== noticeId) {
-                            this.lastReceivedNoticeId = noticeId;
-                            this.showStudentNotice(notice.content || notice.message);
-                        }
-                    }
-                }
+                await this.checkSystemNotice(false);
             } catch (e) { }
 
-            // 5. Tự động cập nhật danh sách giám sát thí sinh thời gian thực (nếu Admin đang mở tab Giám sát)
+            // 6. Tự động cập nhật danh sách giám sát thí sinh thời gian thực (nếu Admin đang mở tab Giám sát)
             try {
                 const adminModal = document.getElementById('modal-admin-dashboard');
                 if (adminModal && !adminModal.classList.contains('hidden') && this.adminCurrentTab === 'students' && this.isAdminAuthenticated) {
                     await this.renderAdminStudentsList(true);
                 }
             } catch (e) { }
-        }, 3000);
+        }, 2500);
     }
 
     showBlockedScreen(reason) {
@@ -4547,18 +4619,22 @@ renderImporterPreview() {
 
         if (!banner || !text) return;
         const cleanContent = typeof content === 'string' ? content.trim() : '';
-        if (cleanContent.length < 2) return;
+        if (cleanContent.length < 1) return;
         text.textContent = cleanContent;
         this.hideStudentNotice();
         banner.classList.remove('hidden');
-        let secondsLeft = 5;
+        try {
+            if (typeof this.playSound === 'function') this.playSound(true);
+        } catch (e) { }
+        const totalSeconds = 6;
+        let secondsLeft = totalSeconds;
         if (timer) timer.textContent = `${secondsLeft}s`;
         if (bar) bar.style.width = '100%';
 
         this.studentNoticeTimer = setInterval(() => {
             secondsLeft--;
             if (timer) timer.textContent = `${secondsLeft}s`;
-            if (bar) bar.style.width = `${(secondsLeft / 5) * 100}%`;
+            if (bar) bar.style.width = `${(secondsLeft / totalSeconds) * 100}%`;
             if (secondsLeft <= 0) {
                 this.hideStudentNotice();
             }

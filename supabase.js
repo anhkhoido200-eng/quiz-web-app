@@ -532,7 +532,9 @@ class DatabaseService {
         const isStudentLogin = (item) => {
             const playerName = String(item?.player_name || '').trim();
             const ip = String(item?.ip_address || item?.client_ip || '').trim();
-            return !systemIds.includes(item?.id) && !playerName.startsWith('__') && !adminIps.has(ip);
+            if (systemIds.includes(item?.id) || playerName.startsWith('__')) return false;
+            if ((!playerName || playerName.toLowerCase() === 'khách truy cập') && adminIps.has(ip)) return false;
+            return true;
         };
         if (this.isSupabaseActive && this.client) {
             try {
@@ -1198,25 +1200,27 @@ class DatabaseService {
     // =========================================================================
 
     /**
-     * Giám thị phát thông báo cho toàn phòng hoặc riêng 1 IP
+     * Giám thị phát thông báo cho toàn phòng hoặc riêng 1 IP / học sinh
      */
-    async sendBroadcastNotice(message, targetIp = 'ALL') {
+    async sendBroadcastNotice(message, targetIp = 'ALL', targetName = '') {
         const cleanMsg = (message || "").trim();
         if (!cleanMsg) return { success: false, error: 'Nội dung thông báo không được để trống.' };
         const cleanTargetIp = String(targetIp || 'ALL').trim() || 'ALL';
+        const cleanTargetName = String(targetName || '').trim();
 
         const nowIso = new Date().toISOString();
         const noticeId = this.generateUUID();
 
+        // Không truyền created_at từ client để PostgreSQL tự gán now() chuẩn server,
+        // tránh lỗi lệch múi giờ / đồng hồ trên máy học sinh hoặc Admin.
         const record = {
             id: noticeId,
             player_name: '__SYSTEM_NOTICE__',
             ip_address: cleanTargetIp,
-            device_info: '5s',
+            device_info: cleanTargetName || '5s',
             status: 'ACTIVE',
             score_summary: cleanMsg,
-            last_active: nowIso,
-            created_at: nowIso
+            last_active: nowIso
         };
 
         try {
@@ -1224,6 +1228,7 @@ class DatabaseService {
                 id: noticeId,
                 message: cleanMsg,
                 targetIp: cleanTargetIp,
+                targetName: cleanTargetName,
                 timestamp: Date.now()
             }));
         } catch (e) {}
@@ -1240,37 +1245,53 @@ class DatabaseService {
             }
         }
 
-        return { success: true, id: noticeId, message: cleanMsg, targetIp: cleanTargetIp };
+        return { success: true, id: noticeId, message: cleanMsg, targetIp: cleanTargetIp, targetName: cleanTargetName };
     }
 
     /**
-     * Máy học sinh lắng nghe thông báo mới nhất
+     * Máy học sinh lắng nghe thông báo mới nhất (Khớp theo ALL, theo IP hoặc theo tên học sinh;
+     * không phụ thuộc đồng hồ máy học sinh bị lệch giờ)
      */
-    async fetchLatestNotice(clientIp) {
-        const isValidNotice = (message, timestamp) => {
-            const cleanMessage = typeof message === 'string' ? message.trim() : '';
-            // Ignore accidental test characters and notices that have already expired.
-            return cleanMessage.length >= 2 && (!timestamp || Date.now() - timestamp <= 10 * 60 * 1000);
+    async fetchLatestNotice(clientIp, playerName = '') {
+        const cleanIp = String(clientIp || '').trim();
+        const validIp = (cleanIp && !cleanIp.startsWith('Đang') && cleanIp !== 'Chưa xác định' && cleanIp !== '—') ? cleanIp : '';
+        const normPlayer = String(playerName || '').trim().toLowerCase();
+
+        const matchesTarget = (itemIp, itemDeviceInfo) => {
+            const targetIp = String(itemIp || '').trim();
+            const targetName = String(itemDeviceInfo || '').trim().toLowerCase();
+            if (targetIp === 'ALL') return true;
+            if (validIp && targetIp === validIp) return true;
+            if (normPlayer && normPlayer !== 'khách truy cập' && targetName && targetName !== '5s' && targetName !== 'all' && targetName === normPlayer) {
+                return true;
+            }
+            return false;
         };
 
         if (this.isSupabaseActive && this.client) {
             try {
-                let query = this.client
+                const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('*')
-                    .eq('player_name', '__SYSTEM_NOTICE__');
-                if (clientIp) query = query.in('ip_address', ['ALL', String(clientIp).trim()]);
-                const { data, error } = await query.order('last_active', { ascending: false }).limit(20);
+                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                    .eq('player_name', '__SYSTEM_NOTICE__')
+                    .order('created_at', { ascending: false })
+                    .limit(25);
 
-                if (!error && data && data.length > 0) {
-                    const match = data.find(item => item.ip_address === 'ALL' || (clientIp && item.ip_address === clientIp));
-                    const timestamp = match ? new Date(match.last_active || match.created_at).getTime() : 0;
-                    if (match && isValidNotice(match.score_summary, timestamp)) {
+                if (!error && Array.isArray(data) && data.length > 0) {
+                    const match = data.find(item => {
+                        const msg = typeof item.score_summary === 'string' ? item.score_summary.trim() : '';
+                        if (msg.length < 1) return false;
+                        return matchesTarget(item.ip_address, item.device_info);
+                    });
+                    if (match) {
+                        const serverTime = new Date(match.created_at || match.last_active).getTime() || Date.now();
                         return {
                             id: match.id,
-                            message: match.score_summary,
+                            message: String(match.score_summary || '').trim(),
                             targetIp: match.ip_address,
-                            timestamp
+                            targetName: match.device_info,
+                            createdAt: match.created_at || match.last_active,
+                            timestamp: serverTime
                         };
                     }
                 }
@@ -1281,7 +1302,8 @@ class DatabaseService {
             const raw = localStorage.getItem('quiz_latest_system_notice');
             if (raw) {
                 const n = JSON.parse(raw);
-                if (isValidNotice(n.message, n.timestamp) && (n.targetIp === 'ALL' || (clientIp && n.targetIp === clientIp))) {
+                const msg = typeof n?.message === 'string' ? n.message.trim() : '';
+                if (msg.length >= 1 && matchesTarget(n.targetIp, n.targetName)) {
                     return n;
                 }
             }
@@ -1293,15 +1315,15 @@ class DatabaseService {
     /**
      * Alias phát thông báo tương thích với app.js
      */
-    async broadcastNotice(message, targetIp = 'ALL') {
-        return await this.sendBroadcastNotice(message, targetIp);
+    async broadcastNotice(message, targetIp = 'ALL', targetName = '') {
+        return await this.sendBroadcastNotice(message, targetIp, targetName);
     }
 
     /**
      * Lấy thông báo mới nhất cho học sinh (tương thích app.js)
      */
-    async getSystemNotice(clientIp) {
-        const notice = await this.fetchLatestNotice(clientIp);
+    async getSystemNotice(clientIp, playerName = '') {
+        const notice = await this.fetchLatestNotice(clientIp, playerName);
         if (!notice) return null;
         return {
             id: notice.id,
@@ -1309,6 +1331,8 @@ class DatabaseService {
             message: notice.message,
             active: true,
             targetIp: notice.targetIp,
+            targetName: notice.targetName,
+            createdAt: notice.createdAt,
             timestamp: notice.timestamp
         };
     }
