@@ -230,17 +230,17 @@ class DatabaseService {
             localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localLogs.slice(0, 100)));
         } catch (e) {}
 
-        // 2. Lưu Supabase Cloud cho Admin giám sát (Cập nhật thẳng bản ghi cũ của học sinh thay vì tạo dòng mới)
+        // 2. Lưu Supabase Cloud cho Admin giám sát (Cập nhật đúng bản ghi của thiết bị này, không ghi đè máy khác)
         if (this.isSupabaseActive && this.client) {
             try {
                 const systemIds = Object.values(SYSTEM_RECORDS);
                 let existingRows = [];
 
-                // Tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập) để gộp về 1 dòng mới nhất duy nhất
+                // Tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
                 if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                     const { data: byName } = await this.client
                         .from('quiz_logins')
-                        .select('id, player_name, ip_address, status, score_summary, last_active')
+                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                         .ilike('player_name', cleanName)
                         .order('last_active', { ascending: false })
                         .limit(20);
@@ -250,7 +250,7 @@ class DatabaseService {
                 } else if (cleanIp && cleanIp !== 'Chưa xác định') {
                     const { data: byIp } = await this.client
                         .from('quiz_logins')
-                        .select('id, player_name, ip_address, status, score_summary, last_active')
+                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                         .eq('ip_address', cleanIp)
                         .eq('player_name', 'Khách truy cập')
                         .order('last_active', { ascending: false })
@@ -260,10 +260,17 @@ class DatabaseService {
                     }
                 }
 
-                if (existingRows.length > 0) {
-                    const targetRow = existingRows[0];
-                    const existingBanned = existingRows.find((r) => String(r.status || '').startsWith('BANNED'));
-                    const existingScored = existingRows.find((r) => /điểm/i.test(String(r.score_summary || '')));
+                // Lọc đúng thiết bị này (cleanDevice) để cập nhật, bảo toàn thiết bị khác khi mở cùng lúc
+                const normDev = String(cleanDevice || '').trim().toLowerCase();
+                const sameDeviceRows = existingRows.filter((r) => {
+                    const rDev = String(r.device_info || '').trim().toLowerCase();
+                    return rDev === normDev;
+                });
+
+                if (sameDeviceRows.length > 0) {
+                    const targetRow = sameDeviceRows[0];
+                    const existingBanned = sameDeviceRows.find((r) => String(r.status || '').startsWith('BANNED'));
+                    const existingScored = sameDeviceRows.find((r) => /điểm/i.test(String(r.score_summary || '')));
                     const nextStatus = existingBanned ? existingBanned.status : status;
                     const nextSummary = (scoreSummary && /điểm/i.test(scoreSummary))
                         ? scoreSummary
@@ -280,9 +287,9 @@ class DatabaseService {
                         })
                         .eq('id', targetRow.id);
 
-                    // Xóa các dòng trùng lặp cũ hơn của cùng học sinh để bảng giám sát luôn gọn
-                    if (existingRows.length > 1) {
-                        const duplicateIds = existingRows.slice(1).map((r) => r.id).filter(Boolean);
+                    // Chỉ xóa các dòng trùng lặp cũ hơn CỦA CHÍNH THIẾT BỊ NÀY để không xóa nhầm máy khác
+                    if (sameDeviceRows.length > 1) {
+                        const duplicateIds = sameDeviceRows.slice(1).map((r) => r.id).filter(Boolean);
                         if (duplicateIds.length) {
                             this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {});
                         }
@@ -295,19 +302,19 @@ class DatabaseService {
                     }
                 }
 
+                // Nếu thiết bị này chưa có dòng nào trong Supabase, tạo bản ghi mới riêng cho thiết bị
                 const cloudId = this.generateUUID();
                 const payload = {
-                    id: cloudId, player_name: cleanName, ip_address: cleanIp,
-                    device_info: cleanDevice, status, score_summary: scoreSummary,
-                    session_id: sessionId, last_active: nowIso, created_at: nowIso
+                    id: cloudId,
+                    player_name: cleanName,
+                    ip_address: cleanIp,
+                    device_info: cleanDevice,
+                    status,
+                    score_summary: scoreSummary,
+                    last_active: nowIso,
+                    created_at: nowIso
                 };
                 let { data: inserted, error } = await this.client.from('quiz_logins').insert([payload]).select('id');
-                // Cho phép hệ thống cũ vẫn ghi nhận học sinh trước khi Admin chạy migration session_id.
-                if (error && /session_id|column/i.test(error.message || '')) {
-                    const legacyPayload = { ...payload };
-                    delete legacyPayload.session_id;
-                    ({ data: inserted, error } = await this.client.from('quiz_logins').insert([legacyPayload]).select('id'));
-                }
 
                 if (error && /policy|permission|not allowed/i.test(error.message || '')) {
                     console.warn('[DatabaseService] Supabase từ chối ghi phiên, không dùng fallback giả online.');
@@ -613,7 +620,10 @@ class DatabaseService {
                     for (const row of realLogins) {
                         const normName = String(row.player_name || '').trim().toLowerCase();
                         const normIp = String(row.ip_address || '').trim().toLowerCase();
-                        const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${normIp}`;
+                        const normDev = String(row.device_info || '').trim().toLowerCase();
+                        const key = (normName && normName !== 'khách truy cập') 
+                            ? `name:${normName}___dev:${normDev}` 
+                            : `ip:${normIp}___dev:${normDev}`;
                         if (!seenKeys.has(key)) {
                             seenKeys.add(key);
                             deduped.push(row);

@@ -502,6 +502,15 @@ class QuizApp {
         this.updateTotalQuestionDisplay();
         this.renderFilterTabs();
         await this.initMaintenance();
+        // Khôi phục hoặc tạo phiên hiện diện ngay khi mở trang web trên thiết bị
+        try {
+            this.currentLoginId = sessionStorage.getItem('quiz_current_login_id') || null;
+        } catch (e) {
+            this.currentLoginId = null;
+        }
+        if (!this.currentLoginId) {
+            this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
+        }
         this.startRealtimeHeartbeat();
         this.startRealtimeQuestionSync();
         this.isAppReady = true;
@@ -3624,7 +3633,13 @@ Giải thích: Biên độ A = 5 cm.`;
         // truy vấn lookup + insert/update trước khi nhìn thấy câu hỏi.
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle())
-                .then((res) => { this.currentLoginId = (res && res.id) ? res.id : res; })
+                .then((res) => {
+                    const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
+                    if (loginId) {
+                        this.currentLoginId = loginId;
+                        try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                    }
+                })
                 .catch((error) => console.warn("Lỗi lưu đăng nhập lên Supabase:", error));
         }
 
@@ -4473,7 +4488,11 @@ Giải thích: Biên độ A = 5 cm.`;
         const name = this.playerName || (document.getElementById('player-name-input')?.value || '').trim() || 'Khách truy cập';
         try {
             const res = await window.dbService.recordLogin(name, this.clientIp, this.deviceInfo, statusText);
-            if (res && res.id) this.currentLoginId = res.id;
+            const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
+            if (loginId) {
+                this.currentLoginId = loginId;
+                try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+            }
         } catch (e) { }
     }
 
@@ -4568,6 +4587,24 @@ Giải thích: Biên độ A = 5 cm.`;
     startRealtimeHeartbeat() {
         this.checkSystemNotice(true).catch(() => { });
 
+        // Tự động pulse heartbeat ngay khi chuyển tab hoặc mở lại màn hình
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                if (this.currentLoginId && window.dbService?.heartbeat) {
+                    this.presenceHeartbeatAt = Date.now();
+                    window.dbService.heartbeat(this.currentLoginId).catch(() => {});
+                } else {
+                    this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
+                }
+            }
+        });
+        window.addEventListener('focus', () => {
+            if (this.currentLoginId && window.dbService?.heartbeat) {
+                this.presenceHeartbeatAt = Date.now();
+                window.dbService.heartbeat(this.currentLoginId).catch(() => {});
+            }
+        });
+
         window.addEventListener('storage', (event) => {
             if (event.key === 'quiz_latest_system_notice' && event.newValue) {
                 this.checkSystemNotice(false).catch(() => { });
@@ -4588,13 +4625,15 @@ Giải thích: Biên độ A = 5 cm.`;
             }
         } catch (e) { }
 
-        // Kiểm tra quyền thường xuyên nhưng chỉ ghi heartbeat hiện diện mỗi 30 giây.
+        // Kiểm tra quyền thường xuyên nhưng chỉ ghi heartbeat hiện diện mỗi 20-30 giây.
         setInterval(async () => {
             if (!window.dbService) return;
 
             if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 20000) {
                 this.presenceHeartbeatAt = Date.now();
                 await window.dbService.heartbeat?.(this.currentLoginId);
+            } else if (!this.currentLoginId) {
+                this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
             }
 
             // 1. Kiểm tra trạng thái Bảo trì
@@ -4726,23 +4765,12 @@ Giải thích: Biên độ A = 5 cm.`;
             const list = await fetchFn.call(window.dbService, 300);
             if (badgeCount) badgeCount.textContent = list.length;
 
-            const nowMs = Date.now();
-            const normalizeStudentTime = (iso) => {
-                if (!iso) return 0;
-                let ts = new Date(iso).getTime();
-                if (Number.isNaN(ts) || ts <= 0) return 0;
-                if (ts > nowMs + 120000) {
-                    const steps = Math.round((ts - nowMs) / 1800000);
-                    if (steps > 0) ts -= steps * 1800000;
-                    if (ts > nowMs + 120000) ts -= 1800000;
-                }
-                return ts;
-            };
+            const nowMs = Date.now() + (window.dbService?.serverClockOffsetMs || 0);
             const activeNow = list.filter(s => {
-                const ts = normalizeStudentTime(s.last_active || s.created_at);
-                if (!ts) return false;
-                const diffMs = nowMs - ts;
-                return diffMs >= -120000 && diffMs <= 180000; // Hoạt động trong 3 phút qua
+                const ts = s.last_active ? new Date(s.last_active).getTime() : (s.created_at ? new Date(s.created_at).getTime() : 0);
+                if (!ts || Number.isNaN(ts) || ts <= 0) return false;
+                // Hoạt động trong 5 phút qua (300,000 ms) hoặc đồng hồ chạy trước
+                return ts >= nowMs - 300000 && ts <= nowMs + 86400000;
             });
 
             // Render Thẻ đếm số thí sinh trực tuyến & tổng lượt
@@ -4777,11 +4805,11 @@ Giải thích: Biên độ A = 5 cm.`;
                 const name = (student.player_name && student.player_name.trim()) ? student.player_name.trim() : 'Khách truy cập';
                 const rawDev = student.device_info || '';
                 const device = (rawDev && rawDev !== '-' && rawDev !== 'Chưa rõ') ? rawDev : 'Trình duyệt Web';
-                const lastMs = normalizeStudentTime(student.last_active || student.created_at);
+                const lastMs = student.last_active ? new Date(student.last_active).getTime() : (student.created_at ? new Date(student.created_at).getTime() : 0);
                 const timeStr = lastMs
-                    ? new Date(lastMs).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    ? new Date(Math.min(lastMs, nowMs)).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : '—';
-                const isOnline = Boolean(lastMs && (nowMs - lastMs) >= -120000 && (nowMs - lastMs) <= 180000);
+                const isOnline = activeNow.includes(student);
 
                 const statusBadge = isOnline
                     ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0">
