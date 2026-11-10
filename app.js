@@ -917,9 +917,15 @@ class QuizApp {
             subjects: (this.dynamicSubjects || []).map((sub) => ({ key: sub?.key, detectedGrade: this.getSubjectGrade(sub), visibility: sub?.visibility, visible: allowedSubjects.includes(sub) }))
         });
         const filter = this.getHomeGradeFilter();
-        return filter === 'all'
+        const filtered = filter === 'all'
             ? allowedSubjects
             : allowedSubjects.filter((sub) => this.getSubjectGrade(sub) === filter);
+
+        if (filtered.length === 0 && allowedSubjects.length > 0 && filter !== 'all') {
+            this.homeGradeFilter = 'all';
+            return allowedSubjects;
+        }
+        return filtered;
     }
 
     async syncClass5Access() {

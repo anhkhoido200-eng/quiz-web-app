@@ -2769,8 +2769,6 @@
 
     async function grantStudentAccess() {
         const name = $('student-access-name')?.value.trim();
-        if (!name) return notify('Vui lòng nhập tên học sinh / ghi chú.', true);
-
         const customCode = $('student-access-code')?.value.trim() || '';
         const role = $('student-access-role')?.value || 'grade5';
         let rawIp = $('student-access-ip')?.value.trim() || '';
@@ -2808,9 +2806,14 @@
             }
         }
 
+        if (!detectedIp && !detectedCode) {
+            return notify('Vui lòng dán Mã xác thực (IP-Mã máy) hoặc Địa chỉ IP của học sinh.', true);
+        }
+
         const ip = detectedIp || '';
         const rawCode = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'QM'));
         const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+        const studentName = name || (detectedCode ? `Học sinh (${detectedCode})` : (detectedIp ? `Học sinh (${detectedIp})` : 'Học sinh mới'));
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
 
@@ -2828,7 +2831,7 @@
             token: combinedToken,
             rawCode: rawCode,
             role,
-            name,
+            name: studentName,
             ip: ip || null,
             createdAt: new Date().toISOString()
         };
@@ -2852,7 +2855,7 @@
             if (role === 'ai' || role === 'all') {
                 state.aiIps = Array.isArray(state.aiIps) ? state.aiIps : [];
                 if (!state.aiIps.some(item => (typeof item === 'string' ? item : item.ip) === ip)) {
-                    state.aiIps.push({ ip, name });
+                    state.aiIps.push({ ip, name: studentName });
                     await saveAiIps();
                 }
             }
@@ -2865,7 +2868,8 @@
         renderUnifiedAccess();
 
         const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
-        notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${name})!`);
+        notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
+    }
     }
 
     async function addTokenFromForm() {
@@ -2918,7 +2922,7 @@
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
         (state.geo.grade5Ips || []).forEach(ip => {
             const cleanIp = String(ip).trim().toLowerCase();
-            if (cleanIp && !['127.0.0.1', '::1', state.adminConfig.masterIp].includes(cleanIp)) {
+            if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
                 const existing = state.tokens.find(t => String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp);
                 if (!existing) {
                     state.tokens.push({
@@ -2936,7 +2940,7 @@
         (state.aiIps || []).forEach(item => {
             const cleanIp = String(typeof item === 'string' ? item : item?.ip || '').trim().toLowerCase();
             const name = typeof item === 'string' ? '' : (item?.name || '');
-            if (cleanIp && !['127.0.0.1', '::1', state.adminConfig.masterIp].includes(cleanIp)) {
+            if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
                 const existing = state.tokens.find(t => String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp);
                 if (existing) {
                     if (existing.role === 'grade5') existing.role = 'all';
