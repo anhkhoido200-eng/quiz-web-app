@@ -364,11 +364,14 @@
                                 class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-inner">
                         </div>
                         <div class="mt-2 flex flex-wrap items-center gap-2">
-                            <button type="button" onclick="app.showMyIp()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer">
-                                <i class="fa-solid fa-network-wired text-cyan-400"></i> Hiện IP của tôi
+                            <button type="button" onclick="app.showMyIp()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer" title="Xem IP thiết bị">
+                                <i class="fa-solid fa-network-wired text-cyan-400"></i> Hiện IP
                             </button>
-                            <button type="button" onclick="app.openTokenModal()" id="btn-token-activation" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 text-xs font-semibold transition cursor-pointer">
-                                <i class="fa-solid fa-key text-amber-400"></i> <span id="token-status-label">Nhập mã kích hoạt quyền</span>
+                            <button type="button" onclick="app.copyDeviceMachineCode()" id="btn-copy-device-code" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 hover:text-amber-200 text-xs font-bold transition cursor-pointer" title="Bấm để sao chép mã máy gửi Thầy Cô/Admin cấp quyền Lớp 5">
+                                <i class="fa-solid fa-laptop-code text-amber-400"></i> <span id="device-code-label">Mã máy: QM-...</span> <i class="fa-regular fa-copy text-[11px] opacity-75"></i>
+                            </button>
+                            <button type="button" onclick="app.openTokenModal()" id="btn-token-activation" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer" title="Xem chi tiết trạng thái quyền">
+                                <i class="fa-solid fa-shield-halved text-indigo-400"></i> <span id="token-status-label">Trạng thái quyền</span>
                             </button>
                         </div>
                         <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1 font-medium">
@@ -1547,13 +1550,33 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <i class="fa-solid fa-key"></i>
                     </div>
                     <div>
-                        <h3 class="font-heading font-extrabold text-white text-base">Kích Hoạt Quyền Truy Cập</h3>
-                        <p class="text-[11px] text-slate-400">Nhập mã Token do Giáo viên / Quản trị viên cấp</p>
+                        <h3 class="font-heading font-extrabold text-white text-base">Phân Quyền Thiết Bị (Mã Máy)</h3>
+                        <p class="text-[11px] text-slate-400">Gửi mã máy cho Admin để được kích hoạt đề Lớp 5</p>
                     </div>
                 </div>
                 <button onclick="app.closeTokenModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
+            </div>
+
+            <!-- Hộp mã máy duy nhất của thiết bị này -->
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-amber-300 font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-laptop-code text-amber-400"></i>
+                        <span>Mã máy duy nhất của thiết bị này:</span>
+                    </span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">Bảo mật thiết bị</span>
+                </div>
+                <div class="flex items-center justify-between gap-3 bg-slate-900/90 p-2.5 rounded-xl border border-slate-700">
+                    <code id="modal-device-code-display" class="font-mono text-base font-extrabold text-amber-300 tracking-wider">QM-XXXXXX</code>
+                    <button type="button" onclick="app.copyDeviceMachineCode()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow">
+                        <i class="fa-regular fa-copy"></i> Sao chép mã
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    👉 Hãy bấm <b>Sao chép mã</b> gửi cho Thầy Cô/Admin. Khi Admin nhập mã này duyệt trên hệ thống, máy bạn sẽ mở khóa <b>Lớp 5</b> ngay lập tức!
+                </p>
             </div>
 
             <!-- Trạng thái token hiện tại nếu có -->

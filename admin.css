@@ -1973,3 +1973,14 @@ body.dark .library-toolbar input[type="search"] {
     user-select: none !important;
 }
 
+.student-access-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 12px !important;
+}
+
+.unified-access-panel .table-wrap table td {
+    vertical-align: middle;
+}
+
+
