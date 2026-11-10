@@ -10,7 +10,8 @@
         maintenance: '00000000-0000-0000-0000-000000000003',
         subjects: '00000000-0000-0000-0000-000000000004',
         gemini: '00000000-0000-0000-0000-000000000005',
-        aiIps: '00000000-0000-0000-0000-000000000006'
+        aiIps: '00000000-0000-0000-0000-000000000006',
+        trash: '00000000-0000-0000-0000-000000000007'
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const state = {
@@ -24,6 +25,12 @@
         activityLogs: (() => {
             try {
                 const saved = JSON.parse(localStorage.getItem('quiz_admin_activity_logs') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })(),
+        trashQuestions: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_trash_questions') || '[]');
                 return Array.isArray(saved) ? saved : [];
             } catch (e) { return []; }
         })()
@@ -660,7 +667,7 @@
             if (!navigator.onLine) throw new Error('Thiết bị đang ngoại tuyến (Offline)');
             const { data, error } = await state.client.from('quiz_questions').select('*').order('id', { ascending: true });
             if (error) throw error;
-            state.questions = (data || []).map(normalizeRow);
+            state.questions = (data || []).filter((r) => !r.is_deleted).map(normalizeRow);
             setConnection(true, 'Đã kết nối');
             $('last-sync') && ($('last-sync').textContent = `Đồng bộ lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
             renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
@@ -893,37 +900,658 @@
         } catch (error) { notify(`Không thể lưu: ${error.message}`, true); }
     }
 
+    function updateTrashBadge() {
+        const badge = $('trash-count-badge');
+        if (badge) {
+            const count = Array.isArray(state.trashQuestions) ? state.trashQuestions.length : 0;
+            badge.textContent = String(count);
+            badge.classList.toggle('has-items', count > 0);
+        }
+    }
+
+    async function loadTrash() {
+        updateTrashBadge();
+        try {
+            const row = await systemRow(SYSTEM.trash);
+            if (row && row.score_summary) {
+                try {
+                    const parsed = JSON.parse(row.score_summary);
+                    if (Array.isArray(parsed)) {
+                        state.trashQuestions = parsed;
+                        localStorage.setItem('quiz_trash_questions', JSON.stringify(parsed));
+                    }
+                } catch (e) {
+                    console.warn('[Quiz Studio Admin] Lỗi đọc thùng rác từ Cloud:', e);
+                }
+            }
+        } catch (err) {
+            console.warn('[Quiz Studio Admin] Chưa thể tải thùng rác từ Cloud:', err);
+        } finally {
+            updateTrashBadge();
+            if (!$('trash-modal')?.classList.contains('hidden')) {
+                renderTrashModal();
+            }
+        }
+    }
+
+    async function saveTrash() {
+        updateTrashBadge();
+        try {
+            localStorage.setItem('quiz_trash_questions', JSON.stringify(state.trashQuestions));
+        } catch (e) {}
+
+        if (state.client) {
+            try {
+                await state.client.from('quiz_logins').upsert({
+                    id: SYSTEM.trash,
+                    player_name: '__TRASH_BIN__',
+                    ip_address: 'SYSTEM',
+                    device_info: 'TRASH_STORAGE',
+                    status: 'ACTIVE',
+                    score_summary: JSON.stringify(state.trashQuestions),
+                    last_active: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch (error) {
+                console.warn('[Quiz Studio Admin] Lỗi đồng bộ thùng rác lên Cloud:', error);
+            }
+        }
+    }
+
     async function deleteQuestion(id) {
-        if (!(await confirmDialog({ title: `Xóa câu hỏi #${id}?`, message: `Xóa câu hỏi #${id}? Hành động này không thể hoàn tác.`, confirmText: 'Xóa câu hỏi', variant: 'danger' }))) return;
         const targetQ = state.questions.find((item) => String(item.id) === String(id));
-        const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
-        if (error) return notify(`Không thể xóa: ${error.message}`, true);
-        addActivityLog(
-            `Xóa câu hỏi #${id}`,
-            targetQ ? `Môn ${subjectName(targetQ.subject_key)}` : 'Đã xóa khỏi ngân hàng câu hỏi',
-            'danger'
-        );
-        notify('Đã xóa câu hỏi.'); if (String(state.editingId) === String(id)) resetForm(); await loadQuestions();
+        if (!targetQ) return;
+        if (!(await confirmDialog({
+            title: `Chuyển câu hỏi #${id} vào thùng rác?`,
+            message: `Câu hỏi #${id} (${subjectName(targetQ.subject_key)}) sẽ được chuyển vào Thùng rác. Bạn có thể khôi phục lại bất kỳ lúc nào nếu xóa nhầm.`,
+            confirmText: 'Chuyển vào thùng rác',
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        }))) return;
+
+        try {
+            const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
+            if (error) throw error;
+
+            const trashedItem = {
+                ...targetQ,
+                is_deleted: true,
+                deleted_at: new Date().toISOString(),
+                deleted_by: 'Admin'
+            };
+            state.trashQuestions = [trashedItem, ...state.trashQuestions.filter((q) => String(q.id) !== String(id))];
+            await saveTrash();
+
+            state.questions = state.questions.filter((item) => String(item.id) !== String(id));
+            if (String(state.editingId) === String(id)) resetForm();
+
+            addActivityLog(
+                `Chuyển câu hỏi #${id} vào thùng rác`,
+                `Môn ${subjectName(targetQ.subject_key)} · Đã lưu trữ an toàn trong Thùng rác`,
+                'danger'
+            );
+            notify(`Đã chuyển câu hỏi #${id} vào thùng rác.`);
+            renderStats();
+            renderLibrary();
+            renderRecentActivity();
+            await syncSubjectQuestionCounts();
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
     }
 
     async function deleteAllQuestions() {
         const total = state.questions.length;
-        if (!(await confirmDialog({ title: 'Xóa toàn bộ ngân hàng câu hỏi?', message: `Xóa toàn bộ ${total} câu hỏi trong ngân hàng? Hành động này không thể hoàn tác.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
+        if (total === 0) return notify('Ngân hàng câu hỏi hiện đang trống.', true);
+        if (!(await confirmDialog({
+            title: 'Chuyển toàn bộ câu hỏi vào thùng rác?',
+            message: `Chuyển toàn bộ ${total} câu hỏi hiện có vào Thùng rác? Bạn có thể khôi phục lại bất kỳ lúc nào từ Thùng rác nếu xóa nhầm.`,
+            confirmText: 'Chuyển tất cả vào thùng rác',
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        }))) return;
+
         try {
             const { error } = await state.client.from('quiz_questions').delete().not('id', 'is', null);
             if (error) throw error;
-            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true });
-            if (verifyError) throw verifyError;
-            if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu chưa xóa.`);
+
+            const now = new Date().toISOString();
+            const trashedItems = state.questions.map((q) => ({
+                ...q,
+                is_deleted: true,
+                deleted_at: now,
+                deleted_by: 'Admin'
+            }));
+
+            const existingTrashIds = new Set(trashedItems.map((q) => String(q.id)));
+            state.trashQuestions = [...trashedItems, ...state.trashQuestions.filter((q) => !existingTrashIds.has(String(q.id)))];
+            await saveTrash();
+
             state.questions = [];
-            addActivityLog('Xóa toàn bộ câu hỏi', `Đã dọn sạch ${total} câu hỏi trong hệ thống`, 'danger');
-            notify(`Đã xóa toàn bộ ${total} câu hỏi.`);
-            renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
+            resetForm();
+            addActivityLog(
+                'Chuyển toàn bộ câu hỏi vào thùng rác',
+                `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`,
+                'danger'
+            );
+            notify(`Đã chuyển toàn bộ ${total} câu hỏi vào thùng rác.`);
+            renderStats();
+            renderLibrary();
+            renderRecentActivity();
+            renderSubjectCatalog();
             await syncSubjectQuestionCounts();
         } catch (error) {
-            notify(`Không thể xóa toàn bộ ngân hàng: ${error.message}`, true);
+            notify(`Không thể chuyển vào thùng rác: ${error.message}`, true);
             await loadQuestions();
         }
+    }
+
+    async function restoreQuestion(id) {
+        const item = state.trashQuestions.find((q) => String(q.id) === String(id));
+        if (!item) return notify('Không tìm thấy câu hỏi trong thùng rác.', true);
+
+        try {
+            const rowToInsert = {
+                subject_key: item.subject_key || item.subjectKey || 'history',
+                category: item.category || 'Ôn tập',
+                q_type: item.q_type || item.qType || 'mcq',
+                question: storageText(item.question),
+                options: Array.isArray(item.options) ? item.options.map(storageText) : [],
+                statements: Array.isArray(item.statements) ? item.statements.map((s) => ({
+                    key: s.key || 'a',
+                    text: storageText(s.text),
+                    answer: Boolean(s.answer)
+                })) : [],
+                correct: Number(item.correct ?? item.answer ?? 0),
+                answer: Number(item.answer ?? item.correct ?? 0),
+                correct_value: String(item.correct_value ?? item.correctValue ?? ''),
+                explanation: storageText(item.explanation || ''),
+                image_url: item.image_url || ''
+            };
+
+            const { error } = await state.client.from('quiz_questions').insert([rowToInsert]);
+            if (error) throw error;
+
+            state.trashQuestions = state.trashQuestions.filter((q) => String(q.id) !== String(id));
+            await saveTrash();
+
+            addActivityLog(
+                `Khôi phục câu hỏi #${id}`,
+                `Môn ${subjectName(item.subject_key || item.subjectKey)} đã đưa về ngân hàng`,
+                'green'
+            );
+            notify('Đã khôi phục câu hỏi thành công!');
+            await loadQuestions();
+            renderTrashModal();
+        } catch (error) {
+            notify(`Không thể khôi phục: ${error.message}`, true);
+        }
+    }
+
+    async function restoreAllTrash() {
+        const total = state.trashQuestions.length;
+        if (total === 0) return notify('Thùng rác hiện đang trống.', true);
+        if (!(await confirmDialog({
+            title: 'Khôi phục tất cả câu hỏi?',
+            message: `Khôi phục toàn bộ ${total} câu hỏi trong thùng rác trở lại Ngân hàng câu hỏi?`,
+            confirmText: 'Khôi phục tất cả',
+            variant: 'primary',
+            icon: 'fa-rotate-left'
+        }))) return;
+
+        try {
+            const rows = state.trashQuestions.map((item) => ({
+                subject_key: item.subject_key || item.subjectKey || 'history',
+                category: item.category || 'Ôn tập',
+                q_type: item.q_type || item.qType || 'mcq',
+                question: storageText(item.question),
+                options: Array.isArray(item.options) ? item.options.map(storageText) : [],
+                statements: Array.isArray(item.statements) ? item.statements.map((s) => ({
+                    key: s.key || 'a',
+                    text: storageText(s.text),
+                    answer: Boolean(s.answer)
+                })) : [],
+                correct: Number(item.correct ?? item.answer ?? 0),
+                answer: Number(item.answer ?? item.correct ?? 0),
+                correct_value: String(item.correct_value ?? item.correctValue ?? ''),
+                explanation: storageText(item.explanation || ''),
+                image_url: item.image_url || ''
+            }));
+
+            const { error } = await state.client.from('quiz_questions').insert(rows);
+            if (error) throw error;
+
+            state.trashQuestions = [];
+            await saveTrash();
+
+            addActivityLog(
+                `Khôi phục toàn bộ ${total} câu hỏi`,
+                'Toàn bộ câu hỏi trong Thùng rác đã được đưa trở lại ngân hàng',
+                'green'
+            );
+            notify(`Đã khôi phục thành công ${total} câu hỏi!`);
+            await loadQuestions();
+            renderTrashModal();
+        } catch (error) {
+            notify(`Lỗi khôi phục: ${error.message}`, true);
+        }
+    }
+
+    async function hardDeleteQuestion(id) {
+        if (!(await confirmDialog({
+            title: `XÓA VĨNH VIỄN câu hỏi #${id}?`,
+            message: `Hành động này sẽ XÓA TRIỆT ĐỂ câu hỏi #${id} khỏi hệ thống và KHÔNG THỂ HOÀN TÁC! Bạn có chắc chắn muốn xóa?`,
+            confirmText: 'Xóa vĩnh viễn',
+            variant: 'danger',
+            icon: 'fa-triangle-exclamation'
+        }))) return;
+
+        state.trashQuestions = state.trashQuestions.filter((q) => String(q.id) !== String(id));
+        await saveTrash();
+        addActivityLog(
+            `Xóa vĩnh viễn câu hỏi #${id}`,
+            'Đã xóa triệt để khỏi thùng rác',
+            'danger'
+        );
+        notify(`Đã xóa vĩnh viễn câu hỏi #${id}.`);
+        renderTrashModal();
+    }
+
+    async function emptyTrash() {
+        const total = state.trashQuestions.length;
+        if (total === 0) return notify('Thùng rác hiện đang trống.', true);
+        if (!(await confirmDialog({
+            title: 'DỌN SẠCH THÙNG RÁC?',
+            message: `CẢNH BÁO NGUY HIỂM: Bạn sắp xóa vĩnh viễn toàn bộ ${total} câu hỏi trong Thùng rác. Thao tác này sẽ xóa triệt để dữ liệu và KHÔNG THỂ KHÔI PHỤC!`,
+            confirmText: 'Xác nhận dọn sạch',
+            variant: 'danger',
+            icon: 'fa-broom'
+        }))) return;
+
+        state.trashQuestions = [];
+        await saveTrash();
+        addActivityLog(
+            'Dọn sạch thùng rác',
+            `Đã xóa vĩnh viễn ${total} câu hỏi khỏi lưu trữ`,
+            'danger'
+        );
+        notify(`Đã dọn sạch thùng rác (${total} câu hỏi đã bị xóa vĩnh viễn).`);
+        renderTrashModal();
+    }
+
+    function renderTrashModal() {
+        const container = $('trash-list');
+        const emptyEl = $('trash-empty-state');
+        const countEl = $('trash-modal-count');
+        const filterSelect = $('trash-subject-filter');
+        const searchVal = ($('trash-search-input')?.value || '').toLowerCase().trim();
+        const subjectFilterVal = $('trash-subject-filter')?.value || 'all';
+
+        const list = Array.isArray(state.trashQuestions) ? state.trashQuestions : [];
+        if (countEl) countEl.textContent = `${list.length} câu hỏi`;
+
+        if (filterSelect) {
+            const currentSelected = filterSelect.value || 'all';
+            const subjectsInTrash = Array.from(new Set(list.map((q) => q.subject_key || q.subjectKey).filter(Boolean)));
+            filterSelect.innerHTML = '<option value="all">Tất cả môn học</option>' + subjectsInTrash.map((key) => {
+                return `<option value="${esc(key)}">${esc(subjectName(key))}</option>`;
+            }).join('');
+            if (subjectsInTrash.includes(currentSelected)) {
+                filterSelect.value = currentSelected;
+            }
+        }
+
+        const filtered = list.filter((q) => {
+            const sub = q.subject_key || q.subjectKey;
+            const matchSub = subjectFilterVal === 'all' || subjectMatchKey(sub) === subjectMatchKey(subjectFilterVal);
+            const text = `${notationText(q.question)} ${notationText(q.explanation)} ${(q.options || []).map(notationText).join(' ')}`.toLowerCase();
+            const matchSearch = !searchVal || text.includes(searchVal) || String(q.id).includes(searchVal);
+            return matchSub && matchSearch;
+        });
+
+        if (!container) return;
+
+        if (!filtered.length) {
+            container.innerHTML = '';
+            if (emptyEl) {
+                emptyEl.classList.remove('hidden');
+                const p = emptyEl.querySelector('p');
+                if (p) {
+                    p.textContent = list.length === 0
+                        ? 'Không có câu hỏi nào bị xóa tạm trong hệ thống.'
+                        : 'Không tìm thấy câu hỏi phù hợp với từ khóa lọc.';
+                }
+            }
+            return;
+        }
+
+        if (emptyEl) emptyEl.classList.add('hidden');
+
+        container.innerHTML = filtered.map((q) => {
+            const grade = gradeOf(q);
+            const deletedTime = q.deleted_at ? new Date(q.deleted_at).toLocaleString('vi-VN', {
+                hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+            }) : 'Vừa xong';
+            let preview = '';
+            if (q.q_type === 'tf_group' || q.qType === 'tf_group') {
+                const stmts = Array.isArray(q.statements) ? q.statements : [];
+                preview = `<div class="trash-statements">${stmts.map((s) => `<div><b>${esc(s.key || '')}.</b> ${htmlText(s.text)} <small>(${s.answer ? 'Đúng' : 'Sai'})</small></div>`).join('')}</div>`;
+            } else if (q.q_type === 'short_answer' || q.qType === 'short_answer') {
+                preview = `<div class="trash-option">Đáp án: <strong>${htmlText(q.correct_value ?? q.correctValue ?? '')}</strong></div>`;
+            } else if (Array.isArray(q.options)) {
+                preview = `<div class="trash-options">${q.options.slice(0, 4).map((opt, i) => `<span class="${i === Number(q.correct ?? q.answer ?? 0) ? 'is-correct' : ''}"><b>${'ABCD'[i]}.</b> ${htmlText(opt)}</span>`).join('')}</div>`;
+            }
+
+            return `
+                <div class="trash-item" data-trash-id="${esc(q.id)}">
+                    <div class="trash-item-head">
+                        <div class="trash-tags">
+                            <span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span>
+                            <span class="tag">${esc(subjectName(q.subject_key || q.subjectKey))}</span>
+                            <span class="tag">#${esc(q.id)}</span>
+                        </div>
+                        <span class="trash-time"><i class="fa-regular fa-clock"></i> Xóa: ${esc(deletedTime)}</span>
+                    </div>
+                    <div class="trash-question-title">${htmlText(q.question)}</div>
+                    ${preview}
+                    <div class="trash-item-footer">
+                        <button class="button button-primary compact" data-restore-id="${esc(q.id)}" type="button">
+                            <i class="fa-solid fa-rotate-left"></i> Khôi phục
+                        </button>
+                        <button class="button button-danger compact" data-hard-delete-id="${esc(q.id)}" type="button">
+                            <i class="fa-solid fa-trash-can"></i> Xóa vĩnh viễn
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        renderMath(container);
+    }
+
+    function openPrintModal() {
+        const subjectSelect = $('print-subject-select');
+        if (subjectSelect) {
+            const catalog = mergeSubjectCatalog(state.subjects);
+            subjectSelect.innerHTML = '<option value="all">Tất cả các môn học</option>' + catalog.map((item) => {
+                const gradeLabel = subjectGrade(item) ? ` (Lớp ${subjectGrade(item)})` : '';
+                return `<option value="${esc(item.key)}">${esc(item.name)}${gradeLabel}</option>`;
+            }).join('');
+            if (state.subject && state.subject !== 'all') {
+                subjectSelect.value = state.subject;
+            } else {
+                subjectSelect.value = 'all';
+            }
+        }
+
+        const gradeSelect = $('print-grade-select');
+        if (gradeSelect) {
+            gradeSelect.value = state.grade || 'all';
+        }
+
+        updatePrintQuestionsPreview();
+        openModal('print-modal');
+    }
+
+    function updatePrintQuestionsPreview() {
+        const subject = $('print-subject-select')?.value || 'all';
+        const grade = $('print-grade-select')?.value || 'all';
+        const available = state.questions.filter((q) => {
+            const matchGrade = grade === 'all' || gradeOf(q) === grade;
+            const matchSubject = subject === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(subject);
+            return matchGrade && matchSubject;
+        });
+
+        const infoEl = $('print-available-count');
+        if (infoEl) {
+            infoEl.textContent = `Hiện có ${available.length} câu hỏi phù hợp trong ngân hàng`;
+        }
+    }
+
+    function renderMathAndWait(element) {
+        return new Promise((resolve) => {
+            renderMath(element);
+            setTimeout(resolve, 380);
+        });
+    }
+
+    async function executePrintExam() {
+        const subjectKey = $('print-subject-select')?.value || 'all';
+        const gradeVal = $('print-grade-select')?.value || 'all';
+        const examTitle = $('print-title-input')?.value?.trim() || 'ĐỀ KIỂM TRA ĐÁNH GIÁ CHẤT LƯỢNG HỌC KỲ';
+        const schoolName = $('print-school-input')?.value?.trim() || 'SỞ GIÁO DỤC VÀ ĐÀO TẠO - TRƯỜNG QUIZ STUDIO';
+        const testCode = $('print-code-input')?.value?.trim() || '101';
+        const duration = $('print-duration-input')?.value?.trim() || '45 phút (không kể thời gian phát đề)';
+        const countLimit = parseInt($('print-count-input')?.value || '0', 10);
+        const shouldShuffle = $('print-shuffle-check')?.checked || false;
+        const printMode = $('print-mode-select')?.value || 'exam_and_answers';
+
+        let pool = state.questions.filter((q) => {
+            const matchGrade = gradeVal === 'all' || gradeOf(q) === gradeVal;
+            const matchSubject = subjectKey === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(subjectKey);
+            return matchGrade && matchSubject;
+        });
+
+        if (!pool.length) {
+            return notify('Không có câu hỏi nào thỏa mãn điều kiện lọc để xuất đề!', true);
+        }
+
+        if (shouldShuffle) {
+            pool = [...pool];
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+        }
+
+        if (countLimit > 0 && countLimit < pool.length) {
+            pool = pool.slice(0, countLimit);
+        }
+
+        const printContainer = $('print-paper');
+        if (!printContainer) return;
+
+        const subjectTitle = subjectKey === 'all' ? 'TỔNG HỢP KIẾN THỨC' : subjectName(subjectKey).toUpperCase();
+        const gradeTitle = gradeVal === 'all' ? '' : ` - KHỐI ${gradeVal}`;
+
+        let html = `
+            <div class="print-page-document">
+                <header class="print-exam-header">
+                    <div class="print-header-col print-col-left">
+                        <div class="print-school-name">${esc(schoolName.toUpperCase())}</div>
+                        <div class="print-exam-badge">ĐỀ THI CHÍNH THỨC</div>
+                        <div class="print-sub-note"><em>(Đề thi gồm ${pool.length} câu)</em></div>
+                    </div>
+                    <div class="print-header-col print-col-right">
+                        <div class="print-nation-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+                        <div class="print-motto">Độc lập - Tự do - Hạnh phúc</div>
+                        <div class="print-header-divider"></div>
+                    </div>
+                </header>
+
+                <div class="print-exam-center-title">
+                    <h2>${esc(examTitle.toUpperCase())}</h2>
+                    <div class="print-subject-line">Môn thi: <strong>${esc(subjectTitle)}</strong>${esc(gradeTitle)}</div>
+                    <div class="print-duration-line"><em>Thời gian làm bài: ${esc(duration)}</em></div>
+                </div>
+
+                <div class="print-student-info-bar">
+                    <div class="print-info-left">
+                        <div class="print-info-row">
+                            <span class="info-label">Họ và tên thí sinh:</span>
+                            <span class="info-dots">......................................................................................................</span>
+                        </div>
+                        <div class="print-info-row">
+                            <span class="info-label">Số báo danh:</span>
+                            <span class="info-dots">..................................................................</span>
+                            <span class="info-label" style="margin-left: 18px;">Lớp:</span>
+                            <span class="info-dots">..................................</span>
+                        </div>
+                    </div>
+                    <div class="print-test-code-badge">
+                        <span>MÃ ĐỀ THI</span>
+                        <strong>${esc(testCode)}</strong>
+                    </div>
+                </div>
+
+                <div class="print-questions-body">
+        `;
+
+        pool.forEach((q, idx) => {
+            const qNum = idx + 1;
+            let optionsHtml = '';
+            const qType = q.q_type || q.qType || 'mcq';
+
+            if (qType === 'tf_group' && Array.isArray(q.statements) && q.statements.length > 0) {
+                optionsHtml = `
+                    <div class="print-tf-grid">
+                        ${q.statements.map((s) => `
+                            <div class="print-tf-statement">
+                                <span class="tf-key"><strong>${esc(s.key || '')})</strong></span>
+                                <span class="tf-content">${htmlText(s.text)}</span>
+                                <span class="tf-brackets">[ Đúng / Sai ]</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (qType === 'short_answer') {
+                optionsHtml = `
+                    <div class="print-short-field">
+                        <span><strong>Đáp án:</strong></span>
+                        <span class="print-short-line">........................................................................................................................</span>
+                    </div>
+                `;
+            } else {
+                const opts = Array.isArray(q.options) ? q.options.slice(0, 4) : [];
+                const maxLen = opts.reduce((acc, cur) => Math.max(acc, notationText(cur).length), 0);
+                let colClass = 'cols-1';
+                if (maxLen <= 22) colClass = 'cols-4';
+                else if (maxLen <= 50) colClass = 'cols-2';
+
+                optionsHtml = `
+                    <div class="print-options-grid ${colClass}">
+                        ${opts.map((opt, oIdx) => `
+                            <div class="print-opt-item">
+                                <span class="opt-label"><strong>${'ABCD'[oIdx]}.</strong></span>
+                                <span class="opt-text">${htmlText(opt)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="print-question-block">
+                    <div class="print-question-text">
+                        <span class="q-label"><strong>Câu ${qNum}:</strong></span>
+                        <span class="q-content">${htmlText(q.question)}</span>
+                    </div>
+                    ${optionsHtml}
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <div class="print-end-exam">
+                    <div class="end-rule">---------- HẾT ----------</div>
+                    <div class="end-note"><em>Cán bộ coi thi không giải thích gì thêm. Thí sinh không được sử dụng tài liệu.</em></div>
+                </div>
+            </div>
+        `;
+
+        if (printMode === 'exam_and_answers') {
+            html += `
+                <div class="print-answers-page">
+                    <div class="print-answers-header">
+                        <h2>HƯỚNG DẪN CHẤM VÀ ĐÁP ÁN CHI TIẾT</h2>
+                        <p>Môn thi: <strong>${esc(subjectTitle)}</strong>${esc(gradeTitle)} — Mã đề thi: <strong>${esc(testCode)}</strong></p>
+                    </div>
+
+                    <div class="print-section-title">I. BẢNG ĐÁP ÁN NHANH</div>
+            `;
+
+            const chunkSize = 10;
+            for (let i = 0; i < pool.length; i += chunkSize) {
+                const chunk = pool.slice(i, i + chunkSize);
+                html += `
+                    <table class="print-matrix-table">
+                        <thead>
+                            <tr>
+                                <th class="matrix-label">Câu</th>
+                                ${chunk.map((_, cIdx) => `<th>${i + cIdx + 1}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="matrix-label"><strong>Đ/A</strong></td>
+                                ${chunk.map((q) => {
+                                    const qType = q.q_type || q.qType || 'mcq';
+                                    if (qType === 'tf_group' && Array.isArray(q.statements)) {
+                                        const tfSummary = q.statements.map((s) => `${s.key || ''}:${s.answer ? 'Đ' : 'S'}`).join(' ');
+                                        return `<td class="matrix-tf">${esc(tfSummary)}</td>`;
+                                    }
+                                    if (qType === 'short_answer') {
+                                        return `<td class="matrix-val">${esc(q.correct_value ?? q.correctValue ?? '')}</td>`;
+                                    }
+                                    const correctLetter = 'ABCD'[Number(q.correct ?? q.answer ?? 0)] || 'A';
+                                    return `<td><strong>${correctLetter}</strong></td>`;
+                                }).join('')}
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            html += `
+                <div class="print-section-title" style="margin-top: 22px;">II. HƯỚNG DẪN GIẢI CHI TIẾT</div>
+                <div class="print-solutions-list">
+            `;
+
+            pool.forEach((q, idx) => {
+                const qNum = idx + 1;
+                let ansSummary = '';
+                const qType = q.q_type || q.qType || 'mcq';
+                if (qType === 'tf_group' && Array.isArray(q.statements)) {
+                    ansSummary = q.statements.map((s) => `Ý ${s.key || ''}: ${s.answer ? 'ĐÚNG' : 'SAI'}`).join(', ');
+                } else if (qType === 'short_answer') {
+                    ansSummary = `Đáp án: ${q.correct_value ?? q.correctValue ?? ''}`;
+                } else {
+                    ansSummary = `Đáp án đúng: ${'ABCD'[Number(q.correct ?? q.answer ?? 0)]}`;
+                }
+
+                const explanationContent = q.explanation ? htmlText(q.explanation) : '<em>(Không có lời giải thích chi tiết)</em>';
+
+                html += `
+                    <div class="print-solution-item">
+                        <div class="solution-header">
+                            <strong>Câu ${qNum}:</strong>
+                            <span class="solution-badge">${esc(ansSummary)}</span>
+                        </div>
+                        <div class="solution-body">
+                            ${explanationContent}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+
+        printContainer.innerHTML = html;
+        closeModal('print-modal');
+
+        notify('Đang kết xuất đề thi và mở hộp thoại in...');
+        await renderMathAndWait(printContainer);
+
+        window.print();
+        addActivityLog(
+            'Xuất đề thi PDF / Bản in',
+            `Môn ${esc(subjectTitle)} · ${pool.length} câu hỏi · Mã đề ${esc(testCode)}`,
+            'purple'
+        );
     }
 
     async function deleteSubjectQuestions(key) {
@@ -931,16 +1559,30 @@
         const name = subject?.name || key;
         const currentCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key)).length;
         if (!currentCount && !(await confirmDialog({ title: 'Kiểm tra & Dọn dữ liệu Cloud?', message: `Không thấy câu hỏi đã tải cho môn ${name}. Vẫn kiểm tra và dọn dữ liệu Cloud?`, confirmText: 'Dọn dữ liệu', variant: 'warning' }))) return;
-        if (currentCount && !(await confirmDialog({ title: `Xóa đề môn ${name}?`, message: `Xóa toàn bộ ${currentCount} câu hỏi của môn ${name}? Hành động này không thể hoàn tác.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
+        if (currentCount && !(await confirmDialog({ title: `Xóa đề môn ${name}?`, message: `Chuyển toàn bộ ${currentCount} câu hỏi của môn ${name} vào Thùng rác? Bạn có thể khôi phục lại bất kỳ lúc nào nếu cần.`, confirmText: 'Chuyển vào thùng rác', variant: 'danger', icon: 'fa-trash-arrow-up' }))) return;
         try {
+            const subjectQuestions = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key));
+            if (subjectQuestions.length) {
+                const now = new Date().toISOString();
+                const trashedItems = subjectQuestions.map((q) => ({
+                    ...q,
+                    is_deleted: true,
+                    deleted_at: now,
+                    deleted_by: 'Admin'
+                }));
+                const existingTrashIds = new Set(trashedItems.map((q) => String(q.id)));
+                state.trashQuestions = [...trashedItems, ...state.trashQuestions.filter((q) => !existingTrashIds.has(String(q.id)))];
+                await saveTrash();
+            }
+
             const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
             if (error) throw error;
             const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu hỏi chưa xóa được.`);
             try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
-            addActivityLog(`Xóa đề môn ${name}`, `Đã xóa ${currentCount} câu hỏi thuộc môn ${name}`, 'danger');
-            notify(`Đã xóa toàn bộ câu hỏi của môn ${name}.`);
+            addActivityLog(`Chuyển đề môn ${name} vào thùng rác`, `Đã lưu trữ ${currentCount} câu hỏi môn ${name} vào Thùng rác`, 'danger');
+            notify(`Đã chuyển toàn bộ câu hỏi của môn ${name} vào thùng rác.`);
             await loadQuestions();
         } catch (error) {
             notify(`Không thể xóa câu hỏi môn ${name}: ${error.message}`, true);
@@ -2077,6 +2719,28 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
+        $('export-pdf-heading')?.addEventListener('click', openPrintModal);
+        $('export-pdf-library')?.addEventListener('click', openPrintModal);
+        $('export-pdf-report')?.addEventListener('click', () => { fillLibrarySubjects(); openPrintModal(); });
+        $('open-trash-button')?.addEventListener('click', () => { renderTrashModal(); openModal('trash-modal'); });
+        $('trash-search-input')?.addEventListener('input', renderTrashModal);
+        $('trash-subject-filter')?.addEventListener('change', renderTrashModal);
+        $('trash-restore-all-btn')?.addEventListener('click', () => runAction(restoreAllTrash));
+        $('trash-empty-btn')?.addEventListener('click', () => runAction(emptyTrash));
+        $('trash-list')?.addEventListener('click', (event) => {
+            const restore = event.target.closest('[data-restore-id]');
+            const hardDelete = event.target.closest('[data-hard-delete-id]');
+            if (restore) runAction(() => restoreQuestion(restore.dataset.restoreId));
+            if (hardDelete) runAction(() => hardDeleteQuestion(hardDelete.dataset.hardDeleteId));
+        });
+        $('print-subject-select')?.addEventListener('change', updatePrintQuestionsPreview);
+        $('print-grade-select')?.addEventListener('change', updatePrintQuestionsPreview);
+        $('print-random-code')?.addEventListener('click', () => {
+            const codes = [101, 102, 103, 104, 201, 202, 301, 302, 401, 402];
+            const code = codes[Math.floor(Math.random() * codes.length)];
+            if ($('print-code-input')) $('print-code-input').value = String(code);
+        });
+        $('do-print-btn')?.addEventListener('click', () => runAction(executePrintExam));
          $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
@@ -2151,7 +2815,7 @@
             }
             showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
             await loadSubjects();
-            await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
+            await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();
             setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
         } catch (error) {

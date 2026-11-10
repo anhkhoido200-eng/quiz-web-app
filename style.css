@@ -1450,3 +1450,46 @@ body.admin-body.dark {
         transition-duration: 1ms !important;
     }
 }
+
+/* =========================================================================
+   REVENGE QUIZ MODE / ĐỀ PHỤC THÙ - THỬ THÁCH SỬA SAI
+   ========================================================================= */
+
+.btn-3d-revenge {
+    background: linear-gradient(135deg, #e11d48 0%, #be123c 45%, #ea580c 100%);
+    box-shadow: 0 4px 0 #881337, 0 8px 24px -4px rgba(225, 29, 72, 0.55);
+    border: 1px solid rgba(254, 205, 211, 0.28);
+    color: #ffffff !important;
+}
+.btn-3d-revenge:hover {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 45%, #f97316 100%);
+    box-shadow: 0 5px 0 #881337, 0 10px 28px -4px rgba(225, 29, 72, 0.65);
+    transform: translateY(-1.5px);
+}
+.btn-3d-revenge:active {
+    box-shadow: 0 1px 0 #881337, 0 4px 12px -2px rgba(225, 29, 72, 0.4);
+    transform: translateY(2px) scale(0.985);
+}
+
+@keyframes revengePulseGlow {
+    0%, 100% {
+        box-shadow: 0 4px 0 #881337, 0 0 14px rgba(225, 29, 72, 0.45);
+    }
+    50% {
+        box-shadow: 0 4px 0 #881337, 0 0 28px rgba(249, 115, 22, 0.7);
+    }
+}
+.btn-revenge-glowing {
+    animation: revengePulseGlow 2.4s infinite ease-in-out;
+}
+
+.home-revenge-card {
+    background: linear-gradient(135deg, rgba(88, 28, 48, 0.75) 0%, rgba(15, 23, 42, 0.9) 55%, rgba(67, 26, 12, 0.65) 100%);
+    border: 1.5px solid rgba(244, 63, 94, 0.38);
+    backdrop-filter: blur(14px);
+    transition: all 0.25s ease;
+}
+.home-revenge-card:hover {
+    border-color: rgba(244, 63, 94, 0.6);
+    box-shadow: 0 10px 30px -5px rgba(225, 29, 72, 0.28);
+}

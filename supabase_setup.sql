@@ -53,8 +53,11 @@ ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFA
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 UPDATE public.quiz_questions SET subject_key = 'history' WHERE subject_key IS NULL;
+UPDATE public.quiz_questions SET is_deleted = false WHERE is_deleted IS NULL;
 
 -- TẠO SEQUENCE TỰ ĐỘNG TĂNG ID NẾU BẢNG BỊ THIẾU AUTO INCREMENT
 CREATE SEQUENCE IF NOT EXISTS quiz_questions_id_seq;

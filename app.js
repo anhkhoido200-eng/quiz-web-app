@@ -30,6 +30,8 @@ class QuizApp {
 
         // Dữ liệu câu hỏi & Đáp án người dùng
         this.allQuestions = [];
+        this.fullQuestionsPool = [];
+        this.isRevengeMode = false;
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
@@ -860,6 +862,8 @@ class QuizApp {
             return;
         }
         this.allQuestions = this.normalizeQuestions(questions);
+        this.fullQuestionsPool = [...this.allQuestions];
+        this.updateHomeRevengeBanner();
         this.isLoadingQuestions = false;
         console.debug('[QuizApp] Questions load completed:', { subject: this.currentSubject, count: this.allQuestions.length, cloudQuestionsLoaded, source: cloudQuestionsLoaded ? 'cloud' : (questions.length ? 'cache-or-bundled' : 'empty') });
 
@@ -3643,14 +3647,22 @@ Giải thích: Biên độ A = 5 cm.`;
                 .catch((error) => console.warn("Lỗi lưu đăng nhập lên Supabase:", error));
         }
 
+        this.isRevengeMode = false;
+        if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
+            this.allQuestions = [...this.fullQuestionsPool];
+        }
+
         // Cập nhật Header
         const headerName = document.getElementById('quiz-header-player-name');
         if (headerName) headerName.textContent = this.playerName;
 
+        const topSubTitle = document.getElementById('quiz-top-subject-title');
+        if (topSubTitle) topSubTitle.textContent = this.getSubjectTitle();
+
         const modeBadge = document.getElementById('quiz-mode-badge');
         if (modeBadge) {
             modeBadge.textContent = "Luyện Tập";
-            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block";
         }
 
         // Tải Auto-Save tiến độ cũ nếu có
@@ -4224,6 +4236,19 @@ Giải thích: Biên độ A = 5 cm.`;
             this.playBeepSound();
         }
 
+        // Cập nhật Ngân hàng câu sai cá nhân (Mistake Bank)
+        const remainingWrong = this.updateMistakeBankOnFinish(questions);
+        this.updateResultRevengeButton();
+        this.updateHomeRevengeBanner();
+
+        if (this.isRevengeMode) {
+            if (correctCount === totalItems) {
+                this.showToastNotification('🏆 XUẤT SẮC! Bạn đã phục thù thành công 100% các câu sai!', 'success');
+            } else {
+                this.showToastNotification(`Bạn đã sửa đúng ${correctCount}/${totalItems} ý. Còn ${remainingWrong.length} câu sai cần tiếp tục phục thù!`, 'info');
+            }
+        }
+
         this.renderReviewList();
         this.switchScreen('result');
         this.animateResultScore(finalScore);
@@ -4325,6 +4350,223 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     /* ============================================================== */
+    /* NGÂN HÀNG CÂU SAI & ĐỀ PHỤC THÙ (MISTAKE BANK / REVENGE QUIZ)   */
+    /* ============================================================== */
+
+    getMistakeStorageKey(subjectKey = this.currentSubject, playerName = this.playerName) {
+        const sub = subjectKey || 'default';
+        const name = (playerName || '').trim() || (localStorage.getItem('quiz_user_name') || '').trim() || '';
+        return name ? `quiz_wrong_questions_${sub}_${name}` : `quiz_wrong_questions_${sub}_anonymous`;
+    }
+
+    getWrongQuestionIds(subjectKey = this.currentSubject, playerName = this.playerName) {
+        const key = this.getMistakeStorageKey(subjectKey, playerName);
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    saveWrongQuestionIds(ids, subjectKey = this.currentSubject, playerName = this.playerName) {
+        const key = this.getMistakeStorageKey(subjectKey, playerName);
+        try {
+            const uniqueIds = Array.from(new Set(ids || []));
+            if (uniqueIds.length === 0) {
+                localStorage.removeItem(key);
+            } else {
+                localStorage.setItem(key, JSON.stringify(uniqueIds));
+            }
+        } catch (e) {
+            console.warn('[QuizApp] Lỗi lưu ngân hàng câu sai:', e);
+        }
+        this.updateHomeRevengeBanner();
+        this.updateResultRevengeButton();
+    }
+
+    isQuestionAnsweredCorrectly(q) {
+        if (!q) return false;
+        if (q.qType === 'short_answer') {
+            const val = this.userAnswers[q.id];
+            if (val === undefined || String(val).trim() === '') return false;
+            return (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
+                String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
+        } else if (q.qType === 'tf_group') {
+            const ansObj = this.userAnswers[q.id];
+            if (!ansObj || typeof ansObj !== 'object') return false;
+            const stmts = Array.isArray(q.statements) ? q.statements : [];
+            if (stmts.length === 0) return false;
+            return stmts.every((st, idx) => ansObj[idx] !== undefined && Boolean(ansObj[idx]) === Boolean(st.answer));
+        } else {
+            const sel = this.userAnswers[q.id];
+            if (sel === undefined) return false;
+            const correctIdx = q.correct !== undefined ? q.correct : q.answer;
+            return Number(sel) === Number(correctIdx);
+        }
+    }
+
+    updateMistakeBankOnFinish(questions = this.allQuestions) {
+        const currentWrong = this.getWrongQuestionIds();
+        const idSet = new Set(currentWrong.map(String));
+
+        (questions || []).forEach(q => {
+            const qIdStr = String(q.id);
+            if (this.isQuestionAnsweredCorrectly(q)) {
+                // Đã làm đúng trong lượt này -> Gỡ khỏi ngân hàng câu sai
+                idSet.delete(qIdStr);
+            } else {
+                // Làm sai hoặc chưa đúng -> Thêm vào ngân hàng câu sai
+                idSet.add(qIdStr);
+            }
+        });
+
+        const updatedIds = Array.from(idSet).map(idStr => {
+            const num = Number(idStr);
+            return (!isNaN(num) && String(num) === idStr) ? num : idStr;
+        });
+
+        this.saveWrongQuestionIds(updatedIds);
+        return updatedIds;
+    }
+
+    updateHomeRevengeBanner() {
+        const banner = document.getElementById('home-revenge-banner');
+        const badge = document.getElementById('home-wrong-badge');
+        const countText = document.getElementById('home-wrong-count-text');
+        const label = document.getElementById('home-revenge-btn-label');
+        if (!banner) return;
+
+        const wrongIds = this.getWrongQuestionIds();
+        const count = wrongIds.length;
+        if (count > 0) {
+            banner.classList.remove('hidden');
+            if (badge) badge.textContent = `${count} câu`;
+            if (countText) countText.textContent = String(count);
+            if (label) label.textContent = `Ôn lại ${count} câu sai`;
+        } else {
+            banner.classList.add('hidden');
+        }
+    }
+
+    updateResultRevengeButton() {
+        const btn = document.getElementById('btn-revenge-quiz-result');
+        const textEl = document.getElementById('revenge-btn-text');
+        if (!btn) return;
+
+        const wrongIds = this.getWrongQuestionIds();
+        const count = wrongIds.length;
+
+        if (count > 0) {
+            btn.classList.remove('opacity-50', 'pointer-events-none');
+            btn.classList.add('btn-revenge-glowing');
+            btn.disabled = false;
+            if (textEl) {
+                textEl.textContent = `🎯 Tạo đề phục thù (${count} câu làm sai)`;
+            }
+        } else {
+            btn.classList.remove('btn-revenge-glowing');
+            btn.classList.add('opacity-50', 'pointer-events-none');
+            btn.disabled = true;
+            if (textEl) {
+                textEl.textContent = '🎯 Đã chinh phục toàn bộ câu sai!';
+            }
+        }
+    }
+
+    async startRevengeQuiz() {
+        const input = document.getElementById('player-name-input');
+        const err = document.getElementById('player-name-error');
+        let name = this.playerName || (input ? input.value.trim() : '') || localStorage.getItem('quiz_user_name') || '';
+
+        if (!name) {
+            this.switchScreen('home');
+            if (err) err.classList.remove('hidden');
+            input?.focus();
+            this.showToastNotification('Vui lòng nhập họ và tên trước khi bắt đầu bài thi!', 'warning');
+            return;
+        }
+
+        this.playerName = name;
+        localStorage.setItem('quiz_user_name', name);
+
+        // Đảm bảo ngân hàng câu hỏi đầy đủ đã được nạp
+        if (!this.allQuestions || this.allQuestions.length === 0 || this.isLoadingQuestions) {
+            await this.loadQuestionsForCurrentSubject();
+        }
+
+        if (!this.fullQuestionsPool || this.fullQuestionsPool.length === 0) {
+            this.fullQuestionsPool = [...this.allQuestions];
+        }
+
+        const wrongIds = this.getWrongQuestionIds();
+        if (!wrongIds || wrongIds.length === 0) {
+            this.showAlertModal("🎉 Tuyệt vời! Bạn hiện không có câu hỏi nào bị làm sai ở môn này. Hãy chọn đề chính để ôn luyện nhé!");
+            return;
+        }
+
+        const wrongIdSet = new Set(wrongIds.map(String));
+        const pool = (this.fullQuestionsPool && this.fullQuestionsPool.length > 0)
+            ? this.fullQuestionsPool
+            : this.allQuestions;
+
+        const mistakeQuestions = pool.filter(q => wrongIdSet.has(String(q.id)));
+
+        if (mistakeQuestions.length === 0) {
+            this.showAlertModal("⚠️ Không tìm thấy nội dung các câu hỏi sai trong ngân hàng môn hiện tại. Có thể câu hỏi đã được sửa hoặc cập nhật bởi Giáo viên.");
+            return;
+        }
+
+        // Kích hoạt chế độ Phục Thù
+        this.isRevengeMode = true;
+        this.allQuestions = mistakeQuestions;
+        this.userAnswers = {};
+        this.currentFilter = 'all';
+
+        // Cập nhật Header bài thi
+        const headerName = document.getElementById('quiz-header-player-name');
+        if (headerName) headerName.textContent = this.playerName;
+
+        const modeBadge = document.getElementById('quiz-mode-badge');
+        if (modeBadge) {
+            modeBadge.innerHTML = '<i class="fa-solid fa-fire text-amber-300 mr-1 animate-pulse"></i> ĐỀ PHỤC THÙ - THỬ THÁCH SỬA SAI';
+            modeBadge.className = "px-3 py-1 rounded-full text-[11px] font-extrabold uppercase bg-gradient-to-r from-rose-600/30 to-amber-600/30 text-rose-300 border border-rose-500/50 shadow-sm inline-flex items-center";
+            modeBadge.classList.remove('hidden');
+        }
+
+        const topSubTitle = document.getElementById('quiz-top-subject-title');
+        if (topSubTitle) {
+            topSubTitle.textContent = `${this.getSubjectTitle()} (Phục thù)`;
+        }
+
+        if (window.dbService && typeof window.dbService.recordLogin === 'function') {
+            window.dbService.recordLogin(
+                this.playerName,
+                this.clientIp,
+                this.deviceInfo,
+                `[Phục thù] ${this.getSubjectTitle()}`,
+                `[Bắt đầu Đề Phục Thù: ${mistakeQuestions.length} câu]`,
+                this.currentLoginId
+            ).then((res) => {
+                const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
+                if (loginId) this.currentLoginId = loginId;
+            }).catch(() => {});
+        }
+
+        this.switchScreen('quiz');
+        this.observeQuizHeader();
+        this.renderAllQuestions();
+        this.startStopwatch();
+        this.updateLiveStats();
+        this.renderFilterTabs();
+
+        this.showToastNotification(`🔥 Đã nạp ${mistakeQuestions.length} câu hỏi bạn từng làm sai. Hãy tập trung sửa sai 100%!`, 'success');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /* ============================================================== */
     /* 10. ĐIỀU HƯỚNG MÀN HÌNH & BẢO MẬT & HEARTBEAT                  */
     /* ============================================================== */
 
@@ -4378,6 +4620,11 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         this.stopStopwatch();
+        this.isRevengeMode = false;
+        if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
+            this.allQuestions = [...this.fullQuestionsPool];
+        }
+        this.updateHomeRevengeBanner();
         this.switchScreen('home');
     }
 
@@ -4395,6 +4642,9 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!ok) return;
         this.userAnswers = {};
         this.clearAutoSaveProgress();
+        if (!this.isRevengeMode && this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
+            this.allQuestions = [...this.fullQuestionsPool];
+        }
         this.switchScreen('quiz');
         this.renderAllQuestions();
         this.startStopwatch();
@@ -4428,6 +4678,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const input = document.getElementById('player-name-input');
         if (input) input.value = '';
         this.checkSavedUser();
+        this.updateHomeRevengeBanner();
         this.switchScreen('home');
     }
 
@@ -4445,6 +4696,7 @@ Giải thích: Biên độ A = 5 cm.`;
         } else if (banner) {
             banner.classList.add('hidden');
         }
+        this.updateHomeRevengeBanner();
     }
 
     clearSavedUser() {
@@ -4457,6 +4709,7 @@ Giải thích: Biên độ A = 5 cm.`;
             input.value = '';
             input.focus();
         }
+        this.updateHomeRevengeBanner();
     }
 
     detectDevice() {
@@ -6049,6 +6302,14 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 if (val && val !== this.playerName) {
                     this.playerName = val;
                     localStorage.setItem('quiz_user_name', val);
+                    this.updateHomeRevengeBanner();
+                }
+            });
+            nameInput.addEventListener('input', () => {
+                const val = nameInput.value.trim();
+                if (val !== this.playerName) {
+                    this.playerName = val;
+                    this.updateHomeRevengeBanner();
                 }
             });
             nameInput.addEventListener('keydown', (e) => {

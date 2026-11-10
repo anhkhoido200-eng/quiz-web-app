@@ -371,6 +371,28 @@
                         </p>
                     </div>
 
+                    <!-- THẺ ÔN LUYỆN ĐỀ PHỤC THÙ (MISTAKE BANK CARD) -->
+                    <div id="home-revenge-banner" class="hidden my-3 p-3.5 rounded-2xl home-revenge-card shadow-xl transition-all">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center text-lg shadow shrink-0">
+                                    <i class="fa-solid fa-bullseye text-amber-400"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-white text-xs font-bold flex items-center gap-1.5 flex-wrap">
+                                        <span>Đề Phục Thù</span>
+                                        <span id="home-wrong-badge" class="px-2 py-0.5 rounded-full bg-rose-500/30 border border-rose-500/50 text-rose-300 text-[10px] font-mono font-bold">0 câu</span>
+                                    </p>
+                                    <p class="text-[11px] text-slate-300 truncate">Ôn lại <span id="home-wrong-count-text" class="text-amber-300 font-bold">0</span> câu bạn từng làm sai môn này</p>
+                                </div>
+                            </div>
+                            <button type="button" onclick="app.startRevengeQuiz()" class="btn-3d btn-3d-revenge px-3.5 py-2 rounded-xl text-white font-heading font-extrabold text-xs shadow-md transition shrink-0 flex items-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-fire text-amber-300"></i>
+                                <span id="home-revenge-btn-label">Tạo Đề Phục Thù</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Nút bắt đầu làm bài -->
                     <div class="pt-2">
                         <button id="btn-start-quiz" onclick="app.startQuiz()" disabled aria-busy="true" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-wait opacity-60">
@@ -513,6 +535,10 @@
                         <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-house"></i>
                             <span>Chọn môn khác</span>
+                        </button>
+                        <button id="btn-revenge-quiz-result" onclick="app.startRevengeQuiz()" class="btn-3d btn-3d-revenge px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
+                            <i class="fa-solid fa-bullseye text-amber-300"></i>
+                            <span id="revenge-btn-text">🎯 Tạo đề phục thù (0 câu làm sai)</span>
                         </button>
                         <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>

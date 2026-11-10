@@ -457,3 +457,604 @@ body:not(.dark) .activity-empty-state {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18), var(--shadow);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+
+/* =========================================================================
+   TRASH BIN (RECYCLE BIN) & PRINT EXAM MODALS
+   ========================================================================= */
+
+/* Trash count badge */
+.badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.22);
+    color: var(--primary);
+    margin-left: 5px;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.badge-count.has-items {
+    background: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+}
+
+/* Print Modal & Form */
+.modal-card.print-modal {
+    width: min(720px, 100%);
+}
+.input-with-action {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.input-with-action input {
+    flex: 1;
+    margin: 0;
+}
+.print-options-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    flex-wrap: wrap;
+}
+
+/* Trash Bin Modal */
+.modal-card.trash-modal {
+    width: min(920px, 100%);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+.trash-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.trash-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+}
+.trash-search-wrap i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 12px;
+}
+.trash-search-wrap input {
+    width: 100%;
+    padding-left: 34px;
+    margin: 0;
+}
+.trash-toolbar select {
+    min-width: 150px;
+    margin: 0;
+}
+.trash-toolbar-actions {
+    display: flex;
+    gap: 8px;
+}
+.trash-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 12px;
+}
+.trash-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 4px;
+    min-height: 180px;
+    max-height: 48vh;
+}
+.trash-item {
+    padding: 13px 15px;
+    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.trash-item:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+}
+.trash-item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.trash-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.trash-time {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 500;
+}
+.trash-question-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.trash-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.trash-options span {
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+.trash-options span.is-correct {
+    border-color: rgba(16, 185, 129, 0.45);
+    background: rgba(16, 185, 129, 0.08);
+    color: #10b981;
+    font-weight: 600;
+}
+.trash-statements {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: var(--muted);
+}
+.trash-item-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+}
+.trash-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+}
+.trash-empty-state i {
+    font-size: 40px;
+    color: #94a3b8;
+    margin-bottom: 12px;
+    opacity: 0.6;
+}
+.trash-empty-state h3 {
+    margin: 0 0 6px;
+    font: 700 15px 'Space Grotesk', sans-serif;
+    color: var(--text);
+}
+.trash-empty-state p {
+    margin: 0;
+    font-size: 12px;
+    max-width: 320px;
+}
+
+/* Dark mode adjustments for trash items */
+body.dark .trash-item {
+    background: #141c2d;
+    border-color: #273347;
+}
+body.dark .trash-item:hover {
+    border-color: rgba(129, 140, 248, 0.4);
+}
+body.dark .trash-options span {
+    background: #1a243a;
+    border-color: #2b3952;
+}
+
+/* =========================================================================
+   PRINT / PDF EXPORT - VIETNAMESE MINISTRY OF EDUCATION (BỘ GD&ĐT) STANDARD
+   ========================================================================= */
+
+/* Hide print container on normal screens */
+#print-paper {
+    display: none;
+}
+
+@media print {
+    /* Hide the entire web interface */
+    body, html {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-family: 'Times New Roman', Times, serif !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .app-shell,
+    .sidebar,
+    .topbar,
+    .modal-backdrop,
+    .toast,
+    dialog,
+    .access-denied,
+    #admin-confirm-modal {
+        display: none !important;
+    }
+
+    @page {
+        size: A4 portrait;
+        margin: 15mm 12mm 15mm 12mm;
+    }
+
+    /* Print Paper Container */
+    #print-paper {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-family: 'Times New Roman', Times, serif !important;
+        font-size: 12pt !important;
+        line-height: 1.4 !important;
+    }
+
+    .print-page-document {
+        width: 100%;
+    }
+
+    /* 1. Header Layout */
+    .print-exam-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12pt;
+        padding-bottom: 6pt;
+    }
+    .print-header-col {
+        flex: 1;
+        text-align: center;
+    }
+    .print-col-left {
+        text-align: center;
+    }
+    .print-school-name {
+        font-size: 11pt;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .print-exam-badge {
+        display: inline-block;
+        font-size: 11pt;
+        font-weight: bold;
+        border: 1.5px solid #000;
+        padding: 1pt 8pt;
+        margin-top: 3pt;
+        text-transform: uppercase;
+    }
+    .print-sub-note {
+        font-size: 9.5pt;
+        margin-top: 2pt;
+    }
+    .print-col-right {
+        text-align: center;
+    }
+    .print-nation-title {
+        font-size: 11pt;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .print-motto {
+        font-size: 11pt;
+        font-weight: bold;
+        margin-top: 1pt;
+    }
+    .print-header-divider {
+        width: 120pt;
+        height: 1pt;
+        background: #000;
+        margin: 3pt auto 0;
+    }
+
+    /* Exam Title Block */
+    .print-exam-center-title {
+        text-align: center;
+        margin: 10pt 0 12pt;
+    }
+    .print-exam-center-title h2 {
+        font-size: 14pt;
+        font-weight: bold;
+        margin: 0 0 3pt;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+    }
+    .print-subject-line {
+        font-size: 12pt;
+        margin-bottom: 2pt;
+    }
+    .print-duration-line {
+        font-size: 10.5pt;
+        font-style: italic;
+    }
+
+    /* Student Info Bar */
+    .print-student-info-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1pt solid #000;
+        padding: 6pt 10pt;
+        margin-bottom: 14pt;
+        font-size: 11pt;
+    }
+    .print-info-left {
+        flex: 1;
+    }
+    .print-info-row {
+        margin-bottom: 4pt;
+        display: flex;
+        align-items: baseline;
+    }
+    .print-info-row:last-child {
+        margin-bottom: 0;
+    }
+    .info-label {
+        font-weight: 500;
+        margin-right: 4pt;
+        white-space: nowrap;
+    }
+    .info-dots {
+        overflow: hidden;
+        white-space: nowrap;
+    }
+    .print-test-code-badge {
+        border-left: 1pt solid #000;
+        padding-left: 12pt;
+        margin-left: 10pt;
+        text-align: center;
+    }
+    .print-test-code-badge span {
+        display: block;
+        font-size: 9.5pt;
+        font-weight: bold;
+    }
+    .print-test-code-badge strong {
+        display: block;
+        font-size: 14pt;
+        letter-spacing: 1pt;
+    }
+
+    /* Question blocks */
+    .print-questions-body {
+        width: 100%;
+    }
+    .print-question-block {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-bottom: 11pt;
+        font-size: 11.5pt;
+        line-height: 1.45;
+    }
+    .print-question-text {
+        margin-bottom: 4pt;
+    }
+    .q-label {
+        font-weight: bold;
+        margin-right: 4pt;
+    }
+
+    /* Options layout */
+    .print-options-grid {
+        display: grid;
+        gap: 4pt 10pt;
+        margin-top: 3pt;
+        padding-left: 12pt;
+    }
+    .print-options-grid.cols-4 {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .print-options-grid.cols-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .print-options-grid.cols-1 {
+        grid-template-columns: 1fr;
+    }
+    .print-opt-item {
+        display: flex;
+        align-items: baseline;
+        gap: 5pt;
+    }
+    .opt-label {
+        font-weight: bold;
+        white-space: nowrap;
+    }
+    .opt-text {
+        flex: 1;
+    }
+
+    /* True/False layout */
+    .print-tf-grid {
+        display: grid;
+        gap: 3pt;
+        padding-left: 12pt;
+        margin-top: 3pt;
+    }
+    .print-tf-statement {
+        display: flex;
+        align-items: baseline;
+        gap: 6pt;
+    }
+    .tf-key {
+        font-weight: bold;
+    }
+    .tf-content {
+        flex: 1;
+    }
+    .tf-brackets {
+        font-size: 10pt;
+        font-style: italic;
+        white-space: nowrap;
+        margin-left: 8pt;
+    }
+
+    /* Short answer field */
+    .print-short-field {
+        display: flex;
+        align-items: baseline;
+        gap: 6pt;
+        padding-left: 12pt;
+        margin-top: 4pt;
+    }
+    .print-short-line {
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
+    /* End exam footer */
+    .print-end-exam {
+        text-align: center;
+        margin-top: 18pt;
+        padding-top: 10pt;
+    }
+    .end-rule {
+        font-weight: bold;
+        letter-spacing: 2pt;
+        font-size: 11pt;
+    }
+    .end-note {
+        font-size: 9.5pt;
+        margin-top: 3pt;
+    }
+
+    /* 2. Answer Key & Solution Page */
+    .print-answers-page {
+        break-before: page !important;
+        page-break-before: always !important;
+        margin-top: 15pt;
+        padding-top: 10pt;
+    }
+    .print-answers-header {
+        text-align: center;
+        margin-bottom: 15pt;
+        border-bottom: 1.5pt solid #000;
+        padding-bottom: 8pt;
+    }
+    .print-answers-header h2 {
+        font-size: 14pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin: 0 0 4pt;
+    }
+    .print-answers-header p {
+        font-size: 11pt;
+        margin: 0;
+    }
+    .print-section-title {
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 8pt;
+    }
+
+    /* Matrix Table */
+    .print-matrix-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10pt;
+        font-size: 10.5pt;
+        text-align: center;
+    }
+    .print-matrix-table th,
+    .print-matrix-table td {
+        border: 1pt solid #000;
+        padding: 3pt 4pt;
+    }
+    .print-matrix-table th {
+        background: #f0f0f0 !important;
+        font-weight: bold;
+    }
+    .matrix-label {
+        font-weight: bold;
+        width: 45pt;
+        background: #f7f7f7 !important;
+    }
+    .matrix-tf {
+        font-size: 9pt;
+        white-space: nowrap;
+    }
+    .matrix-val {
+        font-size: 9.5pt;
+        font-weight: bold;
+    }
+
+    /* Solutions list */
+    .print-solutions-list {
+        display: grid;
+        gap: 9pt;
+    }
+    .print-solution-item {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        border-left: 2pt solid #000;
+        padding-left: 8pt;
+        margin-bottom: 6pt;
+        font-size: 11pt;
+        line-height: 1.4;
+    }
+    .solution-header {
+        margin-bottom: 3pt;
+        display: flex;
+        gap: 8pt;
+        align-items: baseline;
+    }
+    .solution-header strong {
+        font-weight: bold;
+    }
+    .solution-badge {
+        font-weight: bold;
+    }
+    .solution-body {
+        font-size: 10.5pt;
+        color: #111;
+    }
+
+    /* KaTeX print optimization */
+    .katex {
+        font-size: 1.05em !important;
+    }
+    .katex-display {
+        margin: 4pt 0 !important;
+    }
+}
