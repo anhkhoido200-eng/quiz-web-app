@@ -637,10 +637,19 @@
         } else if (state.type === 'short_answer') {
             body = '<div class="short-preview-input">Nhập câu trả lời ngắn tại đây...</div>';
         } else {
-            body = `<div>${q.options.map((option, index) => `<div class="preview-option ${index === state.answer ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(option, `Phương án ${'ABCD'[index]}`)}</span></div>`).join('')}</div>`;
+            body = `<div class="preview-options-list">${q.options.map((option, index) => `<div class="preview-option ${index === state.answer ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(option, `Phương án ${'ABCD'[index]}`)}</span></div>`).join('')}</div>`;
         }
         card.classList.add('preview-updating');
-        card.innerHTML = `<div class="preview-meta"><span>${esc(TYPE_LABELS[state.type].toUpperCase())}</span><span>${esc(subjectName(q.subject_key))}</span></div><h3>${htmlText(q.question, 'Nội dung câu hỏi sẽ hiển thị ở đây')}</h3>${body}`;
+        const gradeText = q.grade ? `Lớp ${q.grade}` : (state.grade !== 'all' ? `Lớp ${state.grade}` : '');
+        card.innerHTML = `
+            <div class="preview-meta">
+                <span class="preview-badge type-badge"><i class="fa-solid fa-shapes"></i> ${esc(TYPE_LABELS[state.type] || state.type)}</span>
+                <span class="preview-badge subject-badge"><i class="fa-solid fa-book-bookmark"></i> ${esc(subjectName(q.subject_key))}</span>
+                ${gradeText ? `<span class="preview-badge grade-badge"><i class="fa-solid fa-graduation-cap"></i> ${esc(gradeText)}</span>` : ''}
+            </div>
+            <h3 class="preview-title">${htmlText(q.question, 'Nội dung câu hỏi sẽ hiển thị ở đây...')}</h3>
+            ${body}
+        `;
         renderMath(card);
         requestAnimationFrame(() => card.classList.remove('preview-updating'));
     }

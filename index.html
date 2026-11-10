@@ -55,7 +55,7 @@
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- CSS tùy chỉnh v4.0 -->
-    <link rel="stylesheet" href="style.css?v=20261108j">
+    <link rel="stylesheet" href="style.css?v=20261110c">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
@@ -411,8 +411,8 @@
         <!-- MÀN HÌNH 2: GIAO DIỆN LÀM BÀI TRẮC NGHIỆM  -->
         <!-- ========================================== -->
         <section id="screen-quiz" class="screen-view hidden w-full">
-            <!-- THANH ĐIỀU HÀNH BÀI THI: CỐ ĐỊNH CHẶT MÉP TRÊN CÙNG (FIXED TOP-0) -->
-            <div id="quiz-sticky-header" class="fixed top-0 left-0 right-0 z-50 w-full bg-slate-950/95 backdrop-blur-2xl border-b border-white/10 shadow-2xl">
+            <!-- THANH ĐIỀU HÀNH BÀI THI: GHIM CỐ ĐỊNH ĐỈNH MÀN HÌNH (STICKY TOP-0) -->
+            <div id="quiz-sticky-header" class="quiz-sticky-header sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-2xl border-b border-white/10 shadow-2xl">
                 <!-- Dòng 1: Thông tin học sinh, Điểm số, Đồng hồ & Các nút thao tác -->
                 <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -484,7 +484,7 @@
             </div>
 
             <!-- Danh sách cuộn dọc câu hỏi -->
-            <div id="questions-container" class="space-y-6 max-w-4xl mx-auto pt-28 sm:pt-32 pb-16">
+            <div id="questions-container" class="space-y-6 max-w-4xl mx-auto pt-4 sm:pt-6 pb-16">
                 <!-- Render động bởi app.js -->
             </div>
         </section>
@@ -528,18 +528,14 @@
 
                     <!-- Nút thao tác sau khi xong bài -->
                     <div class="result-actions flex flex-wrap items-center justify-center gap-3">
-                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
-                            <i class="fa-solid fa-trophy text-slate-950"></i>
-                            <span>Xem Bảng Xếp Hạng</span>
+                        <button id="btn-revenge-quiz-result" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
+                            <i class="fa-solid fa-fire text-amber-300"></i>
+                            <span id="revenge-btn-text">🔥 Tạo đề phục thù (0 câu sai)</span>
                         </button>
-                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
-                            <i class="fa-solid fa-house"></i>
-                            <span>Chọn môn khác</span>
-                        </button>
-                        <button id="btn-revenge-quiz-result" onclick="app.startRevengeQuiz()" class="btn-3d btn-3d-revenge px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
-                            <i class="fa-solid fa-bullseye text-amber-300"></i>
-                            <span id="revenge-btn-text">🎯 Tạo đề phục thù (0 câu làm sai)</span>
-                        </button>
+                        <div id="badge-all-correct-result" class="hidden px-5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-heading font-extrabold text-xs flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                            <span>Xuất sắc! Bạn không sai câu nào</span>
+                        </div>
                         <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
@@ -547,6 +543,14 @@
                         <button onclick="app.filterQuestions('wrong')" class="btn-3d px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark"></i>
                             <span>Xem các câu làm sai</span>
+                        </button>
+                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
+                            <i class="fa-solid fa-trophy text-slate-950"></i>
+                            <span>Xem Bảng Xếp Hạng</span>
+                        </button>
+                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-house"></i>
+                            <span>Chọn môn khác</span>
                         </button>
                         <button onclick="app.switchUser()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-user-pen"></i>
@@ -1712,6 +1716,6 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
     <script src="supabase.js?v=20261108j"></script>
-    <script src="app.js?v=20261108j"></script>
+    <script src="app.js?v=20261110c"></script>
 </body>
 </html>

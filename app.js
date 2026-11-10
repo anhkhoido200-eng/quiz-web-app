@@ -32,6 +32,8 @@ class QuizApp {
         this.allQuestions = [];
         this.fullQuestionsPool = [];
         this.isRevengeMode = false;
+        this.isMistakeMode = false;
+        this.currentMistakeQuestions = [];
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
@@ -117,10 +119,21 @@ class QuizApp {
         if (!header || !questions) return;
 
         const headerHeight = Math.ceil(header.getBoundingClientRect().height);
-        // Keep the existing desktop spacing, but use the actual wrapped mobile
-        // header height so the first card can never sit underneath the bar.
         questions.style.setProperty('--quiz-header-height', `${headerHeight}px`);
-        questions.style.paddingTop = `${headerHeight + (window.innerWidth <= 640 ? 16 : 32)}px`;
+        document.documentElement.style.setProperty('--quiz-header-height', `${headerHeight}px`);
+
+        // Tự động nhận diện position của header: sticky hay fallback fixed
+        const isFixed = window.getComputedStyle(header).position === 'fixed';
+        const safePadding = window.innerWidth <= 640 ? 16 : 24;
+
+        if (isFixed) {
+            // Nếu header ở chế độ fixed (nằm tách khỏi layout): bù toàn bộ chiều cao header + đệm
+            questions.style.paddingTop = `${headerHeight + safePadding}px`;
+        } else {
+            // Nếu header ở chế độ sticky: phần tử đã nằm trong luồng tài liệu (document flow),
+            // chỉ cần áp dụng khoảng đệm tự nhiên để câu hỏi đầu tiên không bị dính sát header.
+            questions.style.paddingTop = `${safePadding}px`;
+        }
     }
 
     observeQuizHeader() {
@@ -4411,6 +4424,7 @@ Giải thích: Biên độ A = 5 cm.`;
     updateMistakeBankOnFinish(questions = this.allQuestions) {
         const currentWrong = this.getWrongQuestionIds();
         const idSet = new Set(currentWrong.map(String));
+        const currentAttemptWrong = [];
 
         (questions || []).forEach(q => {
             const qIdStr = String(q.id);
@@ -4420,8 +4434,12 @@ Giải thích: Biên độ A = 5 cm.`;
             } else {
                 // Làm sai hoặc chưa đúng -> Thêm vào ngân hàng câu sai
                 idSet.add(qIdStr);
+                currentAttemptWrong.push(q);
             }
         });
+
+        // Lưu đối tượng câu sai trong phiên hiện tại để có thể bấm phục thù ngay lập tức
+        this.currentMistakeQuestions = currentAttemptWrong;
 
         const updatedIds = Array.from(idSet).map(idStr => {
             const num = Number(idStr);
@@ -4454,76 +4472,91 @@ Giải thích: Biên độ A = 5 cm.`;
     updateResultRevengeButton() {
         const btn = document.getElementById('btn-revenge-quiz-result');
         const textEl = document.getElementById('revenge-btn-text');
+        const badgeAllCorrect = document.getElementById('badge-all-correct-result');
         if (!btn) return;
 
-        const wrongIds = this.getWrongQuestionIds();
-        const count = wrongIds.length;
+        // Ưu tiên đếm số câu sai thực tế từ lượt làm hiện tại, hoặc từ cache ngân hàng câu sai
+        let count = 0;
+        if (Array.isArray(this.currentMistakeQuestions) && this.currentMistakeQuestions.length > 0) {
+            count = this.currentMistakeQuestions.length;
+        } else {
+            const wrongIds = this.getWrongQuestionIds();
+            count = wrongIds.length;
+        }
 
         if (count > 0) {
-            btn.classList.remove('opacity-50', 'pointer-events-none');
+            btn.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
             btn.classList.add('btn-revenge-glowing');
             btn.disabled = false;
+            if (badgeAllCorrect) badgeAllCorrect.classList.add('hidden');
             if (textEl) {
-                textEl.textContent = `🎯 Tạo đề phục thù (${count} câu làm sai)`;
+                const prefix = this.isRevengeMode ? '🔥 Tiếp tục phục thù' : '🎯 Tạo đề phục thù';
+                textEl.textContent = `${prefix} (${count} câu sai)`;
             }
         } else {
+            // Không có câu sai hoặc đã hoàn thành xuất sắc
             btn.classList.remove('btn-revenge-glowing');
-            btn.classList.add('opacity-50', 'pointer-events-none');
+            btn.classList.add('hidden');
             btn.disabled = true;
-            if (textEl) {
-                textEl.textContent = '🎯 Đã chinh phục toàn bộ câu sai!';
+            if (badgeAllCorrect) {
+                badgeAllCorrect.classList.remove('hidden');
             }
         }
     }
 
+    async startMistakeQuiz() {
+        return this.startRevengeQuiz();
+    }
+
     async startRevengeQuiz() {
-        const input = document.getElementById('player-name-input');
-        const err = document.getElementById('player-name-error');
-        let name = this.playerName || (input ? input.value.trim() : '') || localStorage.getItem('quiz_user_name') || '';
-
-        if (!name) {
-            this.switchScreen('home');
-            if (err) err.classList.remove('hidden');
-            input?.focus();
-            this.showToastNotification('Vui lòng nhập họ và tên trước khi bắt đầu bài thi!', 'warning');
-            return;
-        }
-
+        // Tuyệt đối không bắt học sinh phải thoát ra màn hình chính hay chọn lại môn
+        let name = this.playerName || (document.getElementById('player-name-input')?.value.trim()) || localStorage.getItem('quiz_user_name') || 'Học sinh';
         this.playerName = name;
-        localStorage.setItem('quiz_user_name', name);
+        try { localStorage.setItem('quiz_user_name', name); } catch (e) {}
 
-        // Đảm bảo ngân hàng câu hỏi đầy đủ đã được nạp
-        if (!this.allQuestions || this.allQuestions.length === 0 || this.isLoadingQuestions) {
-            await this.loadQuestionsForCurrentSubject();
-        }
-
+        // Đảm bảo ngân hàng câu hỏi gốc đã sẵn sàng
         if (!this.fullQuestionsPool || this.fullQuestionsPool.length === 0) {
-            this.fullQuestionsPool = [...this.allQuestions];
+            if (this.allQuestions && this.allQuestions.length > 0 && !this.isRevengeMode) {
+                this.fullQuestionsPool = [...this.allQuestions];
+            } else {
+                await this.loadQuestionsForCurrentSubject();
+                if (this.allQuestions && this.allQuestions.length > 0) {
+                    this.fullQuestionsPool = [...this.allQuestions];
+                }
+            }
         }
 
-        const wrongIds = this.getWrongQuestionIds();
-        if (!wrongIds || wrongIds.length === 0) {
-            this.showAlertModal("🎉 Tuyệt vời! Bạn hiện không có câu hỏi nào bị làm sai ở môn này. Hãy chọn đề chính để ôn luyện nhé!");
-            return;
+        // Lấy danh sách các câu hỏi sai:
+        // 1. Ưu tiên các câu sai từ lượt làm vừa kết thúc
+        // 2. Nếu không có (ví dụ F5 trên màn kết quả), lấy từ ngân hàng câu sai đã lưu trong localStorage
+        let mistakeQuestions = [];
+        if (Array.isArray(this.currentMistakeQuestions) && this.currentMistakeQuestions.length > 0) {
+            mistakeQuestions = [...this.currentMistakeQuestions];
+        } else {
+            const wrongIds = this.getWrongQuestionIds();
+            if (wrongIds && wrongIds.length > 0) {
+                const wrongIdSet = new Set(wrongIds.map(String));
+                const pool = (this.fullQuestionsPool && this.fullQuestionsPool.length > 0)
+                    ? this.fullQuestionsPool
+                    : this.allQuestions;
+                mistakeQuestions = pool.filter(q => wrongIdSet.has(String(q.id)));
+            }
         }
 
-        const wrongIdSet = new Set(wrongIds.map(String));
-        const pool = (this.fullQuestionsPool && this.fullQuestionsPool.length > 0)
-            ? this.fullQuestionsPool
-            : this.allQuestions;
-
-        const mistakeQuestions = pool.filter(q => wrongIdSet.has(String(q.id)));
-
-        if (mistakeQuestions.length === 0) {
-            this.showAlertModal("⚠️ Không tìm thấy nội dung các câu hỏi sai trong ngân hàng môn hiện tại. Có thể câu hỏi đã được sửa hoặc cập nhật bởi Giáo viên.");
+        if (!mistakeQuestions || mistakeQuestions.length === 0) {
+            this.showAlertModal("🎉 Tuyệt vời! Bạn hiện không còn câu hỏi nào bị làm sai ở môn này. Hãy chọn đề chính để ôn luyện nhé!");
             return;
         }
 
         // Kích hoạt chế độ Phục Thù
         this.isRevengeMode = true;
-        this.allQuestions = mistakeQuestions;
+        this.isMistakeMode = true;
+        this.allQuestions = [...mistakeQuestions];
         this.userAnswers = {};
         this.currentFilter = 'all';
+
+        // Xóa tiến độ autosave cũ
+        this.clearAutoSaveProgress();
 
         // Cập nhật Header bài thi
         const headerName = document.getElementById('quiz-header-player-name');
@@ -4531,14 +4564,14 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const modeBadge = document.getElementById('quiz-mode-badge');
         if (modeBadge) {
-            modeBadge.innerHTML = '<i class="fa-solid fa-fire text-amber-300 mr-1 animate-pulse"></i> ĐỀ PHỤC THÙ - THỬ THÁCH SỬA SAI';
-            modeBadge.className = "px-3 py-1 rounded-full text-[11px] font-extrabold uppercase bg-gradient-to-r from-rose-600/30 to-amber-600/30 text-rose-300 border border-rose-500/50 shadow-sm inline-flex items-center";
+            modeBadge.innerHTML = '<i class="fa-solid fa-fire text-amber-300 mr-1.5 animate-pulse"></i> ĐỀ PHỤC THÙ - THỬ THÁCH SỬA SAI';
+            modeBadge.className = "px-3.5 py-1 rounded-full text-xs font-extrabold uppercase bg-gradient-to-r from-rose-600/30 via-orange-600/30 to-pink-600/30 text-rose-300 border border-rose-500/50 shadow-md inline-flex items-center";
             modeBadge.classList.remove('hidden');
         }
 
         const topSubTitle = document.getElementById('quiz-top-subject-title');
         if (topSubTitle) {
-            topSubTitle.textContent = `${this.getSubjectTitle()} (Phục thù)`;
+            topSubTitle.textContent = `${this.getSubjectTitle()} (Phục thù ${mistakeQuestions.length} câu)`;
         }
 
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
@@ -4555,6 +4588,7 @@ Giải thích: Biên độ A = 5 cm.`;
             }).catch(() => {});
         }
 
+        // Chuyển ngay sang màn hình thi và bắt đầu tính giờ
         this.switchScreen('quiz');
         this.observeQuizHeader();
         this.renderAllQuestions();
@@ -4562,7 +4596,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.updateLiveStats();
         this.renderFilterTabs();
 
-        this.showToastNotification(`🔥 Đã nạp ${mistakeQuestions.length} câu hỏi bạn từng làm sai. Hãy tập trung sửa sai 100%!`, 'success');
+        this.showToastNotification(`🔥 Đã mở đề phục thù với ${mistakeQuestions.length} câu làm sai. Hãy tập trung làm lại để nắm vững kiến thức!`, 'success');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -4642,9 +4676,18 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!ok) return;
         this.userAnswers = {};
         this.clearAutoSaveProgress();
-        if (!this.isRevengeMode && this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
+        if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
             this.allQuestions = [...this.fullQuestionsPool];
         }
+        this.isRevengeMode = false;
+        this.isMistakeMode = false;
+        const modeBadge = document.getElementById('quiz-mode-badge');
+        if (modeBadge) {
+            modeBadge.textContent = "Luyện Tập";
+            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block";
+        }
+        const topSubTitle = document.getElementById('quiz-top-subject-title');
+        if (topSubTitle) topSubTitle.textContent = this.getSubjectTitle();
         this.switchScreen('quiz');
         this.renderAllQuestions();
         this.startStopwatch();
