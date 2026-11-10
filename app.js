@@ -665,14 +665,22 @@ class QuizApp {
         return code;
     }
 
-    async copyDeviceMachineCode() {
+    getCombinedDeviceKey() {
         const code = this.getOrCreateDeviceMachineCode();
+        const ip = (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') 
+            ? this.clientIp.trim() 
+            : '';
+        return ip ? `${ip}-${code}` : code;
+    }
+
+    async copyCombinedAuthCode() {
+        const combinedKey = this.getCombinedDeviceKey();
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(code);
+                await navigator.clipboard.writeText(combinedKey);
             } else {
                 const ta = document.createElement('textarea');
-                ta.value = code;
+                ta.value = combinedKey;
                 ta.style.position = 'fixed';
                 ta.style.opacity = '0';
                 document.body.appendChild(ta);
@@ -680,23 +688,33 @@ class QuizApp {
                 document.execCommand('copy');
                 document.body.removeChild(ta);
             }
-            this.showToastNotification(`📋 Đã chép Mã máy: ${code}. Hãy gửi mã này cho Admin qua Zalo/Mess để mở khóa Lớp 5!`, 'success');
+            this.showToastNotification(`📋 Đã chép mã: ${combinedKey}. Hãy gửi mã này cho Admin qua Zalo/Mess để kích hoạt!`, 'success');
         } catch (e) {
-            this.showToastNotification(`Mã thiết bị của bạn là: ${code}`, 'info');
+            this.showToastNotification(`Mã xác thực của bạn: ${combinedKey}`, 'info');
         }
+    }
+
+    async copyDeviceMachineCode() {
+        return this.copyCombinedAuthCode();
     }
 
     async validateUserToken(showToastOnSuccess = false) {
         this.deviceMachineCode = this.getOrCreateDeviceMachineCode();
+        const combinedKey = this.getCombinedDeviceKey();
 
         let matched = null;
         try {
             if (window.dbService && typeof window.dbService.verifyAccessToken === 'function') {
-                // Ưu tiên số 1: Kiểm tra xem Mã Máy của thiết bị này đã được Admin kích hoạt trên Cloud chưa
-                matched = await window.dbService.verifyAccessToken(this.deviceMachineCode);
-
-                // Ưu tiên số 2: Nếu chưa, thử kiểm tra token học sinh nhập tay hoặc qua link (nếu có)
-                if (!matched && this.userToken && this.userToken !== this.deviceMachineCode) {
+                // Ưu tiên số 1: Kiểm tra theo chuỗi kết hợp IP-QM-...
+                if (combinedKey) {
+                    matched = await window.dbService.verifyAccessToken(combinedKey);
+                }
+                // Ưu tiên số 2: Kiểm tra theo mã máy QM-... đơn lẻ
+                if (!matched && this.deviceMachineCode) {
+                    matched = await window.dbService.verifyAccessToken(this.deviceMachineCode);
+                }
+                // Ưu tiên số 3: Kiểm tra token nhập tay / link
+                if (!matched && this.userToken) {
                     matched = await window.dbService.verifyAccessToken(this.userToken);
                 }
             }
@@ -712,9 +730,9 @@ class QuizApp {
 
             if (showToastOnSuccess || (!hadPermissionBefore && this.isInitialValidated)) {
                 const roleDesc = matched.role === 'all' 
-                    ? 'Toàn bộ quyền (Lớp 5 & Trợ lý AI)' 
-                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Môn học Lớp 5');
-                this.showToastNotification(`🎉 Thiết bị (${this.deviceMachineCode}) đã được kích hoạt: ${roleDesc}!`, 'success');
+                    ? 'Toàn bộ gói VIP (Đề nâng cao & Trợ lý AI)' 
+                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Chuyên đề nâng cao');
+                this.showToastNotification(`🎉 Thiết bị (${combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
             }
             this.isInitialValidated = true;
             this.renderHomeGradeTabs();
@@ -727,7 +745,7 @@ class QuizApp {
                 try { localStorage.removeItem('quiz_token_info'); } catch (e) {}
                 this.updateTokenStatusUi();
                 if (showToastOnSuccess) {
-                    this.showToastNotification(`⚠️ Mã máy ${this.deviceMachineCode} chưa được duyệt. Hãy gửi mã này cho Admin.`, 'error');
+                    this.showToastNotification(`⚠️ Mã ${combinedKey} chưa được Admin duyệt. Hãy gửi mã này cho Admin.`, 'error');
                 }
             } else {
                 this.tokenInfo = this.getCachedTokenInfo();
@@ -738,34 +756,43 @@ class QuizApp {
     }
 
     updateTokenStatusUi() {
-        const btnLabel = document.getElementById('token-status-label');
-        const btn = document.getElementById('btn-token-activation');
-        const deviceCodeLabel = document.getElementById('device-code-label');
-        const modalDeviceCode = document.getElementById('modal-device-code-display');
+        const authBtn = document.getElementById('btn-device-auth');
+        const codeLabel = document.getElementById('device-combined-code-label');
+        const statusText = document.getElementById('device-auth-status-text');
+        const statusDot = document.getElementById('auth-status-dot');
+        const modalCombinedCode = document.getElementById('modal-combined-code-display');
         const box = document.getElementById('token-active-status-box');
         const nameEl = document.getElementById('token-user-name');
         const codeEl = document.getElementById('token-code-display');
         const badgesEl = document.getElementById('token-roles-badges');
         const inputField = document.getElementById('token-input-field');
 
-        const deviceCode = this.getOrCreateDeviceMachineCode();
-        if (deviceCodeLabel) {
-            deviceCodeLabel.textContent = `Mã máy: ${deviceCode}`;
+        const combinedCode = this.getCombinedDeviceKey();
+        if (codeLabel) {
+            codeLabel.textContent = combinedCode;
         }
-        if (modalDeviceCode) {
-            modalDeviceCode.textContent = deviceCode;
+        if (modalCombinedCode) {
+            modalCombinedCode.textContent = combinedCode;
         }
 
+        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess();
         const info = this.tokenInfo || this.getCachedTokenInfo();
 
-        if (info && info.token) {
+        if (isAdmin) {
+            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-indigo-400 shrink-0";
+            if (statusText) statusText.innerHTML = '<span class="text-indigo-300 font-bold">👑 Quyền Admin (Xem toàn bộ)</span>';
+            if (authBtn) {
+                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-indigo-500/15 border border-indigo-500/40 text-indigo-200 text-xs font-medium transition cursor-pointer shadow-sm";
+            }
+        } else if (info && info.token) {
             const roleText = info.role === 'all' 
-                ? 'Lớp 5 + AI' 
-                : (info.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
+                ? 'VIP (Nâng cao + AI)' 
+                : (info.role === 'ai' ? 'Trợ lý AI' : 'Đề nâng cao');
 
-            if (btnLabel) btnLabel.textContent = `Đã mở: ${roleText}`;
-            if (btn) {
-                btn.className = "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition cursor-pointer shadow-sm";
+            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-pulse";
+            if (statusText) statusText.innerHTML = `<span class="text-emerald-300 font-bold">✅ Đã mở: ${roleText}</span>`;
+            if (authBtn) {
+                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs font-medium transition cursor-pointer shadow-sm";
             }
             if (box) box.classList.remove('hidden');
             if (nameEl) nameEl.textContent = info.name || 'Học sinh';
@@ -773,7 +800,7 @@ class QuizApp {
             if (badgesEl) {
                 let html = '';
                 if (this.hasTokenRole('grade5')) {
-                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Môn Lớp 5</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Chuyên đề nâng cao</span>';
                 }
                 if (this.hasTokenRole('ai')) {
                     html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 text-purple-300 border border-purple-500/40">✓ Trợ lý AI</span>';
@@ -784,9 +811,10 @@ class QuizApp {
                 inputField.value = info.token;
             }
         } else {
-            if (btnLabel) btnLabel.textContent = 'Trạng thái quyền';
-            if (btn) {
-                btn.className = "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer";
+            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0";
+            if (statusText) statusText.innerHTML = '<span>Chạm để chép</span><i class="fa-regular fa-copy text-xs ml-1"></i>';
+            if (authBtn) {
+                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-500/50 text-slate-300 text-xs font-medium transition cursor-pointer shadow-inner group";
             }
             if (box) box.classList.add('hidden');
         }
@@ -854,12 +882,17 @@ class QuizApp {
     }
 
     canViewGrade5() {
-        // Ưu tiên số 1: Token hợp lệ trên Cloud có quyền grade5 hoặc all
+        // 1. Admin luôn có toàn quyền xem toàn bộ nội dung (kể cả chuyên đề nâng cao)
+        if (this.isAdminAuthenticated || this.hasAdminIpAccess()) {
+            return true;
+        }
+
+        // 2. Học sinh: Kiểm tra theo Token / Mã máy / Chuỗi kết hợp IP-QM-...
         if (this.hasTokenRole('grade5')) {
             return true;
         }
 
-        // Ưu tiên số 2 (Fallback): Whitelist IP chính xác được cấp quyền (không quét tự động dải 104.28.*)
+        // 3. Học sinh: Kiểm tra theo IP Whitelist
         const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         const currentIp = normalizeIp(this.clientIp);
         if (!currentIp || currentIp.startsWith('đang') || currentIp === 'chưa xác định') {
@@ -886,7 +919,7 @@ class QuizApp {
             const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
             const visibility = String(sub.visibility || '').toUpperCase();
             const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || sub.is_public === false;
-            const canViewPrivate = this.isAdminAuthenticated || canViewPrivateByIp || (grade === '5' && canViewGrade5);
+            const canViewPrivate = this.isAdminAuthenticated || this.hasAdminIpAccess() || canViewPrivateByIp || (grade === '5' && canViewGrade5);
             return canViewGrade && (!isPrivate || canViewPrivate);
         });
         console.debug('[QuizApp] Visible subject decision:', {
@@ -932,7 +965,7 @@ class QuizApp {
             const canViewGrade5 = this.canViewGrade5();
             const grades = canViewGrade5 ? ['all', '5', '11'] : ['all', '11'];
             tabs.innerHTML = grades.map((grade) => {
-                    const label = grade === 'all' ? 'Tất cả' : `Lớp ${grade}`;
+                    const label = grade === 'all' ? 'Tất cả' : (grade === '5' ? '🎯 Chuyên đề nâng cao' : `Khối Lớp ${grade}`);
                     const active = activeGrade === grade;
                     return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
                 }).join('');
@@ -1270,14 +1303,16 @@ class QuizApp {
             }
         }
 
-        // Cập nhật nhãn IP hiện tại
+        // Cập nhật nhãn IP hiện tại và mã xác thực thiết bị kết hợp
         const myIpEl = document.getElementById('admin-my-ip-display');
         if (myIpEl) myIpEl.textContent = this.clientIp;
+        this.updateTokenStatusUi();
 
         console.debug('[QuizApp] Detected public IP:', this.clientIp);
 
         // Đồng bộ danh sách IP Admin từ Supabase
         await this.syncAdminIpsConfig();
+        this.updateTokenStatusUi();
     }
 
     async showMyIp() {
@@ -1649,7 +1684,7 @@ class QuizApp {
     }
 
     isAiAllowedForCurrentClient() {
-        if (this.isAdminAuthenticated) {
+        if (this.isAdminAuthenticated || this.hasAdminIpAccess()) {
             console.debug('[QuizApp] AI access granted to authenticated Admin.');
             return true;
         }

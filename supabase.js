@@ -2334,7 +2334,14 @@ class DatabaseService {
         if (!rawToken || typeof rawToken !== 'string') return null;
         const clean = rawToken.trim().toLowerCase();
         const tokens = await this.fetchAccessTokens();
-        const found = tokens.find(t => String(t.token || '').trim().toLowerCase() === clean);
+        const found = tokens.find(t => {
+            const tokenVal = String(t.token || '').trim().toLowerCase();
+            const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
+            if (tokenVal === clean || (rawCodeVal && rawCodeVal === clean)) return true;
+            if (tokenVal.endsWith('-' + clean)) return true;
+            if (clean.endsWith('-' + tokenVal)) return true;
+            return false;
+        });
         return found || null;
     }
 }

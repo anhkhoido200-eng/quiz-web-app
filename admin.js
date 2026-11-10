@@ -2535,15 +2535,15 @@
         tbody.innerHTML = list.map((item) => {
             const role = item.role || 'grade5';
             const roleBadge = role === 'all'
-                ? '<span class="status-badge warning" style="display:inline-flex;align-items:center;gap:4px;"><i class="fa-solid fa-crown"></i> Toàn quyền (Lớp 5 + AI)</span>'
+                ? '<span class="status-badge warning" style="display:inline-flex;align-items:center;gap:4px;"><i class="fa-solid fa-crown"></i> Gói VIP (Nâng cao + AI)</span>'
                 : (role === 'ai' 
                     ? '<span class="status-badge info" style="display:inline-flex;align-items:center;gap:4px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Trợ lý AI</span>' 
-                    : '<span class="status-badge safe" style="display:inline-flex;align-items:center;gap:4px;"><i class="fa-solid fa-graduation-cap"></i> Khối Lớp 5</span>');
+                    : '<span class="status-badge safe" style="display:inline-flex;align-items:center;gap:4px;"><i class="fa-solid fa-graduation-cap"></i> Chuyên đề nâng cao</span>');
 
             const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
             const ipDisplay = item.ip 
                 ? `<code style="font-size:11px;font-weight:600;color:var(--text);background:var(--surface-3);padding:2px 6px;border-radius:4px;">${esc(item.ip)}</code>`
-                : `<span class="muted-copy" style="font-size:11px;"><i class="fa-solid fa-link"></i> Dùng qua Link</span>`;
+                : `<span class="muted-copy" style="font-size:11px;"><i class="fa-solid fa-link"></i> Khóa theo máy</span>`;
 
             return `
                 <tr>
@@ -2558,9 +2558,9 @@
                     <td>${roleBadge}</td>
                     <td>
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                            <code style="font-weight:700;color:var(--primary);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                            <code style="font-weight:700;color:var(--primary);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
                             <button type="button" class="button button-sm button-secondary compact" data-copy-token-link="${esc(item.token)}" data-token-name="${esc(item.name || '')}" style="font-size:11px;padding:4px 9px;">
-                                <i class="fa-solid fa-link"></i> Sao chép link
+                                <i class="fa-solid fa-link"></i> Link dự phòng
                             </button>
                         </div>
                     </td>
@@ -2584,33 +2584,47 @@
         const name = $('student-access-name')?.value.trim();
         if (!name) return notify('Vui lòng nhập tên học sinh / ghi chú.', true);
 
-        const customCode = $('student-access-code')?.value.trim().toUpperCase();
+        const customCode = $('student-access-code')?.value.trim().toUpperCase() || '';
         const role = $('student-access-role')?.value || 'grade5';
-        const rawIp = $('student-access-ip')?.value.trim();
-        const ip = rawIp ? rawIp.replace(/^\[|\]$/g, '').toLowerCase() : '';
+        let rawIp = $('student-access-ip')?.value.trim() || '';
 
-        // Nếu admin dán mã máy học sinh gửi (ví dụ: QM-7F3A9C), dùng luôn mã đó
-        // Nếu để trống, tự sinh mã máy theo vai trò
-        const prefix = role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'QM');
-        const token = customCode || generateRandomToken(prefix);
+        // Tự động tách nếu Admin dán chuỗi kết hợp dạng "14.164.221.205-QM-KM9SZG"
+        let detectedIp = '';
+        let detectedCode = customCode;
+        if (customCode.includes('-QM-') || /^[0-9a-f:.]+-[A-Z0-9_-]+$/i.test(customCode)) {
+            const parts = customCode.split('-');
+            detectedIp = parts[0].trim().toLowerCase();
+            detectedCode = parts.slice(1).join('-').trim();
+            if (!rawIp && detectedIp) {
+                rawIp = detectedIp;
+                if ($('student-access-ip')) $('student-access-ip').value = detectedIp;
+            }
+        }
+
+        const ip = rawIp ? rawIp.replace(/^\[|\]$/g, '').toLowerCase() : '';
+        const token = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'QM'));
+        const combinedToken = (ip && token) ? `${ip}-${token}` : '';
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
 
-        // Kiểm tra xem mã máy / token này đã có trong danh sách chưa
-        const existingIdx = state.tokens.findIndex(t => String(t.token || '').toUpperCase() === token);
+        // Tìm xem token / mã kết hợp đã có trong danh sách chưa
+        const existingIdx = state.tokens.findIndex(t => {
+            const tCode = String(t.token || '').toUpperCase();
+            return tCode === token || (combinedToken && tCode === combinedToken.toUpperCase());
+        });
+
+        const record = {
+            token: combinedToken || token,
+            rawCode: token,
+            role,
+            name,
+            ip: ip || null,
+            createdAt: new Date().toISOString()
+        };
+
         if (existingIdx !== -1) {
-            state.tokens[existingIdx].role = role;
-            state.tokens[existingIdx].name = name;
-            if (ip) state.tokens[existingIdx].ip = ip;
-            state.tokens[existingIdx].updatedAt = new Date().toISOString();
+            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...record, updatedAt: new Date().toISOString() };
         } else {
-            const record = {
-                token,
-                role,
-                name,
-                ip: ip || null,
-                createdAt: new Date().toISOString()
-            };
             state.tokens.unshift(record);
         }
 
@@ -2639,8 +2653,8 @@
 
         renderUnifiedAccess();
 
-        const roleDesc = role === 'all' ? 'Toàn quyền (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : 'Môn Lớp 5');
-        notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${token}" (${name})!`);
+        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Nâng cao + AI)' : (role === 'ai' ? 'Trợ lý AI' : 'Chuyên đề nâng cao');
+        notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${name})!`);
     }
 
     async function addTokenFromForm() {
@@ -2652,7 +2666,7 @@
         const studentName = item?.name || 'học sinh này';
         if (!(await confirmDialog({
             title: 'Thu hồi quyền truy cập?',
-            message: `Bạn có chắc muốn thu hồi toàn bộ quyền của ${studentName} (mã: ${token})?\nHọc sinh sẽ không thể tiếp tục truy cập môn Lớp 5 hoặc AI.`,
+            message: `Bạn có chắc muốn thu hồi toàn bộ quyền của ${studentName} (mã: ${token})?\nHọc sinh sẽ không thể tiếp tục truy cập môn Chuyên đề nâng cao hoặc AI.`,
             confirmText: 'Thu hồi quyền',
             variant: 'danger',
             icon: 'fa-trash-can'
@@ -2707,7 +2721,7 @@
         const choice = await confirmDialog({
             title: `Cấp quyền cho ${name}?`,
             message: `Học sinh: "${name}"\n${deviceCode ? `Mã thiết bị: ${deviceCode}\n` : ''}${ip ? `IP: ${ip}\n` : ''}\nChọn quyền muốn cấp cho học sinh:`,
-            confirmText: 'Cấp quyền Lớp 5',
+            confirmText: 'Cấp Chuyên đề nâng cao',
             cancelText: 'Cấp quyền AI',
             variant: 'primary',
             icon: 'fa-key'
@@ -2748,7 +2762,7 @@
         }
 
         renderUnifiedAccess();
-        notify(`✅ Đã kích hoạt quyền ${role === 'grade5' ? 'Lớp 5' : 'AI'} cho thiết bị "${token}" (${name})!`);
+        notify(`✅ Đã kích hoạt quyền ${role === 'grade5' ? 'Chuyên đề nâng cao' : 'AI'} cho thiết bị "${token}" (${name})!`);
     }
 
     async function addAdminIp() { const ip = $('admin-ip-input')?.value.trim(); if (!ip) return notify('Nhập IP cần cấp quyền.', true); const found = state.adminConfig.allowedIps.find((item) => (typeof item === 'string' ? item : item.ip) === ip); if (!found) state.adminConfig.allowedIps.push({ ip, name: $('admin-ip-name')?.value.trim() || 'Admin', addedAt: new Date().toISOString() }); await saveAdminConfig(); $('admin-ip-input').value = ''; $('admin-ip-name').value = ''; renderAccess(); notify('Đã cấp quyền Admin cho IP.'); }
@@ -2788,20 +2802,20 @@
     }
 
     async function loadGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: (data.ips || []).map(normalizeIp).filter(Boolean), grade5Ips: (data.grade5Ips || data.grade5_ips || []).map(normalizeIp).filter(Boolean) }; console.debug('[Quiz Studio Admin] Loaded Grade 5 access config:', { stateGeo: state.geo, raw: data }); } catch (error) { console.warn('[Quiz Studio Admin] Invalid Grade 5 access config:', error.message); } } ensureClass5AccessPanel(); renderGeo(); }
-    function renderGeo() { ensureClass5AccessPanel(); $('geo-mode-badge') && ($('geo-mode-badge').textContent = state.geo.mode); document.querySelectorAll('[data-geo-mode]').forEach((button) => button.classList.toggle('is-active', button.dataset.geoMode === state.geo.mode)); $('geo-ip-list') && ($('geo-ip-list').innerHTML = state.geo.ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-location-dot"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép truy cập Địa lý</small></span><button data-remove-geo="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Danh sách IP trống.</p>'); const class5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; $('class5-ip-count') && ($('class5-ip-count').textContent = `${class5Ips.length} IP`); $('class5-ip-list') && ($('class5-ip-list').innerHTML = class5Ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép xem Lớp 5</small></span><button data-remove-class5="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa cấp quyền cho IP nào.</p>'); }
+    function renderGeo() { ensureClass5AccessPanel(); $('geo-mode-badge') && ($('geo-mode-badge').textContent = state.geo.mode); document.querySelectorAll('[data-geo-mode]').forEach((button) => button.classList.toggle('is-active', button.dataset.geoMode === state.geo.mode)); $('geo-ip-list') && ($('geo-ip-list').innerHTML = state.geo.ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-location-dot"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép truy cập Địa lý</small></span><button data-remove-geo="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Danh sách IP trống.</p>'); const class5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; $('class5-ip-count') && ($('class5-ip-count').textContent = `${class5Ips.length} IP`); $('class5-ip-list') && ($('class5-ip-list').innerHTML = class5Ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép xem Chuyên đề nâng cao</small></span><button data-remove-class5="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa cấp quyền cho IP nào.</p>'); }
     async function saveGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const payload = { mode: state.geo.mode, ips: [...new Set((state.geo.ips || []).map(normalizeIp).filter(Boolean))], grade5Ips: [...new Set((state.geo.grade5Ips || []).map(normalizeIp).filter(Boolean))] }; state.geo = { ...state.geo, ...payload }; console.debug('[Quiz Studio Admin] Saving Grade 5 access config:', payload); const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.geo, player_name: '__ALLOWED_GEO_IPS__', ip_address: 'SYSTEM', device_info: state.geo.mode, status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; renderGeo(); }
     async function addClass5Ip(ip) {
         const cleanIp = String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
-        if (!cleanIp) return notify('Nhập IP máy cần cấp quyền Lớp 5.', true);
+        if (!cleanIp) return notify('Nhập IP máy cần cấp quyền Chuyên đề nâng cao.', true);
         state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
         if (!state.geo.grade5Ips.includes(cleanIp)) state.geo.grade5Ips.push(cleanIp);
         await saveGeo();
 
-        const autoToken = generateRandomToken('GRADE5');
+        const autoToken = generateRandomToken('ADVANCED');
         state.tokens.unshift({
             token: autoToken,
             role: 'grade5',
-            name: `Học sinh Lớp 5 (${cleanIp})`,
+            name: `Học sinh Đề nâng cao (${cleanIp})`,
             ip: cleanIp,
             createdAt: new Date().toISOString()
         });
@@ -2809,9 +2823,9 @@
         const link = getStudentActivationLink(autoToken);
         await copyToClipboard(link);
 
-        notify(`Đã cấp quyền Lớp 5 cho IP ${cleanIp} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
+        notify(`Đã cấp quyền Chuyên đề nâng cao cho IP ${cleanIp} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
     }
-    async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
+    async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Chuyên đề nâng cao của IP ${ip}.`); }
 
     function renderSubjectCatalog() {
         const subjects = mergeSubjectCatalog(state.subjects);

@@ -224,8 +224,8 @@
                             <div class="panel-title">
                                 <div>
                                     <p class="eyebrow">STUDENT ACCESS HUB</p>
-                                    <h2>Quản lý phân quyền học sinh (Mã máy thiết bị &amp; IP) <span id="unified-student-count" class="heading-count">0</span></h2>
-                                    <p class="muted-copy">Kích hoạt quyền theo Mã máy thiết bị (học sinh gửi mã QM-..., không chia sẻ được cho máy khác) hoặc IP cố định.</p>
+                                    <h2>Quản lý phân quyền học sinh (Mã xác thực IP-QM &amp; Token) <span id="unified-student-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Kích hoạt quyền theo Mã xác thực kết hợp (học sinh gửi mã 14.164...-QM-..., vừa khóa IP vừa khóa mã máy).</p>
                                 </div>
                                 <i class="fa-solid fa-users-gear" style="color:var(--primary);font-size:20px;"></i>
                             </div>
@@ -234,26 +234,26 @@
                                 <label>Tên học sinh / Ghi chú <span style="color:var(--red)">*</span>
                                     <input id="student-access-name" placeholder="Ví dụ: Khôi, Bảo Trâm 5A..." required>
                                 </label>
-                                <label>Mã máy học sinh gửi (Mã QM-... / Token) <span style="color:var(--red)">*</span>
-                                    <input id="student-access-code" placeholder="Dán mã máy học sinh gửi (VD: QM-7F3A9C) hoặc để trống tự sinh" style="font-family:monospace;font-weight:700;">
+                                <label>Mã xác thực học sinh gửi (IP-QM-... hoặc Token) <span style="color:var(--red)">*</span>
+                                    <input id="student-access-code" placeholder="Dán mã học sinh gửi (VD: 14.164.221.205-QM-KM9SZG)" style="font-family:monospace;font-weight:700;">
                                 </label>
                                 <label>Quyền hạn cấp <span style="color:var(--red)">*</span>
                                     <select id="student-access-role">
-                                        <option value="grade5">🎯 Môn Lớp 5 (Xem &amp; làm bài Lớp 5)</option>
+                                        <option value="grade5">🎯 Chuyên đề nâng cao (Kho đề mở rộng)</option>
                                         <option value="ai">🤖 Trợ lý AI (Giải thích chi tiết &amp; hướng dẫn)</option>
-                                        <option value="all">👑 Toàn bộ quyền (Cả Lớp 5 + Trợ lý AI)</option>
+                                        <option value="all">👑 Toàn bộ quyền (Đề nâng cao + Trợ lý AI)</option>
                                     </select>
                                 </label>
-                                <label>Địa chỉ IP (Tùy chọn)
+                                <label>Địa chỉ IP (Tự động điền nếu mã có IP)
                                     <div style="display:flex;gap:6px;">
-                                        <input id="student-access-ip" placeholder="Ví dụ: 14.164.221.205 (tùy chọn)">
+                                        <input id="student-access-ip" placeholder="Tự động nhận diện từ mã xác thực">
                                         <button id="btn-fill-current-ip" class="button button-secondary compact" type="button" title="Lấy IP thiết bị này"><i class="fa-solid fa-location-crosshairs"></i></button>
                                     </div>
                                 </label>
                             </div>
 
                             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-                                <span class="muted-copy" style="font-size:12px;"><i class="fa-solid fa-shield-halved" style="color:var(--emerald);"></i> Bảo mật thiết bị: Mỗi mã máy gắn chặt với trình duyệt của học sinh đó, không thể gửi sang máy khác dùng ké.</span>
+                                <span class="muted-copy" style="font-size:12px;"><i class="fa-solid fa-shield-halved" style="color:var(--emerald);"></i> Bảo mật Dual-Auth: Vừa xác thực IP mạng, vừa khóa mã máy thiết bị chống chia sẻ.</span>
                                 <button id="btn-grant-student-access" class="button button-primary" type="button">
                                     <i class="fa-solid fa-bolt"></i> Kích hoạt quyền cho thiết bị
                                 </button>
