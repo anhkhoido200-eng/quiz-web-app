@@ -3632,7 +3632,7 @@ Giải thích: Biên độ A = 5 cm.`;
         // Khởi tạo bài thi trên Cloud Supabase ở nền; không bắt học sinh chờ
         // truy vấn lookup + insert/update trước khi nhìn thấy câu hỏi.
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
-            window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle())
+            window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle(), "[Bắt đầu làm bài]", this.currentLoginId)
                 .then((res) => {
                     const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
                     if (loginId) {
@@ -4487,7 +4487,7 @@ Giải thích: Biên độ A = 5 cm.`;
         }
         const name = this.playerName || (document.getElementById('player-name-input')?.value || '').trim() || 'Khách truy cập';
         try {
-            const res = await window.dbService.recordLogin(name, this.clientIp, this.deviceInfo, statusText);
+            const res = await window.dbService.recordLogin(name, this.clientIp, this.deviceInfo, statusText, "", this.currentLoginId);
             const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
             if (loginId) {
                 this.currentLoginId = loginId;

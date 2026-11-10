@@ -20,7 +20,13 @@
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
-        importIntegrity: { valid: true, errors: [] }
+        importIntegrity: { valid: true, errors: [] },
+        activityLogs: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_admin_activity_logs') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })()
     };
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -260,8 +266,131 @@
     function setConnection(ready, message) {
         const el = $('connection-status');
         if (!el) return;
-        el.className = `connection-status${ready ? ' is-ready' : ''}`;
+        el.className = `connection-status${ready ? ' is-ready' : ' is-offline'}`;
         el.innerHTML = `<i class="fa-solid ${ready ? 'fa-cloud-check' : 'fa-triangle-exclamation'}"></i> ${esc(message)}`;
+    }
+
+    function maskIpAddress(ip) {
+        const clean = String(ip || '').trim();
+        if (!clean || clean === 'Chưa xác định' || clean === 'Không xác định IP') return 'Không xác định IP';
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(clean)) {
+            const parts = clean.split('.');
+            return `${parts[0]}.${parts[1]}.***.***`;
+        }
+        if (clean.includes(':')) {
+            const parts = clean.split(':').filter(Boolean);
+            return parts.length >= 2 ? `${parts[0]}:${parts[1]}:****:****` : `${clean.slice(0, 6)}****`;
+        }
+        return clean.length > 6 ? `${clean.slice(0, 6)}.***.***` : clean;
+    }
+
+    async function copyAdminIp() {
+        const fullIp = state.clientIp || $('current-ip')?.dataset.fullIp || '';
+        if (!fullIp || fullIp === 'Không xác định IP' || fullIp === 'Chưa xác định') {
+            return notify('Chưa nhận diện được địa chỉ IP để sao chép.', true);
+        }
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(fullIp);
+            } else {
+                const temp = document.createElement('textarea');
+                temp.value = fullIp;
+                temp.style.position = 'fixed';
+                temp.style.opacity = '0';
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                temp.remove();
+            }
+            const btn = $('copy-admin-ip');
+            if (btn) {
+                btn.classList.add('is-copied');
+                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                clearTimeout(copyAdminIp.timer);
+                copyAdminIp.timer = setTimeout(() => {
+                    btn.classList.remove('is-copied');
+                    btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+                }, 1800);
+            }
+            notify(`Đã sao chép IP đầy đủ (${fullIp}) vào clipboard.`);
+        } catch (error) {
+            notify('Không thể sao chép địa chỉ IP.', true);
+        }
+    }
+
+    function updateHealthStatus(type, stateMode, badgeLabel, detailText) {
+        const isDb = type === 'db';
+        const badge = $(isDb ? 'health-database-badge' : 'health-content-badge');
+        const detail = $(isDb ? 'health-database' : 'health-content');
+        if (detail && detailText) detail.textContent = detailText;
+        if (!badge) return;
+        badge.classList.remove('pending', 'safe', 'danger', 'is-checking');
+        if (stateMode === 'checking') {
+            badge.classList.add('pending', 'is-checking');
+            badge.innerHTML = `<i class="fa-solid fa-arrows-rotate is-spinning"></i> <span>${esc(badgeLabel || 'Đang kiểm tra')}</span>`;
+        } else if (stateMode === 'safe') {
+            badge.classList.add('safe');
+            badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>${esc(badgeLabel || 'Đã kết nối')}</span> <i class="fa-solid fa-arrows-rotate health-recheck-icon"></i>`;
+        } else {
+            badge.classList.add('danger');
+            badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>${esc(badgeLabel || 'Mất kết nối')}</span> <span class="health-retry-tag"><i class="fa-solid fa-arrows-rotate"></i> Thử lại</span>`;
+        }
+    }
+
+    async function recheckSystemHealth() {
+        updateHealthStatus('db', 'checking', 'Đang kiểm tra', 'Đang kết nối lại với Supabase...');
+        updateHealthStatus('content', 'checking', 'Đang đồng bộ', 'Đang tải lại ngân hàng câu hỏi...');
+        try {
+            await Promise.all([loadSubjects(), loadQuestions(), loadMaintenance()]);
+            notify('Đã kiểm tra kết nối và đồng bộ dữ liệu thành công.');
+        } catch (error) {
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
+            updateHealthStatus('content', 'danger', 'Lỗi tải', 'Chưa thể đồng bộ dữ liệu câu hỏi.');
+            notify(`Kiểm tra kết nối thất bại: ${error.message}`, true);
+        }
+    }
+
+    function addActivityLog(action, detail = '', category = 'info') {
+        const cleanAction = String(action || '').trim();
+        if (!cleanAction) return;
+        const entry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            action: cleanAction,
+            detail: String(detail || '').trim(),
+            category: String(category || 'info'),
+            timestamp: new Date().toISOString()
+        };
+        if (!Array.isArray(state.activityLogs)) state.activityLogs = [];
+        state.activityLogs.unshift(entry);
+        if (state.activityLogs.length > 25) state.activityLogs = state.activityLogs.slice(0, 25);
+        try {
+            localStorage.setItem('quiz_admin_activity_logs', JSON.stringify(state.activityLogs));
+        } catch (e) {}
+        renderRecentActivity();
+    }
+    window.addActivityLog = addActivityLog;
+
+    function navigateToLibraryByGrade(grade) {
+        const targetGrade = ['5', '11', 'all'].includes(String(grade)) ? String(grade) : 'all';
+        state.grade = targetGrade;
+        state.subject = 'all';
+        document.querySelectorAll('.grade-filter').forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.grade === targetGrade);
+        });
+        fillLibrarySubjects();
+        renderLibrary();
+        switchView('questions');
+        requestAnimationFrame(() => {
+            const target = $('content-library-section') || document.querySelector('.library-panel');
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.classList.remove('is-focus-pulse');
+                void target.offsetWidth;
+                target.classList.add('is-focus-pulse');
+                clearTimeout(navigateToLibraryByGrade.timer);
+                navigateToLibraryByGrade.timer = setTimeout(() => target.classList.remove('is-focus-pulse'), 1400);
+            }
+        });
     }
 
     async function getClientIp() {
@@ -297,7 +426,10 @@
 
     async function isCurrentIpAllowed() {
         state.clientIp = await getClientIp();
-        if ($('current-ip')) $('current-ip').textContent = state.clientIp || 'Không xác định IP';
+        if ($('current-ip')) {
+            $('current-ip').textContent = maskIpAddress(state.clientIp);
+            $('current-ip').dataset.fullIp = state.clientIp || '';
+        }
         if ($('access-current-ip')) $('access-current-ip').textContent = state.clientIp || 'Không xác định IP';
         const row = await systemRow(SYSTEM.admin);
         if (!row) return false;
@@ -525,21 +657,20 @@
 
     async function loadQuestions() {
         try {
+            if (!navigator.onLine) throw new Error('Thiết bị đang ngoại tuyến (Offline)');
             const { data, error } = await state.client.from('quiz_questions').select('*').order('id', { ascending: true });
             if (error) throw error;
             state.questions = (data || []).map(normalizeRow);
-            setConnection(true, 'Đã đồng bộ');
+            setConnection(true, 'Đã kết nối');
             $('last-sync') && ($('last-sync').textContent = `Đồng bộ lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
             renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
-            $('health-database') && ($('health-database').textContent = 'Supabase đang hoạt động');
-            $('health-database-badge') && ($('health-database-badge').textContent = 'Ổn định');
-            $('health-database-badge')?.classList.replace('pending', 'safe');
-            $('health-content') && ($('health-content').textContent = `${state.questions.length} câu hỏi đã tải`);
-            $('health-content-badge') && ($('health-content-badge').textContent = 'Đã tải');
-            $('health-content-badge')?.classList.replace('pending', 'safe');
+            updateHealthStatus('db', 'safe', 'Đã kết nối', 'Supabase đang hoạt động ổn định');
+            updateHealthStatus('content', 'safe', 'Đã đồng bộ', `${state.questions.length} câu hỏi · ${state.subjects.length} môn học`);
             await syncSubjectQuestionCounts();
         } catch (error) {
-            setConnection(false, 'Không thể kết nối');
+            setConnection(false, 'Mất kết nối');
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
+            updateHealthStatus('content', 'danger', 'Lỗi tải', 'Chưa thể đồng bộ dữ liệu câu hỏi.');
             notify(`Lỗi tải câu hỏi: ${error.message}`, true);
         }
     }
@@ -627,19 +758,45 @@
     function renderRecentActivity() {
         const list = $('recent-activity');
         if (!list) return;
-        const rows = state.questions.slice(-5).reverse();
-        const safeSnippet = (rawQuestion) => {
-            const raw = notationText(rawQuestion).replace(/\s+/g, ' ').trim();
-            if (raw.length <= 95) return htmlText(raw);
-            let cut = raw.slice(0, 95);
-            const dollarCount = (cut.match(/(?<!\\)\$/g) || []).length;
-            if (dollarCount % 2 !== 0) {
-                const lastDollar = cut.lastIndexOf('$');
-                if (lastDollar >= 0) cut = cut.slice(0, lastDollar).trim();
-            }
-            return `${htmlText(cut)}...`;
+        const logs = Array.isArray(state.activityLogs) ? state.activityLogs : [];
+        if (!logs.length) {
+            list.innerHTML = `
+                <div class="activity-empty-state">
+                    <span class="activity-empty-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                    <h3>Chưa có hoạt động mới</h3>
+                    <p>Các thao tác cập nhật câu hỏi, đổi bảo trì hoặc phát thông báo sẽ hiển thị tại đây</p>
+                </div>
+            `;
+            return;
+        }
+        const iconForLog = (item) => {
+            const act = String(item.action || '').toLowerCase();
+            const cat = String(item.category || '').toLowerCase();
+            if (cat === 'danger' || act.includes('xóa') || act.includes('chặn')) return { icon: 'fa-trash-can', tone: 'danger' };
+            if (cat === 'maintenance' || act.includes('bảo trì') || act.includes('khóa web')) return { icon: 'fa-shield-halved', tone: 'warning' };
+            if (cat === 'broadcast' || act.includes('thông báo')) return { icon: 'fa-bullhorn', tone: 'green' };
+            if (cat === 'import' || act.includes('nạp')) return { icon: 'fa-file-import', tone: 'cyan' };
+            return { icon: 'fa-file-pen', tone: 'purple' };
         };
-        list.innerHTML = rows.length ? rows.map((q) => `<div class="activity-item"><i class="fa-solid ${q.qType === 'tf_group' ? 'fa-list-check' : q.qType === 'short_answer' ? 'fa-keyboard' : 'fa-list-radio'}"></i><span><b>${esc(TYPE_LABELS[q.qType] || 'Câu hỏi')} · ${esc(subjectName(q.subject_key))}</b><small>${safeSnippet(q.question)}</small></span></div>`).join('') : '<div class="empty-state"><p>Chưa có hoạt động.</p></div>';
+        const formatLogTime = (iso) => {
+            if (!iso) return 'Vừa xong';
+            const date = new Date(iso);
+            if (Number.isNaN(date.getTime())) return 'Vừa xong';
+            return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        };
+        list.innerHTML = logs.slice(0, 6).map((item) => {
+            const meta = iconForLog(item);
+            return `
+                <div class="activity-item">
+                    <i class="fa-solid ${meta.icon} activity-icon-${meta.tone}"></i>
+                    <span class="activity-main">
+                        <b>${esc(item.action)}</b>
+                        <small>${htmlText(item.detail || 'Thao tác quản trị hệ thống')}</small>
+                    </span>
+                    <time class="activity-time">${esc(formatLogTime(item.timestamp))}</time>
+                </div>
+            `;
+        }).join('');
         renderMath(list);
     }
 
@@ -721,19 +878,31 @@
         const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && q.correct_value.length > 0));
         if (!valid) return notify('Vui lòng nhập đủ nội dung theo loại câu hỏi.', true);
         try {
+            const isEditing = Boolean(state.editingId);
             const recordId = state.editingId || await nextQuestionId();
             const record = toRecord(q, q.subject_key, recordId);
             const { error } = await state.client.from('quiz_questions').upsert(record, { onConflict: 'id' }).select();
             if (error) throw error;
-            notify(state.editingId ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.');
+            addActivityLog(
+                isEditing ? `Cập nhật câu hỏi #${recordId}` : `Thêm câu hỏi mới #${recordId}`,
+                `${subjectName(q.subject_key)} · ${TYPE_LABELS[q.q_type] || q.q_type}`,
+                'question'
+            );
+            notify(isEditing ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.');
             resetForm(); await loadQuestions();
         } catch (error) { notify(`Không thể lưu: ${error.message}`, true); }
     }
 
     async function deleteQuestion(id) {
         if (!(await confirmDialog({ title: `Xóa câu hỏi #${id}?`, message: `Xóa câu hỏi #${id}? Hành động này không thể hoàn tác.`, confirmText: 'Xóa câu hỏi', variant: 'danger' }))) return;
+        const targetQ = state.questions.find((item) => String(item.id) === String(id));
         const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
         if (error) return notify(`Không thể xóa: ${error.message}`, true);
+        addActivityLog(
+            `Xóa câu hỏi #${id}`,
+            targetQ ? `Môn ${subjectName(targetQ.subject_key)}` : 'Đã xóa khỏi ngân hàng câu hỏi',
+            'danger'
+        );
         notify('Đã xóa câu hỏi.'); if (String(state.editingId) === String(id)) resetForm(); await loadQuestions();
     }
 
@@ -747,6 +916,7 @@
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu chưa xóa.`);
             state.questions = [];
+            addActivityLog('Xóa toàn bộ câu hỏi', `Đã dọn sạch ${total} câu hỏi trong hệ thống`, 'danger');
             notify(`Đã xóa toàn bộ ${total} câu hỏi.`);
             renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
             await syncSubjectQuestionCounts();
@@ -769,6 +939,7 @@
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu hỏi chưa xóa được.`);
             try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            addActivityLog(`Xóa đề môn ${name}`, `Đã xóa ${currentCount} câu hỏi thuộc môn ${name}`, 'danger');
             notify(`Đã xóa toàn bộ câu hỏi của môn ${name}.`);
             await loadQuestions();
         } catch (error) {
@@ -1029,6 +1200,7 @@
                 throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu ở môn ${selectedSubject}.`);
             }
             console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, cloudCount: verifiedCount });
+            addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import');
             notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
              sessionStorage.removeItem('quiz_import_draft');
              closeModal('import-modal'); await loadQuestions();
@@ -1175,25 +1347,92 @@
 
     async function loadMaintenance() {
         const row = await systemRow(SYSTEM.maintenance);
-        if (row) state.maintenance = { isActive: row.status === 'ACTIVE' || row.device_info === 'ON', message: row.score_summary || 'Website đang mở công khai cho học sinh.' };
-        const active = state.maintenance.isActive;
+        const defaultLockedMsg = 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        if (row) {
+            state.maintenance = {
+                isActive: row.status === 'ACTIVE' || row.device_info === 'ON',
+                message: row.score_summary || defaultLockedMsg
+            };
+        }
+        const active = Boolean(state.maintenance.isActive);
+        const rawMsg = String(state.maintenance.message || '').trim();
+        const studentPreviewMsg = (!rawMsg || rawMsg === 'Website đang mở công khai cho học sinh.' || rawMsg === 'Website đang mở.')
+            ? defaultLockedMsg
+            : rawMsg;
+
         if ($('maintenance-toggle')) $('maintenance-toggle').checked = active;
-        if ($('maintenance-badge')) { $('maintenance-badge').textContent = active ? 'ĐANG BẬT' : 'ĐANG TẮT'; $('maintenance-badge').className = `status-badge ${active ? 'danger' : 'safe'}`; }
-        if ($('maintenance-copy')) $('maintenance-copy').textContent = state.maintenance.message;
+        $('maintenance-panel')?.classList.toggle('is-locked', active);
+        $('sidebar-maintenance-mini')?.classList.toggle('is-active', active);
+        if ($('maintenance-toggle-label')) {
+            $('maintenance-toggle-label').textContent = active ? 'Đang khóa Web' : 'Khóa Web';
+            $('maintenance-toggle-label').classList.toggle('is-active', active);
+        }
+        if ($('maintenance-badge')) {
+            $('maintenance-badge').textContent = active ? 'ĐANG BẬT' : 'ĐANG TẮT';
+            $('maintenance-badge').className = `status-badge ${active ? 'danger is-pulsing' : 'safe'}`;
+        }
+        if ($('maintenance-copy')) {
+            $('maintenance-copy').textContent = active
+                ? 'Hệ thống đang tạm khóa — học sinh truy cập sẽ nhận được thông báo bảo trì.'
+                : 'Trang web đang mở công khai cho học sinh làm bài bình thường.';
+        }
+        if ($('maintenance-message-preview')) {
+            $('maintenance-message-preview').textContent = studentPreviewMsg;
+        }
         if ($('health-maintenance')) $('health-maintenance').textContent = active ? 'Website đang tạm khóa' : 'Website đang mở';
-        if ($('health-maintenance-badge')) { $('health-maintenance-badge').textContent = active ? 'Bật' : 'Tắt'; $('health-maintenance-badge').className = `status-badge ${active ? 'danger' : 'safe'}`; }
-        $('maintenance-dot')?.classList.toggle('is-active', active); $('maintenance-mini-label') && ($('maintenance-mini-label').textContent = active ? 'Đang bảo trì' : 'Hệ thống đang mở'); $('maintenance-mini-message') && ($('maintenance-mini-message').textContent = active ? state.maintenance.message : 'Sẵn sàng phục vụ học sinh');
+        if ($('health-maintenance-badge')) {
+            $('health-maintenance-badge').textContent = active ? 'Đang khóa' : 'Tắt';
+            $('health-maintenance-badge').className = `status-badge ${active ? 'danger' : 'safe'}`;
+        }
+        $('maintenance-dot')?.classList.toggle('is-active', active);
+        $('maintenance-mini-label') && ($('maintenance-mini-label').textContent = active ? 'Đang bảo trì' : 'Hệ thống đang mở');
+        $('maintenance-mini-message') && ($('maintenance-mini-message').textContent = active ? studentPreviewMsg : 'Sẵn sàng phục vụ học sinh');
     }
 
-    async function toggleMaintenance() {
-        const active = Boolean($('maintenance-toggle')?.checked); let message = state.maintenance.message;
-        if (active && !message) {
-            const prompted = await promptDialog({ title: 'Lời nhắn khi bảo trì', eyebrow: 'MAINTENANCE MODE', message: 'Nhập nội dung thông báo hiển thị cho học sinh khi hệ thống tạm khóa:', defaultValue: 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!', confirmText: 'Bật bảo trì', icon: 'fa-screwdriver-wrench' });
-            message = (prompted && prompted.trim()) ? prompted.trim() : 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+    async function toggleMaintenance(customActionNote = '') {
+        const active = Boolean($('maintenance-toggle')?.checked);
+        const defaultLockedMsg = 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        let message = String(state.maintenance.message || '').trim();
+        if (!message || message === 'Website đang mở công khai cho học sinh.' || message === 'Website đang mở.') {
+            message = defaultLockedMsg;
         }
-        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.maintenance, player_name: '__SYSTEM_MAINTENANCE__', ip_address: 'SYSTEM', device_info: active ? 'ON' : 'OFF', status: active ? 'ACTIVE' : 'INACTIVE', score_summary: message || 'Website đang mở.', last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (active && !rowHasCustomMessage(message) && !customActionNote) {
+            const prompted = await promptDialog({
+                title: 'Lời nhắn khi bảo trì',
+                eyebrow: 'MAINTENANCE MODE',
+                message: 'Nhập nội dung thông báo hiển thị cho học sinh khi hệ thống tạm khóa:',
+                defaultValue: message,
+                confirmText: 'Bật bảo trì',
+                icon: 'fa-screwdriver-wrench'
+            });
+            if (prompted === null) {
+                if ($('maintenance-toggle')) $('maintenance-toggle').checked = false;
+                return;
+            }
+            message = prompted.trim() || defaultLockedMsg;
+        }
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.maintenance,
+            player_name: '__SYSTEM_MAINTENANCE__',
+            ip_address: 'SYSTEM',
+            device_info: active ? 'ON' : 'OFF',
+            status: active ? 'ACTIVE' : 'INACTIVE',
+            score_summary: message,
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
         if (error) return notify(error.message, true);
-        state.maintenance = { isActive: active, message }; await loadMaintenance(); notify(active ? 'Đã bật chế độ bảo trì.' : 'Đã mở lại website.');
+        state.maintenance = { isActive: active, message };
+        await loadMaintenance();
+        addActivityLog(
+            customActionNote || (active ? 'Bật chế độ Khóa Web (Bảo trì)' : 'Tắt chế độ bảo trì (Mở Web)'),
+            `Lời nhắn: "${message}"`,
+            'maintenance'
+        );
+        notify(customActionNote ? 'Đã cập nhật lời nhắn bảo trì.' : (active ? 'Đã bật chế độ bảo trì.' : 'Đã mở lại website.'));
+    }
+
+    function rowHasCustomMessage(msg) {
+        return Boolean(msg && msg !== 'Website đang mở công khai cho học sinh.' && msg !== 'Website đang mở.');
     }
 
     async function loadAccess() {
@@ -1386,8 +1625,10 @@
         if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject };
         else state.subjects.push(subject);
         try {
+            const isEditingSub = Boolean(state.subjectEditingKey);
             await saveSubjects();
             closeSubjectDialog();
+            addActivityLog(isEditingSub ? `Cập nhật môn ${name}` : `Tạo môn học mới: ${name}`, `Mã: ${key} · Khối Lớp ${subject.grade}`, 'subject');
             notify('Đã lưu môn học.');
         } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
     }
@@ -1405,6 +1646,7 @@
             state.subjects = previousSubjects.filter((item) => item.key !== key);
             await saveSubjects();
             try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            addActivityLog(`Xóa môn học ${key}`, 'Đã xóa môn học và toàn bộ câu hỏi liên quan', 'danger');
             notify(`Đã xóa môn ${key} và toàn bộ ngân hàng câu hỏi.`);
             await loadQuestions();
         } catch (error) {
@@ -1582,6 +1824,7 @@
         });
         if (error) return notify(`Không thể phát thông báo: ${error.message}`, true);
         if ($('notice-input')) $('notice-input').value = '';
+        addActivityLog('Phát thông báo toàn phòng', message, 'broadcast');
         notify('Đã phát thông báo tới toàn bộ học sinh.');
     }
     async function sendPrivateNotice(ip, name = 'Học sinh') {
@@ -1623,6 +1866,7 @@
             last_active: nowIso
         });
         if (error) return notify(`Không thể gửi thông báo riêng: ${error.message}`, true);
+        addActivityLog(`Gửi thông báo riêng (${cleanName})`, cleanMsg, 'broadcast');
         notify(`Đã gửi thông báo riêng tới ${cleanName}.`);
     }
     async function clearStudentLogins() {
@@ -1757,6 +2001,15 @@
         }
     }
 
+    function syncThemeIcon() {
+        const isDark = document.body.classList.contains('dark');
+        const toggle = $('theme-toggle');
+        if (toggle) {
+            toggle.innerHTML = `<i class="fa-solid ${isDark ? 'fa-sun' : 'fa-moon'}"></i>`;
+            toggle.title = isDark ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối';
+        }
+    }
+
     function bindEvents() {
         if (state.bound) return; state.bound = true;
         mergeContentLibraryView();
@@ -1765,8 +2018,52 @@
         document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
         document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
         $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
-        $('theme-toggle')?.addEventListener('click', () => { document.body.classList.toggle('dark'); localStorage.setItem('quiz_admin_dark', document.body.classList.contains('dark') ? 'true' : 'false'); });
-         $('refresh-button')?.addEventListener('click', () => Promise.all([loadSubjects(), loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()])); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
+        $('theme-toggle')?.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+            localStorage.setItem('quiz_admin_dark', document.body.classList.contains('dark') ? 'true' : 'false');
+            syncThemeIcon();
+        });
+        $('copy-admin-ip')?.addEventListener('click', () => runAction(copyAdminIp));
+        $('health-database-badge')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('health-content-badge')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('clear-activity-log')?.addEventListener('click', () => {
+            state.activityLogs = [];
+            try { localStorage.removeItem('quiz_admin_activity_logs'); } catch (e) {}
+            renderRecentActivity();
+            notify('Đã xóa lịch sử hoạt động gần đây.');
+        });
+        document.querySelectorAll('[data-metric-grade]').forEach((card) => {
+            card.addEventListener('click', () => navigateToLibraryByGrade(card.dataset.metricGrade));
+            card.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    navigateToLibraryByGrade(card.dataset.metricGrade);
+                }
+            });
+        });
+        document.querySelectorAll('[data-metric-view]').forEach((card) => {
+            const goMonitor = () => {
+                switchView(card.dataset.metricView);
+                requestAnimationFrame(() => {
+                    $('students-body')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            };
+            card.addEventListener('click', goMonitor);
+            card.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    goMonitor();
+                }
+            });
+        });
+        window.addEventListener('offline', () => {
+            setConnection(false, 'Mất kết nối');
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Thiết bị vừa mất kết nối mạng. Bấm để thử lại.');
+        });
+        window.addEventListener('online', () => {
+            recheckSystemHealth();
+        });
+        $('refresh-button')?.addEventListener('click', () => runAction(recheckSystemHealth)); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
         $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
         $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
         $('question-form')?.addEventListener('input', (event) => {
@@ -1784,7 +2081,27 @@
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
-        $('maintenance-toggle')?.addEventListener('change', () => runAction(toggleMaintenance)); $('edit-maintenance')?.addEventListener('click', async () => { const message = await promptDialog({ title: 'Đổi lời nhắn bảo trì', eyebrow: 'MAINTENANCE MESSAGE', message: 'Nhập nội dung hiển thị cho học sinh khi hệ thống tạm khóa:', defaultValue: state.maintenance.message, confirmText: 'Lưu lời nhắn', variant: 'primary', icon: 'fa-screwdriver-wrench' }); if (message !== null && message.trim()) { state.maintenance.message = message.trim(); runAction(toggleMaintenance); } });
+        $('maintenance-toggle')?.addEventListener('change', () => runAction(() => toggleMaintenance()));
+        const openEditMaintenancePrompt = async () => {
+            const currentMsg = (state.maintenance.message && state.maintenance.message !== 'Website đang mở công khai cho học sinh.' && state.maintenance.message !== 'Website đang mở.')
+                ? state.maintenance.message
+                : 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+            const message = await promptDialog({
+                title: 'Đổi lời nhắn bảo trì',
+                eyebrow: 'MAINTENANCE MESSAGE',
+                message: 'Nhập nội dung hiển thị cho học sinh khi hệ thống tạm khóa:',
+                defaultValue: currentMsg,
+                confirmText: 'Lưu lời nhắn',
+                variant: 'primary',
+                icon: 'fa-screwdriver-wrench'
+            });
+            if (message !== null && message.trim()) {
+                state.maintenance.message = message.trim();
+                runAction(() => toggleMaintenance('Cập nhật lời nhắn bảo trì'));
+            }
+        };
+        $('edit-maintenance')?.addEventListener('click', openEditMaintenancePrompt);
+        $('maintenance-preview-box')?.addEventListener('click', openEditMaintenancePrompt);
         $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true))); $('add-ai-ip')?.addEventListener('click', () => addAiIp().catch((error) => notify(error.message, true)));
         $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
         document.addEventListener('click', (event) => {
@@ -1819,7 +2136,12 @@
     }
 
     async function init() {
-        if (localStorage.getItem('quiz_admin_dark') === 'true') document.body.classList.add('dark');
+        if (localStorage.getItem('quiz_admin_dark') === 'false') {
+            document.body.classList.remove('dark');
+        } else {
+            document.body.classList.add('dark');
+        }
+        syncThemeIcon();
         $('bootstrap-admin')?.addEventListener('click', () => runAction(bootstrapAdmin));
         try {
             state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
@@ -1827,13 +2149,14 @@
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;
             }
-            showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview();
+            showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
             await loadSubjects();
             await Promise.all([loadQuestions(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();
-        setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
+            setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
             denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');
         }
     }

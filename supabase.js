@@ -154,12 +154,13 @@ class DatabaseService {
      * Ghi nhận lượt đăng nhập (IP, Tên, Thiết bị, Trạng thái)
      * Hỗ trợ cả 2 dạng gọi: recordLogin(object) hoặc recordLogin(name, ip, device, subject)
      */
-    async recordLogin(data, ipAddress, deviceInfo, subjectTitle) {
+    async recordLogin(data, ipAddress, deviceInfo, subjectTitle, scoreSummaryParam = "", existingLoginId = null) {
         let cleanName = "";
         let cleanIp = "Chưa xác định";
         let cleanDevice = "Trình duyệt Web";
         let status = "Đang làm bài";
         let scoreSummary = "";
+        let targetLoginId = existingLoginId || null;
 
         if (typeof data === 'object' && data !== null) {
             cleanName = (data.playerName || data.name || "").trim();
@@ -167,12 +168,19 @@ class DatabaseService {
             cleanDevice = (data.deviceInfo || deviceInfo || "Trình duyệt Web").trim();
             status = data.status || "Đang làm bài";
             scoreSummary = data.scoreSummary || (data.subjectTitle ? `Môn: ${data.subjectTitle}` : "");
+            targetLoginId = data.loginId || data.id || existingLoginId || null;
         } else {
             cleanName = String(data || "").trim();
             cleanIp = String(ipAddress || "").trim();
             cleanDevice = String(deviceInfo || "Trình duyệt Web").trim();
             status = "Đang làm bài";
             scoreSummary = subjectTitle ? `[${subjectTitle}] Bắt đầu làm bài` : "";
+            if (typeof scoreSummaryParam === 'string' && scoreSummaryParam.trim()) {
+                scoreSummary = scoreSummaryParam.trim();
+            }
+            if (existingLoginId) {
+                targetLoginId = existingLoginId;
+            }
         }
 
         if (!cleanName) cleanName = "Khách truy cập";
@@ -236,36 +244,52 @@ class DatabaseService {
                 const systemIds = Object.values(SYSTEM_RECORDS);
                 let existingRows = [];
 
-                // Tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
-                if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
-                    const { data: byName } = await this.client
+                // 1. Nếu client đã lưu sẵn loginId của chính máy mình -> truy vấn trực tiếp theo ID
+                if (targetLoginId && !String(targetLoginId).startsWith('local_')) {
+                    const { data: byId } = await this.client
                         .from('quiz_logins')
                         .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
-                        .ilike('player_name', cleanName)
-                        .order('last_active', { ascending: false })
-                        .limit(20);
-                    if (Array.isArray(byName)) {
-                        existingRows = byName.filter((r) => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
+                        .eq('id', targetLoginId)
+                        .limit(1);
+                    if (Array.isArray(byId) && byId.length > 0) {
+                        existingRows = byId;
                     }
-                } else if (cleanIp && cleanIp !== 'Chưa xác định') {
-                    const { data: byIp } = await this.client
-                        .from('quiz_logins')
-                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
-                        .eq('ip_address', cleanIp)
-                        .eq('player_name', 'Khách truy cập')
-                        .order('last_active', { ascending: false })
-                        .limit(10);
-                    if (Array.isArray(byIp)) {
-                        existingRows = byIp.filter((r) => !systemIds.includes(r.id));
+                }
+
+                // 2. Nếu chưa có loginId, tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
+                if (existingRows.length === 0) {
+                    if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
+                        const { data: byName } = await this.client
+                            .from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
+                            .ilike('player_name', cleanName)
+                            .order('last_active', { ascending: false })
+                            .limit(20);
+                        if (Array.isArray(byName)) {
+                            existingRows = byName.filter((r) => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
+                        }
+                    } else if (cleanIp && cleanIp !== 'Chưa xác định') {
+                        const { data: byIp } = await this.client
+                            .from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
+                            .eq('ip_address', cleanIp)
+                            .eq('player_name', 'Khách truy cập')
+                            .order('last_active', { ascending: false })
+                            .limit(10);
+                        if (Array.isArray(byIp)) {
+                            existingRows = byIp.filter((r) => !systemIds.includes(r.id));
+                        }
                     }
                 }
 
                 // Lọc đúng thiết bị này (cleanDevice) để cập nhật, bảo toàn thiết bị khác khi mở cùng lúc
                 const normDev = String(cleanDevice || '').trim().toLowerCase();
-                const sameDeviceRows = existingRows.filter((r) => {
-                    const rDev = String(r.device_info || '').trim().toLowerCase();
-                    return rDev === normDev;
-                });
+                const sameDeviceRows = (targetLoginId && existingRows.length > 0 && existingRows[0].id === targetLoginId)
+                    ? existingRows
+                    : existingRows.filter((r) => {
+                        const rDev = String(r.device_info || '').trim().toLowerCase();
+                        return rDev === normDev;
+                    });
 
                 if (sameDeviceRows.length > 0) {
                     const targetRow = sameDeviceRows[0];
