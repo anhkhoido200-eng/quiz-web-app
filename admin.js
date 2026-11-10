@@ -2870,7 +2870,6 @@
         const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
         notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
     }
-    }
 
     async function addTokenFromForm() {
         return grantStudentAccess();
