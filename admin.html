@@ -177,7 +177,7 @@
                         </section>
                         <section class="panel preview-panel"><div class="panel-title"><div><p class="eyebrow">LIVE PREVIEW</p><h2>Học sinh sẽ nhìn thấy</h2></div><span class="info-badge">Realtime</span></div><div id="preview-card" class="preview-card"></div></section>
                     </div>
-                    <section id="content-library-section" class="panel library-panel"><div class="panel-title"><div><p class="eyebrow">LIBRARY</p><h2>Danh sách câu hỏi <span id="library-count" class="heading-count">0</span></h2></div><div class="panel-title-actions"><span id="result-summary" class="muted-copy">0 kết quả</span><button id="export-pdf-library" class="button button-secondary" type="button"><i class="fa-solid fa-file-pdf"></i> In đề thi</button><button id="open-trash-button" class="button button-secondary" type="button"><i class="fa-solid fa-trash-can-arrow-up"></i> Thùng rác <span id="trash-count-badge" class="badge-count">0</span></button><button id="delete-all-questions" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa toàn bộ câu hỏi</button></div></div><div class="library-toolbar"><div class="grade-filters"><button type="button" class="grade-filter is-active" data-grade="all">Tất cả</button><button type="button" class="grade-filter" data-grade="5">Lớp 5</button><button type="button" class="grade-filter" data-grade="11">Lớp 11</button></div><select id="library-subject-filter"><option value="all">Tất cả môn học</option></select><select id="question-type-filter"><option value="all">Tất cả dạng câu</option><option value="mcq">4 lựa chọn</option><option value="tf_group">Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select><input id="search-input" type="search" placeholder="Tìm nội dung câu hỏi..."></div><div id="questions-list" class="questions-list"></div><div id="empty-state" class="empty-state hidden"><i class="fa-solid fa-box-open"></i><p>Không tìm thấy câu hỏi phù hợp.</p></div></section>
+                    <section id="content-library-section" class="panel library-panel"><div class="panel-title"><div><p class="eyebrow">LIBRARY</p><h2>Danh sách câu hỏi <span id="library-count" class="heading-count">0</span></h2></div><div class="panel-title-actions"><span id="result-summary" class="muted-copy">0 kết quả</span><button id="export-pdf-library" class="button button-secondary" type="button"><i class="fa-solid fa-file-pdf"></i> In đề thi</button><button id="open-trash-button" class="button button-secondary" type="button"><i class="fa-solid fa-trash-can-arrow-up"></i> Thùng rác <span id="trash-count-badge" class="badge-count">0</span></button><button id="delete-scope-button" class="button button-secondary button-danger-hover" type="button"><i class="fa-solid fa-trash-can"></i> Xóa câu hỏi...</button></div></div><div class="library-toolbar"><div class="grade-filters"><button type="button" class="grade-filter is-active" data-grade="all">Tất cả</button><button type="button" class="grade-filter" data-grade="5">Lớp 5</button><button type="button" class="grade-filter" data-grade="11">Lớp 11</button></div><select id="library-subject-filter"><option value="all">Tất cả môn học</option></select><select id="question-type-filter"><option value="all">Tất cả dạng câu</option><option value="mcq">4 lựa chọn</option><option value="tf_group">Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select><input id="search-input" type="search" placeholder="Tìm nội dung câu hỏi..."></div><div id="library-bulk-bar" class="library-bulk-bar hidden"><div class="bulk-bar-left"><label class="bulk-checkbox-label"><input type="checkbox" id="bulk-select-all-checkbox"><span>Chọn tất cả (<span id="bulk-filtered-count">0</span> câu đang lọc)</span></label><span class="bulk-badge">Đã chọn: <strong id="bulk-selected-count">0</strong></span></div><div class="bulk-bar-right"><button type="button" id="bulk-deselect-btn" class="button button-secondary button-sm">Bỏ chọn</button><button type="button" id="bulk-delete-btn" class="button button-danger-solid button-sm"><i class="fa-solid fa-trash-can"></i> Xóa các câu đã chọn (<span id="bulk-delete-count">0</span>)</button></div></div><div id="questions-list" class="questions-list"></div><div id="empty-state" class="empty-state hidden"><i class="fa-solid fa-box-open"></i><p>Không tìm thấy câu hỏi phù hợp.</p></div></section>
                 </section>
 
                 <section class="view" data-view-panel="students"><div class="page-heading compact-heading"><div><p class="eyebrow">LIVE MONITOR</p><h1>Giám sát học sinh</h1><p>Theo dõi thiết bị, trạng thái làm bài và phát thông báo thời gian thực.</p></div><div class="heading-actions"><button id="refresh-students" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button><button id="clear-logins" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử</button></div></div><div class="monitor-stats" id="monitor-stats"></div><section class="panel broadcast-panel"><div class="panel-title"><div><p class="eyebrow">BROADCAST</p><h2>Phát thông báo tới học sinh</h2></div><span class="info-badge">Hiện trong 5 giây</span></div><div class="broadcast-row"><input id="notice-input" maxlength="160" placeholder="Ví dụ: Còn 10 phút nữa hết giờ làm bài..."><button id="send-notice" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi toàn phòng</button></div><div class="quick-notices"><span>Mẫu nhanh:</span><button type="button" data-notice="Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!">Còn 10 phút</button><button type="button" data-notice="Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!">Còn 5 phút</button><button type="button" data-notice="Các em tập trung làm bài, nghiêm túc, không trao đổi!">Nghiêm túc</button><button type="button" data-notice="Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.">Hết giờ</button></div></section><section class="panel danger-panel"><div class="panel-title"><div><p class="eyebrow">SAFETY CONTROL</p><h2>Chặn IP khẩn cấp</h2></div><span id="banned-count" class="status-badge danger">0 IP</span></div><div class="ban-row"><input id="ban-ip-input" placeholder="Nhập địa chỉ IP cần chặn..."><input id="ban-reason-input" placeholder="Lý do (không bắt buộc)"><button id="ban-ip-button" class="button button-danger" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button></div><div id="banned-list" class="banned-list"></div></section><section class="panel students-panel"><div class="panel-title"><div><p class="eyebrow">SESSIONS</p><h2>Phiên truy cập <span id="student-count" class="heading-count">0</span></h2></div></div><div class="table-wrap"><table><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"></tbody></table></div></section></section>
@@ -321,6 +321,82 @@
             </div>
             <div class="modal-actions">
                 <button class="button button-secondary" type="button" data-close-modal="trash-modal">Đóng</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- MODAL TÙY CHỌN XÓA CÂU HỎI (DELETE SCOPE MODAL) -->
+    <div id="delete-scope-modal" class="modal-backdrop hidden">
+        <section class="modal-card delete-scope-modal" role="dialog" aria-modal="true" aria-labelledby="delete-scope-title">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">DELETE MANAGER</p>
+                    <h2 id="delete-scope-title">Tùy chọn xóa câu hỏi</h2>
+                    <p>Chọn phạm vi xóa chính xác để tránh xóa nhầm. Toàn bộ câu hỏi bị xóa sẽ được chuyển an toàn vào Thùng rác.</p>
+                </div>
+                <button class="icon-button" data-close-modal="delete-scope-modal" type="button" aria-label="Đóng cửa sổ"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="delete-scope-body">
+                <!-- TÙY CHỌN 1: XÓA THEO BỘ LỌC HIỆN TẠI (1 BÀI / 1 MÔN ĐANG CHỌN) -->
+                <div class="delete-option-card">
+                    <div class="delete-option-icon warning">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <h3>1. Xóa các câu hỏi theo bộ lọc hiện tại</h3>
+                        <p id="delete-scope-filtered-desc">Chuyển các câu hỏi thuộc môn/bài đang chọn vào Thùng rác.</p>
+                        <div class="delete-option-meta">
+                            <span class="scope-count-badge" id="delete-scope-filtered-badge">0 câu</span>
+                            <small class="muted-copy">Chỉ xóa các câu trong bài/môn bạn đang lọc, không chạm vào môn khác.</small>
+                        </div>
+                    </div>
+                    <button id="btn-delete-current-filter" class="button button-warning-solid" type="button">
+                        <i class="fa-solid fa-trash-arrow-up"></i> Xóa bài đang lọc
+                    </button>
+                </div>
+
+                <!-- TÙY CHỌN 2: BẬT CHẾ ĐỘ TICK CHỌN TỪNG CÂU (CHECKBOX) -->
+                <div class="delete-option-card">
+                    <div class="delete-option-icon primary">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <h3>2. Tự chọn từng câu hỏi cần xóa (Checkbox)</h3>
+                        <p>Bật ô đánh dấu trên mỗi câu để bạn tự tay tick chọn 1 câu hoặc vài câu bất kỳ muốn bỏ.</p>
+                        <div class="delete-option-meta">
+                            <small class="muted-copy">Có thanh tác vụ xóa nhanh các câu đã tick kèm nút chọn/bỏ chọn tất cả.</small>
+                        </div>
+                    </div>
+                    <button id="btn-activate-selection-mode" class="button button-secondary" type="button">
+                        <i class="fa-solid fa-square-check"></i> Bật chọn câu
+                    </button>
+                </div>
+
+                <!-- TÙY CHỌN 3: XÓA TOÀN BỘ NGÂN HÀNG (CÓ KHÓA BẢO VỆ CHỐNG ẤN NHẦM) -->
+                <div class="delete-option-card danger-zone">
+                    <div class="delete-option-icon danger">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <div class="danger-title-row">
+                            <h3>3. Xóa TOÀN BỘ ngân hàng câu hỏi</h3>
+                            <span class="danger-badge">Nguy hiểm</span>
+                        </div>
+                        <p>Chuyển toàn bộ <strong id="delete-scope-total-count">0</strong> câu hỏi của <strong>TẤT CẢ các môn học và khối lớp</strong> vào Thùng rác.</p>
+                        <div class="confirm-type-box">
+                            <label for="delete-all-confirm-input">Nhập chính xác chữ <code>XOA HET</code> để mở khóa:</label>
+                            <input type="text" id="delete-all-confirm-input" placeholder="Gõ XOA HET vào đây..." autocomplete="off">
+                        </div>
+                    </div>
+                    <button id="btn-delete-all-guarded" class="button button-danger-solid is-disabled" type="button" disabled>
+                        <i class="fa-solid fa-dumpster-fire"></i> Xóa sạch tất cả
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="button button-secondary" type="button" data-close-modal="delete-scope-modal">Đóng</button>
             </div>
         </section>
     </div>

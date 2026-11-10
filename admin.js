@@ -22,6 +22,8 @@
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
+        selectedQuestionIds: new Set(),
+        selectMode: false,
         activityLogs: (() => {
             try {
                 const saved = JSON.parse(localStorage.getItem('quiz_admin_activity_logs') || '[]');
@@ -739,27 +741,82 @@
         return `<span class="type-chip ${type === 'tf_group' ? 'tf' : type === 'short_answer' ? 'short' : ''}">${esc(TYPE_LABELS[type] || type)}</span>`;
     }
 
-    function renderLibrary() {
+    function getFilteredQuestions() {
         const keyword = ($('search-input')?.value || '').toLowerCase();
-        const rows = state.questions.filter((q) => {
+        return state.questions.filter((q) => {
             const typeMatch = state.typeFilter === 'all' || (state.typeFilter === 'mcq' && q.qType === 'mcq') || (state.typeFilter === 'tf_group' && q.qType === 'tf_group') || (state.typeFilter === 'short_answer' && q.qType === 'short_answer');
             const text = `${notationText(q.question)} ${notationText(q.explanation)} ${(q.options || []).map(notationText).join(' ')} ${(q.statements || []).map((s) => notationText(s.text)).join(' ')}`.toLowerCase();
             return (state.grade === 'all' || gradeOf(q) === state.grade) && (state.subject === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(state.subject)) && typeMatch && (!keyword || text.includes(keyword));
         });
+    }
+
+    function updateBulkBar() {
+        const bar = $('library-bulk-bar');
+        if (!bar) return;
+        const filtered = getFilteredQuestions();
+        const selectedCount = state.selectedQuestionIds.size;
+
+        $('bulk-filtered-count') && ($('bulk-filtered-count').textContent = filtered.length);
+        $('bulk-selected-count') && ($('bulk-selected-count').textContent = selectedCount);
+        $('bulk-delete-count') && ($('bulk-delete-count').textContent = selectedCount);
+
+        const selectAllCb = $('bulk-select-all-checkbox');
+        if (selectAllCb) {
+            const allFilteredSelected = filtered.length > 0 && filtered.every((q) => state.selectedQuestionIds.has(String(q.id)));
+            selectAllCb.checked = allFilteredSelected;
+            selectAllCb.indeterminate = selectedCount > 0 && !allFilteredSelected;
+        }
+
+        if (selectedCount > 0 || state.selectMode) {
+            bar.classList.remove('hidden');
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+
+    function renderLibrary() {
+        const rows = getFilteredQuestions();
         $('library-count') && ($('library-count').textContent = rows.length);
         $('result-summary') && ($('result-summary').textContent = `${rows.length} kết quả`);
         $('empty-state')?.classList.toggle('hidden', rows.length !== 0);
         const list = $('questions-list');
         if (!list) return;
+
         list.innerHTML = rows.map((q) => {
             const grade = gradeOf(q);
+            const isSelected = state.selectedQuestionIds.has(String(q.id));
             let answerPreview = '';
             if (q.qType === 'tf_group') answerPreview = `<div class="item-statements">${q.statements.map((s) => `<div class="item-statement"><b>${esc(s.key)}.</b>${htmlText(s.text)} <strong>${s.answer ? 'Đúng' : 'Sai'}</strong></div>`).join('')}</div>`;
             else if (q.qType === 'short_answer') answerPreview = `<div class="item-option is-correct">Đáp án: ${htmlText(q.correctValue)}</div>`;
             else answerPreview = `<div class="item-options">${q.options.slice(0, 4).map((option, index) => `<span class="item-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}.</b> ${htmlText(option)}</span>`).join('')}</div>`;
-            return `<article class="question-item"><div class="question-item-head"><div class="question-tags"><span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span><span class="tag">${esc(subjectName(q.subject_key))}</span>${typeChip(q)}</div><span class="tag">#${esc(q.id)}</span></div><h3>${htmlText(q.question)}</h3>${answerPreview}<div class="question-item-footer"><small>${esc(q.category || 'Ôn tập')}</small><div class="item-actions"><button class="edit-button" data-edit="${esc(q.id)}"><i class="fa-solid fa-pen"></i> Sửa</button><button class="delete-button" data-delete="${esc(q.id)}"><i class="fa-solid fa-trash"></i> Xóa</button></div></div></article>`;
+            return `<article class="question-item ${isSelected ? 'is-selected' : ''}" data-item-id="${esc(q.id)}">
+                <div class="question-item-head">
+                    <div class="question-head-left">
+                        <label class="question-select-checkbox-label" title="Chọn câu hỏi này để thao tác xóa">
+                            <input type="checkbox" class="question-select-checkbox" data-select-id="${esc(q.id)}" ${isSelected ? 'checked' : ''}>
+                            <span class="custom-check-box"><i class="fa-solid fa-check"></i></span>
+                        </label>
+                        <div class="question-tags">
+                            <span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span>
+                            <span class="tag">${esc(subjectName(q.subject_key))}</span>
+                            ${typeChip(q)}
+                        </div>
+                    </div>
+                    <span class="tag">#${esc(q.id)}</span>
+                </div>
+                <h3>${htmlText(q.question)}</h3>
+                ${answerPreview}
+                <div class="question-item-footer">
+                    <small>${esc(q.category || 'Ôn tập')}</small>
+                    <div class="item-actions">
+                        <button class="edit-button" data-edit="${esc(q.id)}"><i class="fa-solid fa-pen"></i> Sửa</button>
+                        <button class="delete-button" data-delete="${esc(q.id)}"><i class="fa-solid fa-trash"></i> Xóa</button>
+                    </div>
+                </div>
+            </article>`;
         }).join('');
         renderMath(list);
+        updateBulkBar();
     }
 
     function renderRecentActivity() {
@@ -957,90 +1014,184 @@
         }
     }
 
+    async function moveQuestionsToTrash(questionsToTrash, actionTitle = 'Chuyển câu hỏi vào thùng rác', detailLog = '') {
+        if (!Array.isArray(questionsToTrash) || questionsToTrash.length === 0) return;
+        const total = questionsToTrash.length;
+        const idsToDelete = questionsToTrash.map((q) => q.id).filter(Boolean);
+
+        // Xóa theo batch 50 câu trên Supabase
+        const chunkSize = 50;
+        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+            const chunk = idsToDelete.slice(i, i + chunkSize);
+            const { error } = await state.client.from('quiz_questions').delete().in('id', chunk);
+            if (error) throw error;
+        }
+
+        const now = new Date().toISOString();
+        const trashedItems = questionsToTrash.map((q) => ({
+            ...q,
+            is_deleted: true,
+            deleted_at: now,
+            deleted_by: 'Admin'
+        }));
+
+        const idSet = new Set(questionsToTrash.map((q) => String(q.id)));
+        state.trashQuestions = [
+            ...trashedItems,
+            ...state.trashQuestions.filter((q) => !idSet.has(String(q.id)))
+        ];
+        await saveTrash();
+
+        state.questions = state.questions.filter((q) => !idSet.has(String(q.id)));
+        if (state.editingId && idSet.has(String(state.editingId))) resetForm();
+
+        // Gỡ bỏ khỏi danh sách đang chọn
+        questionsToTrash.forEach((q) => state.selectedQuestionIds.delete(String(q.id)));
+
+        addActivityLog(
+            actionTitle,
+            detailLog || `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`,
+            'danger'
+        );
+        renderStats();
+        renderLibrary();
+        renderRecentActivity();
+        renderSubjectCatalog();
+        await syncSubjectQuestionCounts();
+    }
+
     async function deleteQuestion(id) {
         const targetQ = state.questions.find((item) => String(item.id) === String(id));
         if (!targetQ) return;
         if (!(await confirmDialog({
             title: `Chuyển câu hỏi #${id} vào thùng rác?`,
-            message: `Câu hỏi #${id} (${subjectName(targetQ.subject_key)}) sẽ được chuyển vào Thùng rác. Bạn có thể khôi phục lại bất kỳ lúc nào nếu xóa nhầm.`,
+            message: `Câu hỏi #${id} (${subjectName(targetQ.subject_key)}) sẽ được chuyển vào Thùng rác.\nBạn có thể khôi phục lại bất kỳ lúc nào nếu xóa nhầm.`,
             confirmText: 'Chuyển vào thùng rác',
             variant: 'danger',
             icon: 'fa-trash-arrow-up'
         }))) return;
 
         try {
-            const { error } = await state.client.from('quiz_questions').delete().eq('id', id);
-            if (error) throw error;
-
-            const trashedItem = {
-                ...targetQ,
-                is_deleted: true,
-                deleted_at: new Date().toISOString(),
-                deleted_by: 'Admin'
-            };
-            state.trashQuestions = [trashedItem, ...state.trashQuestions.filter((q) => String(q.id) !== String(id))];
-            await saveTrash();
-
-            state.questions = state.questions.filter((item) => String(item.id) !== String(id));
-            if (String(state.editingId) === String(id)) resetForm();
-
-            addActivityLog(
+            await moveQuestionsToTrash(
+                [targetQ],
                 `Chuyển câu hỏi #${id} vào thùng rác`,
-                `Môn ${subjectName(targetQ.subject_key)} · Đã lưu trữ an toàn trong Thùng rác`,
-                'danger'
+                `Môn ${subjectName(targetQ.subject_key)} · Đã lưu trữ an toàn trong Thùng rác`
             );
             notify(`Đã chuyển câu hỏi #${id} vào thùng rác.`);
-            renderStats();
-            renderLibrary();
-            renderRecentActivity();
-            await syncSubjectQuestionCounts();
         } catch (error) {
             notify(`Không thể xóa: ${error.message}`, true);
         }
     }
 
-    async function deleteAllQuestions() {
+    function openDeleteScopeModal() {
+        const filtered = getFilteredQuestions();
         const total = state.questions.length;
-        if (total === 0) return notify('Ngân hàng câu hỏi hiện đang trống.', true);
-        if (!(await confirmDialog({
-            title: 'Chuyển toàn bộ câu hỏi vào thùng rác?',
-            message: `Chuyển toàn bộ ${total} câu hỏi hiện có vào Thùng rác? Bạn có thể khôi phục lại bất kỳ lúc nào từ Thùng rác nếu xóa nhầm.`,
-            confirmText: 'Chuyển tất cả vào thùng rác',
+        const subjectFiltered = state.subject !== 'all';
+        const gradeFiltered = state.grade !== 'all';
+
+        let filterDesc = 'Chuyển các câu hỏi đang lọc vào Thùng rác.';
+        if (subjectFiltered && gradeFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc môn [${subjectName(state.subject)}] (Lớp ${state.grade}) vào Thùng rác.`;
+        } else if (subjectFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc môn [${subjectName(state.subject)}] vào Thùng rác.`;
+        } else if (gradeFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc [Lớp ${state.grade}] vào Thùng rác.`;
+        } else {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi đang hiển thị theo bộ lọc vào Thùng rác.`;
+        }
+
+        $('delete-scope-filtered-desc') && ($('delete-scope-filtered-desc').textContent = filterDesc);
+        $('delete-scope-filtered-badge') && ($('delete-scope-filtered-badge').textContent = `${filtered.length} câu hỏi`);
+        $('delete-scope-total-count') && ($('delete-scope-total-count').textContent = total);
+
+        const btnFilter = $('btn-delete-current-filter');
+        if (btnFilter) {
+            btnFilter.disabled = filtered.length === 0;
+            btnFilter.innerHTML = `<i class="fa-solid fa-trash-arrow-up"></i> Xóa bài đang lọc (${filtered.length} câu)`;
+        }
+
+        const inputConfirm = $('delete-all-confirm-input');
+        if (inputConfirm) inputConfirm.value = '';
+
+        const btnAll = $('btn-delete-all-guarded');
+        if (btnAll) {
+            btnAll.disabled = true;
+            btnAll.classList.add('is-disabled');
+        }
+
+        openModal('delete-scope-modal');
+    }
+
+    async function deleteFilteredQuestions() {
+        const filtered = getFilteredQuestions();
+        if (filtered.length === 0) return notify('Không có câu hỏi nào theo bộ lọc hiện tại để xóa.', true);
+
+        closeModal('delete-scope-modal');
+
+        const ok = await confirmDialog({
+            title: `Xác nhận xóa ${filtered.length} câu hỏi?`,
+            message: `Chuyển toàn bộ ${filtered.length} câu hỏi của bài/môn đang lọc vào Thùng rác?\n\nBạn có thể khôi phục lại bất kỳ lúc nào nếu cần.`,
+            confirmText: `Xóa ${filtered.length} câu này`,
             variant: 'danger',
             icon: 'fa-trash-arrow-up'
-        }))) return;
+        });
+        if (!ok) return;
 
         try {
-            const { error } = await state.client.from('quiz_questions').delete().not('id', 'is', null);
-            if (error) throw error;
-
-            const now = new Date().toISOString();
-            const trashedItems = state.questions.map((q) => ({
-                ...q,
-                is_deleted: true,
-                deleted_at: now,
-                deleted_by: 'Admin'
-            }));
-
-            const existingTrashIds = new Set(trashedItems.map((q) => String(q.id)));
-            state.trashQuestions = [...trashedItems, ...state.trashQuestions.filter((q) => !existingTrashIds.has(String(q.id)))];
-            await saveTrash();
-
-            state.questions = [];
-            resetForm();
-            addActivityLog(
-                'Chuyển toàn bộ câu hỏi vào thùng rác',
-                `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`,
-                'danger'
+            await moveQuestionsToTrash(
+                filtered,
+                `Xóa ${filtered.length} câu theo bộ lọc`,
+                `Đã chuyển ${filtered.length} câu hỏi của bài/môn đang chọn vào Thùng rác`
             );
-            notify(`Đã chuyển toàn bộ ${total} câu hỏi vào thùng rác.`);
-            renderStats();
-            renderLibrary();
-            renderRecentActivity();
-            renderSubjectCatalog();
-            await syncSubjectQuestionCounts();
+            notify(`Đã chuyển ${filtered.length} câu hỏi vào Thùng rác.`);
         } catch (error) {
-            notify(`Không thể chuyển vào thùng rác: ${error.message}`, true);
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
+    }
+
+    async function deleteSelectedQuestions() {
+        const selected = state.questions.filter((q) => state.selectedQuestionIds.has(String(q.id)));
+        if (selected.length === 0) return notify('Chưa chọn câu hỏi nào để xóa.', true);
+
+        const ok = await confirmDialog({
+            title: `Xác nhận xóa ${selected.length} câu hỏi đã chọn?`,
+            message: `Chuyển ${selected.length} câu hỏi bạn đã đánh dấu vào Thùng rác?\n\nBạn có thể khôi phục lại bất kỳ lúc nào từ Thùng rác.`,
+            confirmText: `Xóa ${selected.length} câu đã chọn`,
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        });
+        if (!ok) return;
+
+        try {
+            await moveQuestionsToTrash(
+                selected,
+                `Xóa ${selected.length} câu hỏi đã chọn`,
+                `Đã chuyển ${selected.length} câu hỏi đã chọn vào Thùng rác`
+            );
+            notify(`Đã chuyển ${selected.length} câu hỏi đã chọn vào Thùng rác.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
+    }
+
+    async function deleteAllQuestionsGuarded() {
+        const input = $('delete-all-confirm-input');
+        if (!input || input.value.trim().toUpperCase() !== 'XOA HET') {
+            return notify('Vui lòng nhập đúng chữ "XOA HET" để xác nhận.', true);
+        }
+        closeModal('delete-scope-modal');
+        const total = state.questions.length;
+        if (total === 0) return notify('Ngân hàng câu hỏi hiện đang trống.', true);
+
+        try {
+            await moveQuestionsToTrash(
+                [...state.questions],
+                'Chuyển toàn bộ câu hỏi vào thùng rác',
+                `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`
+            );
+            notify(`Đã chuyển toàn bộ ${total} câu hỏi vào thùng rác an toàn.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
             await loadQuestions();
         }
     }
@@ -2748,7 +2899,38 @@
         window.addEventListener('online', () => {
             recheckSystemHealth();
         });
-        $('refresh-button')?.addEventListener('click', () => runAction(recheckSystemHealth)); $('delete-all-questions')?.addEventListener('click', () => runAction(deleteAllQuestions));
+        $('refresh-button')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('delete-scope-button')?.addEventListener('click', openDeleteScopeModal);
+        $('btn-delete-current-filter')?.addEventListener('click', () => runAction(deleteFilteredQuestions));
+        $('btn-activate-selection-mode')?.addEventListener('click', () => {
+            closeModal('delete-scope-modal');
+            state.selectMode = true;
+            updateBulkBar();
+            notify('Đã bật chế độ chọn câu. Hãy tick chọn các ô trên câu hỏi muốn xóa.');
+        });
+        $('delete-all-confirm-input')?.addEventListener('input', (event) => {
+            const isMatch = event.target.value.trim().toUpperCase() === 'XOA HET';
+            const btn = $('btn-delete-all-guarded');
+            if (btn) {
+                btn.disabled = !isMatch;
+                btn.classList.toggle('is-disabled', !isMatch);
+            }
+        });
+        $('btn-delete-all-guarded')?.addEventListener('click', () => runAction(deleteAllQuestionsGuarded));
+        $('bulk-select-all-checkbox')?.addEventListener('change', (event) => {
+            const checked = event.target.checked;
+            getFilteredQuestions().forEach((q) => {
+                if (checked) state.selectedQuestionIds.add(String(q.id));
+                else state.selectedQuestionIds.delete(String(q.id));
+            });
+            renderLibrary();
+        });
+        $('bulk-deselect-btn')?.addEventListener('click', () => {
+            state.selectedQuestionIds.clear();
+            state.selectMode = false;
+            renderLibrary();
+        });
+        $('bulk-delete-btn')?.addEventListener('click', () => runAction(deleteSelectedQuestions));
         $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
         $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
         $('question-form')?.addEventListener('input', (event) => {
@@ -2762,6 +2944,17 @@
         $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
         document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
+        $('questions-list')?.addEventListener('change', (event) => {
+            const checkbox = event.target.closest('.question-select-checkbox');
+            if (checkbox) {
+                const id = String(checkbox.dataset.selectId);
+                if (checkbox.checked) state.selectedQuestionIds.add(id);
+                else state.selectedQuestionIds.delete(id);
+                const item = checkbox.closest('.question-item');
+                if (item) item.classList.toggle('is-selected', checkbox.checked);
+                updateBulkBar();
+            }
+        });
         $('export-pdf-heading')?.addEventListener('click', openPrintModal);
         $('export-pdf-library')?.addEventListener('click', openPrintModal);
         $('export-pdf-report')?.addEventListener('click', () => { fillLibrarySubjects(); openPrintModal(); });

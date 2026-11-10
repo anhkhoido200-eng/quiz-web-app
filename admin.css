@@ -1058,3 +1058,294 @@ body.dark .trash-options span {
         margin: 4pt 0 !important;
     }
 }
+
+/* =========================================================================
+   DELETE SCOPE MANAGER & MULTI-SELECT QUESTIONS (CHỐNG ẤN NHẦM)
+   ========================================================================= */
+
+.button-danger-hover {
+    border-color: rgba(239, 68, 68, 0.35) !important;
+    color: var(--red) !important;
+}
+.button-danger-hover:hover {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: var(--red) !important;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25) !important;
+}
+
+.button-sm {
+    padding: 6px 12px !important;
+    font-size: 11px !important;
+    border-radius: 9px !important;
+}
+
+/* Bulk Selection Bar */
+.library-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    animation: adminViewEnter 0.2s cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+body.dark .library-bulk-bar {
+    background: linear-gradient(135deg, rgba(30, 27, 75, 0.85), rgba(17, 24, 39, 0.95));
+    border-color: rgba(129, 140, 248, 0.35);
+}
+.bulk-bar-left,
+.bulk-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.bulk-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+}
+.bulk-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+.bulk-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    font-size: 11px;
+    color: #c7d2fe;
+}
+.bulk-badge strong {
+    color: #fff;
+    margin-left: 4px;
+}
+
+/* Question Head Left & Custom Checkbox */
+.question-head-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.question-select-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    margin: 0;
+}
+.question-select-checkbox-label input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.custom-check-box {
+    width: 19px;
+    height: 19px;
+    border-radius: 6px;
+    border: 1.5px solid rgba(148, 163, 184, 0.4);
+    background: rgba(15, 23, 42, 0.5);
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    color: transparent;
+    transition: all 0.15s ease;
+}
+.question-select-checkbox-label input:checked + .custom-check-box {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
+}
+.question-select-checkbox-label:hover .custom-check-box {
+    border-color: var(--primary);
+}
+
+.question-item.is-selected {
+    border-color: rgba(99, 102, 241, 0.6) !important;
+    background: linear-gradient(145deg, rgba(22, 31, 51, 0.95), rgba(30, 27, 75, 0.25)) !important;
+    box-shadow: 0 10px 28px -6px rgba(99, 102, 241, 0.25) !important;
+}
+
+/* Delete Scope Modal */
+.modal-card.delete-scope-modal {
+    width: min(720px, calc(100vw - 32px));
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+}
+.delete-scope-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 24px;
+    overflow-y: auto;
+}
+.delete-option-card {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.delete-option-card:hover {
+    border-color: rgba(148, 163, 184, 0.3);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+.delete-option-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+}
+.delete-option-icon.warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.delete-option-icon.primary {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.delete-option-icon.danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.delete-option-info {
+    min-width: 0;
+}
+.delete-option-info h3 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+}
+.delete-option-info p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+}
+.delete-option-meta {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.scope-count-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.18);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+    font-weight: 700;
+    font-size: 11px;
+}
+
+/* Danger Zone */
+.delete-option-card.danger-zone {
+    background: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.35);
+    align-items: start;
+}
+.danger-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.danger-title-row h3 {
+    margin: 0;
+    color: #f87171;
+}
+.danger-badge {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.confirm-type-box {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.confirm-type-box label {
+    font-size: 11px;
+    color: var(--muted);
+}
+.confirm-type-box code {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+.confirm-type-box input {
+    max-width: 260px;
+    padding: 7px 11px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: var(--surface);
+    color: var(--text);
+    font-family: ui-monospace, monospace;
+    font-weight: bold;
+    font-size: 12px;
+}
+.confirm-type-box input:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+}
+
+.button.is-disabled {
+    opacity: 0.45 !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+}
+
+@media (max-width: 680px) {
+    .delete-option-card {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .delete-option-card .button {
+        width: 100%;
+    }
+    .library-bulk-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .bulk-bar-left,
+    .bulk-bar-right {
+        justify-content: space-between;
+    }
+}
