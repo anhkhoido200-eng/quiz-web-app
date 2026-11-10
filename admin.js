@@ -17,6 +17,7 @@
     const state = {
         client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
+        page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
@@ -383,6 +384,7 @@
         const targetGrade = ['5', '11', 'all'].includes(String(grade)) ? String(grade) : 'all';
         state.grade = targetGrade;
         state.subject = 'all';
+        state.page = 1;
         document.querySelectorAll('.grade-filter').forEach((button) => {
             button.classList.toggle('is-active', button.dataset.grade === targetGrade);
         });
@@ -558,6 +560,7 @@
             $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
             $('library-subject-filter').value = state.subject;
         }
+        renderLibrarySubjectTabs();
         if ($('import-subject-select')) {
             $('import-subject-select').innerHTML = allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
             // Luôn giữ state theo đúng môn đang hiển thị. Nếu state cũ là
@@ -774,15 +777,134 @@
         }
     }
 
+    function renderLibrarySubjectTabs() {
+        const container = $('library-subject-tabs');
+        if (!container) return;
+
+        const catalog = mergeSubjectCatalog(state.subjects);
+        const subjectsInScope = state.grade === 'all'
+            ? catalog
+            : catalog.filter((item) => subjectGrade(item) === String(state.grade));
+
+        const totalInGrade = state.questions.filter((q) => state.grade === 'all' || gradeOf(q) === state.grade).length;
+
+        const countMap = {};
+        state.questions.forEach((q) => {
+            if (state.grade !== 'all' && gradeOf(q) !== state.grade) return;
+            const key = q.subject_key;
+            countMap[key] = (countMap[key] || 0) + 1;
+        });
+
+        const allPill = `
+            <button type="button" class="subject-tab-pill ${state.subject === 'all' ? 'is-active' : ''}" data-subject-tab="all" title="Xem tất cả môn">
+                <span>Tất cả môn</span>
+                <span class="pill-count">${totalInGrade}</span>
+            </button>
+        `;
+
+        const subjectPills = subjectsInScope.map((sub) => {
+            const count = countMap[sub.key] || 0;
+            const isActive = subjectMatchKey(state.subject) === subjectMatchKey(sub.key);
+            return `
+                <button type="button" class="subject-tab-pill ${isActive ? 'is-active' : ''}" data-subject-tab="${esc(sub.key)}" title="Lọc môn ${esc(sub.name)}">
+                    <span>${esc(sub.name)}</span>
+                    <span class="pill-count">${count}</span>
+                </button>
+            `;
+        }).join('');
+
+        container.innerHTML = allPill + subjectPills;
+    }
+
+    function renderPagination(total, totalPages) {
+        const container = $('library-pagination');
+        if (!container) return;
+
+        if (total === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const pageSize = state.pageSize === 'all' ? total : Number(state.pageSize || 12);
+        const startIndex = (state.page - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, total);
+
+        let pageButtonsHtml = '';
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) {
+                pageButtonsHtml += `<button type="button" class="page-btn ${i === state.page ? 'is-active' : ''}" data-page="${i}">${i}</button>`;
+            }
+        } else {
+            const current = state.page;
+            const pages = [];
+            pages.push(1);
+            if (current > 3) pages.push('...');
+            const startMid = Math.max(2, current - 1);
+            const endMid = Math.min(totalPages - 1, current + 1);
+            for (let i = startMid; i <= endMid; i++) {
+                if (!pages.includes(i)) pages.push(i);
+            }
+            if (current < totalPages - 2) pages.push('...');
+            if (!pages.includes(totalPages)) pages.push(totalPages);
+
+            pageButtonsHtml = pages.map((p) => {
+                if (p === '...') return `<span class="page-ellipsis">…</span>`;
+                return `<button type="button" class="page-btn ${p === current ? 'is-active' : ''}" data-page="${p}">${p}</button>`;
+            }).join('');
+        }
+
+        container.innerHTML = `
+            <div class="pagination-info">
+                Hiển thị <strong>${startIndex + 1} - ${endIndex}</strong> trên tổng số <strong>${total}</strong> câu hỏi
+            </div>
+            <div class="pagination-controls">
+                <button type="button" class="page-btn prev-btn" data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''} title="Trang trước">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                ${pageButtonsHtml}
+                <button type="button" class="page-btn next-btn" data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''} title="Trang sau">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+            <div class="page-size-selector">
+                <label for="page-size-select">Hiển thị:</label>
+                <select id="page-size-select">
+                    <option value="12" ${state.pageSize === 12 ? 'selected' : ''}>12 câu / trang</option>
+                    <option value="24" ${state.pageSize === 24 ? 'selected' : ''}>24 câu / trang</option>
+                    <option value="48" ${state.pageSize === 48 ? 'selected' : ''}>48 câu / trang</option>
+                    <option value="all" ${state.pageSize === 'all' ? 'selected' : ''}>Tất cả (${total})</option>
+                </select>
+            </div>
+        `;
+    }
+
     function renderLibrary() {
         const rows = getFilteredQuestions();
         $('library-count') && ($('library-count').textContent = rows.length);
         $('result-summary') && ($('result-summary').textContent = `${rows.length} kết quả`);
         $('empty-state')?.classList.toggle('hidden', rows.length !== 0);
+
+        renderLibrarySubjectTabs();
+
         const list = $('questions-list');
         if (!list) return;
 
-        list.innerHTML = rows.map((q) => {
+        if (rows.length === 0) {
+            list.innerHTML = '';
+            renderPagination(0, 1);
+            updateBulkBar();
+            return;
+        }
+
+        const pageSize = state.pageSize === 'all' ? rows.length : Number(state.pageSize || 12);
+        const totalPages = pageSize > 0 ? Math.ceil(rows.length / pageSize) : 1;
+        if (state.page > totalPages) state.page = totalPages;
+        if (state.page < 1) state.page = 1;
+
+        const startIndex = (state.page - 1) * pageSize;
+        const pagedRows = rows.slice(startIndex, startIndex + pageSize);
+
+        list.innerHTML = pagedRows.map((q) => {
             const grade = gradeOf(q);
             const isSelected = state.selectedQuestionIds.has(String(q.id));
             let answerPreview = '';
@@ -816,6 +938,7 @@
             </article>`;
         }).join('');
         renderMath(list);
+        renderPagination(rows.length, totalPages);
         updateBulkBar();
     }
 
@@ -932,8 +1055,29 @@
     }
 
     async function nextQuestionId() {
-        const { data } = await state.client.from('quiz_questions').select('id').order('id', { ascending: false }).limit(1);
-        return Number(data?.[0]?.id || 0) + 1;
+        const localMax = Array.isArray(state.questions) && state.questions.length > 0
+            ? Math.max(...state.questions.map((q) => Number(q.id)).filter((n) => Number.isFinite(n) && n > 0), 0)
+            : 0;
+
+        let dbMax = 0;
+        try {
+            if (state.client) {
+                const { data, error } = await state.client
+                    .from('quiz_questions')
+                    .select('id')
+                    .order('id', { ascending: false })
+                    .limit(1);
+                if (!error && Array.isArray(data) && data.length > 0) {
+                    const parsed = Number(data[0].id);
+                    if (Number.isFinite(parsed) && parsed > 0) dbMax = parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('[nextQuestionId] Lỗi lấy max ID từ CSDL:', e);
+        }
+
+        const highest = Math.max(localMax, dbMax);
+        return (highest > 0 ? highest : 1000) + 1;
     }
 
     async function saveQuestion(event) {
@@ -1202,23 +1346,34 @@
 
         try {
             let targetId = Number(item.id);
-            if (!targetId || isNaN(targetId) || targetId <= 0) {
+            if (!Number.isFinite(targetId) || targetId <= 0) {
                 targetId = await nextQuestionId();
             } else {
                 // Kiểm tra xem ID cũ có đang bị câu hỏi khác chiếm dụng không
-                const { data: existing, error: checkErr } = await state.client
-                    .from('quiz_questions')
-                    .select('id')
-                    .eq('id', targetId)
-                    .maybeSingle();
-                if (!checkErr && existing) {
+                const existsLocally = state.questions.some((q) => Number(q.id) === targetId);
+                let existsInDb = false;
+                if (!existsLocally && state.client) {
+                    try {
+                        const { data: existing } = await state.client
+                            .from('quiz_questions')
+                            .select('id')
+                            .eq('id', targetId)
+                            .maybeSingle();
+                        if (existing) existsInDb = true;
+                    } catch (e) {}
+                }
+                if (existsLocally || existsInDb) {
                     // ID cũ đã bị chiếm dụng -> Cấp ID mới nhất
                     targetId = await nextQuestionId();
                 }
             }
 
+            if (!Number.isFinite(targetId) || targetId <= 0) {
+                targetId = Date.now();
+            }
+
             const rowToInsert = {
-                id: targetId,
+                id: Math.floor(targetId),
                 subject_key: item.subject_key || item.subjectKey || 'history',
                 category: item.category || 'Ôn tập',
                 q_type: item.q_type || item.qType || 'mcq',
@@ -1245,11 +1400,11 @@
             await saveTrash();
 
             addActivityLog(
-                `Khôi phục câu hỏi #${targetId}`,
+                `Khôi phục câu hỏi #${rowToInsert.id}`,
                 `Môn ${subjectName(item.subject_key || item.subjectKey)} đã đưa về ngân hàng`,
                 'green'
             );
-            notify(`Đã khôi phục thành công câu hỏi #${targetId}!`);
+            notify(`Đã khôi phục thành công câu hỏi #${rowToInsert.id}!`);
             await loadQuestions();
             renderTrashModal();
             await syncSubjectQuestionCounts();
@@ -1270,21 +1425,31 @@
         }))) return;
 
         try {
-            // Lấy danh sách ID hiện có trong CSDL để tránh trùng lặp
-            const { data: existingRows } = await state.client.from('quiz_questions').select('id');
-            const usedIds = new Set((existingRows || []).map((r) => Number(r.id)).filter((id) => !isNaN(id) && id > 0));
-            let maxId = usedIds.size > 0 ? Math.max(...usedIds) : 0;
+            // Lấy danh sách ID hiện có trong CSDL và bộ nhớ để tránh trùng lặp
+            const usedIds = new Set(
+                (state.questions || []).map((q) => Number(q.id)).filter((id) => Number.isFinite(id) && id > 0)
+            );
+            if (state.client) {
+                try {
+                    const { data: existingRows } = await state.client.from('quiz_questions').select('id');
+                    (existingRows || []).forEach((r) => {
+                        const num = Number(r.id);
+                        if (Number.isFinite(num) && num > 0) usedIds.add(num);
+                    });
+                } catch (e) {}
+            }
+            let maxId = usedIds.size > 0 ? Math.max(...usedIds) : 1000;
 
             const rows = state.trashQuestions.map((item) => {
                 let targetId = Number(item.id);
-                if (!targetId || isNaN(targetId) || targetId <= 0 || usedIds.has(targetId)) {
+                if (!Number.isFinite(targetId) || targetId <= 0 || usedIds.has(targetId)) {
                     maxId++;
                     targetId = maxId;
                 }
                 usedIds.add(targetId);
 
                 return {
-                    id: targetId,
+                    id: Math.floor(targetId),
                     subject_key: item.subject_key || item.subjectKey || 'history',
                     category: item.category || 'Ôn tập',
                     q_type: item.q_type || item.qType || 'mcq',
@@ -1321,12 +1486,12 @@
                 'Toàn bộ câu hỏi trong Thùng rác đã được đưa trở lại ngân hàng',
                 'green'
             );
-            notify(`Đã khôi phục thành công ${total} câu hỏi!`);
+            notify(`Đã khôi phục thành công toàn bộ ${total} câu hỏi!`);
             await loadQuestions();
             renderTrashModal();
             await syncSubjectQuestionCounts();
         } catch (error) {
-            notify(`Lỗi khôi phục: ${error.message}`, true);
+            notify(`Không thể khôi phục: ${error.message}`, true);
         }
     }
 
@@ -2940,9 +3105,71 @@
         $('reset-form')?.addEventListener('click', resetForm); $('cancel-edit')?.addEventListener('click', resetForm); $('new-question-button')?.addEventListener('click', () => { resetForm(); switchView('questions'); });
         document.querySelectorAll('.answer-radio').forEach((button) => button.addEventListener('click', () => setAnswer(button.dataset.answer)));
         $('question-form')?.addEventListener('click', (event) => { const choice = event.target.closest('.tf-choice'); if (choice) setTfAnswer(choice.dataset.index, choice.dataset.value); });
-        $('search-input')?.addEventListener('input', renderLibrary); $('question-type-filter')?.addEventListener('change', (event) => { state.typeFilter = event.target.value; renderLibrary(); });
-        $('library-subject-filter')?.addEventListener('change', (event) => { state.subject = event.target.value; renderLibrary(); });
-        document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active')); button.classList.add('is-active'); state.grade = button.dataset.grade; state.subject = 'all'; fillLibrarySubjects(); renderLibrary(); }));
+        $('search-input')?.addEventListener('input', () => {
+            state.page = 1;
+            renderLibrary();
+        });
+        $('question-type-filter')?.addEventListener('change', (event) => {
+            state.typeFilter = event.target.value;
+            state.page = 1;
+            renderLibrary();
+        });
+        $('library-subject-filter')?.addEventListener('change', (event) => {
+            state.subject = event.target.value;
+            state.page = 1;
+            renderLibrary();
+        });
+        document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => {
+            document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active'));
+            button.classList.add('is-active');
+            state.grade = button.dataset.grade;
+            state.subject = 'all';
+            state.page = 1;
+            fillLibrarySubjects();
+            renderLibrary();
+        }));
+        $('library-subject-tabs')?.addEventListener('click', (event) => {
+            const tab = event.target.closest('[data-subject-tab]');
+            if (!tab) return;
+            const key = tab.dataset.subjectTab;
+            if (state.subject === key) return;
+            state.subject = key;
+            state.page = 1;
+            if ($('library-subject-filter')) {
+                $('library-subject-filter').value = key;
+            }
+            renderLibrary();
+        });
+        $('library-pagination')?.addEventListener('click', (event) => {
+            const pageBtn = event.target.closest('.page-btn:not(:disabled)');
+            if (!pageBtn) return;
+            const targetPage = Number(pageBtn.dataset.page);
+            if (!targetPage || isNaN(targetPage) || targetPage === state.page) return;
+            state.page = targetPage;
+            renderLibrary();
+            $('content-library-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        $('library-pagination')?.addEventListener('change', (event) => {
+            if (event.target.id === 'page-size-select') {
+                const val = event.target.value;
+                state.pageSize = val === 'all' ? 'all' : Number(val);
+                state.page = 1;
+                renderLibrary();
+                $('content-library-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        window.addEventListener('scroll', () => {
+            const btn = $('back-to-top-btn');
+            if (!btn) return;
+            if (window.scrollY > 380) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        }, { passive: true });
+        $('back-to-top-btn')?.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
         $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
         $('questions-list')?.addEventListener('change', (event) => {
             const checkbox = event.target.closest('.question-select-checkbox');
