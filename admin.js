@@ -2771,44 +2771,62 @@
         const name = $('student-access-name')?.value.trim();
         if (!name) return notify('Vui lòng nhập tên học sinh / ghi chú.', true);
 
-        const customCode = $('student-access-code')?.value.trim().toUpperCase() || '';
+        const customCode = $('student-access-code')?.value.trim() || '';
         const role = $('student-access-role')?.value || 'grade5';
         let rawIp = $('student-access-ip')?.value.trim() || '';
 
-        // Tự động tách nếu Admin dán chuỗi kết hợp dạng "14.164.221.205-QM-KM9SZG" hoặc chỉ dán IP
+        // Tự động tách nếu Admin dán chuỗi kết hợp dạng "14.164.221.205-QM-KM9SZG" hoặc chỉ dán IP vào bất kỳ ô nào
         let detectedIp = '';
-        let detectedCode = customCode;
-        if (customCode.includes('-')) {
-            const parts = customCode.split('-');
-            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(parts[0].trim())) {
-                detectedIp = parts[0].trim().toLowerCase();
-                detectedCode = parts.slice(1).join('-').trim();
+        let detectedCode = '';
+
+        const parseCombined = (val) => {
+            if (!val) return;
+            const str = val.trim();
+            if (str.includes('-')) {
+                const parts = str.split('-');
+                const possibleIp = parts[0].trim().replace(/^\[|\]$/g, '');
+                if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(possibleIp)) {
+                    detectedIp = possibleIp.toLowerCase();
+                    detectedCode = parts.slice(1).join('-').trim().toUpperCase();
+                    return;
+                }
             }
-        } else if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(customCode)) {
-            detectedIp = customCode.trim().toLowerCase();
-            detectedCode = '';
+            const clean = str.replace(/^\[|\]$/g, '').trim();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean.toLowerCase();
+            } else if (clean) {
+                detectedCode = clean.toUpperCase();
+            }
+        };
+
+        parseCombined(customCode);
+        if (!detectedIp && rawIp) parseCombined(rawIp);
+        if (rawIp && !detectedIp) {
+            const clean = rawIp.replace(/^\[|\]$/g, '').trim().toLowerCase();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean;
+            }
         }
 
-        if (!rawIp && detectedIp) {
-            rawIp = detectedIp;
-            if ($('student-access-ip')) $('student-access-ip').value = detectedIp;
-        }
-
-        const ip = rawIp ? rawIp.replace(/^\[|\]$/g, '').toLowerCase() : '';
-        const token = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'QM'));
-        const combinedToken = (ip && token) ? `${ip}-${token}` : '';
+        const ip = detectedIp || '';
+        const rawCode = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'QM'));
+        const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
 
         // Tìm xem token / mã kết hợp đã có trong danh sách chưa
         const existingIdx = state.tokens.findIndex(t => {
             const tCode = String(t.token || '').toUpperCase();
-            return tCode === token || (combinedToken && tCode === combinedToken.toUpperCase());
+            const tRaw = String(t.rawCode || '').toUpperCase();
+            const tIp = String(t.ip || '').toLowerCase();
+            return (combinedToken && tCode === combinedToken.toUpperCase()) ||
+                   (rawCode && (tRaw === rawCode || tCode === rawCode)) ||
+                   (ip && tIp === ip);
         });
 
         const record = {
-            token: combinedToken || token,
-            rawCode: token,
+            token: combinedToken,
+            rawCode: rawCode,
             role,
             name,
             ip: ip || null,
@@ -2961,22 +2979,32 @@
         });
 
         const role = choice ? 'grade5' : 'ai';
-        const token = deviceCode || generateRandomToken(role === 'grade5' ? 'QM' : 'AI');
+        const rawCode = deviceCode || generateRandomToken(role === 'grade5' ? 'QM' : 'AI');
+        const token = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
-        const existingIdx = state.tokens.findIndex(t => String(t.token || '').toUpperCase() === token);
+        const existingIdx = state.tokens.findIndex(t => {
+            const tToken = String(t.token || '').toUpperCase();
+            const tRaw = String(t.rawCode || '').toUpperCase();
+            const tIp = String(t.ip || '').toLowerCase();
+            return (token && tToken === token.toUpperCase()) ||
+                   (rawCode && (tRaw === rawCode.toUpperCase() || tToken === rawCode.toUpperCase())) ||
+                   (ip && tIp === ip.toLowerCase());
+        });
+
+        const record = {
+            token,
+            rawCode,
+            role,
+            name: `${name}${deviceCode ? '' : ` (${ip || 'học sinh'})`}`,
+            ip: ip || '',
+            createdAt: new Date().toISOString()
+        };
+
         if (existingIdx !== -1) {
-            state.tokens[existingIdx].role = role;
-            state.tokens[existingIdx].name = name;
-            if (ip) state.tokens[existingIdx].ip = ip;
+            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...record, updatedAt: new Date().toISOString() };
         } else {
-            state.tokens.unshift({
-                token,
-                role,
-                name: `${name}${deviceCode ? '' : ` (${ip || 'học sinh'})`}`,
-                ip: ip || '',
-                createdAt: new Date().toISOString()
-            });
+            state.tokens.unshift(record);
         }
         await saveTokens();
 

@@ -2353,6 +2353,15 @@ class DatabaseService {
                 if (rawCodeVal && (rawCodeVal.endsWith('-' + clean) || clean.endsWith('-' + rawCodeVal))) return true;
             }
 
+            // 3. Khớp theo hậu tố mã máy kết hợp (ví dụ: cùng kết thúc bằng -qm-xxxxxx khi đổi IP mạng/4G)
+            if (clean && tokenVal) {
+                const tokenMachineCode = tokenVal.includes('-') ? tokenVal.split('-').pop() : (rawCodeVal || '');
+                const cleanMachineCode = clean.includes('-') ? clean.split('-').pop() : clean;
+                if (tokenMachineCode && cleanMachineCode && tokenMachineCode === cleanMachineCode && tokenMachineCode.length >= 5) {
+                    return true;
+                }
+            }
+
             return false;
         });
         return found || null;

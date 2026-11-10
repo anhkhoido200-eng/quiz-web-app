@@ -1335,23 +1335,35 @@ class QuizApp {
             return;
         }
 
-        // Tự động sao chép IP vào clipboard
+        const code = this.getOrCreateDeviceMachineCode();
+        const combinedKey = this.getCombinedDeviceKey();
+
+        // Tự động sao chép mã kết hợp (IP-Mã máy) vào clipboard
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(ip);
+                await navigator.clipboard.writeText(combinedKey);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = combinedKey;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
             }
         } catch (e) {}
 
-        this.showToastNotification(`📋 Đã sao chép IP: ${ip}. Hãy gửi IP này cho Admin để được mở Lớp 5!`, 'success');
+        this.showToastNotification(`📋 Đã sao chép: ${combinedKey}. Hãy gửi mã này cho Admin để được mở Lớp 5!`, 'success');
 
         await this.showConfirmModal({
-            title: 'Địa chỉ IP của bạn',
-            badge: 'Định danh thiết bị',
-            copyValue: ip,
-            copyLabel: 'Địa chỉ IP hiện tại của bạn',
+            title: 'Mã xác thực thiết bị của bạn',
+            badge: 'IP & Mã máy kết hợp',
+            copyValue: combinedKey,
+            copyLabel: 'Mã thiết bị kết hợp (IP & Mã máy)',
             copyOnConfirm: true,
-            message: `Địa chỉ IP của bạn là: ${ip}\n(Đã tự động sao chép vào bộ nhớ tạm!). Hãy gửi IP này cho Admin qua Zalo/Mess để được mở khóa Lớp 5.`,
-            confirmText: 'Sao chép lại IP',
+            message: `Mã thiết bị của bạn là:\n\n${combinedKey}\n\n(Đã tự động sao chép vào bộ nhớ tạm!).\n\n📌 Mã này kết hợp IP hiện tại (${ip}) và Mã máy cố định (${code}), giúp hệ thống nhận diện bạn ngay cả khi bạn đổi Wi-Fi hay dùng 4G.\nHãy gửi mã này cho Admin qua Zalo/Mess để được mở khóa Lớp 5 & AI!`,
+            confirmText: 'Sao chép lại mã',
             cancelText: 'Đóng',
             okIcon: 'fa-regular fa-copy',
             icon: 'fa-solid fa-network-wired',
@@ -1363,8 +1375,7 @@ class QuizApp {
         const service = window.dbService;
         if (!service?.isSupabaseActive || !service.client) return;
 
-        // Supabase Realtime giúp các tab học sinh nhận bộ đề mới ngay sau khi
-        // Admin insert/delete. Không phụ thuộc cache hoặc lần tải trang kế tiếp.
+        // Supabase Realtime giúp các tab học sinh nhận bộ đề mới và quyền hạn ngay sau khi Admin cấp
         try {
             this.questionSyncChannel = service.client
                 .channel('quiz-questions-live-sync')
@@ -1376,6 +1387,14 @@ class QuizApp {
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins', filter: 'id=eq.00000000-0000-0000-0000-000000000004' }, () => {
                     this.loadDynamicSubjects().catch((error) => console.debug('[QuizApp] Realtime subject refresh skipped:', error));
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins', filter: 'id=eq.00000000-0000-0000-0000-000000000008' }, () => {
+                    console.debug('[QuizApp] Nhận tín hiệu Realtime cập nhật token quyền truy cập');
+                    this.validateUserToken().then(() => this.syncClass5Access()).catch(() => {});
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins', filter: 'id=eq.00000000-0000-0000-0000-000000000002' }, () => {
+                    console.debug('[QuizApp] Nhận tín hiệu Realtime cập nhật GEO / Lớp 5');
+                    this.syncClass5Access().catch(() => {});
                 })
                 .subscribe((status) => console.debug('[QuizApp] Question realtime status:', status));
         } catch (error) {
