@@ -55,7 +55,7 @@
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- CSS tùy chỉnh v4.0 -->
-    <link rel="stylesheet" href="style.css?v=20261110c">
+    <link rel="stylesheet" href="style.css?v=20261110d">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
@@ -371,28 +371,6 @@
                         </p>
                     </div>
 
-                    <!-- THẺ ÔN LUYỆN ĐỀ PHỤC THÙ (MISTAKE BANK CARD) -->
-                    <div id="home-revenge-banner" class="hidden my-3 p-3.5 rounded-2xl home-revenge-card shadow-xl transition-all">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center text-lg shadow shrink-0">
-                                    <i class="fa-solid fa-bullseye text-amber-400"></i>
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <p class="text-white text-xs font-bold flex items-center gap-1.5 flex-wrap">
-                                        <span>Đề Phục Thù</span>
-                                        <span id="home-wrong-badge" class="px-2 py-0.5 rounded-full bg-rose-500/30 border border-rose-500/50 text-rose-300 text-[10px] font-mono font-bold">0 câu</span>
-                                    </p>
-                                    <p class="text-[11px] text-slate-300 truncate">Ôn lại <span id="home-wrong-count-text" class="text-amber-300 font-bold">0</span> câu bạn từng làm sai môn này</p>
-                                </div>
-                            </div>
-                            <button type="button" onclick="app.startRevengeQuiz()" class="btn-3d btn-3d-revenge px-3.5 py-2 rounded-xl text-white font-heading font-extrabold text-xs shadow-md transition shrink-0 flex items-center gap-1.5 cursor-pointer">
-                                <i class="fa-solid fa-fire text-amber-300"></i>
-                                <span id="home-revenge-btn-label">Tạo Đề Phục Thù</span>
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Nút bắt đầu làm bài -->
                     <div class="pt-2">
                         <button id="btn-start-quiz" onclick="app.startQuiz()" disabled aria-busy="true" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-wait opacity-60">
@@ -526,33 +504,60 @@
                         </div>
                     </div>
 
-                    <!-- Nút thao tác sau khi xong bài -->
-                    <div class="result-actions flex flex-wrap items-center justify-center gap-3">
-                        <button id="btn-revenge-quiz-result" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
-                            <i class="fa-solid fa-fire text-amber-300"></i>
-                            <span id="revenge-btn-text">🔥 Tạo đề phục thù (0 câu sai)</span>
-                        </button>
-                        <div id="badge-all-correct-result" class="hidden px-5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-heading font-extrabold text-xs flex items-center gap-2">
-                            <i class="fa-solid fa-circle-check text-emerald-400"></i>
-                            <span>Xuất sắc! Bạn không sai câu nào</span>
+                    <!-- KHU VỰC HERO: ĐỀ PHỤC THÙ TRỰC TIẾP SAU KHI NỘP BÀI -->
+                    <div id="result-revenge-card" class="result-revenge-hero my-5 p-4 sm:p-5 rounded-2xl text-left shadow-2xl relative overflow-hidden transition-all">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div class="flex items-center gap-3.5">
+                                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 via-orange-500 to-amber-400 flex items-center justify-center text-white text-xl shadow-lg shadow-rose-500/30 shrink-0">
+                                    <i class="fa-solid fa-fire-flame-curved"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <h3 class="font-heading font-extrabold text-white text-base sm:text-lg">🎯 Đề Phục Thù - Thử Thách Sửa Sai</h3>
+                                        <span id="result-revenge-count-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-extrabold bg-rose-500/30 text-rose-300 border border-rose-500/50 shadow-sm">0 câu sai</span>
+                                    </div>
+                                    <p id="result-revenge-desc" class="text-xs text-slate-300 mt-1">
+                                        Bạn có <strong id="result-revenge-count-text" class="text-amber-300 font-bold">0</strong> câu trả lời chưa đúng trong đề thi này. Hãy ôn lại ngay để không bao giờ mất điểm!
+                                    </p>
+                                </div>
+                            </div>
+                            <button id="btn-revenge-quiz-result" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge w-full sm:w-auto px-6 py-3 rounded-xl font-heading font-extrabold text-xs sm:text-sm text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-xl shrink-0">
+                                <i class="fa-solid fa-bolt text-amber-300"></i>
+                                <span id="revenge-btn-text">🔥 Vào Làm Lại Các Câu Sai Ngay</span>
+                            </button>
                         </div>
-                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
+                    </div>
+
+                    <!-- THẺ CHÚC MỪNG ĐIỂM TUYỆT ĐỐI (KHI SAI 0 CÂU) -->
+                    <div id="badge-all-correct-result" class="hidden my-5 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 shadow-xl flex items-center justify-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-lg shrink-0">
+                            <i class="fa-solid fa-crown"></i>
+                        </div>
+                        <div class="text-left">
+                            <h4 class="font-heading font-extrabold text-sm sm:text-base text-emerald-300">Xuất Sắc! Bạn Không Sai Câu Nào</h4>
+                            <p class="text-xs text-emerald-400/90 mt-0.5">Bạn đã trả lời đúng 100% tất cả các câu hỏi trong lượt làm bài này!</p>
+                        </div>
+                    </div>
+
+                    <!-- Nút thao tác sau khi xong bài -->
+                    <div class="result-actions flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
                         </button>
-                        <button onclick="app.filterQuestions('wrong')" class="btn-3d px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.filterQuestions('wrong')" class="btn-3d px-4 sm:px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark"></i>
                             <span>Xem các câu làm sai</span>
                         </button>
-                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
+                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
                             <i class="fa-solid fa-trophy text-slate-950"></i>
                             <span>Xem Bảng Xếp Hạng</span>
                         </button>
-                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-house"></i>
                             <span>Chọn môn khác</span>
                         </button>
-                        <button onclick="app.switchUser()" class="btn-3d btn-3d-slate px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
+                        <button onclick="app.switchUser()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-user-pen"></i>
                             <span>Đổi người thi</span>
                         </button>
@@ -1716,6 +1721,6 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
     <script src="supabase.js?v=20261108j"></script>
-    <script src="app.js?v=20261110c"></script>
+    <script src="app.js?v=20261110d"></script>
 </body>
 </html>

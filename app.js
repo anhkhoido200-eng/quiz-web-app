@@ -4451,29 +4451,19 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     updateHomeRevengeBanner() {
+        // Đã chuyển tính năng Đề Phục Thù tập trung trực tiếp sang màn hình nộp bài (screen-result)
         const banner = document.getElementById('home-revenge-banner');
-        const badge = document.getElementById('home-wrong-badge');
-        const countText = document.getElementById('home-wrong-count-text');
-        const label = document.getElementById('home-revenge-btn-label');
-        if (!banner) return;
-
-        const wrongIds = this.getWrongQuestionIds();
-        const count = wrongIds.length;
-        if (count > 0) {
-            banner.classList.remove('hidden');
-            if (badge) badge.textContent = `${count} câu`;
-            if (countText) countText.textContent = String(count);
-            if (label) label.textContent = `Ôn lại ${count} câu sai`;
-        } else {
-            banner.classList.add('hidden');
-        }
+        if (banner) banner.classList.add('hidden');
     }
 
     updateResultRevengeButton() {
+        const card = document.getElementById('result-revenge-card');
         const btn = document.getElementById('btn-revenge-quiz-result');
+        const badge = document.getElementById('result-revenge-count-badge');
+        const countText = document.getElementById('result-revenge-count-text');
+        const descText = document.getElementById('result-revenge-desc');
         const textEl = document.getElementById('revenge-btn-text');
         const badgeAllCorrect = document.getElementById('badge-all-correct-result');
-        if (!btn) return;
 
         // Ưu tiên đếm số câu sai thực tế từ lượt làm hiện tại, hoặc từ cache ngân hàng câu sai
         let count = 0;
@@ -4485,19 +4475,30 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         if (count > 0) {
-            btn.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
-            btn.classList.add('btn-revenge-glowing');
-            btn.disabled = false;
-            if (badgeAllCorrect) badgeAllCorrect.classList.add('hidden');
-            if (textEl) {
-                const prefix = this.isRevengeMode ? '🔥 Tiếp tục phục thù' : '🎯 Tạo đề phục thù';
-                textEl.textContent = `${prefix} (${count} câu sai)`;
+            if (card) card.classList.remove('hidden');
+            if (btn) {
+                btn.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
+                btn.classList.add('btn-revenge-glowing');
+                btn.disabled = false;
             }
+            if (badge) badge.textContent = `${count} câu sai`;
+            if (countText) countText.textContent = String(count);
+            if (descText) {
+                descText.innerHTML = `Bạn có <strong class="text-amber-300 font-bold">${count}</strong> câu trả lời chưa đúng trong đề thi này. Hãy làm lại ngay để củng cố kiến thức và không bao giờ mất điểm!`;
+            }
+            if (textEl) {
+                const prefix = this.isRevengeMode ? '🔥 Tiếp Tục Phục Thù' : '🔥 Vào Làm Lại Các Câu Sai Ngay';
+                textEl.textContent = `${prefix} (${count} câu)`;
+            }
+            if (badgeAllCorrect) badgeAllCorrect.classList.add('hidden');
         } else {
-            // Không có câu sai hoặc đã hoàn thành xuất sắc
-            btn.classList.remove('btn-revenge-glowing');
-            btn.classList.add('hidden');
-            btn.disabled = true;
+            // Không có câu sai hoặc đã hoàn thành xuất sắc 100%
+            if (card) card.classList.add('hidden');
+            if (btn) {
+                btn.classList.remove('btn-revenge-glowing');
+                btn.classList.add('hidden');
+                btn.disabled = true;
+            }
             if (badgeAllCorrect) {
                 badgeAllCorrect.classList.remove('hidden');
             }
