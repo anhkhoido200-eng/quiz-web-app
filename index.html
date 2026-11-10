@@ -55,7 +55,7 @@
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- CSS tùy chỉnh v4.0 -->
-    <link rel="stylesheet" href="style.css?v=20261110d">
+    <link rel="stylesheet" href="style.css?v=20261110f">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
@@ -363,9 +363,14 @@
                             <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
                                 class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-inner">
                         </div>
-                        <button type="button" onclick="app.showMyIp()" class="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer">
-                            <i class="fa-solid fa-network-wired text-cyan-400"></i> Hiện IP của tôi
-                        </button>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <button type="button" onclick="app.showMyIp()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer">
+                                <i class="fa-solid fa-network-wired text-cyan-400"></i> Hiện IP của tôi
+                            </button>
+                            <button type="button" onclick="app.openTokenModal()" id="btn-token-activation" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 text-xs font-semibold transition cursor-pointer">
+                                <i class="fa-solid fa-key text-amber-400"></i> <span id="token-status-label">Nhập mã kích hoạt quyền</span>
+                            </button>
+                        </div>
                         <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1 font-medium">
                             <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
                         </p>
@@ -541,6 +546,10 @@
 
                     <!-- Nút thao tác sau khi xong bài -->
                     <div class="result-actions flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                        <button id="btn-result-action-revenge" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
+                            <i class="fa-solid fa-fire text-amber-300 animate-pulse"></i>
+                            <span id="btn-result-action-revenge-text">🔥 Làm lại các câu sai</span>
+                        </button>
                         <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
@@ -1528,6 +1537,71 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     </div>
 
     <!-- ======================================================= -->
+    <!-- MODAL: KÍCH HOẠT QUYỀN TRUY CẬP BẰNG TOKEN (MÃ TRUY CẬP) -->
+    <!-- ======================================================= -->
+    <div id="modal-token-activation" class="fixed inset-0 z-[100004] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-indigo-500/30 animate-fade-in">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center text-lg shadow-lg shadow-indigo-500/30">
+                        <i class="fa-solid fa-key"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-heading font-extrabold text-white text-base">Kích Hoạt Quyền Truy Cập</h3>
+                        <p class="text-[11px] text-slate-400">Nhập mã Token do Giáo viên / Quản trị viên cấp</p>
+                    </div>
+                </div>
+                <button onclick="app.closeTokenModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Trạng thái token hiện tại nếu có -->
+            <div id="token-active-status-box" class="hidden p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-emerald-300 font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                        <span>Đã kích hoạt thành công</span>
+                    </span>
+                    <button onclick="app.removeToken()" class="text-rose-400 hover:text-rose-300 text-[11px] font-semibold underline cursor-pointer">
+                        Gỡ mã này
+                    </button>
+                </div>
+                <div class="text-slate-300 text-[11px] space-y-1">
+                    <p>Người học: <strong id="token-user-name" class="text-white font-bold">...</strong></p>
+                    <p>Mã token: <code id="token-code-display" class="text-amber-300 font-mono font-bold">...</code></p>
+                    <div class="mt-1 flex items-center gap-1.5 flex-wrap" id="token-roles-badges">
+                        <!-- badges render động -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label for="token-input-field" class="block font-semibold text-slate-300 mb-1.5">
+                        Mã kích hoạt (Token):
+                    </label>
+                    <input type="text" id="token-input-field" placeholder="Ví dụ: GRADE5_abc123 hoặc AI_xyz789" 
+                        class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 font-mono text-xs outline-none focus:border-indigo-500 transition shadow-inner uppercase">
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        Mã dùng để mở khóa các môn <strong>Lớp 5</strong> hoặc tính năng <strong>Trợ lý AI</strong> mà không phụ thuộc vào địa chỉ IP mạng.
+                    </p>
+                </div>
+
+                <div class="pt-2 flex items-center gap-2">
+                    <button type="button" onclick="app.closeTokenModal()" class="btn-3d btn-3d-slate flex-1 py-2.5 rounded-xl text-slate-300 text-xs font-heading font-bold transition cursor-pointer">
+                        Đóng
+                    </button>
+                    <button type="button" onclick="app.submitTokenActivation()" id="btn-submit-token" class="btn-3d btn-3d-indigo flex-1 py-2.5 rounded-xl text-white text-xs font-heading font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-500/25">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Kích Hoạt Ngay</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
     <!-- MODAL 9: CÀI ĐẶT TRỢ LÝ AI GEMINI                       -->
     <!-- ======================================================= -->
     <div id="modal-ai-settings" class="fixed inset-0 z-[100003] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
@@ -1720,7 +1794,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="questions.js?v=20261108j"></script>
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
-    <script src="supabase.js?v=20261108j"></script>
-    <script src="app.js?v=20261110d"></script>
+    <script src="supabase.js?v=20261110f"></script>
+    <script src="app.js?v=20261110f"></script>
 </body>
 </html>

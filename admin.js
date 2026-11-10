@@ -11,7 +11,8 @@
         subjects: '00000000-0000-0000-0000-000000000004',
         gemini: '00000000-0000-0000-0000-000000000005',
         aiIps: '00000000-0000-0000-0000-000000000006',
-        trash: '00000000-0000-0000-0000-000000000007'
+        trash: '00000000-0000-0000-0000-000000000007',
+        tokens: '00000000-0000-0000-0000-000000000008'
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const state = {
@@ -20,6 +21,7 @@
         page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
+        tokens: [],
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
@@ -1064,11 +1066,16 @@
     }
 
     async function nextQuestionId() {
-        const localMax = Array.isArray(state.questions) && state.questions.length > 0
-            ? Math.max(...state.questions.map((q) => Number(q.id)).filter((n) => Number.isFinite(n) && n > 0), 0)
-            : 0;
+        let maxId = 0;
+        if (Array.isArray(state.questions) && state.questions.length > 0) {
+            for (const q of state.questions) {
+                const num = Number(q.id);
+                if (Number.isFinite(num) && num > 0 && num < 2000000000) {
+                    if (num > maxId) maxId = num;
+                }
+            }
+        }
 
-        let dbMax = 0;
         try {
             if (state.client) {
                 const { data, error } = await state.client
@@ -1078,15 +1085,17 @@
                     .limit(1);
                 if (!error && Array.isArray(data) && data.length > 0) {
                     const parsed = Number(data[0].id);
-                    if (Number.isFinite(parsed) && parsed > 0) dbMax = parsed;
+                    if (Number.isFinite(parsed) && parsed > 0 && parsed < 2000000000) {
+                        if (parsed > maxId) maxId = parsed;
+                    }
                 }
             }
         } catch (e) {
             console.warn('[nextQuestionId] Lỗi lấy max ID từ CSDL:', e);
         }
 
-        const highest = Math.max(localMax, dbMax);
-        return (highest > 0 ? highest : 1000) + 1;
+        const safeMax = (Number.isFinite(maxId) && maxId > 0) ? maxId : 1000;
+        return safeMax + 1;
     }
 
     async function saveQuestion(event) {
@@ -1355,7 +1364,7 @@
 
         try {
             let targetId = Number(item.id);
-            if (!Number.isFinite(targetId) || targetId <= 0) {
+            if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000) {
                 targetId = await nextQuestionId();
             } else {
                 // Kiểm tra xem ID cũ có đang bị câu hỏi khác chiếm dụng không
@@ -1377,12 +1386,13 @@
                 }
             }
 
-            if (!Number.isFinite(targetId) || targetId <= 0) {
-                targetId = Date.now();
+            targetId = Math.floor(Number(targetId));
+            if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000) {
+                targetId = await nextQuestionId();
             }
 
             const rowToInsert = {
-                id: Math.floor(targetId),
+                id: targetId,
                 subject_key: item.subject_key || item.subjectKey || 'history',
                 category: item.category || 'Ôn tập',
                 q_type: item.q_type || item.qType || 'mcq',
@@ -1435,30 +1445,36 @@
 
         try {
             // Lấy danh sách ID hiện có trong CSDL và bộ nhớ để tránh trùng lặp
-            const usedIds = new Set(
-                (state.questions || []).map((q) => Number(q.id)).filter((id) => Number.isFinite(id) && id > 0)
-            );
+            const usedIds = new Set();
+            (state.questions || []).forEach((q) => {
+                const num = Number(q.id);
+                if (Number.isFinite(num) && num > 0 && num < 2000000000) usedIds.add(num);
+            });
             if (state.client) {
                 try {
                     const { data: existingRows } = await state.client.from('quiz_questions').select('id');
                     (existingRows || []).forEach((r) => {
                         const num = Number(r.id);
-                        if (Number.isFinite(num) && num > 0) usedIds.add(num);
+                        if (Number.isFinite(num) && num > 0 && num < 2000000000) usedIds.add(num);
                     });
                 } catch (e) {}
             }
-            let maxId = usedIds.size > 0 ? Math.max(...usedIds) : 1000;
+            let maxId = 1000;
+            usedIds.forEach((id) => {
+                if (id > maxId) maxId = id;
+            });
 
             const rows = state.trashQuestions.map((item) => {
                 let targetId = Number(item.id);
-                if (!Number.isFinite(targetId) || targetId <= 0 || usedIds.has(targetId)) {
+                if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000 || usedIds.has(targetId)) {
                     maxId++;
                     targetId = maxId;
                 }
+                targetId = Math.floor(targetId);
                 usedIds.add(targetId);
 
                 return {
-                    id: Math.floor(targetId),
+                    id: targetId,
                     subject_key: item.subject_key || item.subjectKey || 'history',
                     category: item.category || 'Ôn tập',
                     q_type: item.q_type || item.qType || 'mcq',
@@ -2445,11 +2461,150 @@
         return Boolean(msg && msg !== 'Website đang mở công khai cho học sinh.' && msg !== 'Website đang mở.');
     }
 
+    function generateRandomToken(prefix = 'GRADE5') {
+        const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+        let rand = '';
+        for (let i = 0; i < 6; i++) {
+            rand += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return `${prefix}_${rand}`;
+    }
+
+    function getStudentActivationLink(token) {
+        const loc = window.location;
+        const basePath = loc.pathname.replace(/admin\.html.*$/, '');
+        const cleanBase = basePath.endsWith('/') ? basePath : basePath + '/';
+        return `${loc.origin}${cleanBase}index.html?token=${encodeURIComponent(token)}`;
+    }
+
+    async function copyActivationLink(token, name = '') {
+        const link = getStudentActivationLink(token);
+        await copyToClipboard(link);
+        notify(`Đã sao chép link kích hoạt${name ? ' cho ' + name : ''} vào bộ nhớ tạm!`);
+    }
+
+    async function loadTokens() {
+        const row = await systemRow(SYSTEM.tokens);
+        if (row?.status === 'ACTIVE') {
+            try {
+                const data = JSON.parse(row.score_summary || '[]');
+                state.tokens = Array.isArray(data) ? data : data.tokens || [];
+            } catch (error) {
+                state.tokens = [];
+            }
+        } else {
+            state.tokens = [];
+        }
+        renderTokens();
+    }
+
+    async function saveTokens() {
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.tokens,
+            player_name: '__ACCESS_TOKENS_CONFIG__',
+            ip_address: 'SYSTEM',
+            device_info: 'TOKEN_AUTH',
+            status: 'ACTIVE',
+            score_summary: JSON.stringify(state.tokens),
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if (error) throw error;
+        renderTokens();
+    }
+
+    function renderTokens() {
+        const list = state.tokens || [];
+        $('token-count') && ($('token-count').textContent = list.length);
+        const container = $('tokens-list');
+        if (!container) return;
+
+        if (list.length === 0) {
+            container.innerHTML = '<p class="muted-copy">Chưa có mã token nào được tạo.</p>';
+            return;
+        }
+
+        container.innerHTML = list.map((item) => {
+            const role = item.role || 'grade5';
+            const roleBadge = role === 'all'
+                ? '<span class="status-badge warning"><i class="fa-solid fa-crown"></i> Toàn quyền (Lớp 5 + AI)</span>'
+                : (role === 'ai' 
+                    ? '<span class="status-badge info"><i class="fa-solid fa-wand-magic-sparkles"></i> Trợ lý AI</span>' 
+                    : '<span class="status-badge safe"><i class="fa-solid fa-graduation-cap"></i> Khối Lớp 5</span>');
+
+            const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '';
+
+            return `
+                <div class="stack-item" style="padding: 10px 14px;">
+                    <span class="stack-item-icon" style="color:var(--orange);background:#fff7ed;"><i class="fa-solid fa-key"></i></span>
+                    <span class="stack-item-main" style="min-width:0;flex:1;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <b style="font-size:12px;">${esc(item.name || 'Học sinh')}</b>
+                            ${roleBadge}
+                            <code style="font-weight:bold;color:var(--primary);cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                        </div>
+                        <small style="color:var(--muted);font-size:10px;">${item.ip ? 'Gắn kèm IP: ' + esc(item.ip) + ' • ' : ''}Tạo: ${esc(dateStr)}</small>
+                    </span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <button class="button button-sm button-secondary" data-copy-token-link="${esc(item.token)}" data-token-name="${esc(item.name || '')}" title="Sao chép link kích hoạt gửi học sinh" style="font-size:11px;padding:5px 10px;">
+                            <i class="fa-solid fa-link"></i> Copy Link
+                        </button>
+                        <button data-remove-token="${esc(item.token)}" title="Thu hồi mã này" style="color:var(--red);background:none;border:none;padding:6px;cursor:pointer;">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function addTokenFromForm() {
+        const name = $('token-create-name')?.value.trim() || 'Học sinh';
+        const role = $('token-create-role')?.value || 'grade5';
+        const customToken = $('token-create-custom')?.value.trim().toUpperCase();
+
+        const prefix = role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : 'GRADE5');
+        const token = customToken || generateRandomToken(prefix);
+
+        if (state.tokens.some(t => t.token.toLowerCase() === token.toLowerCase())) {
+            return notify('Mã token này đã tồn tại trên hệ thống.', true);
+        }
+
+        const tokenObj = {
+            token,
+            role,
+            name,
+            createdAt: new Date().toISOString()
+        };
+
+        state.tokens.unshift(tokenObj);
+        await saveTokens();
+
+        if ($('token-create-name')) $('token-create-name').value = '';
+        if ($('token-create-custom')) $('token-create-custom').value = '';
+
+        await copyActivationLink(token, name);
+    }
+
+    async function removeAccessToken(token) {
+        if (!(await confirmDialog({
+            title: 'Thu hồi mã token này?',
+            message: `Học sinh đang dùng mã "${token}" sẽ mất quyền truy cập tương ứng nếu IP không nằm trong whitelist.`,
+            confirmText: 'Thu hồi mã',
+            variant: 'danger',
+            icon: 'fa-trash-can'
+        }))) return;
+
+        state.tokens = state.tokens.filter(t => t.token !== token);
+        await saveTokens();
+        notify(`Đã thu hồi mã token ${token}.`);
+    }
+
     async function loadAccess() {
         const row = await systemRow(SYSTEM.admin);
         if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.adminConfig = { masterIp: data.masterIp || '', allowedIps: data.allowedIps || [] }; } catch (error) {} }
         const aiRow = await systemRow(SYSTEM.aiIps);
         if (aiRow?.status === 'ACTIVE') { try { const data = JSON.parse(aiRow.score_summary || '[]'); state.aiIps = Array.isArray(data) ? data : data.ips || []; } catch (error) { state.aiIps = []; } } else state.aiIps = [];
+        await loadTokens();
         renderAccess();
     }
 
@@ -2459,14 +2614,64 @@
         $('admin-ip-list') && ($('admin-ip-list').innerHTML = allowed.map((item) => { const ip = typeof item === 'string' ? item : item.ip; const name = typeof item === 'string' ? 'Admin' : item.name || 'Admin'; return `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-user-shield"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>${esc(name)}</small></span>${ip === state.adminConfig.masterIp ? '<span class="tag">MASTER</span>' : `<button data-remove-admin="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button>`}</div>`; }).join('') || '<p class="muted-copy">Chưa có IP phụ.</p>');
         $('ai-ip-count') && ($('ai-ip-count').textContent = state.aiIps.length);
         $('ai-ip-list') && ($('ai-ip-list').innerHTML = state.aiIps.map((item) => { const ip = typeof item === 'string' ? item : item.ip; const name = typeof item === 'string' ? 'AI learner' : item.name || 'AI learner'; return `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>${esc(name)}</small></span><button data-remove-ai="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`; }).join('') || '<p class="muted-copy">Chưa cấp quyền AI.</p>');
+        renderTokens();
     }
 
     async function saveAdminConfig() { const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify({ masterIp: state.adminConfig.masterIp, allowedIps: state.adminConfig.allowedIps, ips: state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item.ip) }), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; }
+    async function handleGrantTokenToStudent(name, ip) {
+        const choice = await confirmDialog({
+            title: `Cấp mã Token cho ${name}?`,
+            message: `Chọn loại quyền muốn cấp cho học sinh "${name}" (${ip || 'Chưa rõ IP'}):\n\n• Bấm "Cấp quyền Lớp 5" để xem và làm bài khối Lớp 5.\n• Bấm "Cấp quyền AI" để sử dụng Trợ lý AI.`,
+            confirmText: 'Cấp quyền Lớp 5',
+            cancelText: 'Cấp quyền AI',
+            variant: 'primary',
+            icon: 'fa-key'
+        });
+
+        const role = choice ? 'grade5' : 'ai';
+        const prefix = role === 'grade5' ? 'GRADE5' : 'AI';
+        const token = generateRandomToken(prefix);
+        state.tokens.unshift({
+            token,
+            role,
+            name: `${name} (${ip || 'học sinh'})`,
+            ip: ip || '',
+            createdAt: new Date().toISOString()
+        });
+        await saveTokens();
+        await copyActivationLink(token, name);
+    }
+
     async function addAdminIp() { const ip = $('admin-ip-input')?.value.trim(); if (!ip) return notify('Nhập IP cần cấp quyền.', true); const found = state.adminConfig.allowedIps.find((item) => (typeof item === 'string' ? item : item.ip) === ip); if (!found) state.adminConfig.allowedIps.push({ ip, name: $('admin-ip-name')?.value.trim() || 'Admin', addedAt: new Date().toISOString() }); await saveAdminConfig(); $('admin-ip-input').value = ''; $('admin-ip-name').value = ''; renderAccess(); notify('Đã cấp quyền Admin cho IP.'); }
     async function removeAdminIp(ip) { if (ip === state.adminConfig.masterIp) return notify('Không thể xóa Master Admin.', true); state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((item) => (typeof item === 'string' ? item : item.ip) !== ip); await saveAdminConfig(); renderAccess(); notify('Đã thu hồi quyền Admin.'); }
     async function saveMasterIp() { if (!state.clientIp) return notify('Không xác định được IP hiện tại.', true); if (!state.adminConfig.allowedIps.some((item) => (typeof item === 'string' ? item : item.ip) === state.clientIp)) state.adminConfig.allowedIps.push({ ip: state.clientIp, name: 'Thiết bị Master', isMaster: true }); state.adminConfig.masterIp = state.clientIp; await saveAdminConfig(); renderAccess(); notify('Đã đặt IP hiện tại làm Master Admin.'); }
     async function saveAiIps() { const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.aiIps, player_name: '__AI_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'AI_IP_WHITELIST', status: 'ACTIVE', score_summary: JSON.stringify(state.aiIps), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; }
-    async function addAiIp() { const ip = $('ai-ip-input')?.value.trim(); if (!ip) return notify('Nhập IP cần cấp AI.', true); if (!state.aiIps.some((item) => (typeof item === 'string' ? item : item.ip) === ip)) state.aiIps.push({ ip, name: $('ai-ip-name')?.value.trim() || 'AI learner' }); await saveAiIps(); $('ai-ip-input').value = ''; $('ai-ip-name').value = ''; renderAccess(); notify('Đã cấp quyền Trợ lý AI.'); }
+    async function addAiIp() {
+        const ip = $('ai-ip-input')?.value.trim();
+        if (!ip) return notify('Nhập IP cần cấp AI.', true);
+        const name = $('ai-ip-name')?.value.trim() || 'Học sinh AI';
+        if (!state.aiIps.some((item) => (typeof item === 'string' ? item : item.ip) === ip)) {
+            state.aiIps.push({ ip, name });
+        }
+        await saveAiIps();
+
+        const autoToken = generateRandomToken('AI');
+        state.tokens.unshift({
+            token: autoToken,
+            role: 'ai',
+            name: `${name} (${ip})`,
+            ip,
+            createdAt: new Date().toISOString()
+        });
+        await saveTokens();
+        const link = getStudentActivationLink(autoToken);
+        await copyToClipboard(link);
+
+        $('ai-ip-input').value = '';
+        $('ai-ip-name').value = '';
+        renderAccess();
+        notify(`Đã cấp quyền AI cho IP ${ip} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
+    }
     async function removeAiIp(ip) { state.aiIps = state.aiIps.filter((item) => (typeof item === 'string' ? item : item.ip) !== ip); await saveAiIps(); renderAccess(); notify('Đã thu hồi quyền AI.'); }
 
     function ensureClass5AccessPanel() {
@@ -2489,7 +2694,27 @@
     async function loadGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: (data.ips || []).map(normalizeIp).filter(Boolean), grade5Ips: (data.grade5Ips || data.grade5_ips || []).map(normalizeIp).filter(Boolean) }; console.debug('[Quiz Studio Admin] Loaded Grade 5 access config:', { stateGeo: state.geo, raw: data }); } catch (error) { console.warn('[Quiz Studio Admin] Invalid Grade 5 access config:', error.message); } } ensureClass5AccessPanel(); renderGeo(); }
     function renderGeo() { ensureClass5AccessPanel(); $('geo-mode-badge') && ($('geo-mode-badge').textContent = state.geo.mode); document.querySelectorAll('[data-geo-mode]').forEach((button) => button.classList.toggle('is-active', button.dataset.geoMode === state.geo.mode)); $('geo-ip-list') && ($('geo-ip-list').innerHTML = state.geo.ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-location-dot"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép truy cập Địa lý</small></span><button data-remove-geo="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Danh sách IP trống.</p>'); const class5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; $('class5-ip-count') && ($('class5-ip-count').textContent = `${class5Ips.length} IP`); $('class5-ip-list') && ($('class5-ip-list').innerHTML = class5Ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép xem Lớp 5</small></span><button data-remove-class5="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa cấp quyền cho IP nào.</p>'); }
     async function saveGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const payload = { mode: state.geo.mode, ips: [...new Set((state.geo.ips || []).map(normalizeIp).filter(Boolean))], grade5Ips: [...new Set((state.geo.grade5Ips || []).map(normalizeIp).filter(Boolean))] }; state.geo = { ...state.geo, ...payload }; console.debug('[Quiz Studio Admin] Saving Grade 5 access config:', payload); const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.geo, player_name: '__ALLOWED_GEO_IPS__', ip_address: 'SYSTEM', device_info: state.geo.mode, status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; renderGeo(); }
-    async function addClass5Ip(ip) { const cleanIp = String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); if (!cleanIp) return notify('Nhập IP máy của em bạn.', true); state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; if (!state.geo.grade5Ips.includes(cleanIp)) state.geo.grade5Ips.push(cleanIp); await saveGeo(); notify(`Đã cấp quyền Lớp 5 cho IP ${cleanIp}.`); }
+    async function addClass5Ip(ip) {
+        const cleanIp = String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        if (!cleanIp) return notify('Nhập IP máy cần cấp quyền Lớp 5.', true);
+        state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
+        if (!state.geo.grade5Ips.includes(cleanIp)) state.geo.grade5Ips.push(cleanIp);
+        await saveGeo();
+
+        const autoToken = generateRandomToken('GRADE5');
+        state.tokens.unshift({
+            token: autoToken,
+            role: 'grade5',
+            name: `Học sinh Lớp 5 (${cleanIp})`,
+            ip: cleanIp,
+            createdAt: new Date().toISOString()
+        });
+        await saveTokens();
+        const link = getStudentActivationLink(autoToken);
+        await copyToClipboard(link);
+
+        notify(`Đã cấp quyền Lớp 5 cho IP ${cleanIp} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
+    }
     async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
 
     function renderSubjectCatalog() {
@@ -2786,7 +3011,7 @@
             const status = isRowBanned ? 'banned' : isOnline ? 'online' : 'offline';
             const name = row.player_name || 'Học sinh';
             const displayTimeMs = safeRowTime(row);
-            return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${displayTimeMs ? new Date(Math.min(displayTimeMs, nowMs)).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button><button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(row.device_info || '')}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button></div></td></tr>`;
+            return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${displayTimeMs ? new Date(Math.min(displayTimeMs, nowMs)).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span></td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-grant-token-name="${esc(name)}" data-grant-token-ip="${esc(ip)}" title="Cấp Token & Copy link kích hoạt"><i class="fa-solid fa-key"></i></button><button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button><button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(row.device_info || '')}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button></div></td></tr>`;
         }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>';
 
         if ($('students-body') && state.lastStudentsBodyHtml !== nextBodyHtml) {
@@ -3261,7 +3486,35 @@
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
          $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
-         document.addEventListener('click', (event) => { const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice], #students-body [data-delete-student-name]'); if (!target) return; if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow)); else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow)); else if (target.dataset.deleteStudentName !== undefined) runAction(() => deleteStudentSession(target.dataset.deleteStudentName, target.dataset.deleteStudentIp, target.dataset.deleteStudentDevice)); else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName)); });
+         $('btn-create-token')?.addEventListener('click', () => runAction(addTokenFromForm));
+         document.addEventListener('click', (event) => {
+             const copyLinkBtn = event.target.closest('[data-copy-token-link]');
+             if (copyLinkBtn) {
+                 copyActivationLink(copyLinkBtn.dataset.copyTokenLink, copyLinkBtn.dataset.tokenName);
+                 return;
+             }
+             const copyCodeBtn = event.target.closest('[data-copy-token-code]');
+             if (copyCodeBtn) {
+                 copyToClipboard(copyCodeBtn.dataset.copyTokenCode).then(() => notify('Đã copy mã token ' + copyCodeBtn.dataset.copyTokenCode));
+                 return;
+             }
+             const removeTokenBtn = event.target.closest('[data-remove-token]');
+             if (removeTokenBtn) {
+                 runAction(() => removeAccessToken(removeTokenBtn.dataset.removeToken));
+                 return;
+             }
+             const grantTokenBtn = event.target.closest('#students-body [data-grant-token-name]');
+             if (grantTokenBtn) {
+                 runAction(() => handleGrantTokenToStudent(grantTokenBtn.dataset.grantTokenName, grantTokenBtn.dataset.grantTokenIp));
+                 return;
+             }
+             const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice], #students-body [data-delete-student-name]');
+             if (!target) return;
+             if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow));
+             else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow));
+             else if (target.dataset.deleteStudentName !== undefined) runAction(() => deleteStudentSession(target.dataset.deleteStudentName, target.dataset.deleteStudentIp, target.dataset.deleteStudentDevice));
+             else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName));
+         });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
         $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
         $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__')); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));

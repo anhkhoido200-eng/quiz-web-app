@@ -1818,3 +1818,158 @@ input, textarea, select {
     font-size: 13px;
     line-height: 1.5;
 }
+
+/* ==========================================================================
+   LIBRARY TOOLBAR & FILTERS COMPACT RESPONSIVE LAYOUT
+   ========================================================================== */
+.library-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0 16px;
+    flex-wrap: wrap;
+    background: var(--surface-2);
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+}
+
+body.dark .library-toolbar {
+    background: rgba(18, 26, 42, 0.7);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.library-toolbar .grade-filters {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+body.dark .library-toolbar .grade-filters {
+    background: rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+.library-toolbar .grade-filter {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    padding: 7px 14px;
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.library-toolbar .grade-filter:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.library-toolbar .grade-filter.is-active {
+    color: #fff;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    box-shadow: 0 4px 12px rgba(99, 91, 255, 0.35);
+}
+
+.library-toolbar select {
+    width: auto !important;
+    min-width: 170px;
+    max-width: 220px;
+    flex: 0 1 auto;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+body.dark .library-toolbar select {
+    background-color: #172134;
+    border-color: #2e3a50;
+    color: #e2e8f0;
+}
+
+.library-toolbar select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.2);
+}
+
+.library-toolbar input[type="search"] {
+    flex: 1 1 220px;
+    min-width: 200px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    border-radius: 10px;
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+body.dark .library-toolbar input[type="search"] {
+    background-color: #172134;
+    border-color: #2e3a50;
+    color: #f1f5f9;
+}
+
+.library-toolbar input[type="search"]:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.2);
+}
+
+/* Typography refinements across admin */
+.panel-title h2,
+.page-heading h1,
+.brand strong,
+.modal-header h2 {
+    font-family: var(--font-heading) !important;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.preview-card .preview-title {
+    font-family: var(--font-heading) !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    line-height: 1.6 !important;
+    letter-spacing: -0.01em;
+}
+
+.preview-meta {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 14px !important;
+    flex-wrap: wrap !important;
+}
+
+.preview-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 4px 10px !important;
+    border-radius: 7px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+    margin-right: 4px !important;
+    user-select: none !important;
+}
+

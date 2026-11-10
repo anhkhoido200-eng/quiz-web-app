@@ -39,7 +39,8 @@ const SYSTEM_RECORDS = {
     DYNAMIC_SUBJECTS: '00000000-0000-0000-0000-000000000004',
     GEMINI_CONFIG: '00000000-0000-0000-0000-000000000005',
     AI_IPS: '00000000-0000-0000-0000-000000000006',
-    TRASH: '00000000-0000-0000-0000-000000000007'
+    TRASH: '00000000-0000-0000-0000-000000000007',
+    ACCESS_TOKENS: '00000000-0000-0000-0000-000000000008'
 };
 
 function formatSupabaseUrl(rawUrl) {
@@ -594,14 +595,7 @@ class DatabaseService {
      * Lấy danh sách máy & người đăng nhập cho Admin (Mặc định tải 300 lượt)
      */
     async getLoginHistory(limit = 300) {
-        const systemIds = [
-            SYSTEM_RECORDS.ADMIN_IPS,
-            SYSTEM_RECORDS.GEO_CONFIG,
-            SYSTEM_RECORDS.MAINTENANCE,
-            SYSTEM_RECORDS.DYNAMIC_SUBJECTS,
-            SYSTEM_RECORDS.GEMINI_CONFIG,
-            SYSTEM_RECORDS.AI_IPS
-        ];
+        const systemIds = Object.values(SYSTEM_RECORDS);
         let adminIps = new Set();
         try {
             const adminConfig = await this.fetchAdminIpsConfig();
@@ -2264,6 +2258,84 @@ class DatabaseService {
             }
         }
         return false;
+    }
+
+    /**
+     * PHẦN 8: XÁC THỰC QUYỀN HẠN BẰNG TOKEN (TOKEN-BASED AUTH)
+     * Tải danh sách mã token hợp lệ kèm quyền hạn từ Cloud
+     */
+    async fetchAccessTokens() {
+        let tokens = [];
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('quiz_logins')
+                    .select('status, score_summary')
+                    .eq('id', SYSTEM_RECORDS.ACCESS_TOKENS)
+                    .limit(1);
+                if (!error && data && data.length > 0 && data[0].status === 'ACTIVE' && data[0].score_summary) {
+                    try {
+                        const parsed = JSON.parse(data[0].score_summary);
+                        if (Array.isArray(parsed)) tokens = parsed;
+                        else if (parsed && Array.isArray(parsed.tokens)) tokens = parsed.tokens;
+                    } catch (e) {}
+                }
+                if (Array.isArray(tokens)) {
+                    try { localStorage.setItem('quiz_cached_access_tokens', JSON.stringify(tokens)); } catch (e) {}
+                    return tokens;
+                }
+            } catch (err) {
+                console.warn("[DatabaseService] Lỗi khi tải danh sách access tokens:", err);
+            }
+        }
+        try {
+            const raw = localStorage.getItem('quiz_cached_access_tokens');
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Lưu danh sách mã token hợp lệ lên Cloud
+     */
+    async saveAccessTokens(tokensList) {
+        const cleanList = Array.isArray(tokensList) ? tokensList : [];
+        try { localStorage.setItem('quiz_cached_access_tokens', JSON.stringify(cleanList)); } catch (e) {}
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const nowIso = new Date().toISOString();
+                const { error } = await this.client
+                    .from('quiz_logins')
+                    .upsert([{
+                        id: SYSTEM_RECORDS.ACCESS_TOKENS,
+                        player_name: '__ACCESS_TOKENS_CONFIG__',
+                        ip_address: 'SYSTEM',
+                        device_info: 'TOKEN_AUTH',
+                        status: 'ACTIVE',
+                        score_summary: JSON.stringify(cleanList),
+                        last_active: nowIso
+                    }], { onConflict: 'id' });
+                if (error) throw error;
+                return true;
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi khi lưu danh sách access tokens:", err);
+                throw err;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Xác thực nhanh một mã token trên Cloud / Cache
+     */
+    async verifyAccessToken(rawToken) {
+        if (!rawToken || typeof rawToken !== 'string') return null;
+        const clean = rawToken.trim().toLowerCase();
+        const tokens = await this.fetchAccessTokens();
+        const found = tokens.find(t => String(t.token || '').trim().toLowerCase() === clean);
+        return found || null;
     }
 }
 

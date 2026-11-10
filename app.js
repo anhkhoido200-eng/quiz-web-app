@@ -50,6 +50,14 @@ class QuizApp {
         // Phân quyền sử dụng Trợ lý AI theo địa chỉ IP
         this.allowedAiIps = [];
 
+        // Phân quyền kết hợp Token (Token-based Auth)
+        this.userToken = (localStorage.getItem('quiz_access_token') || '').trim();
+        this.tokenInfo = null;
+        try {
+            const cachedToken = localStorage.getItem('quiz_token_info');
+            if (cachedToken) this.tokenInfo = JSON.parse(cachedToken);
+        } catch (e) {}
+
         // Danh sách các IP đang bị chặn (Banned IPs)
         this.bannedIpsList = [];
 
@@ -503,12 +511,33 @@ class QuizApp {
      * Khởi tạo toàn bộ ứng dụng
      */
     async init() {
+        // 1. Kiểm tra mã kích hoạt token qua URL query params (?token=...)
+        let hasUrlToken = false;
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const paramToken = urlParams.get('token');
+            if (paramToken && paramToken.trim()) {
+                const cleanToken = paramToken.trim();
+                this.userToken = cleanToken;
+                try { localStorage.setItem('quiz_access_token', cleanToken); } catch (e) {}
+                hasUrlToken = true;
+                // Xóa query param trên thanh URL để bảo mật và giữ link sạch
+                try {
+                    const cleanUrl = window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.warn('[QuizApp] Lỗi đọc URL token:', e);
+        }
+
         this.initTheme();
         this.initNetworkListeners();
         this.initEventListeners();
         this.updateSoundIcons();
         await this.fetchClientIp();
         await this.loadBannedIpsList();
+        await this.validateUserToken(hasUrlToken);
         await this.syncClass5Access();
         await this.loadAiIpsConfig();
         await this.loadDynamicSubjects();
@@ -590,7 +619,193 @@ class QuizApp {
         return gradeMatch ? gradeMatch[1] : '11';
     }
 
+    /* ============================================================== */
+    /* 1.1 PHÂN QUYỀN KẾT HỢP TOKEN & IP (TOKEN-BASED AUTH)            */
+    /* ============================================================== */
+
+    hasTokenRole(role) {
+        const info = this.tokenInfo || this.getCachedTokenInfo();
+        if (!info || !info.role) return false;
+        const r = String(info.role).trim().toLowerCase();
+        if (r === 'all' || r === 'full' || r === 'admin' || r === 'combo') return true;
+        if (role === 'grade5' && (r === 'grade5' || r === 'class5' || r === 'lop5')) return true;
+        if (role === 'ai' && (r === 'ai' || r === 'gemini' || r === 'troly_ai')) return true;
+        return false;
+    }
+
+    getCachedTokenInfo() {
+        if (this.tokenInfo) return this.tokenInfo;
+        try {
+            const raw = localStorage.getItem('quiz_token_info');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async validateUserToken(showToastOnSuccess = false) {
+        if (!this.userToken) {
+            this.tokenInfo = null;
+            try { localStorage.removeItem('quiz_token_info'); } catch (e) {}
+            this.updateTokenStatusUi();
+            return null;
+        }
+
+        let matched = null;
+        try {
+            if (window.dbService && typeof window.dbService.verifyAccessToken === 'function') {
+                matched = await window.dbService.verifyAccessToken(this.userToken);
+            }
+        } catch (e) {
+            console.warn('[QuizApp] Không thể xác thực token qua Cloud:', e);
+        }
+
+        if (matched) {
+            this.tokenInfo = matched;
+            try { localStorage.setItem('quiz_token_info', JSON.stringify(matched)); } catch (e) {}
+            this.updateTokenStatusUi();
+            if (showToastOnSuccess) {
+                const roleDesc = matched.role === 'all' 
+                    ? 'Toàn bộ quyền (Lớp 5 & Trợ lý AI)' 
+                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Môn học Lớp 5');
+                this.showToastNotification(`🎉 Kích hoạt thành công: ${roleDesc} dành cho ${matched.name || 'bạn'}!`, 'success');
+            }
+            // Làm mới các môn hiển thị và bộ lọc khối lớp
+            this.renderHomeGradeTabs();
+            this.renderHomeSubjects();
+            return matched;
+        } else {
+            // Nếu có kết nối Cloud mà token không tồn tại -> Token đã bị Admin thu hồi
+            if (window.dbService?.isSupabaseActive) {
+                this.tokenInfo = null;
+                try { localStorage.removeItem('quiz_token_info'); } catch (e) {}
+                this.updateTokenStatusUi();
+                if (showToastOnSuccess) {
+                    this.showToastNotification('⚠️ Mã kích hoạt không tồn tại hoặc đã bị thu hồi.', 'error');
+                }
+            } else {
+                // Nếu đang offline, tạm thời tin tưởng cache
+                this.tokenInfo = this.getCachedTokenInfo();
+                this.updateTokenStatusUi();
+            }
+            return this.tokenInfo;
+        }
+    }
+
+    updateTokenStatusUi() {
+        const btnLabel = document.getElementById('token-status-label');
+        const btn = document.getElementById('btn-token-activation');
+        const box = document.getElementById('token-active-status-box');
+        const nameEl = document.getElementById('token-user-name');
+        const codeEl = document.getElementById('token-code-display');
+        const badgesEl = document.getElementById('token-roles-badges');
+        const inputField = document.getElementById('token-input-field');
+
+        const info = this.tokenInfo || this.getCachedTokenInfo();
+
+        if (info && info.token) {
+            const roleText = info.role === 'all' 
+                ? 'Lớp 5 + AI' 
+                : (info.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
+
+            if (btnLabel) btnLabel.textContent = `Đã mở: ${roleText}`;
+            if (btn) {
+                btn.className = "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition cursor-pointer shadow-sm";
+            }
+            if (box) box.classList.remove('hidden');
+            if (nameEl) nameEl.textContent = info.name || 'Học sinh';
+            if (codeEl) codeEl.textContent = info.token;
+            if (badgesEl) {
+                let html = '';
+                if (this.hasTokenRole('grade5')) {
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Môn Lớp 5</span>';
+                }
+                if (this.hasTokenRole('ai')) {
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 text-purple-300 border border-purple-500/40">✓ Trợ lý AI</span>';
+                }
+                badgesEl.innerHTML = html;
+            }
+            if (inputField && !inputField.value) {
+                inputField.value = info.token;
+            }
+        } else {
+            if (btnLabel) btnLabel.textContent = 'Nhập mã kích hoạt quyền';
+            if (btn) {
+                btn.className = "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 text-xs font-semibold transition cursor-pointer";
+            }
+            if (box) box.classList.add('hidden');
+        }
+    }
+
+    openTokenModal() {
+        const modal = document.getElementById('modal-token-activation');
+        if (!modal) return;
+        this.updateTokenStatusUi();
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        const input = document.getElementById('token-input-field');
+        if (input) {
+            setTimeout(() => input.focus(), 100);
+        }
+    }
+
+    closeTokenModal() {
+        const modal = document.getElementById('modal-token-activation');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    async submitTokenActivation() {
+        const input = document.getElementById('token-input-field');
+        const val = input ? input.value.trim() : '';
+        if (!val) {
+            this.showToastNotification('Vui lòng nhập mã kích hoạt (Token)!', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-submit-token');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xác thực...';
+        }
+
+        this.userToken = val;
+        try { localStorage.setItem('quiz_access_token', val); } catch (e) {}
+
+        const matched = await this.validateUserToken(true);
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Kích Hoạt Ngay';
+        }
+
+        if (matched) {
+            this.closeTokenModal();
+        }
+    }
+
+    removeToken() {
+        this.userToken = '';
+        this.tokenInfo = null;
+        try {
+            localStorage.removeItem('quiz_access_token');
+            localStorage.removeItem('quiz_token_info');
+        } catch (e) {}
+        this.updateTokenStatusUi();
+        this.renderHomeGradeTabs();
+        this.renderHomeSubjects();
+        this.showToastNotification('Đã gỡ mã kích hoạt quyền khỏi thiết bị này.', 'info');
+    }
+
     canViewGrade5() {
+        // Ưu tiên số 1: Token hợp lệ trên Cloud có quyền grade5 hoặc all
+        if (this.hasTokenRole('grade5')) {
+            return true;
+        }
+
+        // Ưu tiên số 2 (Fallback): Whitelist IP như hiện tại
+        if (this.isAdminAuthenticated) return true;
         const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         const currentIp = normalizeIp(this.clientIp);
         const allowedIps = Array.isArray(this.class5AllowedIps) ? this.class5AllowedIps.map(normalizeIp).filter(Boolean) : [];
@@ -600,11 +815,8 @@ class QuizApp {
             !currentIp.startsWith('đang') &&
             (allowedIps.includes(currentIp) || (hasRelayWhitelist && currentIp.startsWith('104.28.')))
         );
-        console.debug('[QuizApp] Grade 5 access check:', { currentIp, allowedIps, matched, isAdminAuthenticated: this.isAdminAuthenticated });
-        return Boolean(
-            this.isAdminAuthenticated ||
-            matched
-        );
+        console.debug('[QuizApp] Grade 5 access check:', { currentIp, allowedIps, matched, isAdminAuthenticated: this.isAdminAuthenticated, hasToken: this.hasTokenRole('grade5') });
+        return Boolean(matched);
     }
 
     getHomeGradeFilter() {
@@ -898,8 +1110,16 @@ class QuizApp {
             if (!item.id) item.id = idx + 1;
 
             // 1. Chuẩn hóa dạng câu hỏi
-            const rawType = String(item.qType || item.type || '').trim().toLowerCase().replace(/[-\s]/g, '_');
-            item.qType = rawType === 'short' || rawType === 'short_answer' || rawType === 'shortanswer' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'tra_loi_ngan' || rawType === 'text_answer' || rawType === 'free_text' ? 'short_answer' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf' ? 'tf_group' : rawType || 'mcq';
+            const rawType = String(item.qType || item.q_type || item.type || '').trim().toLowerCase().replace(/[-\s]/g, '_');
+            item.qType = rawType === 'short' || rawType === 'short_answer' || rawType === 'shortanswer' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'tra_loi_ngan' || rawType === 'text_answer' || rawType === 'free_text' ? 'short_answer' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf' || rawType === 'tf_group' ? 'tf_group' : rawType || 'mcq';
+            item.q_type = item.qType;
+
+            if (item.correctValue === undefined && item.correct_value !== undefined) {
+                item.correctValue = item.correct_value;
+            }
+            if (item.acceptedValues === undefined && item.accepted_values !== undefined) {
+                item.acceptedValues = item.accepted_values;
+            }
 
             // 2. Chuẩn hóa nội dung câu hỏi
             if (item.question !== undefined && item.question !== null) {
@@ -1381,6 +1601,14 @@ class QuizApp {
             console.debug('[QuizApp] AI access granted to authenticated Admin.');
             return true;
         }
+
+        // Ưu tiên số 1: Token hợp lệ trên Cloud có quyền ai hoặc all
+        if (this.hasTokenRole('ai')) {
+            console.debug('[QuizApp] AI access granted via Token:', this.tokenInfo);
+            return true;
+        }
+
+        // Ưu tiên số 2 (Fallback): Whitelist IP như hiện tại
         const currentIp = (this.clientIp || '').trim();
         if (!currentIp || currentIp.startsWith('Đang')) return false;
 
@@ -4402,12 +4630,15 @@ Giải thích: Biên độ A = 5 cm.`;
 
     isQuestionAnsweredCorrectly(q) {
         if (!q) return false;
-        if (q.qType === 'short_answer') {
+        const qType = q.qType || q.q_type || 'mcq';
+        if (qType === 'short_answer') {
             const val = this.userAnswers[q.id];
             if (val === undefined || String(val).trim() === '') return false;
-            return (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
-                String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
-        } else if (q.qType === 'tf_group') {
+            const accepted = Array.isArray(q.acceptedValues) ? q.acceptedValues : (Array.isArray(q.accepted_values) ? q.accepted_values : []);
+            const targetVal = String(q.correctValue ?? q.correct_value ?? '').trim().toLowerCase();
+            return accepted.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase()) ||
+                targetVal === String(val).trim().toLowerCase();
+        } else if (qType === 'tf_group') {
             const ansObj = this.userAnswers[q.id];
             if (!ansObj || typeof ansObj !== 'object') return false;
             const stmts = Array.isArray(q.statements) ? q.statements : [];
@@ -4451,7 +4682,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     updateHomeRevengeBanner() {
-        // Đã chuyển tính năng Đề Phục Thù tập trung trực tiếp sang màn hình nộp bài (screen-result)
+        // Tuyệt đối không hiển thị Đề Phục Thù ở màn hình chính (home) theo yêu cầu người dùng
         const banner = document.getElementById('home-revenge-banner');
         if (banner) banner.classList.add('hidden');
     }
@@ -4464,6 +4695,8 @@ Giải thích: Biên độ A = 5 cm.`;
         const descText = document.getElementById('result-revenge-desc');
         const textEl = document.getElementById('revenge-btn-text');
         const badgeAllCorrect = document.getElementById('badge-all-correct-result');
+        const actionRevengeBtn = document.getElementById('btn-result-action-revenge');
+        const actionRevengeText = document.getElementById('btn-result-action-revenge-text');
 
         // Ưu tiên đếm số câu sai thực tế từ lượt làm hiện tại, hoặc từ cache ngân hàng câu sai
         let count = 0;
@@ -4490,6 +4723,12 @@ Giải thích: Biên độ A = 5 cm.`;
                 const prefix = this.isRevengeMode ? '🔥 Tiếp Tục Phục Thù' : '🔥 Vào Làm Lại Các Câu Sai Ngay';
                 textEl.textContent = `${prefix} (${count} câu)`;
             }
+            if (actionRevengeBtn) {
+                actionRevengeBtn.classList.remove('hidden');
+                if (actionRevengeText) {
+                    actionRevengeText.textContent = `🔥 Làm lại ${count} câu sai`;
+                }
+            }
             if (badgeAllCorrect) badgeAllCorrect.classList.add('hidden');
         } else {
             // Không có câu sai hoặc đã hoàn thành xuất sắc 100%
@@ -4498,6 +4737,9 @@ Giải thích: Biên độ A = 5 cm.`;
                 btn.classList.remove('btn-revenge-glowing');
                 btn.classList.add('hidden');
                 btn.disabled = true;
+            }
+            if (actionRevengeBtn) {
+                actionRevengeBtn.classList.add('hidden');
             }
             if (badgeAllCorrect) {
                 badgeAllCorrect.classList.remove('hidden');
