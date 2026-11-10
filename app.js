@@ -705,17 +705,21 @@ class QuizApp {
         let matched = null;
         try {
             if (window.dbService && typeof window.dbService.verifyAccessToken === 'function') {
-                // Ưu tiên số 1: Kiểm tra theo chuỗi kết hợp IP-QM-...
-                if (combinedKey) {
-                    matched = await window.dbService.verifyAccessToken(combinedKey);
+                // Ưu tiên số 1: Kiểm tra theo IP của thiết bị hiện tại
+                if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') {
+                    matched = await window.dbService.verifyAccessToken('', this.clientIp);
                 }
-                // Ưu tiên số 2: Kiểm tra theo mã máy QM-... đơn lẻ
+                // Ưu tiên số 2: Kiểm tra theo chuỗi kết hợp IP-QM-...
+                if (!matched && combinedKey) {
+                    matched = await window.dbService.verifyAccessToken(combinedKey, this.clientIp);
+                }
+                // Ưu tiên số 3: Kiểm tra theo mã máy QM-... đơn lẻ
                 if (!matched && this.deviceMachineCode) {
-                    matched = await window.dbService.verifyAccessToken(this.deviceMachineCode);
+                    matched = await window.dbService.verifyAccessToken(this.deviceMachineCode, this.clientIp);
                 }
-                // Ưu tiên số 3: Kiểm tra token nhập tay / link
+                // Ưu tiên số 4: Kiểm tra token nhập tay / link
                 if (!matched && this.userToken) {
-                    matched = await window.dbService.verifyAccessToken(this.userToken);
+                    matched = await window.dbService.verifyAccessToken(this.userToken, this.clientIp);
                 }
             }
         } catch (e) {
@@ -730,9 +734,9 @@ class QuizApp {
 
             if (showToastOnSuccess || (!hadPermissionBefore && this.isInitialValidated)) {
                 const roleDesc = matched.role === 'all' 
-                    ? 'Toàn bộ gói VIP (Đề nâng cao & Trợ lý AI)' 
-                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Chuyên đề nâng cao');
-                this.showToastNotification(`🎉 Thiết bị (${combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
+                    ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
+                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
+                this.showToastNotification(`🎉 Thiết bị (${this.clientIp || combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
             }
             this.isInitialValidated = true;
             this.renderHomeGradeTabs();
@@ -756,51 +760,40 @@ class QuizApp {
     }
 
     updateTokenStatusUi() {
-        const authBtn = document.getElementById('btn-device-auth');
-        const codeLabel = document.getElementById('device-combined-code-label');
-        const statusText = document.getElementById('device-auth-status-text');
-        const statusDot = document.getElementById('auth-status-dot');
-        const modalCombinedCode = document.getElementById('modal-combined-code-display');
+        const badge = document.getElementById('ip-permission-badge');
+        const canG5 = this.canViewGrade5();
+        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess();
+        const info = this.tokenInfo || this.getCachedTokenInfo();
+
+        if (badge) {
+            if (isAdmin) {
+                badge.className = "text-[11px] font-bold px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                badge.innerHTML = '<i class="fa-solid fa-crown mr-1 text-amber-400"></i> Admin (Toàn quyền)';
+                badge.classList.remove('hidden');
+            } else if (canG5) {
+                const roleText = info?.role === 'all' ? 'VIP (Lớp 5 + AI)' : 'Lớp 5';
+                badge.className = "text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-1 text-emerald-400"></i> Đã mở: ${roleText}`;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
         const box = document.getElementById('token-active-status-box');
         const nameEl = document.getElementById('token-user-name');
         const codeEl = document.getElementById('token-code-display');
         const badgesEl = document.getElementById('token-roles-badges');
         const inputField = document.getElementById('token-input-field');
 
-        const combinedCode = this.getCombinedDeviceKey();
-        if (codeLabel) {
-            codeLabel.textContent = combinedCode;
-        }
-        if (modalCombinedCode) {
-            modalCombinedCode.textContent = combinedCode;
-        }
-
-        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess();
-        const info = this.tokenInfo || this.getCachedTokenInfo();
-
-        if (isAdmin) {
-            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-indigo-400 shrink-0";
-            if (statusText) statusText.innerHTML = '<span class="text-indigo-300 font-bold">👑 Quyền Admin (Xem toàn bộ)</span>';
-            if (authBtn) {
-                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-indigo-500/15 border border-indigo-500/40 text-indigo-200 text-xs font-medium transition cursor-pointer shadow-sm";
-            }
-        } else if (info && info.token) {
-            const roleText = info.role === 'all' 
-                ? 'VIP (Nâng cao + AI)' 
-                : (info.role === 'ai' ? 'Trợ lý AI' : 'Đề nâng cao');
-
-            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-pulse";
-            if (statusText) statusText.innerHTML = `<span class="text-emerald-300 font-bold">✅ Đã mở: ${roleText}</span>`;
-            if (authBtn) {
-                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs font-medium transition cursor-pointer shadow-sm";
-            }
+        if (info && info.token) {
             if (box) box.classList.remove('hidden');
             if (nameEl) nameEl.textContent = info.name || 'Học sinh';
             if (codeEl) codeEl.textContent = info.token;
             if (badgesEl) {
                 let html = '';
                 if (this.hasTokenRole('grade5')) {
-                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Chuyên đề nâng cao</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Lớp 5</span>';
                 }
                 if (this.hasTokenRole('ai')) {
                     html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 text-purple-300 border border-purple-500/40">✓ Trợ lý AI</span>';
@@ -811,11 +804,6 @@ class QuizApp {
                 inputField.value = info.token;
             }
         } else {
-            if (statusDot) statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0";
-            if (statusText) statusText.innerHTML = '<span>Chạm để chép</span><i class="fa-regular fa-copy text-xs ml-1"></i>';
-            if (authBtn) {
-                authBtn.className = "w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-500/50 text-slate-300 text-xs font-medium transition cursor-pointer shadow-inner group";
-            }
             if (box) box.classList.add('hidden');
         }
     }
@@ -941,8 +929,22 @@ class QuizApp {
                 this.allowedGeoIps = Array.isArray(config?.ips) ? config.ips : [];
                 this.class5AllowedIps = Array.isArray(config?.grade5Ips) ? config.grade5Ips : (Array.isArray(config?.grade5_ips) ? config.grade5_ips : []);
                 this.geoMode = config?.mode || 'PUBLIC';
-                console.debug('[QuizApp] Loaded Grade 5 access config:', { currentIp: this.clientIp, config, class5AllowedIps: this.class5AllowedIps });
             }
+            if (window.dbService && typeof window.dbService.fetchAccessTokens === 'function') {
+                const tokens = await window.dbService.fetchAccessTokens();
+                if (Array.isArray(tokens)) {
+                    tokens.forEach(t => {
+                        const r = String(t.role || '').toLowerCase();
+                        if ((r === 'grade5' || r === 'all' || r === 'class5') && t.ip) {
+                            const cleanIp = String(t.ip).trim().toLowerCase();
+                            if (cleanIp && !this.class5AllowedIps.includes(cleanIp)) {
+                                this.class5AllowedIps.push(cleanIp);
+                            }
+                        }
+                    });
+                }
+            }
+            console.debug('[QuizApp] Loaded Grade 5 access config:', { currentIp: this.clientIp, class5AllowedIps: this.class5AllowedIps });
         } catch (error) {
             this.allowedGeoIps = [];
             this.class5AllowedIps = [];
@@ -952,6 +954,7 @@ class QuizApp {
         this.homeGradeFilter = this.getHomeGradeFilter();
         console.debug('[QuizApp] Rendering Grade 5 visibility:', { currentIp: this.clientIp, canViewGrade5: this.canViewGrade5(), homeGradeFilter: this.homeGradeFilter });
         this.renderHomeSubjects();
+        this.updateTokenStatusUi();
     }
 
     renderHomeSubjects() {
@@ -965,7 +968,7 @@ class QuizApp {
             const canViewGrade5 = this.canViewGrade5();
             const grades = canViewGrade5 ? ['all', '5', '11'] : ['all', '11'];
             tabs.innerHTML = grades.map((grade) => {
-                    const label = grade === 'all' ? 'Tất cả' : (grade === '5' ? '🎯 Chuyên đề nâng cao' : `Khối Lớp ${grade}`);
+                    const label = grade === 'all' ? 'Tất cả' : `Lớp ${grade}`;
                     const active = activeGrade === grade;
                     return `<button type="button" class="home-grade-tab ${active ? 'is-active' : ''}" data-grade-filter="${grade}">${label}</button>`;
                 }).join('');
@@ -1332,14 +1335,23 @@ class QuizApp {
             return;
         }
 
+        // Tự động sao chép IP vào clipboard
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(ip);
+            }
+        } catch (e) {}
+
+        this.showToastNotification(`📋 Đã sao chép IP: ${ip}. Hãy gửi IP này cho Admin để được mở Lớp 5!`, 'success');
+
         await this.showConfirmModal({
-            title: 'Địa chỉ IP thiết bị của bạn',
+            title: 'Địa chỉ IP của bạn',
             badge: 'Định danh thiết bị',
             copyValue: ip,
             copyLabel: 'Địa chỉ IP hiện tại của bạn',
             copyOnConfirm: true,
-            message: 'Hãy bấm nút Copy IP và gửi địa chỉ này cho Quản trị viên (Admin) để được cấp quyền truy cập hoặc mở khóa tính năng.',
-            confirmText: 'Sao chép IP',
+            message: `Địa chỉ IP của bạn là: ${ip}\n(Đã tự động sao chép vào bộ nhớ tạm!). Hãy gửi IP này cho Admin qua Zalo/Mess để được mở khóa Lớp 5.`,
+            confirmText: 'Sao chép lại IP',
             cancelText: 'Đóng',
             okIcon: 'fa-regular fa-copy',
             icon: 'fa-solid fa-network-wired',
@@ -1675,6 +1687,20 @@ class QuizApp {
             if (window.dbService && typeof window.dbService.fetchAiIpsConfig === 'function') {
                 loaded = await window.dbService.fetchAiIpsConfig();
             }
+            if (window.dbService && typeof window.dbService.fetchAccessTokens === 'function') {
+                const tokens = await window.dbService.fetchAccessTokens();
+                if (Array.isArray(tokens)) {
+                    tokens.forEach(t => {
+                        const r = String(t.role || '').toLowerCase();
+                        if ((r === 'ai' || r === 'all') && t.ip) {
+                            const cleanIp = String(t.ip).trim().toLowerCase();
+                            if (cleanIp && !loaded.some(x => String(typeof x === 'string' ? x : x?.ip || '').trim().toLowerCase() === cleanIp)) {
+                                loaded.push({ ip: cleanIp, name: t.name || 'Học sinh AI' });
+                            }
+                        }
+                    });
+                }
+            }
         } catch (e) {
             console.warn("Không thể tải danh sách IP cấp quyền AI:", e);
         }
@@ -1696,12 +1722,18 @@ class QuizApp {
         }
 
         // Ưu tiên số 2 (Fallback): Whitelist IP như hiện tại
-        const currentIp = (this.clientIp || '').trim();
-        if (!currentIp || currentIp.startsWith('Đang')) return false;
+        const currentIp = String(this.clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        if (!currentIp || currentIp.startsWith('đang') || currentIp === 'chưa xác định') return false;
 
         // Kiểm tra trong danh sách IP được Admin cấp quyền AI
-        const cleanList = (this.allowedAiIps || []).map(item => String((typeof item === 'string' ? item : item?.ip) || '').trim()).filter(Boolean);
-        return cleanList.includes(currentIp);
+        const cleanList = (this.allowedAiIps || []).map(item => String((typeof item === 'string' ? item : item?.ip) || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+        if (cleanList.includes(currentIp)) return true;
+
+        // Kiểm tra trong tokens danh sách
+        const tokenList = (window.dbService && Array.isArray(window.dbService.cachedTokens)) 
+            ? window.dbService.cachedTokens 
+            : [];
+        return tokenList.some(t => (t.role === 'ai' || t.role === 'all') && String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase() === currentIp);
     }
 
     async adminToggleStudentAiRole(ip, studentName) {

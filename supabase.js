@@ -2328,18 +2328,31 @@ class DatabaseService {
     }
 
     /**
-     * Xác thực nhanh một mã token trên Cloud / Cache
+     * Xác thực nhanh một mã token trên Cloud / Cache (kết hợp theo Token, Mã máy hoặc IP)
      */
-    async verifyAccessToken(rawToken) {
-        if (!rawToken || typeof rawToken !== 'string') return null;
-        const clean = rawToken.trim().toLowerCase();
+    async verifyAccessToken(rawToken, clientIp = '') {
         const tokens = await this.fetchAccessTokens();
+        if (!Array.isArray(tokens) || tokens.length === 0) return null;
+
+        const clean = String(rawToken || '').trim().toLowerCase();
+        const cleanIp = String(clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+
         const found = tokens.find(t => {
             const tokenVal = String(t.token || '').trim().toLowerCase();
             const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
-            if (tokenVal === clean || (rawCodeVal && rawCodeVal === clean)) return true;
-            if (tokenVal.endsWith('-' + clean)) return true;
-            if (clean.endsWith('-' + tokenVal)) return true;
+            const ipVal = String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+
+            // 1. Khớp theo địa chỉ IP thiết bị học sinh
+            if (cleanIp && ipVal && (cleanIp === ipVal || cleanIp.endsWith(ipVal) || ipVal.endsWith(cleanIp))) return true;
+
+            // 2. Khớp chính xác theo chuỗi gửi lên (clean)
+            if (clean) {
+                if (tokenVal === clean || (rawCodeVal && rawCodeVal === clean)) return true;
+                if (ipVal && (clean === ipVal || clean.startsWith(ipVal + '-') || clean.endsWith('-' + ipVal))) return true;
+                if (tokenVal && (tokenVal.endsWith('-' + clean) || clean.endsWith('-' + tokenVal))) return true;
+                if (rawCodeVal && (rawCodeVal.endsWith('-' + clean) || clean.endsWith('-' + rawCodeVal))) return true;
+            }
+
             return false;
         });
         return found || null;

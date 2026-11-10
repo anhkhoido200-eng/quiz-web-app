@@ -219,13 +219,13 @@
                             <div id="admin-ip-list" class="stack-list"></div>
                         </section>
 
-                        <!-- GỘP THỐNG NHẤT: Quản lý phân quyền học sinh (Mã máy thiết bị & IP) -->
+                        <!-- FORM CẤP QUYỀN HỌC SINH TẬP TRUNG (Lớp 5, AI, hoặc cả 2) -->
                         <section class="panel unified-access-panel" style="grid-column: 1 / -1;">
                             <div class="panel-title">
                                 <div>
                                     <p class="eyebrow">STUDENT ACCESS HUB</p>
-                                    <h2>Quản lý phân quyền học sinh (Mã xác thực IP-QM &amp; Token) <span id="unified-student-count" class="heading-count">0</span></h2>
-                                    <p class="muted-copy">Kích hoạt quyền theo Mã xác thực kết hợp (học sinh gửi mã 14.164...-QM-..., vừa khóa IP vừa khóa mã máy).</p>
+                                    <h2>Cấp quyền truy cập học sinh (Lớp 5 &amp; Trợ lý AI)</h2>
+                                    <p class="muted-copy">Nhập IP hoặc Mã máy để mở khóa. Một học sinh/mã có thể dùng chung cho cả Lớp 5 và Trợ lý AI.</p>
                                 </div>
                                 <i class="fa-solid fa-users-gear" style="color:var(--primary);font-size:20px;"></i>
                             </div>
@@ -234,17 +234,17 @@
                                 <label>Tên học sinh / Ghi chú <span style="color:var(--red)">*</span>
                                     <input id="student-access-name" placeholder="Ví dụ: Khôi, Bảo Trâm 5A..." required>
                                 </label>
-                                <label>Mã xác thực học sinh gửi (IP-QM-... hoặc Token) <span style="color:var(--red)">*</span>
-                                    <input id="student-access-code" placeholder="Dán mã học sinh gửi (VD: 14.164.221.205-QM-KM9SZG)" style="font-family:monospace;font-weight:700;">
+                                <label>Mã xác thực học sinh gửi (IP, Mã máy hoặc Token) <span style="color:var(--red)">*</span>
+                                    <input id="student-access-code" placeholder="Dán IP hoặc mã máy (VD: 104.28.205.71 hoặc QM-KM9SZG)" style="font-family:monospace;font-weight:700;">
                                 </label>
                                 <label>Quyền hạn cấp <span style="color:var(--red)">*</span>
                                     <select id="student-access-role">
-                                        <option value="grade5">🎯 Chuyên đề nâng cao (Kho đề mở rộng)</option>
-                                        <option value="ai">🤖 Trợ lý AI (Giải thích chi tiết &amp; hướng dẫn)</option>
-                                        <option value="all">👑 Toàn bộ quyền (Đề nâng cao + Trợ lý AI)</option>
+                                        <option value="grade5" selected>🎓 Quyền Lớp 5 (Xem &amp; làm bài thi)</option>
+                                        <option value="ai">🤖 Quyền Trợ lý AI (Giải bài &amp; hướng dẫn)</option>
+                                        <option value="all">👑 Gói VIP (Cả 2: Lớp 5 + Trợ lý AI)</option>
                                     </select>
                                 </label>
-                                <label>Địa chỉ IP (Tự động điền nếu mã có IP)
+                                <label>Địa chỉ IP (Tự động điền nếu dán IP)
                                     <div style="display:flex;gap:6px;">
                                         <input id="student-access-ip" placeholder="Tự động nhận diện từ mã xác thực">
                                         <button id="btn-fill-current-ip" class="button button-secondary compact" type="button" title="Lấy IP thiết bị này"><i class="fa-solid fa-location-crosshairs"></i></button>
@@ -252,11 +252,25 @@
                                 </label>
                             </div>
 
-                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-                                <span class="muted-copy" style="font-size:12px;"><i class="fa-solid fa-shield-halved" style="color:var(--emerald);"></i> Bảo mật Dual-Auth: Vừa xác thực IP mạng, vừa khóa mã máy thiết bị chống chia sẻ.</span>
+                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                                <span class="muted-copy" style="font-size:12px;"><i class="fa-solid fa-circle-info" style="color:var(--info);"></i> Cấp quyền qua IP hoặc Token đều được tự động đồng bộ trên toàn hệ thống.</span>
                                 <button id="btn-grant-student-access" class="button button-primary" type="button">
-                                    <i class="fa-solid fa-bolt"></i> Kích hoạt quyền cho thiết bị
+                                    <i class="fa-solid fa-bolt"></i> Kích hoạt quyền cho học sinh
                                 </button>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 1: QUYỀN LỚP 5 -->
+                        <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <p class="eyebrow" style="color:var(--emerald);">GRADE 5 ACCESS</p>
+                                    <h2>🎓 Danh sách học sinh được duyệt Lớp 5 <span id="class5-student-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Các thiết bị được phép xem và làm toàn bộ các bộ đề thi Lớp 5.</p>
+                                </div>
+                                <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                    <i class="fa-solid fa-graduation-cap"></i> Quyền Lớp 5
+                                </span>
                             </div>
 
                             <div class="table-wrap" style="margin-top:10px;">
@@ -264,14 +278,46 @@
                                     <thead>
                                         <tr>
                                             <th>Học sinh</th>
-                                            <th>Quyền hạn</th>
-                                            <th>Mã thiết bị (QM-...) / Token</th>
-                                            <th>IP liên kết</th>
+                                            <th>Mã máy / Token</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Quyền Trợ lý AI</th>
                                             <th>Ngày cấp</th>
                                             <th style="text-align:right;">Thao tác</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="unified-access-body">
+                                    <tbody id="class5-access-body">
+                                        <!-- Render dynamic rows here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 2: QUYỀN TRỢ LÝ AI (GEMINI) -->
+                        <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <p class="eyebrow" style="color:#c084fc;">AI TUTOR ACCESS</p>
+                                    <h2>🤖 Danh sách học sinh được duyệt Trợ lý AI <span id="ai-student-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Các thiết bị được phép sử dụng Trợ lý AI giải thích bài và hướng dẫn (dùng chung Token/IP với Lớp 5).</p>
+                                </div>
+                                <span class="status-badge" style="background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Quyền AI
+                                </span>
+                            </div>
+
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Học sinh</th>
+                                            <th>Mã máy / Token</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Quyền Lớp 5</th>
+                                            <th>Ngày cấp</th>
+                                            <th style="text-align:right;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ai-access-body">
                                         <!-- Render dynamic rows here -->
                                     </tbody>
                                 </table>
