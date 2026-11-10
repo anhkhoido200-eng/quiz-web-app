@@ -1050,38 +1050,58 @@
         if (!item) return notify('Không tìm thấy câu hỏi trong thùng rác.', true);
 
         try {
+            let targetId = Number(item.id);
+            if (!targetId || isNaN(targetId) || targetId <= 0) {
+                targetId = await nextQuestionId();
+            } else {
+                // Kiểm tra xem ID cũ có đang bị câu hỏi khác chiếm dụng không
+                const { data: existing, error: checkErr } = await state.client
+                    .from('quiz_questions')
+                    .select('id')
+                    .eq('id', targetId)
+                    .maybeSingle();
+                if (!checkErr && existing) {
+                    // ID cũ đã bị chiếm dụng -> Cấp ID mới nhất
+                    targetId = await nextQuestionId();
+                }
+            }
+
             const rowToInsert = {
+                id: targetId,
                 subject_key: item.subject_key || item.subjectKey || 'history',
                 category: item.category || 'Ôn tập',
                 q_type: item.q_type || item.qType || 'mcq',
                 question: storageText(item.question),
                 options: Array.isArray(item.options) ? item.options.map(storageText) : [],
-                statements: Array.isArray(item.statements) ? item.statements.map((s) => ({
-                    key: s.key || 'a',
-                    text: storageText(s.text),
-                    answer: Boolean(s.answer)
+                statements: Array.isArray(item.statements) ? item.statements.map((s, index) => ({
+                    key: s.key || 'abcd'[index],
+                    label: s.label || s.key || 'abcd'[index],
+                    text: storageText(s.text ?? s.content),
+                    answer: parseBool(s.answer ?? s.correctAnswer)
                 })) : [],
                 correct: Number(item.correct ?? item.answer ?? 0),
                 answer: Number(item.answer ?? item.correct ?? 0),
                 correct_value: String(item.correct_value ?? item.correctValue ?? ''),
                 explanation: storageText(item.explanation || ''),
-                image_url: item.image_url || ''
+                image_url: item.image_url || item.imageUrl || '',
+                updated_at: new Date().toISOString()
             };
 
-            const { error } = await state.client.from('quiz_questions').insert([rowToInsert]);
+            const { error } = await state.client.from('quiz_questions').upsert(rowToInsert, { onConflict: 'id' });
             if (error) throw error;
 
             state.trashQuestions = state.trashQuestions.filter((q) => String(q.id) !== String(id));
             await saveTrash();
 
             addActivityLog(
-                `Khôi phục câu hỏi #${id}`,
+                `Khôi phục câu hỏi #${targetId}`,
                 `Môn ${subjectName(item.subject_key || item.subjectKey)} đã đưa về ngân hàng`,
                 'green'
             );
-            notify('Đã khôi phục câu hỏi thành công!');
+            notify(`Đã khôi phục thành công câu hỏi #${targetId}!`);
             await loadQuestions();
             renderTrashModal();
+            await syncSubjectQuestionCounts();
         } catch (error) {
             notify(`Không thể khôi phục: ${error.message}`, true);
         }
@@ -1099,26 +1119,48 @@
         }))) return;
 
         try {
-            const rows = state.trashQuestions.map((item) => ({
-                subject_key: item.subject_key || item.subjectKey || 'history',
-                category: item.category || 'Ôn tập',
-                q_type: item.q_type || item.qType || 'mcq',
-                question: storageText(item.question),
-                options: Array.isArray(item.options) ? item.options.map(storageText) : [],
-                statements: Array.isArray(item.statements) ? item.statements.map((s) => ({
-                    key: s.key || 'a',
-                    text: storageText(s.text),
-                    answer: Boolean(s.answer)
-                })) : [],
-                correct: Number(item.correct ?? item.answer ?? 0),
-                answer: Number(item.answer ?? item.correct ?? 0),
-                correct_value: String(item.correct_value ?? item.correctValue ?? ''),
-                explanation: storageText(item.explanation || ''),
-                image_url: item.image_url || ''
-            }));
+            // Lấy danh sách ID hiện có trong CSDL để tránh trùng lặp
+            const { data: existingRows } = await state.client.from('quiz_questions').select('id');
+            const usedIds = new Set((existingRows || []).map((r) => Number(r.id)).filter((id) => !isNaN(id) && id > 0));
+            let maxId = usedIds.size > 0 ? Math.max(...usedIds) : 0;
 
-            const { error } = await state.client.from('quiz_questions').insert(rows);
-            if (error) throw error;
+            const rows = state.trashQuestions.map((item) => {
+                let targetId = Number(item.id);
+                if (!targetId || isNaN(targetId) || targetId <= 0 || usedIds.has(targetId)) {
+                    maxId++;
+                    targetId = maxId;
+                }
+                usedIds.add(targetId);
+
+                return {
+                    id: targetId,
+                    subject_key: item.subject_key || item.subjectKey || 'history',
+                    category: item.category || 'Ôn tập',
+                    q_type: item.q_type || item.qType || 'mcq',
+                    question: storageText(item.question),
+                    options: Array.isArray(item.options) ? item.options.map(storageText) : [],
+                    statements: Array.isArray(item.statements) ? item.statements.map((s, index) => ({
+                        key: s.key || 'abcd'[index],
+                        label: s.label || s.key || 'abcd'[index],
+                        text: storageText(s.text ?? s.content),
+                        answer: parseBool(s.answer ?? s.correctAnswer)
+                    })) : [],
+                    correct: Number(item.correct ?? item.answer ?? 0),
+                    answer: Number(item.answer ?? item.correct ?? 0),
+                    correct_value: String(item.correct_value ?? item.correctValue ?? ''),
+                    explanation: storageText(item.explanation || ''),
+                    image_url: item.image_url || item.imageUrl || '',
+                    updated_at: new Date().toISOString()
+                };
+            });
+
+            // Ghi theo từng chunk 50 câu để tránh quá tải
+            const chunkSize = 50;
+            for (let i = 0; i < rows.length; i += chunkSize) {
+                const chunk = rows.slice(i, i + chunkSize);
+                const { error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' });
+                if (error) throw error;
+            }
 
             state.trashQuestions = [];
             await saveTrash();
@@ -1131,6 +1173,7 @@
             notify(`Đã khôi phục thành công ${total} câu hỏi!`);
             await loadQuestions();
             renderTrashModal();
+            await syncSubjectQuestionCounts();
         } catch (error) {
             notify(`Lỗi khôi phục: ${error.message}`, true);
         }
