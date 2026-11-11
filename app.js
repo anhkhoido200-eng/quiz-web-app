@@ -1028,13 +1028,20 @@ class QuizApp {
             else if (grad === 'amber') iconColorClass = "bg-amber-600/30 text-amber-300 border-amber-500/30";
 
             card.className = `p-3.5 rounded-2xl text-left flex flex-col justify-between cursor-pointer subject-card-interactive transition-all relative min-h-[118px] ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
+            card.onclick = () => {
+                if (this.currentSubject === sub.key) {
+                    this.quickStartSelectedSubject();
+                } else {
+                    this.selectSubject(sub.key);
+                }
+            };
             card.innerHTML = `
                 <!-- Hàng 1: Icon môn học và Badge trạng thái -->
                 <div class="flex items-center justify-between gap-2 mb-2 w-full">
                     <div class="w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
                         <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                     </div>
-                    ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
+                    ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-circle-check text-[9px] text-emerald-400"></i> Đang chọn</span>' : ''}
                 </div>
                 <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
@@ -1043,8 +1050,13 @@ class QuizApp {
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
                     <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${this.escapeHtml(sub.semester || 'Đề cương')}</span>
-                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 0} câu</span>
+                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 29} câu</span>
                 </div>
+                ${isSelected ? `
+                <div class="mt-2.5 w-full py-1.5 px-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600 text-indigo-100 hover:text-white border border-indigo-500/40 text-[11px] font-bold flex items-center justify-center gap-1.5 transition shadow-sm">
+                    <i class="fa-solid fa-play text-[9px] text-emerald-400"></i> Bấm để vào làm bài
+                </div>
+                ` : ''}
             `;
             fragment.appendChild(card);
         });
@@ -1052,6 +1064,7 @@ class QuizApp {
         grid.innerHTML = '';
         grid.appendChild(fragment);
         this.updateNavbarAndBadge();
+        this.updateSelectedSubjectBanner();
     }
 
     populateSubjectDropdowns() {
@@ -1118,6 +1131,121 @@ class QuizApp {
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
         this.renderFilterTabs();
+        this.updateSelectedSubjectBanner();
+    }
+
+    updateSelectedSubjectBanner() {
+        const banner = document.getElementById('home-selected-subject-banner');
+        const selName = document.getElementById('selected-subject-name');
+        const selCount = document.getElementById('selected-subject-qcount');
+        const startBtn = document.getElementById('btn-start-quiz');
+
+        const visibleSubjects = this.getHomeVisibleSubjects();
+        const curSubObj = visibleSubjects.find(s => s.key === this.currentSubject) || visibleSubjects[0];
+
+        if (curSubObj && banner) {
+            banner.classList.remove('hidden');
+            const subTitle = curSubObj.name || curSubObj.title || curSubObj.key || 'Môn học';
+            const countStr = (this.allQuestions && this.allQuestions.length > 0) ? this.allQuestions.length : (curSubObj.count || 29);
+            if (selName) selName.textContent = subTitle;
+            if (selCount) selCount.textContent = countStr;
+
+            if (startBtn) {
+                startBtn.innerHTML = `<span>Bắt Đầu Làm ${this.escapeHtml(subTitle)} (${countStr} câu)</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>`;
+            }
+        } else if (banner) {
+            banner.classList.add('hidden');
+        }
+    }
+
+    quickStartSelectedSubject() {
+        const nameInput = document.getElementById('player-name-input');
+        const name = (nameInput?.value || this.playerName || '').trim();
+        if (!name) {
+            if (nameInput) {
+                nameInput.focus();
+                nameInput.classList.add('border-rose-500', 'ring-2', 'ring-rose-500/30');
+                nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            this.showToastNotification('⚠️ Vui lòng nhập Họ và Tên của bạn để bắt đầu làm bài!', 'warning');
+            return;
+        }
+        this.startQuiz();
+    }
+
+    async previewCurrentQuestions() {
+        const modal = document.getElementById('modal-questions-preview');
+        const body = document.getElementById('preview-modal-body');
+        const title = document.getElementById('preview-modal-title');
+        const subtitle = document.getElementById('preview-modal-subtitle');
+        if (!modal || !body) return;
+
+        if (!this.allQuestions || this.allQuestions.length === 0) {
+            body.innerHTML = `
+                <div class="p-8 text-center text-slate-400 space-y-2">
+                    <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 mx-auto flex items-center justify-center"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                    <p>Đang tải danh sách câu hỏi...</p>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            await this.loadQuestionsForCurrentSubject();
+        }
+
+        const questions = this.allQuestions || [];
+        const subTitle = this.getSubjectTitle();
+        if (title) title.textContent = `Xem Trước Đề: ${subTitle}`;
+        if (subtitle) subtitle.textContent = `Gồm ${questions.length} câu hỏi trắc nghiệm`;
+
+        if (questions.length === 0) {
+            body.innerHTML = `
+                <div class="p-8 text-center text-slate-400 space-y-2">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-800 text-slate-500 mx-auto flex items-center justify-center text-xl"><i class="fa-solid fa-folder-open"></i></div>
+                    <p class="font-bold text-slate-300">Chưa có câu hỏi nào trong đề này.</p>
+                </div>
+            `;
+        } else {
+            body.innerHTML = questions.map((q, idx) => {
+                const qNum = idx + 1;
+                const qText = q.question || 'Câu hỏi';
+                let optsHtml = '';
+                if (Array.isArray(q.options) && q.options.length > 0) {
+                    optsHtml = `
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            ${q.options.map((opt, oIdx) => {
+                                const letters = ['A', 'B', 'C', 'D'];
+                                const label = letters[oIdx] || String(oIdx + 1);
+                                return `
+                                    <div class="p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 text-xs flex items-start gap-2">
+                                        <span class="w-5 h-5 rounded-md bg-slate-800 text-slate-400 font-bold flex items-center justify-center shrink-0 text-[10px]">${label}</span>
+                                        <span class="break-words leading-relaxed">${this.escapeHtml(opt)}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+                return `
+                    <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1.5">
+                        <div class="flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold font-mono text-[11px] shrink-0">Câu ${qNum}</span>
+                            <p class="font-semibold text-white leading-relaxed break-words">${this.escapeHtml(qText)}</p>
+                        </div>
+                        ${optsHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    closeQuestionsPreview() {
+        const modal = document.getElementById('modal-questions-preview');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
     }
 
     async loadQuestionsForCurrentSubject() {
@@ -5182,6 +5310,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const count = this.allQuestions ? this.allQuestions.length : 0;
         const countText = document.getElementById('home-rules-count-text');
         if (countText) countText.innerHTML = `Nội dung: <strong>${count} câu hỏi</strong> trắc nghiệm (Tự động chấm & hiện đáp án ngay).`;
+        this.updateSelectedSubjectBanner();
     }
 
     renderFilterTabs() {

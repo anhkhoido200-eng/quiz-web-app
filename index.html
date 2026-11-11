@@ -309,6 +309,36 @@
                         <!-- Render bởi app.js qua renderHomeSubjects() -->
                     </div>
 
+                    <!-- Banner hiển thị đề trắc nghiệm đang chọn & Nút vào làm/xem trước -->
+                    <div id="home-selected-subject-banner" class="hidden mt-3 p-3.5 rounded-2xl bg-indigo-950/70 border border-indigo-500/40 text-xs shadow-md">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 flex items-center justify-center text-lg shrink-0 shadow-sm">
+                                    <i class="fa-solid fa-file-signature text-indigo-400"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-white font-extrabold flex items-center gap-2 truncate">
+                                        <span>Đang chọn đề:</span>
+                                        <span id="selected-subject-name" class="text-amber-300 font-bold">Toán đề 1</span>
+                                    </p>
+                                    <p class="text-slate-400 text-[11px] mt-0.5">
+                                        Bộ đề gồm <strong id="selected-subject-qcount" class="text-emerald-400 font-bold">29</strong> câu hỏi trắc nghiệm
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" onclick="app.previewCurrentQuestions()" class="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-sm" title="Xem trước danh sách câu hỏi trắc nghiệm của đề này">
+                                    <i class="fa-regular fa-eye text-cyan-400"></i>
+                                    <span>Xem trước đề</span>
+                                </button>
+                                <button type="button" onclick="app.quickStartSelectedSubject()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md">
+                                    <span>Vào Làm Bài</span>
+                                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Bảng công cụ Admin nhanh: Thêm Môn, Thêm Câu Hỏi & Nạp Đề Trực Tiếp -->
                     <div id="home-admin-subject-actions" class="hidden mt-3 pt-3 border-t border-slate-800 space-y-2.5">
                         <div class="flex items-center justify-between text-xs flex-wrap gap-2">
@@ -1538,6 +1568,40 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     </div>
 
     <!-- ======================================================= -->
+    <!-- MODAL: XEM TRƯỚC DANH SÁCH CÂU HỎI TRẮC NGHIỆM            -->
+    <!-- ======================================================= -->
+    <div id="modal-questions-preview" class="fixed inset-0 z-[100005] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="glass-panel-pro rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl relative border border-indigo-500/30 animate-fade-in overflow-hidden">
+            <div class="p-4 sm:p-5 border-b border-slate-700/60 flex items-center justify-between shrink-0 bg-slate-900/90">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-lg shadow-sm">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                    <div>
+                        <h3 id="preview-modal-title" class="font-heading font-extrabold text-white text-base">Xem Trước Câu Hỏi Trắc Nghiệm</h3>
+                        <p id="preview-modal-subtitle" class="text-xs text-slate-400">Danh sách câu hỏi trong bộ đề</p>
+                    </div>
+                </div>
+                <button type="button" onclick="app.closeQuestionsPreview()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="preview-modal-body" class="p-4 sm:p-6 overflow-y-auto space-y-3.5 flex-1 text-slate-200 text-xs sm:text-sm">
+                <!-- Render bởi app.previewCurrentQuestions() -->
+            </div>
+            <div class="p-4 border-t border-slate-700/60 bg-slate-900/90 flex items-center justify-between gap-3 shrink-0">
+                <button type="button" onclick="app.closeQuestionsPreview()" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-300 text-xs font-heading font-bold transition cursor-pointer">
+                    Đóng
+                </button>
+                <button type="button" onclick="app.closeQuestionsPreview(); app.quickStartSelectedSubject();" class="btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white text-xs font-heading font-extrabold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-500/25">
+                    <span>Bắt Đầu Làm Đề Này</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
     <!-- MODAL: KÍCH HOẠT QUYỀN TRUY CẬP BẰNG TOKEN (MÃ TRUY CẬP) -->
     <!-- ======================================================= -->
     <div id="modal-token-activation" class="fixed inset-0 z-[100004] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
@@ -1815,7 +1879,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="questions.js?v=20261108j"></script>
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
-    <script src="supabase.js?v=20261110g"></script>
-    <script src="app.js?v=20261110g"></script>
+    <script src="supabase.js?v=20261110h"></script>
+    <script src="app.js?v=20261110h"></script>
 </body>
 </html>
