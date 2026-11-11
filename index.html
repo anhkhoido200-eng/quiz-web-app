@@ -245,6 +245,12 @@
                     <span class="hidden sm:inline">Top 10</span>
                 </button>
 
+                <!-- Nút mở Bảng Tiến Trình Lớp 5 cho Phụ Huynh / Dì -->
+                <button id="header-parent-monitor-btn" onclick="app.openParentProgressModal()" class="hidden px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Theo dõi tiến trình làm bài Lớp 5">
+                    <i class="fa-solid fa-eye text-amber-400"></i>
+                    <span class="hidden sm:inline">Tiến Trình Lớp 5</span>
+                </button>
+
                 <!-- Nút Admin góc header (Tự hiện khi đã xác thực IP) -->
                 <a id="nav-admin-btn" href="admin.html" class="hidden px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-crown text-amber-400"></i>
@@ -383,6 +389,14 @@
                             <span>Bắt Đầu Làm Bài Ngay</span>
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
                         </button>
+
+                        <!-- Nút mở xem Tiến Trình Lớp 5 cho Phụ huynh / Dì -->
+                        <button id="btn-open-parent-monitor" onclick="app.openParentProgressModal()" type="button" class="hidden w-full mt-3 py-3 px-4 rounded-2xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-md bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 hover:border-amber-400 cursor-pointer">
+                            <i class="fa-solid fa-eye text-amber-400"></i>
+                            <span>Xem Tiến Trình Làm Bài Lớp 5 (Dành cho Dì / Phụ huynh)</span>
+                            <span class="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 text-[10px] font-extrabold uppercase">Live</span>
+                        </button>
+
                         <p id="home-rules-count-text" class="text-center text-xs text-slate-400 mt-2.5 font-medium">
                             Chế độ ôn luyện: Tự động chấm điểm & xem đáp án ngay.
                         </p>
@@ -1811,11 +1825,66 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
         </div>
     </div>
 
+    <!-- ============================================================== -->
+    <!-- MODAL THEO DÕI TIẾN TRÌNH LÀM BÀI LỚP 5 (PHỤ HUYNH / DÌ)         -->
+    <!-- ============================================================== -->
+    <div id="modal-parent-progress" class="fixed inset-0 z-[100006] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-5 overflow-hidden">
+        <div class="relative w-full max-w-2xl bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <!-- Header Modal -->
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border-b border-amber-500/30 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center text-lg shrink-0 shadow-sm">
+                        <i class="fa-solid fa-eye"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h2 class="font-heading font-extrabold text-base sm:text-lg text-white truncate">Tiến Trình Học Sinh Lớp 5</h2>
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-extrabold flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> TRỰC TIẾP
+                            </span>
+                        </div>
+                        <p class="text-xs text-amber-200/70 truncate">Dành riêng cho Phụ huynh / Dì quan sát em học thời gian thực</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-refresh-parent-progress" onclick="app.fetchAndRenderParentProgress()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Làm mới ngay">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                    <button onclick="app.closeParentProgressModal()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-rose-900/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 flex items-center justify-center transition cursor-pointer" title="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Hướng dẫn thân thiện cho Dì -->
+            <div class="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-200">
+                <i class="fa-solid fa-lightbulb text-amber-400 text-sm shrink-0"></i>
+                <span class="flex-1">Trang này tự động cập nhật khi em bắt đầu làm câu hỏi. Dì có thể xem em đang làm đề nào, được bao nhiêu câu và câu đúng/sai!</span>
+            </div>
+
+            <!-- Danh sách tiến trình các em học sinh (Scrollable) -->
+            <div id="parent-progress-cards" class="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
+                <div class="text-center py-12 text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-400 mb-2"></i>
+                    <p class="text-sm">Đang tải dữ liệu làm bài của các em...</p>
+                </div>
+            </div>
+
+            <!-- Footer Modal -->
+            <div class="p-3 sm:p-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span id="parent-progress-last-updated"><i class="fa-regular fa-clock"></i> Cập nhật vừa xong</span>
+                <button onclick="app.closeParentProgressModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition text-xs">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts nạp dữ liệu và xử lý nghiệp vụ -->
     <script src="questions.js?v=20261108j"></script>
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
-    <script src="supabase.js?v=20261111d"></script>
-    <script src="app.js?v=20261111d"></script>
+    <script src="supabase.js?v=20261111f"></script>
+    <script src="app.js?v=20261111f"></script>
 </body>
 </html>

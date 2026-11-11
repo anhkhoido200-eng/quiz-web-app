@@ -18,12 +18,27 @@
 </head>
 <body class="dark admin-body">
     <div id="access-denied" class="access-denied hidden">
-        <div class="access-card">
+        <div class="access-card" style="max-width:480px;text-align:center;">
             <span class="access-icon"><i class="fa-solid fa-lock"></i></span>
             <p class="eyebrow">PRIVATE ADMIN AREA</p>
             <h1>Thiết bị chưa được cấp quyền</h1>
-            <p>Control Center chỉ mở cho IP đã được cấp trong whitelist Admin.</p>
-            <div class="access-actions"><button id="bootstrap-admin" class="button button-primary" type="button"><i class="fa-solid fa-key"></i> Thiết lập Admin lần đầu</button><a class="button button-secondary" href="index.html"><i class="fa-solid fa-arrow-left"></i> Về trang chính</a></div>
+            <p>Control Center chỉ mở cho IP hoặc IP-Token đã được cấp trong whitelist Admin.</p>
+
+            <!-- Ô nhập IP-Token mở khóa trực tiếp -->
+            <div style="margin:16px 0;background:rgba(255,255,255,0.04);padding:14px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);">
+                <p style="font-size:12px;font-weight:600;color:var(--amber,#f59e0b);margin-bottom:8px;">
+                    <i class="fa-solid fa-key"></i> Bạn đã có IP-Token hoặc Mã Admin?
+                </p>
+                <div class="inline-form" style="gap:6px;">
+                    <input id="admin-token-unlock-input" placeholder="Dán mã IP-Token Admin tại đây..." style="text-align:center;font-weight:700;font-family:monospace;letter-spacing:0.5px;">
+                    <button id="btn-unlock-admin-token" class="button button-primary" type="button"><i class="fa-solid fa-unlock"></i> Mở khóa</button>
+                </div>
+            </div>
+
+            <div class="access-actions" style="justify-content:center;">
+                <button id="bootstrap-admin" class="button button-secondary" type="button"><i class="fa-solid fa-shield-halved"></i> Đăng nhập mật khẩu Master (034569)</button>
+                <a class="button button-secondary" href="index.html"><i class="fa-solid fa-arrow-left"></i> Về trang chính</a>
+            </div>
         </div>
     </div>
 
@@ -48,6 +63,7 @@
                 <button class="nav-item is-active" data-view="overview" type="button"><i class="fa-solid fa-grid-2"></i><span>Tổng quan</span></button>
                 <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Ngân hàng &amp; môn học</span><em id="nav-question-count">0</em></button>
                 <button class="nav-item" data-view="students" type="button"><i class="fa-solid fa-radar"></i><span>Giám sát học sinh</span><em id="nav-online-count">0</em></button>
+                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-chart-pie" style="color:var(--amber,#f59e0b);"></i><span>Tiến trình Lớp 5</span><em id="nav-progress-count" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">0</em></button>
                 <p class="nav-label nav-label-gap">SYSTEM</p>
                 <button class="nav-item" data-view="access" type="button"><i class="fa-solid fa-user-shield"></i><span>Quyền truy cập</span></button>
                 <button class="nav-item" data-view="reports" type="button"><i class="fa-solid fa-chart-line"></i><span>Báo cáo &amp; dữ liệu</span></button>
@@ -182,6 +198,41 @@
 
                 <section class="view" data-view-panel="students"><div class="page-heading compact-heading"><div><p class="eyebrow">LIVE MONITOR</p><h1>Giám sát học sinh</h1><p>Theo dõi thiết bị, trạng thái làm bài và phát thông báo thời gian thực.</p></div><div class="heading-actions"><button id="refresh-students" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button><button id="clear-logins" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử</button></div></div><div class="monitor-stats" id="monitor-stats"></div><section class="panel broadcast-panel"><div class="panel-title"><div><p class="eyebrow">BROADCAST</p><h2>Phát thông báo tới học sinh</h2></div><span class="info-badge">Hiện trong 5 giây</span></div><div class="broadcast-row"><input id="notice-input" maxlength="160" placeholder="Ví dụ: Còn 10 phút nữa hết giờ làm bài..."><button id="send-notice" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi toàn phòng</button></div><div class="quick-notices"><span>Mẫu nhanh:</span><button type="button" data-notice="Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!">Còn 10 phút</button><button type="button" data-notice="Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!">Còn 5 phút</button><button type="button" data-notice="Các em tập trung làm bài, nghiêm túc, không trao đổi!">Nghiêm túc</button><button type="button" data-notice="Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.">Hết giờ</button></div></section><section class="panel danger-panel"><div class="panel-title"><div><p class="eyebrow">SAFETY CONTROL</p><h2>Chặn IP khẩn cấp</h2></div><span id="banned-count" class="status-badge danger">0 IP</span></div><div class="ban-row"><input id="ban-ip-input" placeholder="Nhập địa chỉ IP cần chặn..."><input id="ban-reason-input" placeholder="Lý do (không bắt buộc)"><button id="ban-ip-button" class="button button-danger" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button></div><div id="banned-list" class="banned-list"></div></section><section class="panel students-panel"><div class="panel-title"><div><p class="eyebrow">SESSIONS</p><h2>Phiên truy cập <span id="student-count" class="heading-count">0</span></h2></div></div><div class="table-wrap"><table><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"></tbody></table></div></section></section>
 
+                <section class="view" data-view-panel="progress">
+                    <div class="page-heading compact-heading">
+                        <div>
+                            <p class="eyebrow" style="color:var(--amber,#f59e0b);">GRADE 5 REALTIME TRACKER</p>
+                            <h1>Tiến trình làm bài Lớp 5</h1>
+                            <p>Theo dõi trực tiếp số câu đã làm, tỷ lệ đúng/sai và trạng thái làm bài của học sinh Lớp 5.</p>
+                        </div>
+                        <div class="heading-actions">
+                            <button id="refresh-progress" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button>
+                            <button id="copy-parent-link-head" class="button button-warning" type="button" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;"><i class="fa-solid fa-share-nodes"></i> Link gửi Dì</button>
+                        </div>
+                    </div>
+
+                    <div class="monitor-stats" id="grade5-monitor-stats">
+                        <div class="monitor-stat"><span><b id="g5-stat-doing">0</b><small>Đang làm bài</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-pen-nib"></i></div>
+                        <div class="monitor-stat"><span><b id="g5-stat-submitted">0</b><small>Đã nộp bài</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-circle-check"></i></div>
+                        <div class="monitor-stat"><span><b id="g5-stat-total">0</b><small>Tổng học sinh Lớp 5</small></span><i style="color:var(--amber,#f59e0b);background:#fef3c7" class="fa-solid fa-children"></i></div>
+                    </div>
+
+                    <section class="panel">
+                        <div class="panel-title">
+                            <div>
+                                <p class="eyebrow">LIVE CARDS</p>
+                                <h2>Danh sách tiến trình học sinh Lớp 5</h2>
+                            </div>
+                            <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                <i class="fa-solid fa-signal"></i> Tự động cập nhật mỗi 4 giây
+                            </span>
+                        </div>
+                        <div id="grade5-progress-cards" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:16px;margin-top:14px;">
+                            <!-- Progress cards render here -->
+                        </div>
+                    </section>
+                </section>
+
                 <section class="view" data-view-panel="access">
                     <div class="page-heading compact-heading">
                         <div>
@@ -206,17 +257,17 @@
                         <section class="panel">
                             <div class="panel-title">
                                 <div>
-                                    <p class="eyebrow">ADMIN WHITELIST</p>
-                                    <h2>Thiết bị Admin phụ <span id="admin-ip-count" class="heading-count">0</span></h2>
-                                    <p class="muted-copy">Các IP này được phép truy cập trang quản trị admin.html.</p>
+                                    <p class="eyebrow" style="color:var(--amber,#f59e0b);">ADMIN AUTH HUB</p>
+                                    <h2>Cấp IP-Token Quản Trị Viên <span id="admin-ip-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Cấp quyền mở khóa Control Center qua IP, Mã máy hoặc IP-Token (không lo đổi mạng/4G bị chặn).</p>
                                 </div>
                             </div>
-                            <div class="inline-form">
-                                <input id="admin-ip-input" placeholder="Địa chỉ IP Admin">
-                                <input id="admin-ip-name" placeholder="Tên gợi nhớ (VD: Laptop nhà)">
-                                <button id="add-admin-ip" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Cấp quyền</button>
+                            <div class="inline-form" style="gap:8px;flex-wrap:wrap;">
+                                <input id="admin-ip-input" placeholder="Dán IP, Mã máy hoặc IP-Token (VD: 14.164.221.205-QM-KM9SZG)" style="flex:2;min-width:220px;font-family:monospace;font-weight:700;">
+                                <input id="admin-ip-name" placeholder="Tên gợi nhớ (VD: Laptop nhà, Điện thoại Admin...)" style="flex:1.2;min-width:160px;">
+                                <button id="add-admin-ip" class="button button-primary" type="button" style="white-space:nowrap;"><i class="fa-solid fa-bolt"></i> Cấp IP-Token Admin</button>
                             </div>
-                            <div id="admin-ip-list" class="stack-list"></div>
+                            <div id="admin-ip-list" class="stack-list" style="margin-top:12px;"></div>
                         </section>
 
                         <!-- FORM CẤP QUYỀN HỌC SINH TẬP TRUNG (Lớp 5, AI, hoặc cả 2) -->
@@ -242,6 +293,8 @@
                                         <option value="grade5" selected>🎓 Quyền Lớp 5 (Xem &amp; làm bài thi)</option>
                                         <option value="ai">🤖 Quyền Trợ lý AI (Giải bài &amp; hướng dẫn)</option>
                                         <option value="all">👑 Gói VIP (Cả 2: Lớp 5 + Trợ lý AI)</option>
+                                        <option value="parent">👁️ Quyền Quan Sát Lớp 5 (Dành cho Phụ huynh / Dì)</option>
+                                        <option value="admin">⭐ Quyền Quản trị viên (Toàn quyền Admin Control Center)</option>
                                     </select>
                                 </label>
                                 <label>Địa chỉ IP (Tự động điền nếu dán IP)
@@ -318,6 +371,38 @@
                                         </tr>
                                     </thead>
                                     <tbody id="ai-access-body">
+                                        <!-- Render dynamic rows here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 3: QUYỀN QUAN SÁT LỚP 5 (PHỤ HUYNH / DÌ THEO DÕI) -->
+                        <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <p class="eyebrow" style="color:var(--amber,#f59e0b);">PARENT OBSERVER</p>
+                                    <h2>👁️ Danh sách Phụ huynh / Dì quan sát tiến trình Lớp 5 <span id="parent-observer-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Người thân được cấp link/mã để theo dõi tiến trình làm bài của học sinh trực tiếp (không thể sửa/xóa bài).</p>
+                                </div>
+                                <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                    <i class="fa-solid fa-eye"></i> Quyền Quan Sát
+                                </span>
+                            </div>
+
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Người theo dõi (Dì / Phụ huynh)</th>
+                                            <th>Mã Token / IP</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Link theo dõi gửi Dì</th>
+                                            <th>Ngày cấp</th>
+                                            <th style="text-align:right;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="parent-access-body">
                                         <!-- Render dynamic rows here -->
                                     </tbody>
                                 </table>
@@ -638,6 +723,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="admin.js?v=20261111d"></script>
+    <script src="admin.js?v=20261111f"></script>
 </body>
 </html>
