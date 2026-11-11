@@ -586,7 +586,8 @@ class QuizApp {
             startButton.classList.remove('opacity-60', 'cursor-wait');
         }
 
-        if (shouldOpenProgress || this.hasTokenRole('parent')) {
+        const isAdminUser = this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin');
+        if (!isAdminUser && (shouldOpenProgress || this.hasTokenRole('parent'))) {
             setTimeout(() => {
                 this.enterObserverMode();
             }, 300);
@@ -654,17 +655,28 @@ class QuizApp {
         const info = this.tokenInfo || this.getCachedTokenInfo();
         if (!info || !info.role) return false;
         const r = String(info.role).trim().toLowerCase();
-        if (r === 'all' || r === 'full' || r === 'admin' || r === 'combo') return true;
-        if (role === 'grade5' && (r === 'grade5' || r === 'class5' || r === 'lop5')) return true;
-        if (role === 'ai' && (r === 'ai' || r === 'gemini' || r === 'troly_ai')) return true;
-        if (role === 'parent' && (r === 'parent' || r === 'phuhuynh' || r === 'di' || r === 'observer' || r === 'observer_grade5')) return true;
+        if (role === 'admin') {
+            return r === 'admin' || r === 'master';
+        }
+        if (role === 'parent' || role === 'observer') {
+            return r === 'parent' || r === 'phuhuynh' || r === 'observer' || r === 'observer_grade5';
+        }
+        if (role === 'grade5') {
+            return r === 'grade5' || r === 'class5' || r === 'lop5' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
+        }
+        if (role === 'ai') {
+            return r === 'ai' || r === 'gemini' || r === 'troly_ai' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
+        }
+        if (role === 'all') {
+            return r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
+        }
         return false;
     }
 
     canViewProgress() {
-        if (this.isAdminAuthenticated || this.hasAdminIpAccess()) return true;
-        if (this.hasTokenRole('parent') || this.hasTokenRole('all')) return true;
-        return false;
+        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin');
+        if (isAdmin) return false; // Admin vào thẳng trang admin.html, không cần nút theo dõi trên trang học sinh
+        return this.hasTokenRole('parent');
     }
 
     getCachedTokenInfo() {
@@ -765,14 +777,16 @@ class QuizApp {
             try { localStorage.setItem('quiz_token_info', JSON.stringify(matched)); } catch (e) {}
             this.updateTokenStatusUi();
 
-            const isObserverRole = this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer';
+            const isObserverRole = !this.hasTokenRole('admin') && (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer');
 
             if (showToastOnSuccess || (!hadPermissionBefore && this.isInitialValidated)) {
-                const roleDesc = isObserverRole
-                    ? 'Quyền Giám Sát Tiến Trình'
-                    : (matched.role === 'all' 
-                        ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
-                        : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5'));
+                const roleDesc = matched.role === 'admin'
+                    ? 'Quản Trị Viên (Toàn quyền)'
+                    : (isObserverRole
+                        ? 'Quyền Giám Sát Tiến Trình'
+                        : (matched.role === 'all' 
+                            ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
+                            : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5')));
                 this.showToastNotification(`🎉 Thiết bị (${this.clientIp || combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
             }
             this.isInitialValidated = true;
@@ -803,14 +817,14 @@ class QuizApp {
     updateTokenStatusUi() {
         const badge = document.getElementById('ip-permission-badge');
         const canG5 = this.canViewGrade5();
-        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess();
+        const isAdmin = this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin');
         const info = this.tokenInfo || this.getCachedTokenInfo();
-        const isParent = this.hasTokenRole('parent');
-        const canViewProgress = this.canViewProgress() || isParent;
+        const isParent = !isAdmin && this.hasTokenRole('parent');
+        const canViewProgress = isParent;
 
-        const btnOpenParent = document.getElementById('btn-open-parent-monitor');
-        if (btnOpenParent) {
-            btnOpenParent.classList.toggle('hidden', !canViewProgress);
+        const floatObsBtn = document.getElementById('floating-observer-btn');
+        if (floatObsBtn) {
+            floatObsBtn.classList.toggle('hidden', !canViewProgress);
         }
         const headerParentBtn = document.getElementById('header-parent-monitor-btn');
         if (headerParentBtn) {
@@ -912,7 +926,8 @@ class QuizApp {
 
         if (matched) {
             this.closeTokenModal();
-            if (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer') {
+            const isObserverRole = !this.hasTokenRole('admin') && (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer');
+            if (isObserverRole) {
                 this.enterObserverMode();
             }
         }
@@ -1587,12 +1602,16 @@ class QuizApp {
 
     updateAdminUIVisibility() {
         const floatBtn = document.getElementById('floating-admin-btn');
+        const floatObsBtn = document.getElementById('floating-observer-btn');
         const navBtn = document.getElementById('nav-admin-btn');
+        const headerObsBtn = document.getElementById('header-parent-monitor-btn');
         const homeActions = document.getElementById('home-admin-subject-actions');
-        const hasCurrentIpPermission = this.hasAdminIpAccess();
-        const isObserver = this.hasTokenRole('parent') || (this.tokenInfo && (this.tokenInfo.role === 'parent' || this.tokenInfo.role === 'observer')) || this.currentScreen === 'observer';
 
-        if (!isObserver && this.isAdminAuthenticated && hasCurrentIpPermission) {
+        const isAdmin = (this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin'));
+        const isObserver = !isAdmin && (this.hasTokenRole('parent') || (this.tokenInfo && (this.tokenInfo.role === 'parent' || this.tokenInfo.role === 'observer')));
+
+        // 1. Quản trị viên (Admin): Luôn hiện nút 👑 Mở Bảng Admin ở góc dưới bên phải bình thường
+        if (isAdmin) {
             if (floatBtn) {
                 floatBtn.classList.remove('hidden');
                 floatBtn.classList.add('flex');
@@ -1601,8 +1620,12 @@ class QuizApp {
                 navBtn.classList.remove('hidden');
                 navBtn.classList.add('flex');
             }
-            // Toàn bộ công cụ quản trị đã chuyển sang admin.html.
-            if (homeActions) homeActions.classList.add('hidden');
+            // Admin không cần nút xem tiến trình trên trang làm bài
+            if (floatObsBtn) {
+                floatObsBtn.classList.add('hidden');
+                floatObsBtn.classList.remove('flex');
+            }
+            if (headerObsBtn) headerObsBtn.classList.add('hidden');
         } else {
             if (floatBtn) {
                 floatBtn.classList.add('hidden');
@@ -1612,9 +1635,30 @@ class QuizApp {
                 navBtn.classList.add('hidden');
                 navBtn.classList.remove('flex');
             }
-            if (homeActions) homeActions.classList.add('hidden');
         }
 
+        // 2. Người theo dõi (Observer): Hiện nút xem tiến trình nhỏ ở góc dưới bên phải
+        if (isObserver) {
+            if (floatObsBtn && this.currentScreen !== 'observer') {
+                floatObsBtn.classList.remove('hidden');
+                floatObsBtn.classList.add('flex');
+            } else if (floatObsBtn) {
+                floatObsBtn.classList.add('hidden');
+                floatObsBtn.classList.remove('flex');
+            }
+            if (headerObsBtn) {
+                headerObsBtn.classList.remove('hidden');
+                headerObsBtn.classList.add('flex');
+            }
+        } else if (!isAdmin) {
+            if (floatObsBtn) {
+                floatObsBtn.classList.add('hidden');
+                floatObsBtn.classList.remove('flex');
+            }
+            if (headerObsBtn) headerObsBtn.classList.add('hidden');
+        }
+
+        if (homeActions) homeActions.classList.add('hidden');
         this.renderHomeSubjects();
     }
 
@@ -4103,6 +4147,23 @@ Giải thích: Biên độ A = 5 cm.`;
         const scoreMatch = rawScore.match(/(\d+)\s*điểm/i);
         if (scoreMatch) finalScore = parseInt(scoreMatch[1], 10);
 
+        const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
+
+        // Quy đổi sang Thang Điểm 10 khoa học (Tối đa 10 điểm mỗi đề)
+        let score10 = 0;
+        if (isCompleted) {
+            if (finalScore !== null && !isNaN(finalScore)) {
+                let s = Number(finalScore);
+                if (total > 0 && s > 10) s = (s / total) * 10;
+                else if (s > 10) s = 10;
+                score10 = Math.min(10, Math.max(0, Math.round(s * 10) / 10));
+            } else if (total > 0) {
+                score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+            }
+        } else if (total > 0 && answered > 0) {
+            score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+        }
+
         return {
             id: row?.id,
             name: row?.player_name || 'Học sinh',
@@ -4116,7 +4177,9 @@ Giải thích: Biên độ A = 5 cm.`;
             correct,
             wrong,
             finalScore,
+            score10,
             isCompleted,
+            isWaiting,
             lastActive: row?.last_active,
             rawStatus,
             rawScore
@@ -4191,7 +4254,7 @@ Giải thích: Biên độ A = 5 cm.`;
         let submittedCount = 0;
         parsed.forEach(p => {
             if (p.isCompleted) submittedCount++;
-            else doingCount++;
+            else if (!p.isWaiting) doingCount++;
         });
 
         const elDoing = document.getElementById('obs-stat-doing');
@@ -4214,23 +4277,99 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        container.innerHTML = parsed.map(p => {
+        // Ưu tiên đưa học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ
+        const sorted = [...parsed].sort((a, b) => {
+            const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
+            const bScore = (!b.isCompleted && !b.isWaiting) ? 2 : (b.isCompleted ? 1 : 0);
+            if (bScore !== aScore) return bScore - aScore;
+            return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
+        });
+
+        container.innerHTML = sorted.map(p => {
             const timeAgo = this.formatRelativeTime(p.lastActive);
-            const isDoing = !p.isCompleted;
-            const statusBadge = isDoing
-                ? `<span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
-                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
-                   </span>`
-                : `<span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
-                       <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
-                   </span>`;
 
-            const scoreDisplay = p.isCompleted
-                ? (p.finalScore !== null ? `<b class="text-amber-400 font-extrabold text-sm">${p.finalScore} điểm</b>` : `<b class="text-indigo-300 font-bold text-xs">${p.correct}/${p.total || p.answered} ý</b>`)
-                : `<span class="text-xs text-slate-300"><b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span></span>`;
+            // 1. Trường hợp người học / khách đang ở màn hình chờ
+            if (p.isWaiting) {
+                return `
+                    <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg opacity-85 hover:border-slate-700 transition">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center text-lg border border-slate-700 shrink-0">
+                                    <i class="fa-solid fa-user-clock"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
+                                    <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                                <i class="fa-solid fa-hourglass-half text-[11px]"></i> Đang chờ
+                            </span>
+                        </div>
 
-            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+                        <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
+                            <span class="font-medium text-slate-300 flex items-center gap-2">
+                                <i class="fa-solid fa-compass text-slate-500"></i> Đang ở màn hình trang chủ
+                            </span>
+                            <span class="text-slate-500 italic">Chưa chọn đề thi</span>
+                        </div>
 
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 2. Trường hợp ĐÃ NỘP BÀI
+            if (p.isCompleted) {
+                const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 100;
+                return `
+                    <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20 shrink-0">
+                                    <i class="fa-solid fa-award"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
+                                    <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                                <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
+                            </span>
+                        </div>
+
+                        <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                                    <i class="fa-solid fa-book-open text-indigo-400"></i> ${this.escapeHtml(p.subject)}
+                                </span>
+                                <span class="font-bold text-indigo-400 shrink-0">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                            </div>
+                            <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400" style="width: 100%"></div>
+                            </div>
+                            <div class="flex items-center justify-between text-xs pt-0.5">
+                                <span class="text-slate-300">Đúng: <b class="text-white">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                                <span class="text-xs font-extrabold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
+                                    <i class="fa-solid fa-trophy mr-1"></i> ${p.score10.toFixed(1)} / 10 điểm
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 3. Trường hợp ĐANG LÀM BÀI
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 0;
             return `
                 <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition">
                     <div class="flex items-center justify-between gap-3">
@@ -4243,7 +4382,9 @@ Giải thích: Biên độ A = 5 cm.`;
                                 <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
                             </div>
                         </div>
-                        ${statusBadge}
+                        <span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
+                        </span>
                     </div>
 
                     <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
@@ -4258,7 +4399,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         </div>
                         <div class="flex items-center justify-between text-xs pt-0.5">
                             <span class="text-slate-400">Tiến độ: <b class="text-white">${percent}%</b></span>
-                            ${scoreDisplay}
+                            <span class="text-xs text-slate-300"><b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
                         </div>
                     </div>
 

@@ -3996,6 +3996,23 @@
         const scoreMatch = rawScore.match(/(\d+)\s*điểm/i);
         if (scoreMatch) finalScore = parseInt(scoreMatch[1], 10);
 
+        const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
+
+        // Quy đổi điểm sang Thang Điểm 10 khoa học (Tối đa 10 điểm mỗi đề)
+        let score10 = 0;
+        if (isCompleted) {
+            if (finalScore !== null && !isNaN(finalScore)) {
+                let s = Number(finalScore);
+                if (total > 0 && s > 10) s = (s / total) * 10;
+                else if (s > 10) s = 10;
+                score10 = Math.min(10, Math.max(0, Math.round(s * 10) / 10));
+            } else if (total > 0) {
+                score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+            }
+        } else if (total > 0 && answered > 0) {
+            score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+        }
+
         return {
             id: row.id,
             name: row.player_name || 'Học sinh',
@@ -4009,7 +4026,9 @@
             correct,
             wrong,
             finalScore,
+            score10,
             isCompleted,
+            isWaiting,
             lastActive: row.last_active,
             rawStatus,
             rawScore
@@ -4063,16 +4082,19 @@
         const nowMs = Date.now();
         let doingCount = 0;
         let submittedCount = 0;
+        let waitingCount = 0;
 
         parsedList.forEach(p => {
             if (p.isCompleted) submittedCount++;
+            else if (p.isWaiting) waitingCount++;
             else doingCount++;
         });
 
         $('g5-stat-doing') && ($('g5-stat-doing').textContent = doingCount);
         $('g5-stat-submitted') && ($('g5-stat-submitted').textContent = submittedCount);
+        $('g5-stat-waiting') && ($('g5-stat-waiting').textContent = waitingCount);
         $('g5-stat-total') && ($('g5-stat-total').textContent = parsedList.length);
-        $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : parsedList.length);
+        $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || parsedList.length));
 
         renderQuickObservers();
 
@@ -4081,7 +4103,7 @@
             container.innerHTML = `
                 <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; background: var(--surface-2); border-radius: 16px; border: 1px dashed var(--border);">
                     <div style="font-size: 32px; color: var(--amber,#f59e0b); margin-bottom: 8px;"><i class="fa-solid fa-graduation-cap"></i></div>
-                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text);">Chưa có học sinh ${filterLabel} nào đang làm bài</h3>
+                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text);">Chưa có học sinh ${filterLabel} nào</h3>
                     <p style="font-size: 13px; color: var(--muted); margin-top: 4px; max-width: 420px; margin-inline: auto;">
                         Khi học sinh vào làm các đề thi, số câu làm được và tiến trình sẽ hiển thị trực tiếp theo thời gian thực tại đây.
                     </p>
@@ -4090,49 +4112,121 @@
             return;
         }
 
-        container.innerHTML = parsedList.map(p => {
+        // Ưu tiên hiển thị: Học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ ở trang chủ
+        const sortedList = [...parsedList].sort((a, b) => {
+            const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
+            const bScore = (!b.isCompleted && !b.isWaiting) ? 2 : (b.isCompleted ? 1 : 0);
+            if (bScore !== aScore) return bScore - aScore;
+            return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
+        });
+
+        container.innerHTML = sortedList.map(p => {
             const timeAgo = formatTimeAgo(p.lastActive, nowMs);
-            const isDoing = !p.isCompleted;
-            const statusBadge = isDoing
-                ? `<span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                       <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
-                   </span>`
-                : `<span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;">
-                       <i class="fa-solid fa-circle-check"></i> Đã nộp bài
-                   </span>`;
 
-            const scoreDisplay = p.isCompleted
-                ? (p.finalScore !== null ? `<b style="color:var(--amber,#f59e0b);font-size:15px;">${p.finalScore} điểm</b>` : `<b>${p.correct}/${p.total || p.answered} ý</b>`)
-                : `<b>Đúng: ${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span>`;
+            // 1. Trường hợp đang ở trạng thái chờ trang chủ
+            if (p.isWaiting) {
+                return `
+                    <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;opacity:0.85;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <div style="width:38px;height:38px;border-radius:10px;background:rgba(148,163,184,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:16px;">
+                                    <i class="fa-solid fa-user-clock"></i>
+                                </div>
+                                <div>
+                                    <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
+                                    <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
+                                </div>
+                            </div>
+                            <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+                                <i class="fa-solid fa-hourglass-half"></i> Đang chờ
+                            </span>
+                        </div>
 
-            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+                        <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
+                            <span style="font-size:11px;color:var(--muted);font-style:italic;">Chưa chọn đề thi</span>
+                        </div>
 
+                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                            <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                            <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                        </div>
+                    </article>
+                `;
+            }
+
+            // 2. Trường hợp ĐÃ NỘP BÀI
+            if (p.isCompleted) {
+                const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 100;
+                return `
+                    <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;">
+                                    <i class="fa-solid fa-award"></i>
+                                </div>
+                                <div>
+                                    <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
+                                    <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
+                                </div>
+                            </div>
+                            <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                                <i class="fa-solid fa-circle-check"></i> Đã nộp bài
+                            </span>
+                        </div>
+
+                        <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> ${esc(p.subject)}</span>
+                                <span style="font-size:12px;font-weight:700;color:var(--primary);">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                            </div>
+                            <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;position:relative;">
+                                <div style="width:100%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;"></div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
+                                <span>Đúng: <b style="color:var(--text);">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                                <span style="font-size:13px;font-weight:800;color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-trophy"></i> ${p.score10.toFixed(1)} / 10 đ</span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                            <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                            <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                        </div>
+                    </article>
+                `;
+            }
+
+            // 3. Trường hợp ĐANG LÀM BÀI
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 0;
             return `
                 <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="display:flex;align-items:center;gap:10px;">
-                            <div style="width:38px;height:38px;border-radius:10px;background:rgba(245,158,11,0.15);color:var(--amber,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:16px;">
-                                <i class="fa-solid fa-user-graduate"></i>
+                            <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;">
+                                <i class="fa-solid fa-user-pen"></i>
                             </div>
                             <div>
                                 <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
                                 <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
                             </div>
                         </div>
-                        ${statusBadge}
+                        <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                            <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
+                        </span>
                     </div>
 
                     <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                             <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> ${esc(p.subject)}</span>
-                            <span style="font-size:12px;font-weight:700;color:var(--primary);">${p.answered}/${p.total > 0 ? p.total : 29} câu</span>
+                            <span style="font-size:12px;font-weight:700;color:var(--primary);">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
                         </div>
                         <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;position:relative;">
                             <div style="width:${percent}%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;transition:width 0.4s ease;"></div>
                         </div>
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
                             <span>Tiến độ: <b style="color:var(--text);">${percent}%</b></span>
-                            <span>${scoreDisplay}</span>
+                            <span>Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
                         </div>
                     </div>
 
