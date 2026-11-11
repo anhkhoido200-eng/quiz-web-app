@@ -66,6 +66,10 @@ class QuizApp {
         this.allowedGeoIps = [];
         this.geoMode = 'PRIVATE';
         this.class5AllowedIps = [];
+        try {
+            const cachedG5 = localStorage.getItem('quiz_cache_grade5_ips');
+            if (cachedG5) this.class5AllowedIps = JSON.parse(cachedG5);
+        } catch (e) {}
 
         // Chế độ bảo trì hệ thống (Maintenance Mode)
         this.isMaintenanceMode = false;
@@ -878,7 +882,7 @@ class QuizApp {
     }
 
     canViewGrade5() {
-        // 1. Admin luôn có toàn quyền xem toàn bộ nội dung (kể cả chuyên đề nâng cao)
+        // 1. Admin luôn có toàn quyền xem toàn bộ nội dung Lớp 5
         if (this.isAdminAuthenticated || this.hasAdminIpAccess()) {
             return true;
         }
@@ -888,16 +892,23 @@ class QuizApp {
             return true;
         }
 
-        // 3. Học sinh: Kiểm tra theo IP Whitelist
+        // 3. Học sinh: Kiểm tra theo IP Whitelist Lớp 5
         const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         const currentIp = normalizeIp(this.clientIp);
-        if (!currentIp || currentIp.startsWith('đang') || currentIp === 'chưa xác định') {
-            return false;
+        if (currentIp && !currentIp.startsWith('đang') && currentIp !== 'chưa xác định') {
+            const allowedIps = Array.isArray(this.class5AllowedIps) ? this.class5AllowedIps.map(normalizeIp).filter(Boolean) : [];
+            if (allowedIps.includes(currentIp)) {
+                return true;
+            }
         }
-        const allowedIps = Array.isArray(this.class5AllowedIps) ? this.class5AllowedIps.map(normalizeIp).filter(Boolean) : [];
-        const matched = allowedIps.includes(currentIp);
-        console.debug('[QuizApp] Grade 5 access check:', { currentIp, allowedIps, matched, hasToken: this.hasTokenRole('grade5') });
-        return Boolean(matched);
+
+        // 4. Kiểm tra cache quyền token đã lưu trên thiết bị
+        const cached = this.getCachedTokenInfo();
+        if (cached && (cached.role === 'all' || cached.role === 'grade5' || cached.role === 'class5')) {
+            return true;
+        }
+
+        return false;
     }
 
     getHomeGradeFilter() {
@@ -958,11 +969,16 @@ class QuizApp {
                     });
                 }
             }
+            if (this.class5AllowedIps.length > 0) {
+                try { localStorage.setItem('quiz_cache_grade5_ips', JSON.stringify(this.class5AllowedIps)); } catch (e) {}
+            }
             console.debug('[QuizApp] Loaded Grade 5 access config:', { currentIp: this.clientIp, class5AllowedIps: this.class5AllowedIps });
         } catch (error) {
-            this.allowedGeoIps = [];
-            this.class5AllowedIps = [];
             console.warn('Không thể tải quyền truy cập Lớp 5:', error);
+            try {
+                const cachedG5 = localStorage.getItem('quiz_cache_grade5_ips');
+                if (cachedG5) this.class5AllowedIps = JSON.parse(cachedG5);
+            } catch (e) {}
         }
 
         this.homeGradeFilter = this.getHomeGradeFilter();
@@ -980,7 +996,11 @@ class QuizApp {
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
             const canViewGrade5 = this.canViewGrade5();
-            const grades = canViewGrade5 ? ['all', '5', '11'] : ['all', '11'];
+            const hasG11 = (this.dynamicSubjects || []).some(s => this.getSubjectGrade(s) === '11');
+            const grades = ['all'];
+            if (canViewGrade5) grades.push('5');
+            if (hasG11) grades.push('11');
+
             tabs.innerHTML = grades.map((grade) => {
                     const label = grade === 'all' ? 'Tất cả' : `Lớp ${grade}`;
                     const active = activeGrade === grade;
@@ -1418,11 +1438,22 @@ class QuizApp {
 
         // Dự phòng cho project chưa bật Realtime publication.
         this.questionSyncPoll = window.setInterval(() => {
-            if (document.hidden || this.isLoadingQuestions || !this.currentSubject) return;
-            this.loadQuestionsForCurrentSubject().catch(() => {});
-        }, 10000);
+            if (document.hidden) return;
+            // Tự động kiểm tra quyền Lớp 5 và nạp danh sách đề ngay khi Admin vừa cấp quyền
+            if (!this.canViewGrade5() || !this.tokenInfo) {
+                this.validateUserToken(false).then(() => this.syncClass5Access()).catch(() => {});
+            }
+            if (this.currentSubject && !this.isLoadingQuestions) {
+                this.loadQuestionsForCurrentSubject().catch(() => {});
+            }
+        }, 5000);
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.currentSubject) this.loadQuestionsForCurrentSubject().catch(() => {});
+            if (!document.hidden) {
+                if (!this.canViewGrade5() || !this.tokenInfo) {
+                    this.validateUserToken(false).then(() => this.syncClass5Access()).catch(() => {});
+                }
+                if (this.currentSubject) this.loadQuestionsForCurrentSubject().catch(() => {});
+            }
         }, { passive: true });
     }
 
@@ -6660,9 +6691,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         window.addEventListener('offline', () => this.handleNetworkOffline());
         window.addEventListener('focus', () => {
             // Khi học sinh chuyển tab quay lại (ví dụ sau khi gửi mã máy QM-... cho Thầy Cô qua Zalo)
-            if (!this.canViewGrade5() || !this.tokenInfo) {
-                this.validateUserToken(false).catch(() => {});
-            }
+            this.validateUserToken(false).then(() => this.syncClass5Access()).then(() => this.renderHomeSubjects()).catch(() => {});
         });
         this.updateNetworkStatusBanner(navigator.onLine);
     }
