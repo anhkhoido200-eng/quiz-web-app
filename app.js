@@ -543,6 +543,14 @@ class QuizApp {
         await this.loadAiIpsConfig();
         await this.loadDynamicSubjects();
         this.checkSavedUser();
+        // Thiết bị mới chưa có môn ghi nhớ: tự động chọn môn hợp lệ đầu tiên
+        if (!this.currentSubject) {
+            const visible = this.getHomeVisibleSubjects();
+            if (visible && visible.length > 0) {
+                this.currentSubject = visible[0].key;
+                try { localStorage.setItem('quiz_last_selected_subject', this.currentSubject); } catch (e) {}
+            }
+        }
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
         this.renderFilterTabs();
@@ -3962,6 +3970,9 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!name) {
             if (err) err.classList.remove('hidden');
             input?.focus();
+            input?.classList.add('ring-2', 'ring-rose-500');
+            setTimeout(() => input?.classList.remove('ring-2', 'ring-rose-500'), 2500);
+            this.showToastNotification('⚠️ Vui lòng nhập Họ và Tên của bạn để bắt đầu làm bài!', 'warning');
             return;
         }
 
@@ -4006,6 +4017,10 @@ Giải thích: Biên độ A = 5 cm.`;
             this.showAlertModal(`⚠️ Môn [${this.getSubjectTitle()}] không thuộc khu vực được cấp quyền trên thiết bị hiện tại.`);
             await this.selectSubject(visibleSubjects[0].key);
             return;
+        }
+
+        if (!this.allQuestions || this.allQuestions.length === 0) {
+            await this.loadQuestionsForCurrentSubject();
         }
 
         if (!this.allQuestions || this.allQuestions.length === 0) {
