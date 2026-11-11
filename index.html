@@ -245,10 +245,10 @@
                     <span class="hidden sm:inline">Top 10</span>
                 </button>
 
-                <!-- Nút mở Bảng Tiến Trình Lớp 5 cho Phụ Huynh / Dì -->
-                <button id="header-parent-monitor-btn" onclick="app.openParentProgressModal()" class="hidden px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Theo dõi tiến trình làm bài Lớp 5">
+                <!-- Nút mở Bảng Tiến Trình Lớp 5 cho Người Theo Dõi -->
+                <button id="header-parent-monitor-btn" onclick="app.enterObserverMode()" class="hidden px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Theo dõi tiến trình làm bài Lớp 5">
                     <i class="fa-solid fa-eye text-amber-400"></i>
-                    <span class="hidden sm:inline">Tiến Trình Lớp 5</span>
+                    <span class="hidden sm:inline">Tiến Trình Trực Tiếp</span>
                 </button>
 
                 <!-- Nút Admin góc header (Tự hiện khi đã xác thực IP) -->
@@ -390,10 +390,10 @@
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
                         </button>
 
-                        <!-- Nút mở xem Tiến Trình Lớp 5 cho Phụ huynh / Dì -->
-                        <button id="btn-open-parent-monitor" onclick="app.openParentProgressModal()" type="button" class="hidden w-full mt-3 py-3 px-4 rounded-2xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-md bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 hover:border-amber-400 cursor-pointer">
+                        <!-- Nút mở xem Tiến Trình Lớp 5 cho Người theo dõi -->
+                        <button id="btn-open-parent-monitor" onclick="app.enterObserverMode()" type="button" class="hidden w-full mt-3 py-3 px-4 rounded-2xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-md bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 hover:border-amber-400 cursor-pointer">
                             <i class="fa-solid fa-eye text-amber-400"></i>
-                            <span>Xem Tiến Trình Làm Bài Lớp 5 (Dành cho Dì / Phụ huynh)</span>
+                            <span>Xem Tiến Trình Làm Bài Trực Tiếp (Người theo dõi)</span>
                             <span class="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 text-[10px] font-extrabold uppercase">Live</span>
                         </button>
 
@@ -404,6 +404,8 @@
                 </div>
             </div>
         </section>
+
+        
 
         <!-- ========================================== -->
         <!-- MÀN HÌNH 2: GIAO DIỆN LÀM BÀI TRẮC NGHIỆM  -->
@@ -486,6 +488,8 @@
                 <!-- Render động bởi app.js -->
             </div>
         </section>
+
+        
 
         <!-- ========================================== -->
         <!-- MÀN HÌNH 3: KẾT QUẢ VÀ TỔNG KẾT CHI TIẾT   -->
@@ -597,6 +601,79 @@
                     <div id="review-list" class="space-y-4">
                         <!-- Render các câu hỏi kèm giải thích bởi app.js -->
                     </div>
+                </div>
+            </div>
+        </section>
+
+        
+
+        <!-- ============================================================== -->
+        <!-- MÀN HÌNH 4: THEO DÕI TIẾN TRÌNH LÀM BÀI (OBSERVER REALTIME TRACKER) -->
+        <!-- ============================================================== -->
+        <section id="screen-observer" class="screen-view hidden w-full py-2">
+            <!-- Header chuẩn giống Bảng Admin trong Ảnh 1 -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-5 border-b border-slate-800">
+                <div>
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 mb-1">GRADE 5 REALTIME TRACKER</p>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold font-heading text-white">Tiến trình làm bài Lớp 5</h1>
+                    <p class="text-xs sm:text-sm text-slate-400 mt-1">Theo dõi trực tiếp số câu đã làm, tỷ lệ đúng/sai và trạng thái làm bài của học sinh Lớp 5.</p>
+                </div>
+                <div class="flex items-center gap-2.5 self-start sm:self-center">
+                    <button id="btn-observer-refresh" onclick="app.fetchAndRenderObserverFullscreen()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                        <i class="fa-solid fa-rotate"></i> Làm mới
+                    </button>
+                    <button onclick="app.exitObserverMode()" class="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Thoát chế độ theo dõi">
+                        <i class="fa-solid fa-arrow-left"></i> Quay lại
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3 Khối Thống Kê (Giống hệt Ảnh 1) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 my-5">
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between shadow-sm">
+                    <div>
+                        <b id="obs-stat-doing" class="text-2xl font-extrabold text-emerald-400">0</b>
+                        <div class="text-xs text-slate-400 mt-0.5 font-medium">Đang làm bài</div>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-lg border border-emerald-500/20">
+                        <i class="fa-solid fa-pen-nib"></i>
+                    </div>
+                </div>
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between shadow-sm">
+                    <div>
+                        <b id="obs-stat-submitted" class="text-2xl font-extrabold text-indigo-400">0</b>
+                        <div class="text-xs text-slate-400 mt-0.5 font-medium">Đã nộp bài</div>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between shadow-sm">
+                    <div>
+                        <b id="obs-stat-total" class="text-2xl font-extrabold text-amber-400">0</b>
+                        <div class="text-xs text-slate-400 mt-0.5 font-medium">Tổng học sinh Lớp 5</div>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg border border-amber-500/20">
+                        <i class="fa-solid fa-children"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khung Live Cards (Giống hệt Ảnh 1) -->
+            <div class="rounded-3xl bg-slate-900/80 border border-slate-800 p-4 sm:p-6 shadow-xl flex-1 flex flex-col">
+                <div class="flex items-center justify-between gap-3 pb-4 border-b border-slate-800/80 flex-wrap">
+                    <div>
+                        <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">LIVE CARDS</p>
+                        <h2 class="text-base sm:text-lg font-bold text-white">Danh sách tiến trình học sinh Lớp 5</h2>
+                    </div>
+                    <span class="text-xs px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1.5 shadow-sm">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Tự động cập nhật mỗi 4 giây
+                    </span>
+                </div>
+
+                <!-- Lưới danh sách thẻ học sinh -->
+                <div id="observer-progress-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-5">
+                    <!-- Render dynamic cards here -->
                 </div>
             </div>
         </section>
@@ -1826,7 +1903,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     </div>
 
     <!-- ============================================================== -->
-    <!-- MODAL THEO DÕI TIẾN TRÌNH LÀM BÀI LỚP 5 (PHỤ HUYNH / DÌ)         -->
+    <!-- MODAL THEO DÕI TIẾN TRÌNH LÀM BÀI LỚP 5 (NGƯỜI THEO DÕI)         -->
     <!-- ============================================================== -->
     <div id="modal-parent-progress" class="fixed inset-0 z-[100006] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-5 overflow-hidden">
         <div class="relative w-full max-w-2xl bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -1843,7 +1920,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> TRỰC TIẾP
                             </span>
                         </div>
-                        <p class="text-xs text-amber-200/70 truncate">Dành riêng cho Phụ huynh / Dì quan sát em học thời gian thực</p>
+                        <p class="text-xs text-amber-200/70 truncate">Dành riêng cho Người theo dõi quan sát em học thời gian thực</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -1856,10 +1933,10 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
             </div>
 
-            <!-- Hướng dẫn thân thiện cho Dì -->
+            <!-- Hướng dẫn thân thiện cho Người theo dõi -->
             <div class="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-200">
                 <i class="fa-solid fa-lightbulb text-amber-400 text-sm shrink-0"></i>
-                <span class="flex-1">Trang này tự động cập nhật khi em bắt đầu làm câu hỏi. Dì có thể xem em đang làm đề nào, được bao nhiêu câu và câu đúng/sai!</span>
+                <span class="flex-1">Trang này tự động cập nhật khi em bắt đầu làm câu hỏi. Bạn có thể xem em đang làm đề nào, được bao nhiêu câu và câu đúng/sai!</span>
             </div>
 
             <!-- Danh sách tiến trình các em học sinh (Scrollable) -->
@@ -1884,7 +1961,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <script src="questions.js?v=20261108j"></script>
     <script src="physics_questions.js?v=20261108j"></script>
     <script src="geography_questions.js?v=20261108j"></script>
-    <script src="supabase.js?v=20261111f"></script>
-    <script src="app.js?v=20261111f"></script>
+    <script src="supabase.js?v=20261111g"></script>
+    <script src="app.js?v=20261111g"></script>
 </body>
 </html>

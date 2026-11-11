@@ -2798,7 +2798,7 @@
             }
         }
 
-        // 3. RENDER BẢNG 3: QUYỀN QUAN SÁT LỚP 5 (PHỤ HUYNH / DÌ)
+        // 3. RENDER BẢNG 3: QUYỀN QUAN SÁT TIẾN TRÌNH (NGƯỜI THEO DÕI)
         const parentList = list.filter(item => item.role === 'parent' || item.role === 'observer_grade5' || item.role === 'observer');
         $('parent-observer-count') && ($('parent-observer-count').textContent = parentList.length);
 
@@ -2809,8 +2809,8 @@
                     <tr>
                         <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--muted);">
                             <div style="font-size:24px;margin-bottom:6px;opacity:0.6;color:var(--amber,#f59e0b);"><i class="fa-solid fa-eye"></i></div>
-                            <div style="font-weight:600;font-size:13px;color:var(--text);">Chưa có Phụ huynh / Dì nào được cấp quyền theo dõi</div>
-                            <div style="font-size:11px;margin-top:4px;">Chọn "Quyền Quan Sát Lớp 5" ở form trên rồi bấm "Kích hoạt quyền cho học sinh" để lấy link gửi Dì.</div>
+                            <div style="font-weight:600;font-size:13px;color:var(--text);">Chưa có Người theo dõi nào được cấp quyền theo dõi</div>
+                            <div style="font-size:11px;margin-top:4px;">Chọn "Quyền Giám Sát Tiến Trình" ở form trên rồi bấm "Kích hoạt quyền cho học sinh" để lấy link theo dõi.</div>
                         </td>
                     </tr>
                 `;
@@ -2828,7 +2828,7 @@
                                     <span class="stack-item-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
                                         <i class="fa-solid fa-user-shield"></i>
                                     </span>
-                                    <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Dì / Phụ huynh')}</b>
+                                    <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</b>
                                 </div>
                             </td>
                             <td>
@@ -2837,7 +2837,7 @@
                             <td>${ipDisplay}</td>
                             <td>
                                 <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:4px 10px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
-                                    <i class="fa-solid fa-copy"></i> Sao chép Link Gửi Dì
+                                    <i class="fa-solid fa-copy"></i> Sao chép Link Theo Dõi
                                 </button>
                             </td>
                             <td><small style="color:var(--muted);font-size:11px;">${esc(dateStr)}</small></td>
@@ -2850,6 +2850,117 @@
                     `;
                 }).join('');
             }
+        }
+        renderQuickObservers();
+    }
+
+    function renderQuickObservers() {
+        const container = $('quick-observer-list');
+        if (!container) return;
+        const parentList = (state.tokens || []).filter(item => item.role === 'parent' || item.role === 'observer_grade5' || item.role === 'observer');
+        if (parentList.length === 0) {
+            container.innerHTML = '<p class="muted-copy" style="font-size:12px;margin:4px 0 0 0;"><i class="fa-solid fa-info-circle"></i> Chưa có IP hoặc IP-Token người theo dõi nào. Nhập IP ở ô trên rồi bấm "Cấp Quyền Theo Dõi".</p>';
+            return;
+        }
+        container.innerHTML = parentList.map(item => {
+            const ipDisplay = item.ip ? `<code style="font-size:10px;padding:2px 5px;background:var(--surface-3);border-radius:4px;">${esc(item.ip)}</code>` : '<span class="muted-copy" style="font-size:10px;">Khóa theo Token</span>';
+            return `
+                <div class="stack-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--surface-3);border-radius:10px;">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                        <span style="color:var(--amber,#f59e0b);font-size:12px;"><i class="fa-solid fa-eye"></i></span>
+                        <div style="min-width:0;flex:1;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="font-size:12px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</strong>
+                                <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                ${ipDisplay}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;shrink-0;">
+                        <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
+                            <i class="fa-solid fa-link"></i> Link
+                        </button>
+                        <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:3px 8px;" title="Thu hồi">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function addQuickObserver() {
+        const inputVal = $('quick-observer-ip')?.value.trim() || '';
+        const nameVal = $('quick-observer-name')?.value.trim() || '';
+        
+        let detectedIp = '';
+        let detectedCode = '';
+
+        const parseCombined = (val) => {
+            if (!val) return;
+            const str = val.trim();
+            if (str.includes('-')) {
+                const parts = str.split('-');
+                const possibleIp = parts[0].trim().replace(/^\[|\]$/g, '');
+                if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(possibleIp)) {
+                    detectedIp = possibleIp.toLowerCase();
+                    detectedCode = parts.slice(1).join('-').trim().toUpperCase();
+                    return;
+                }
+            }
+            const clean = str.replace(/^\[|\]$/g, '').trim();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean.toLowerCase();
+            } else if (clean) {
+                detectedCode = clean.toUpperCase();
+            }
+        };
+
+        if (inputVal) parseCombined(inputVal);
+        if (!detectedCode) {
+            detectedCode = generateRandomToken('OBS');
+        }
+
+        const rawCode = detectedCode;
+        const ip = detectedIp || '';
+        const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+        const observerName = nameVal || (ip ? `Người theo dõi (${ip})` : `Người theo dõi (${rawCode})`);
+
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+        const existingIdx = state.tokens.findIndex(t => t.token === combinedToken || (rawCode && t.rawCode === rawCode) || (ip && t.ip === ip && t.role === 'parent'));
+
+        const tokenRecord = {
+            token: combinedToken,
+            rawCode: rawCode,
+            role: 'parent',
+            name: observerName,
+            ip: ip || null,
+            createdAt: new Date().toISOString()
+        };
+
+        if (existingIdx !== -1) {
+            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...tokenRecord };
+        } else {
+            state.tokens.unshift(tokenRecord);
+        }
+
+        await saveTokens();
+
+        if ($('quick-observer-ip')) $('quick-observer-ip').value = '';
+        if ($('quick-observer-name')) $('quick-observer-name').value = '';
+
+        renderUnifiedAccess();
+        renderQuickObservers();
+
+        const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+            ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
+            : window.location.origin;
+        const observerLink = `${origin}/?token=${encodeURIComponent(combinedToken)}&view=progress`;
+        try {
+            await navigator.clipboard.writeText(observerLink);
+            notify(`✅ Đã cấp quyền người theo dõi: "${combinedToken}"!\n📋 Đã tự động sao chép Link Theo Dõi.`);
+        } catch (e) {
+            prompt('Sao chép Link Theo Dõi gửi người giám sát:', observerLink);
         }
     }
 
@@ -3041,9 +3152,9 @@
         }
 
         const ip = detectedIp || '';
-        const rawCode = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : (role === 'parent' ? 'PARENT' : (role === 'admin' ? 'ADMIN' : 'QM'))));
+        const rawCode = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : (role === 'parent' ? 'OBS' : (role === 'admin' ? 'ADMIN' : 'QM'))));
         const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
-        const studentName = name || (role === 'parent' ? 'Dì / Phụ huynh' : (role === 'admin' ? 'Quản trị viên' : (detectedCode ? `Học sinh (${detectedCode})` : (detectedIp ? `Học sinh (${detectedIp})` : 'Học sinh mới'))));
+        const studentName = name || (role === 'parent' ? 'Người theo dõi' : (role === 'admin' ? 'Quản trị viên' : (detectedCode ? `Học sinh (${detectedCode})` : (detectedIp ? `Học sinh (${detectedIp})` : 'Học sinh mới'))));
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
 
@@ -3112,7 +3223,7 @@
 
         renderUnifiedAccess();
 
-        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Quan Sát Lớp 5 (Dành cho Phụ huynh / Dì)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5')));
+        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Dành cho Người theo dõi / Phụ huynh)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5')));
         notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
     }
 
@@ -3943,7 +4054,11 @@
 
         const systemIds = Object.values(SYSTEM || {});
         const studentRows = (logins || []).filter(r => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
-        const parsedList = studentRows.map(parseStudentProgress).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
+        const allParsed = studentRows.map(parseStudentProgress);
+        const filter = state.progressFilter || 'all';
+        const parsedList = filter === 'all'
+            ? allParsed
+            : (filter === '5' ? allParsed.filter(p => p.isGrade5) : allParsed.filter(p => !p.isGrade5));
 
         const nowMs = Date.now();
         let doingCount = 0;
@@ -3959,13 +4074,16 @@
         $('g5-stat-total') && ($('g5-stat-total').textContent = parsedList.length);
         $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : parsedList.length);
 
+        renderQuickObservers();
+
         if (parsedList.length === 0) {
+            const filterLabel = filter === 'all' ? 'nào' : `Lớp ${filter}`;
             container.innerHTML = `
                 <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; background: var(--surface-2); border-radius: 16px; border: 1px dashed var(--border);">
                     <div style="font-size: 32px; color: var(--amber,#f59e0b); margin-bottom: 8px;"><i class="fa-solid fa-graduation-cap"></i></div>
-                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text);">Chưa có học sinh Lớp 5 nào đang làm bài</h3>
+                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text);">Chưa có học sinh ${filterLabel} nào đang làm bài</h3>
                     <p style="font-size: 13px; color: var(--muted); margin-top: 4px; max-width: 420px; margin-inline: auto;">
-                        Khi học sinh vào làm các đề thi Lớp 5 (Toán đề 1, 2, 3, 4...), tiến trình số câu làm được sẽ hiển thị tự động tại đây.
+                        Khi học sinh vào làm các đề thi, số câu làm được và tiến trình sẽ hiển thị trực tiếp theo thời gian thực tại đây.
                     </p>
                 </div>
             `;
@@ -4480,6 +4598,16 @@
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
          $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
          $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
+         $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
+         $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
+         $('quick-observer-name')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
+         document.querySelectorAll('[data-progress-grade]').forEach(btn => {
+             btn.addEventListener('click', () => {
+                 state.progressFilter = btn.dataset.progressGrade;
+                 document.querySelectorAll('[data-progress-grade]').forEach(b => b.classList.toggle('is-active', b === btn));
+                 runAction(renderGrade5ProgressMonitor);
+             });
+         });
          $('copy-parent-link-head')?.addEventListener('click', () => {
              const parentItem = (state.tokens || []).find(t => t.role === 'parent' || t.role === 'observer_grade5' || t.role === 'observer');
              const token = parentItem ? parentItem.token : '';
@@ -4489,9 +4617,9 @@
              const link = token ? `${origin}/?token=${encodeURIComponent(token)}&view=progress` : `${origin}/?view=progress`;
              try {
                  navigator.clipboard.writeText(link);
-                 notify('📋 Đã sao chép Link Theo Dõi Lớp 5 gửi Dì! Dì chỉ cần bấm link để xem tiến trình học.');
+                 notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
              } catch (e) {
-                 prompt('Sao chép đường dẫn gửi Dì:', link);
+                 prompt('Sao chép đường dẫn gửi người theo dõi:', link);
              }
          });
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
@@ -4559,10 +4687,10 @@
                  const link = `${origin}/?token=${encodeURIComponent(token)}&view=progress`;
                  try {
                      navigator.clipboard.writeText(link).then(() => {
-                         notify('📋 Đã sao chép Link Quan Sát gửi Dì! Dì chỉ cần bấm link trên điện thoại.');
+                         notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
                      });
                  } catch (e) {
-                     prompt('Sao chép đường dẫn gửi Dì:', link);
+                     prompt('Sao chép đường dẫn gửi người theo dõi:', link);
                  }
                  return;
              }

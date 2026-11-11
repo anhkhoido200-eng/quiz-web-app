@@ -121,7 +121,8 @@ class QuizApp {
         this.screens = {
             home: document.getElementById('screen-home'),
             quiz: document.getElementById('screen-quiz'),
-            result: document.getElementById('screen-result')
+            result: document.getElementById('screen-result'),
+            observer: document.getElementById('screen-observer')
         };
 
         this.init();
@@ -523,7 +524,8 @@ class QuizApp {
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const paramToken = urlParams.get('token');
-            if (urlParams.get('view') === 'progress') {
+            const viewParam = (urlParams.get('view') || '').toLowerCase();
+            if (viewParam === 'progress' || viewParam === 'parent' || viewParam === 'observer') {
                 shouldOpenProgress = true;
             }
             if (paramToken && paramToken.trim()) {
@@ -586,7 +588,7 @@ class QuizApp {
 
         if (shouldOpenProgress || this.hasTokenRole('parent')) {
             setTimeout(() => {
-                this.openParentProgressModal();
+                this.enterObserverMode();
             }, 300);
         }
     }
@@ -763,14 +765,23 @@ class QuizApp {
             try { localStorage.setItem('quiz_token_info', JSON.stringify(matched)); } catch (e) {}
             this.updateTokenStatusUi();
 
+            const isObserverRole = this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer';
+
             if (showToastOnSuccess || (!hadPermissionBefore && this.isInitialValidated)) {
-                const roleDesc = matched.role === 'all' 
-                    ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
-                    : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5');
+                const roleDesc = isObserverRole
+                    ? 'Quyền Giám Sát Tiến Trình'
+                    : (matched.role === 'all' 
+                        ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
+                        : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5'));
                 this.showToastNotification(`🎉 Thiết bị (${this.clientIp || combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
             }
             this.isInitialValidated = true;
             this.renderHomeSubjects();
+
+            if (isObserverRole) {
+                setTimeout(() => this.enterObserverMode(), 150);
+            }
+
             return matched;
         } else {
             this.isInitialValidated = true;
@@ -833,7 +844,7 @@ class QuizApp {
 
         if (info && info.token) {
             if (box) box.classList.remove('hidden');
-            if (nameEl) nameEl.textContent = info.name || (isParent ? 'Dì / Phụ huynh' : 'Học sinh');
+            if (nameEl) nameEl.textContent = info.name || (isParent ? 'Người theo dõi' : 'Học sinh');
             if (codeEl) codeEl.textContent = info.token;
             if (badgesEl) {
                 let html = '';
@@ -901,6 +912,9 @@ class QuizApp {
 
         if (matched) {
             this.closeTokenModal();
+            if (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer') {
+                this.enterObserverMode();
+            }
         }
     }
 
@@ -1576,8 +1590,9 @@ class QuizApp {
         const navBtn = document.getElementById('nav-admin-btn');
         const homeActions = document.getElementById('home-admin-subject-actions');
         const hasCurrentIpPermission = this.hasAdminIpAccess();
+        const isObserver = this.hasTokenRole('parent') || (this.tokenInfo && (this.tokenInfo.role === 'parent' || this.tokenInfo.role === 'observer')) || this.currentScreen === 'observer';
 
-        if (this.isAdminAuthenticated && hasCurrentIpPermission) {
+        if (!isObserver && this.isAdminAuthenticated && hasCurrentIpPermission) {
             if (floatBtn) {
                 floatBtn.classList.remove('hidden');
                 floatBtn.classList.add('flex');
@@ -4108,31 +4123,46 @@ Giải thích: Biên độ A = 5 cm.`;
         };
     }
 
-    openParentProgressModal() {
-        const modal = document.getElementById('modal-parent-progress');
-        if (!modal) return;
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        this.fetchAndRenderParentProgress();
-        clearInterval(this.parentProgressInterval);
-        this.parentProgressInterval = setInterval(() => {
-            if (!document.getElementById('modal-parent-progress')?.classList.contains('hidden')) {
-                this.fetchAndRenderParentProgress();
+    enterObserverMode() {
+        this.switchScreen('observer');
+        const floatBtn = document.getElementById('floating-admin-btn');
+        if (floatBtn) {
+            floatBtn.classList.add('hidden');
+            floatBtn.classList.remove('flex');
+        }
+        const navBtn = document.getElementById('nav-admin-btn');
+        if (navBtn) {
+            navBtn.classList.add('hidden');
+            navBtn.classList.remove('flex');
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        this.fetchAndRenderObserverFullscreen();
+        clearInterval(this.observerInterval);
+        this.observerInterval = setInterval(() => {
+            const screen = document.getElementById('screen-observer');
+            if (screen && !screen.classList.contains('hidden')) {
+                this.fetchAndRenderObserverFullscreen();
             }
-        }, 3500);
+        }, 4000);
+    }
+
+    exitObserverMode() {
+        clearInterval(this.observerInterval);
+        this.switchScreen('home');
+        this.updateAdminUIVisibility();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    openParentProgressModal() {
+        this.enterObserverMode();
     }
 
     closeParentProgressModal() {
-        const modal = document.getElementById('modal-parent-progress');
-        if (!modal) return;
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        clearInterval(this.parentProgressInterval);
+        this.exitObserverMode();
     }
 
-    async fetchAndRenderParentProgress() {
-        const container = document.getElementById('parent-progress-cards');
-        const updatedEl = document.getElementById('parent-progress-last-updated');
+    async fetchAndRenderObserverFullscreen() {
+        const container = document.getElementById('observer-progress-cards');
         if (!container) return;
 
         let rows = [];
@@ -4157,73 +4187,92 @@ Giải thích: Biên độ A = 5 cm.`;
         const studentRows = (rows || []).filter(r => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
         const parsed = studentRows.map(r => this.parseStudentProgressRecord(r)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
 
-        if (updatedEl) {
-            updatedEl.innerHTML = `<i class="fa-regular fa-clock"></i> Cập nhật lúc ${new Date().toLocaleTimeString('vi-VN')}`;
-        }
+        let doingCount = 0;
+        let submittedCount = 0;
+        parsed.forEach(p => {
+            if (p.isCompleted) submittedCount++;
+            else doingCount++;
+        });
+
+        const elDoing = document.getElementById('obs-stat-doing');
+        const elSubmitted = document.getElementById('obs-stat-submitted');
+        const elTotal = document.getElementById('obs-stat-total');
+        if (elDoing) elDoing.textContent = doingCount;
+        if (elSubmitted) elSubmitted.textContent = submittedCount;
+        if (elTotal) elTotal.textContent = parsed.length;
 
         if (parsed.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-10 px-4 bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
+                <div class="col-span-1 md:col-span-2 text-center py-12 px-4 bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
                     <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto text-xl mb-3 border border-amber-500/20">
                         <i class="fa-solid fa-graduation-cap"></i>
                     </div>
-                    <p class="font-bold text-slate-200 text-sm">Chưa có em nào đang làm bài Lớp 5</p>
-                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Khi em chọn môn (Toán đề 1, 2, 3, 4...) và bấm bắt đầu làm bài, tiến trình sẽ hiện lên màn hình này.</p>
+                    <p class="font-bold text-slate-200 text-sm">Chưa có học sinh nào đang làm bài Lớp 5</p>
+                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Khi học sinh chọn môn đề thi và bấm làm bài, tiến trình thực tế sẽ tự động hiện lên bảng này.</p>
                 </div>
             `;
             return;
         }
 
         container.innerHTML = parsed.map(p => {
-            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+            const timeAgo = this.formatRelativeTime(p.lastActive);
             const isDoing = !p.isCompleted;
             const statusBadge = isDoing
-                ? `<span class="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 shrink-0">
-                       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
+                ? `<span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
                    </span>`
-                : `<span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center gap-1.5 shrink-0">
-                       <i class="fa-solid fa-circle-check text-indigo-400"></i> Đã hoàn thành
+                : `<span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                       <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
                    </span>`;
 
-            const scoreText = p.isCompleted
-                ? (p.finalScore !== null ? `<span class="text-amber-400 font-extrabold text-sm">${p.finalScore} điểm</span>` : `<span class="text-emerald-400 font-bold">${p.correct}/${p.total || p.answered} ý</span>`)
-                : `<span class="text-emerald-400 font-bold">Đúng ${p.correct} câu</span> • <span class="text-rose-400 font-bold">Sai ${p.wrong} câu</span>`;
+            const scoreDisplay = p.isCompleted
+                ? (p.finalScore !== null ? `<b class="text-amber-400 font-extrabold text-sm">${p.finalScore} điểm</b>` : `<b class="text-indigo-300 font-bold text-xs">${p.correct}/${p.total || p.answered} ý</b>`)
+                : `<span class="text-xs text-slate-300"><b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span></span>`;
+
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
 
             return `
-                <div class="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-md space-y-3">
-                    <div class="flex items-center justify-between gap-2">
+                <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition">
+                    <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500/30 to-orange-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center text-sm font-bold shrink-0">
-                                <i class="fa-solid fa-child-reaching"></i>
+                            <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg border border-amber-500/20 shrink-0">
+                                <i class="fa-solid fa-graduation-cap"></i>
                             </div>
                             <div class="min-w-0">
-                                <h4 class="font-bold text-white text-sm sm:text-base truncate">${this.escapeHtml(p.name)}</h4>
-                                <p class="text-[11px] text-slate-400 flex items-center gap-1">
-                                    <i class="fa-solid fa-book-open text-amber-400"></i>
-                                    <span class="font-semibold text-amber-200/90">${this.escapeHtml(p.subject)}</span>
-                                </p>
+                                <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
+                                <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
                             </div>
                         </div>
                         ${statusBadge}
                     </div>
 
-                    <!-- Thanh tiến độ -->
-                    <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-700/60 space-y-2">
+                    <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
                         <div class="flex items-center justify-between text-xs">
-                            <span class="text-slate-300 font-medium">Tiến độ làm bài:</span>
-                            <span class="font-extrabold text-amber-300">${p.answered}/${p.total > 0 ? p.total : 29} câu (${percent}%)</span>
+                            <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                                <i class="fa-solid fa-book-open text-indigo-400"></i> ${this.escapeHtml(p.subject)}
+                            </span>
+                            <span class="font-bold text-indigo-400 shrink-0">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
                         </div>
-                        <div class="w-full h-3 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
-                            <div class="h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-indigo-500 transition-all duration-500" style="width: ${percent}%"></div>
+                        <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-500" style="width: ${percent}%"></div>
                         </div>
                         <div class="flex items-center justify-between text-xs pt-0.5">
-                            <span class="text-slate-400">Kết quả: ${scoreText}</span>
-                            <span class="text-[11px] text-slate-500">${this.formatRelativeTime(p.lastActive)}</span>
+                            <span class="text-slate-400">Tiến độ: <b class="text-white">${percent}%</b></span>
+                            ${scoreDisplay}
                         </div>
+                    </div>
+
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
                     </div>
                 </div>
             `;
         }).join('');
+    }
+
+    async fetchAndRenderParentProgress() {
+        return this.fetchAndRenderObserverFullscreen();
     }
 
     hasSubmittedAnswer(qId) {
@@ -5290,6 +5339,7 @@ Giải thích: Biên độ A = 5 cm.`;
     /* ============================================================== */
 
     switchScreen(screenName) {
+        this.currentScreen = screenName;
         const mainHeader = document.getElementById('main-header');
         if (mainHeader) {
             if (screenName === 'quiz') {
@@ -5297,6 +5347,13 @@ Giải thích: Biên độ A = 5 cm.`;
             } else {
                 mainHeader.classList.remove('hidden');
             }
+        }
+
+        const floatBtn = document.getElementById('floating-admin-btn');
+        const isObserver = this.hasTokenRole('parent') || (this.tokenInfo && (this.tokenInfo.role === 'parent' || this.tokenInfo.role === 'observer')) || screenName === 'observer';
+        if (floatBtn && isObserver) {
+            floatBtn.classList.add('hidden');
+            floatBtn.classList.remove('flex');
         }
 
         Object.keys(this.screens).forEach(key => {
