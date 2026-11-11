@@ -2668,6 +2668,15 @@
             renderUnifiedAccess();
             notify(`✅ Đã cấp thêm quyền Trợ lý AI cho ${item.name} (dùng chung token ${item.token})!`);
         } else if (item.role === 'all') {
+            const confirmed = await confirmDialog({
+                title: 'Tắt quyền Trợ lý AI?',
+                message: `Bạn có chắc muốn tắt quyền Trợ lý AI của học sinh "${item.name}" không?\n(Học sinh này vẫn sẽ giữ nguyên quyền Lớp 5).`,
+                confirmText: 'Tắt quyền AI',
+                variant: 'danger',
+                icon: 'fa-wand-magic-sparkles'
+            });
+            if (!confirmed) return;
+
             item.role = 'grade5';
             if (item.ip) {
                 state.aiIps = (state.aiIps || []).filter(x => (typeof x === 'string' ? x : x.ip) !== item.ip);
@@ -2696,6 +2705,15 @@
             renderUnifiedAccess();
             notify(`✅ Đã cấp thêm quyền Lớp 5 cho ${item.name} (dùng chung token ${item.token})!`);
         } else if (item.role === 'all') {
+            const confirmed = await confirmDialog({
+                title: 'Tắt quyền Lớp 5?',
+                message: `Bạn có chắc muốn tắt quyền Lớp 5 của học sinh "${item.name}" không?\n(Học sinh này sẽ chỉ còn quyền Trợ lý AI).`,
+                confirmText: 'Tắt Lớp 5',
+                variant: 'danger',
+                icon: 'fa-shield-halved'
+            });
+            if (!confirmed) return;
+
             item.role = 'ai';
             if (item.ip) {
                 state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);

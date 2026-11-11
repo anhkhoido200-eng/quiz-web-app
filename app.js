@@ -540,25 +540,26 @@ class QuizApp {
         this.initNetworkListeners();
         this.initEventListeners();
         this.updateSoundIcons();
-        await this.fetchClientIp();
-        await this.loadBannedIpsList();
-        await this.validateUserToken(hasUrlToken);
-        await this.syncClass5Access();
-        await this.loadAiIpsConfig();
-        await this.loadDynamicSubjects();
+        try { await this.fetchClientIp(); } catch (e) { console.warn(e); }
+        try { await this.loadBannedIpsList(); } catch (e) { console.warn(e); }
+        try { await this.loadDynamicSubjects(); } catch (e) { console.warn(e); }
+        try { await this.validateUserToken(hasUrlToken); } catch (e) { console.warn(e); }
+        try { await this.syncClass5Access(); } catch (e) { console.warn(e); }
+        try { await this.loadAiIpsConfig(); } catch (e) { console.warn(e); }
         this.checkSavedUser();
-        // Thiết bị mới chưa có môn ghi nhớ: tự động chọn môn hợp lệ đầu tiên
-        if (!this.currentSubject) {
-            const visible = this.getHomeVisibleSubjects();
+        // Thiết bị mới chưa có môn ghi nhớ hoặc môn cũ bị ẩn: tự động chọn môn hợp lệ đầu tiên
+        const visible = this.getHomeVisibleSubjects();
+        if (!this.currentSubject || !visible.some(s => s.key === this.currentSubject)) {
             if (visible && visible.length > 0) {
                 this.currentSubject = visible[0].key;
                 try { localStorage.setItem('quiz_last_selected_subject', this.currentSubject); } catch (e) {}
             }
         }
-        await this.loadQuestionsForCurrentSubject();
+        try { await this.loadQuestionsForCurrentSubject(); } catch (e) { console.warn(e); }
         this.updateTotalQuestionDisplay();
         this.renderFilterTabs();
-        await this.initMaintenance();
+        this.renderHomeSubjects();
+        try { await this.initMaintenance(); } catch (e) { console.warn(e); }
         // Khôi phục hoặc tạo phiên hiện diện ngay khi mở trang web trên thiết bị
         try {
             this.currentLoginId = sessionStorage.getItem('quiz_current_login_id') || null;
@@ -751,7 +752,6 @@ class QuizApp {
                 this.showToastNotification(`🎉 Thiết bị (${this.clientIp || combinedKey}) đã kích hoạt: ${roleDesc}!`, 'success');
             }
             this.isInitialValidated = true;
-            this.renderHomeGradeTabs();
             this.renderHomeSubjects();
             return matched;
         } else {
@@ -868,6 +868,10 @@ class QuizApp {
         }
     }
 
+    renderHomeGradeTabs() {
+        // Tab lớp được hiển thị đồng bộ và tự động qua renderHomeSubjects
+    }
+
     removeToken() {
         this.userToken = '';
         this.tokenInfo = null;
@@ -876,7 +880,6 @@ class QuizApp {
             localStorage.removeItem('quiz_token_info');
         } catch (e) {}
         this.updateTokenStatusUi();
-        this.renderHomeGradeTabs();
         this.renderHomeSubjects();
         this.showToastNotification('Đã gỡ mã kích hoạt quyền khỏi thiết bị này.', 'info');
     }
