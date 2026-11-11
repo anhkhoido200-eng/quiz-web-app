@@ -587,7 +587,7 @@ class QuizApp {
         }
 
         const isAdminUser = this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin');
-        if (!isAdminUser && (shouldOpenProgress || this.hasTokenRole('parent'))) {
+        if (!isAdminUser && shouldOpenProgress) {
             setTimeout(() => {
                 this.enterObserverMode();
             }, 300);
@@ -775,6 +775,15 @@ class QuizApp {
             const hadPermissionBefore = Boolean(this.tokenInfo);
             this.tokenInfo = matched;
             try { localStorage.setItem('quiz_token_info', JSON.stringify(matched)); } catch (e) {}
+
+            if (matched.role !== 'admin') {
+                // Đảm bảo học sinh hoặc người theo dõi không giữ cờ Admin trong máy
+                localStorage.removeItem('quiz_admin_token');
+                localStorage.removeItem('quiz_is_admin');
+                localStorage.removeItem('quiz_admin_authenticated');
+                this.isAdminAuthenticated = false;
+            }
+
             this.updateTokenStatusUi();
 
             const isObserverRole = !this.hasTokenRole('admin') && (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer');
@@ -792,16 +801,22 @@ class QuizApp {
             this.isInitialValidated = true;
             this.renderHomeSubjects();
 
-            if (isObserverRole) {
-                setTimeout(() => this.enterObserverMode(), 150);
-            }
+            // Không tự động chuyển màn hình; người dùng sẽ bấm nút [👁 Xem Tiến Trình] khi cần
 
             return matched;
         } else {
             this.isInitialValidated = true;
             if (window.dbService?.isSupabaseActive) {
                 this.tokenInfo = null;
-                try { localStorage.removeItem('quiz_token_info'); } catch (e) {}
+                try {
+                    localStorage.removeItem('quiz_token_info');
+                    if (!this.hasAdminIpAccess()) {
+                        localStorage.removeItem('quiz_admin_token');
+                        localStorage.removeItem('quiz_is_admin');
+                        localStorage.removeItem('quiz_admin_authenticated');
+                        this.isAdminAuthenticated = false;
+                    }
+                } catch (e) {}
                 this.updateTokenStatusUi();
                 if (showToastOnSuccess) {
                     this.showToastNotification(`⚠️ Mã ${combinedKey} chưa được Admin duyệt. Hãy gửi mã này cho Admin.`, 'error');
@@ -928,7 +943,7 @@ class QuizApp {
             this.closeTokenModal();
             const isObserverRole = !this.hasTokenRole('admin') && (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer');
             if (isObserverRole) {
-                this.enterObserverMode();
+                this.showToastNotification('🎉 Đã kích hoạt quyền theo dõi! Bạn có thể bấm nút [👁 Xem Tiến Trình] ở góc phải bất cứ lúc nào.', 'success');
             }
         }
     }
@@ -1507,6 +1522,8 @@ class QuizApp {
         // Dự phòng cho project chưa bật Realtime publication.
         this.questionSyncPoll = window.setInterval(() => {
             if (document.hidden) return;
+            // Không chạy sync đề nền khi học sinh đang tập trung làm bài thi để giữ khung hình 60fps tuyệt đối
+            if (this.currentScreen === 'quiz') return;
             // Tự động kiểm tra quyền Lớp 5 và nạp danh sách đề ngay khi Admin vừa cấp quyền
             if (!this.canViewGrade5() || !this.tokenInfo) {
                 this.validateUserToken(false).then(() => this.syncClass5Access()).catch(() => {});
@@ -1514,7 +1531,7 @@ class QuizApp {
             if (this.currentSubject && !this.isLoadingQuestions) {
                 this.loadQuestionsForCurrentSubject().catch(() => {});
             }
-        }, 5000);
+        }, 8000);
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 if (!this.canViewGrade5() || !this.tokenInfo) {
@@ -1534,7 +1551,8 @@ class QuizApp {
     }
 
     hasAdminIpAccess() {
-        if (this.hasTokenRole('admin') || this.hasTokenRole('all')) return true;
+        // CHỈ chấp nhận role admin (TUYỆT ĐỐI KHÔNG chấp nhận role 'all' vì role 'all' là gói VIP Lớp 5 + AI của học sinh)
+        if (this.hasTokenRole('admin')) return true;
 
         const storedAdminToken = (localStorage.getItem('quiz_admin_token') || '').trim();
         if (storedAdminToken) {
@@ -1544,11 +1562,8 @@ class QuizApp {
                 if (typeof it === 'string') return it.toLowerCase() === cleanToken;
                 const itTok = String(it.token || '').toLowerCase();
                 const itRaw = String(it.rawCode || '').toLowerCase();
-                const itIp = String(it.ip || '').toLowerCase();
                 if (itTok && itTok === cleanToken) return true;
-                if (itRaw && (itRaw === cleanToken || (itRaw.length >= 4 && cleanToken.endsWith(itRaw)))) return true;
-                if (itTok && cleanToken.length >= 4 && itTok.endsWith(cleanToken)) return true;
-                if (itIp && itIp.length >= 7 && (cleanToken === itIp || cleanToken.startsWith(itIp + '-'))) return true;
+                if (itRaw && itRaw === cleanToken && itRaw.length >= 6) return true;
                 return false;
             });
             if (matchedToken) return true;
@@ -1561,7 +1576,7 @@ class QuizApp {
             .map((item) => typeof item === 'string' ? item : item?.ip)
             .map((ip) => String(ip || '').trim())
             .filter(Boolean);
-        return allowedIps.includes(clientIp) || clientIp === String(this.masterAdminIp || '').trim();
+        return allowedIps.includes(clientIp) || (this.masterAdminIp && clientIp === String(this.masterAdminIp).trim());
     }
 
     async syncAdminIpsConfig() {
@@ -1594,6 +1609,7 @@ class QuizApp {
             this.isAdminAuthenticated = false;
             localStorage.removeItem('quiz_is_admin');
             localStorage.removeItem('quiz_admin_authenticated');
+            localStorage.removeItem('quiz_admin_token');
         }
 
         this.updateAdminUIVisibility();
@@ -1663,15 +1679,13 @@ class QuizApp {
     }
 
     promptAdminAuth() {
-        if (!this.adminIpConfig?.masterIp || (this.isAdminAuthenticated && this.hasAdminIpAccess()) || this.hasAdminIpAccess()) {
-            if (this.hasAdminIpAccess()) {
-                this.isAdminAuthenticated = true;
-                this.updateAdminUIVisibility();
-            }
+        if (this.hasAdminIpAccess()) {
+            this.isAdminAuthenticated = true;
+            this.updateAdminUIVisibility();
             window.location.href = 'admin.html';
             return;
         }
-        this.showToastNotification('Thiết bị này chưa được cấp quyền Admin.');
+        this.showToastNotification('Thiết bị này chưa được cấp quyền Quản Trị Viên (Admin).', 'error');
     }
 
     closeAdminAuthModal() {
@@ -4199,18 +4213,42 @@ Giải thích: Biên độ A = 5 cm.`;
             navBtn.classList.remove('flex');
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
+
         this.fetchAndRenderObserverFullscreen();
+
+        // 1. Kích hoạt Supabase Realtime channel cho quiz_logins (Cập nhật tức thời không chờ đợi)
+        if (!this.observerRealtimeChannel && window.dbService?.client && typeof window.dbService.client.channel === 'function') {
+            try {
+                this.observerRealtimeChannel = window.dbService.client
+                    .channel('quiz-observer-live-feed')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins' }, () => {
+                        if (this.observerDebounceTimer) clearTimeout(this.observerDebounceTimer);
+                        this.observerDebounceTimer = setTimeout(() => {
+                            const screen = document.getElementById('screen-observer');
+                            if (screen && !screen.classList.contains('hidden')) {
+                                this.fetchAndRenderObserverFullscreen();
+                            }
+                        }, 180);
+                    })
+                    .subscribe();
+            } catch (e) {
+                console.warn('[Observer] Lỗi đăng ký realtime channel:', e);
+            }
+        }
+
+        // 2. Timer kiểm tra nền dự phòng mỗi 8 giây (nhờ In-place DOM update nên hoàn toàn không giật hình)
         clearInterval(this.observerInterval);
         this.observerInterval = setInterval(() => {
             const screen = document.getElementById('screen-observer');
             if (screen && !screen.classList.contains('hidden')) {
                 this.fetchAndRenderObserverFullscreen();
             }
-        }, 4000);
+        }, 8000);
     }
 
     exitObserverMode() {
         clearInterval(this.observerInterval);
+        if (this.observerDebounceTimer) clearTimeout(this.observerDebounceTimer);
         this.switchScreen('home');
         this.updateAdminUIVisibility();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -4222,6 +4260,210 @@ Giải thích: Biên độ A = 5 cm.`;
 
     closeParentProgressModal() {
         this.exitObserverMode();
+    }
+
+    buildObserverCardInnerHtml(p, cardType, percent, timeAgo) {
+        // 1. Trường hợp ĐANG CHỜ Ở TRANG CHỦ
+        if (cardType === 'waiting') {
+            return `
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center text-lg border border-slate-700 shrink-0">
+                            <i class="fa-solid fa-user-clock"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-white text-base truncate obs-card-name">${this.escapeHtml(p.name)}</h3>
+                            <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> <span class="obs-card-time">${this.escapeHtml(timeAgo)}</span></small>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
+                        <i class="fa-solid fa-hourglass-half text-[11px]"></i> Đang chờ
+                    </span>
+                </div>
+
+                <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
+                    <span class="font-medium text-slate-300 flex items-center gap-2">
+                        <i class="fa-solid fa-compass text-slate-500"></i> Đang ở màn hình trang chủ
+                    </span>
+                    <span class="text-slate-500 italic">Chưa chọn đề thi</span>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                </div>
+            `;
+        }
+
+        // 2. Trường hợp ĐÃ NỘP BÀI
+        if (cardType === 'completed') {
+            return `
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20 shrink-0">
+                            <i class="fa-solid fa-award"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-white text-base truncate obs-card-name">${this.escapeHtml(p.name)}</h3>
+                            <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> <span class="obs-card-time">${this.escapeHtml(timeAgo)}</span></small>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
+                    </span>
+                </div>
+
+                <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                            <i class="fa-solid fa-book-open text-indigo-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
+                        </span>
+                        <span class="font-bold text-indigo-400 shrink-0 obs-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                    </div>
+                    <div class="h-3 w-full bg-slate-900 rounded-full p-0.5 overflow-hidden border border-slate-800 shadow-inner">
+                        <div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-indigo-500 via-emerald-400 to-teal-400 shadow-sm shadow-emerald-500/30" style="width: 100%;"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs pt-0.5">
+                        <span class="text-slate-300">Đúng: <b class="text-white">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                        <span class="text-xs font-extrabold text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-sm">
+                            <i class="fa-solid fa-trophy mr-1"></i> ${p.score10.toFixed(1)} / 10 điểm
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                </div>
+            `;
+        }
+
+        // 3. Trường hợp ĐANG LÀM BÀI (Thanh bài tập mượt mà có hiệu ứng Gradient & Shimmer)
+        return `
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg border border-amber-500/20 shrink-0">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-white text-base truncate obs-card-name">${this.escapeHtml(p.name)}</h3>
+                        <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> <span class="obs-card-time">${this.escapeHtml(timeAgo)}</span></small>
+                    </div>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
+                </span>
+            </div>
+
+            <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                        <i class="fa-solid fa-book-open text-indigo-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
+                    </span>
+                    <span class="font-bold text-cyan-400 shrink-0 obs-card-count">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
+                </div>
+                <div class="h-3 w-full bg-slate-900 rounded-full p-0.5 overflow-hidden border border-slate-800 shadow-inner">
+                    <div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500 shadow-sm shadow-cyan-500/40 progress-shimmer" style="width: ${percent}%;"></div>
+                </div>
+                <div class="flex items-center justify-between text-xs pt-0.5">
+                    <span class="text-slate-400">Tiến độ: <b class="text-white obs-card-percent">${percent}%</b></span>
+                    <span class="text-xs text-slate-300 obs-card-score">
+                        <b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)
+                    </span>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+            </div>
+        `;
+    }
+
+    renderObserverCardsSmoothly(container, sorted) {
+        if (!sorted || sorted.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-1 md:col-span-2 text-center py-12 px-4 bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto text-xl mb-3 border border-amber-500/20">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <p class="font-bold text-slate-200 text-sm">Chưa có học sinh nào đang làm bài Lớp 5</p>
+                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Khi học sinh chọn môn đề thi và bấm làm bài, tiến trình thực tế sẽ tự động hiện lên bảng này.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const emptyPlaceholder = container.querySelector('.col-span-1.md\\:col-span-2');
+        if (emptyPlaceholder) emptyPlaceholder.remove();
+
+        const existingCards = new Map();
+        container.querySelectorAll('[data-student-id]').forEach(el => {
+            existingCards.set(el.dataset.studentId, el);
+        });
+
+        const activeIds = new Set(sorted.map(s => s.id));
+        existingCards.forEach((cardEl, id) => {
+            if (!activeIds.has(id)) {
+                cardEl.remove();
+                existingCards.delete(id);
+            }
+        });
+
+        sorted.forEach((p, index) => {
+            const timeAgo = this.formatRelativeTime(p.lastActive);
+            const cardType = p.isWaiting ? 'waiting' : (p.isCompleted ? 'completed' : 'doing');
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+
+            let card = existingCards.get(p.id);
+
+            if (!card) {
+                card = document.createElement('div');
+                card.className = 'obs-student-card p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition-all duration-300';
+                card.dataset.studentId = p.id;
+                card.dataset.cardType = cardType;
+                card.innerHTML = this.buildObserverCardInnerHtml(p, cardType, percent, timeAgo);
+                const targetChild = container.children[index];
+                container.insertBefore(card, targetChild || null);
+            } else {
+                if (card.dataset.cardType !== cardType) {
+                    card.dataset.cardType = cardType;
+                    card.innerHTML = this.buildObserverCardInnerHtml(p, cardType, percent, timeAgo);
+                } else {
+                    const elTime = card.querySelector('.obs-card-time');
+                    if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
+
+                    if (cardType === 'doing') {
+                        const elCount = card.querySelector('.obs-card-count');
+                        const countText = `${p.answered}/${p.total > 0 ? p.total : 41} câu`;
+                        if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
+
+                        const elBar = card.querySelector('.obs-progress-fill');
+                        if (elBar) {
+                            const targetWidth = `${percent}%`;
+                            if (elBar.style.width !== targetWidth) {
+                                elBar.style.width = targetWidth;
+                            }
+                        }
+
+                        const elPercent = card.querySelector('.obs-card-percent');
+                        if (elPercent && elPercent.textContent !== `${percent}%`) elPercent.textContent = `${percent}%`;
+
+                        const elScore = card.querySelector('.obs-card-score');
+                        if (elScore) {
+                            elScore.innerHTML = `<b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)`;
+                        }
+                    } else if (cardType === 'completed') {
+                        const elBar = card.querySelector('.obs-progress-fill');
+                        if (elBar && elBar.style.width !== '100%') elBar.style.width = '100%';
+                    }
+                }
+                const targetChild = container.children[index];
+                if (targetChild !== card) {
+                    container.insertBefore(card, targetChild || null);
+                }
+            }
+        });
     }
 
     async fetchAndRenderObserverFullscreen() {
@@ -4264,19 +4506,6 @@ Giải thích: Biên độ A = 5 cm.`;
         if (elSubmitted) elSubmitted.textContent = submittedCount;
         if (elTotal) elTotal.textContent = parsed.length;
 
-        if (parsed.length === 0) {
-            container.innerHTML = `
-                <div class="col-span-1 md:col-span-2 text-center py-12 px-4 bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
-                    <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto text-xl mb-3 border border-amber-500/20">
-                        <i class="fa-solid fa-graduation-cap"></i>
-                    </div>
-                    <p class="font-bold text-slate-200 text-sm">Chưa có học sinh nào đang làm bài Lớp 5</p>
-                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Khi học sinh chọn môn đề thi và bấm làm bài, tiến trình thực tế sẽ tự động hiện lên bảng này.</p>
-                </div>
-            `;
-            return;
-        }
-
         // Ưu tiên đưa học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ
         const sorted = [...parsed].sort((a, b) => {
             const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
@@ -4285,131 +4514,7 @@ Giải thích: Biên độ A = 5 cm.`;
             return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
         });
 
-        container.innerHTML = sorted.map(p => {
-            const timeAgo = this.formatRelativeTime(p.lastActive);
-
-            // 1. Trường hợp người học / khách đang ở màn hình chờ
-            if (p.isWaiting) {
-                return `
-                    <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg opacity-85 hover:border-slate-700 transition">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center gap-2.5 min-w-0">
-                                <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center text-lg border border-slate-700 shrink-0">
-                                    <i class="fa-solid fa-user-clock"></i>
-                                </div>
-                                <div class="min-w-0">
-                                    <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
-                                    <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
-                                </div>
-                            </div>
-                            <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
-                                <i class="fa-solid fa-hourglass-half text-[11px]"></i> Đang chờ
-                            </span>
-                        </div>
-
-                        <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
-                            <span class="font-medium text-slate-300 flex items-center gap-2">
-                                <i class="fa-solid fa-compass text-slate-500"></i> Đang ở màn hình trang chủ
-                            </span>
-                            <span class="text-slate-500 italic">Chưa chọn đề thi</span>
-                        </div>
-
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                        </div>
-                    </div>
-                `;
-            }
-
-            // 2. Trường hợp ĐÃ NỘP BÀI
-            if (p.isCompleted) {
-                const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 100;
-                return `
-                    <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center gap-2.5 min-w-0">
-                                <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20 shrink-0">
-                                    <i class="fa-solid fa-award"></i>
-                                </div>
-                                <div class="min-w-0">
-                                    <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
-                                    <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
-                                </div>
-                            </div>
-                            <span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
-                                <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
-                            </span>
-                        </div>
-
-                        <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
-                                    <i class="fa-solid fa-book-open text-indigo-400"></i> ${this.escapeHtml(p.subject)}
-                                </span>
-                                <span class="font-bold text-indigo-400 shrink-0">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
-                            </div>
-                            <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400" style="width: 100%"></div>
-                            </div>
-                            <div class="flex items-center justify-between text-xs pt-0.5">
-                                <span class="text-slate-300">Đúng: <b class="text-white">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
-                                <span class="text-xs font-extrabold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
-                                    <i class="fa-solid fa-trophy mr-1"></i> ${p.score10.toFixed(1)} / 10 điểm
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                        </div>
-                    </div>
-                `;
-            }
-
-            // 3. Trường hợp ĐANG LÀM BÀI
-            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 0;
-            return `
-                <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition">
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg border border-amber-500/20 shrink-0">
-                                <i class="fa-solid fa-graduation-cap"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <h3 class="font-bold text-white text-base truncate">${this.escapeHtml(p.name)}</h3>
-                                <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> ${this.escapeHtml(timeAgo)}</small>
-                            </div>
-                        </div>
-                        <span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Đang làm bài
-                        </span>
-                    </div>
-
-                    <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
-                                <i class="fa-solid fa-book-open text-indigo-400"></i> ${this.escapeHtml(p.subject)}
-                            </span>
-                            <span class="font-bold text-indigo-400 shrink-0">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
-                        </div>
-                        <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                            <div class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-500" style="width: ${percent}%"></div>
-                        </div>
-                        <div class="flex items-center justify-between text-xs pt-0.5">
-                            <span class="text-slate-400">Tiến độ: <b class="text-white">${percent}%</b></span>
-                            <span class="text-xs text-slate-300"><b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
-                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+        this.renderObserverCardsSmoothly(container, sorted);
     }
 
     async fetchAndRenderParentProgress() {

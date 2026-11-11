@@ -445,22 +445,21 @@
         }
         if ($('access-current-ip')) $('access-current-ip').textContent = state.clientIp || 'Không xác định IP';
 
-        // Đọc mã IP-Token từ URL query params (?token=...)
+        // Đọc mã IP-Token từ URL query params (?admin_token=... hoặc ?token=...)
         try {
             const urlParams = new URLSearchParams(window.location.search);
-            const paramToken = urlParams.get('token');
+            const paramToken = urlParams.get('admin_token') || urlParams.get('token');
             if (paramToken && paramToken.trim()) {
                 const clean = paramToken.trim();
                 localStorage.setItem('quiz_admin_token', clean);
-                localStorage.setItem('quiz_access_token', clean);
                 try {
                     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
                 } catch (e) {}
             }
         } catch (e) {}
 
-        const currentToken = (localStorage.getItem('quiz_admin_token') || localStorage.getItem('quiz_access_token') || '').trim();
-        const currentMachineCode = (localStorage.getItem('quiz_device_machine_code') || '').trim();
+        // CHỈ đọc quiz_admin_token, TUYỆT ĐỐI KHÔNG đọc quiz_access_token (token học sinh)
+        const currentToken = (localStorage.getItem('quiz_admin_token') || '').trim();
 
         const row = await systemRow(SYSTEM.admin);
         if (!row) return false;
@@ -478,55 +477,46 @@
             // 2. Khớp IP trong whitelist
             if (state.clientIp && ips.includes(state.clientIp)) return true;
 
-            // 3. Khớp IP-Token / Mã máy trong danh sách Admin
-            if (currentToken || currentMachineCode) {
+            // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
+            if (currentToken) {
                 const tok = currentToken.toLowerCase();
-                const mCode = currentMachineCode.toLowerCase();
                 const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
                     if (typeof item === 'string') {
                         const str = item.toLowerCase();
-                        return (tok && str === tok) || (mCode && str === mCode);
+                        return tok && str === tok;
                     }
                     const itemToken = String(item.token || '').toLowerCase();
                     const itemRaw = String(item.rawCode || '').toLowerCase();
-                    const itemIp = String(item.ip || '').toLowerCase();
-                    if (tok && tok.length >= 4) {
+                    if (tok && tok.length >= 6) {
                         if (itemToken && itemToken === tok) return true;
-                        if (itemRaw && (itemRaw === tok || (itemRaw.length >= 4 && tok.endsWith(itemRaw)))) return true;
-                        if (itemToken && itemToken.endsWith(tok)) return true;
-                        if (itemIp && itemIp.length >= 7 && (tok === itemIp || tok.startsWith(itemIp + '-'))) return true;
+                        if (itemRaw && itemRaw === tok) return true;
                     }
-                    if (mCode && mCode.length >= 4 && itemRaw && (itemRaw === mCode || (itemToken && itemToken.endsWith(mCode)))) return true;
                     return false;
                 });
                 if (isTokenMatch) return true;
             }
 
-            // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) nếu có role admin hoặc all
+            // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
             try {
                 const row8 = await systemRow(SYSTEM.accessTokens);
                 if (row8 && row8.score_summary) {
                     const tokens = JSON.parse(row8.score_summary || '[]');
                     if (Array.isArray(tokens)) {
-                        const adminTokens = tokens.filter(t => t.role === 'admin' || t.role === 'all');
-                        const tok = currentToken.toLowerCase();
-                        const mCode = currentMachineCode.toLowerCase();
-                        const curIp = String(state.clientIp || '').toLowerCase();
-                        const foundAdmin = adminTokens.find(t => {
-                            const tToken = String(t.token || '').toLowerCase();
-                            const tRaw = String(t.rawCode || '').toLowerCase();
-                            const tIp = String(t.ip || '').toLowerCase();
-                            if (curIp && tIp && curIp === tIp) return true;
-                            if (tok && tok.length >= 4) {
-                                if (tToken && tToken === tok) return true;
-                                if (tRaw && (tRaw === tok || (tRaw.length >= 4 && tok.endsWith(tRaw)))) return true;
-                                if (tToken && tToken.endsWith(tok)) return true;
-                                if (tIp && tIp.length >= 7 && (tok === tIp || tok.startsWith(tIp + '-'))) return true;
-                            }
-                            if (mCode && mCode.length >= 4 && tRaw && (tRaw === mCode || (tToken && tToken.endsWith(mCode)))) return true;
-                            return false;
-                        });
-                        if (foundAdmin) return true;
+                        // CHỈ CHẤP NHẬN ROLE ADMIN, TUYỆT ĐỐI KHÔNG CHẤP NHẬN ROLE ALL HOẶC PARENT
+                        const adminTokens = tokens.filter(t => t.role === 'admin');
+                        if (currentToken) {
+                            const tok = currentToken.toLowerCase();
+                            const foundAdmin = adminTokens.find(t => {
+                                const tToken = String(t.token || '').toLowerCase();
+                                const tRaw = String(t.rawCode || '').toLowerCase();
+                                if (tok && tok.length >= 6) {
+                                    if (tToken && tToken === tok) return true;
+                                    if (tRaw && tRaw === tok) return true;
+                                }
+                                return false;
+                            });
+                            if (foundAdmin) return true;
+                        }
                     }
                 }
             } catch (e) {}
@@ -536,6 +526,10 @@
     }
 
     function denyAccess(reason = '') {
+        try {
+            // Xóa mã admin không hợp lệ khỏi máy để tránh lặp lại
+            localStorage.removeItem('quiz_admin_token');
+        } catch (e) {}
         $('app-shell')?.classList.add('hidden');
         $('access-denied')?.classList.remove('hidden');
         const message = document.querySelector('#access-denied .access-card p:not(.eyebrow)');
@@ -581,11 +575,8 @@
                     if (typeof it === 'string') return it.toLowerCase() === clean;
                     const itTok = String(it.token || '').toLowerCase();
                     const itRaw = String(it.rawCode || '').toLowerCase();
-                    const itIp = String(it.ip || '').toLowerCase();
                     if (itTok && itTok === clean) return true;
-                    if (itRaw && (itRaw === clean || (itRaw.length >= 4 && clean.endsWith(itRaw)))) return true;
-                    if (itTok && clean.length >= 4 && itTok.endsWith(clean)) return true;
-                    if (itIp && itIp.length >= 7 && (clean === itIp || clean.startsWith(itIp + '-'))) return true;
+                    if (itRaw && itRaw === clean && itRaw.length >= 6) return true;
                     return false;
                 });
             }
@@ -598,14 +589,12 @@
                     const tokens = JSON.parse(row8.score_summary || '[]');
                     const clean = val.toLowerCase();
                     isMatch = tokens.some(t => {
-                        if (t.role !== 'admin' && t.role !== 'all') return false;
+                        // CHỈ ROLE ADMIN ĐƯỢC MỞ KHÓA ADMIN
+                        if (t.role !== 'admin') return false;
                         const tTok = String(t.token || '').toLowerCase();
                         const tRaw = String(t.rawCode || '').toLowerCase();
-                        const tIp = String(t.ip || '').toLowerCase();
                         if (tTok && tTok === clean) return true;
-                        if (tRaw && (tRaw === clean || (tRaw.length >= 4 && clean.endsWith(tRaw)))) return true;
-                        if (tTok && clean.length >= 4 && tTok.endsWith(clean)) return true;
-                        if (tIp && itIp.length >= 7 && (clean === tIp || clean.startsWith(tIp + '-'))) return true;
+                        if (tRaw && tRaw === clean && tRaw.length >= 6) return true;
                         return false;
                     });
                 }
@@ -614,7 +603,6 @@
 
         if (isMatch) {
             localStorage.setItem('quiz_admin_token', val);
-            localStorage.setItem('quiz_access_token', val);
             notify('✅ Mở khóa Admin thành công! Đang vào hệ thống...');
             setTimeout(() => {
                 window.location.reload();
@@ -2471,13 +2459,34 @@
 
         if (view === 'progress') {
             renderGrade5ProgressMonitor();
+
+            // Kích hoạt Realtime Supabase live feed cho Admin (cập nhật ngay khi học sinh chọn đáp án)
+            if (!state.progressRealtimeChannel && state.client && typeof state.client.channel === 'function') {
+                try {
+                    state.progressRealtimeChannel = state.client
+                        .channel('admin-progress-live-sync')
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins' }, () => {
+                            const progPanel = document.querySelector('[data-view-panel="progress"]');
+                            if (progPanel && progPanel.classList.contains('is-visible')) {
+                                if (state.progressDebounceTimer) clearTimeout(state.progressDebounceTimer);
+                                state.progressDebounceTimer = setTimeout(() => {
+                                    renderGrade5ProgressMonitor();
+                                }, 180);
+                            }
+                        })
+                        .subscribe();
+                } catch (e) {
+                    console.warn('[Admin Progress] Lỗi realtime channel:', e);
+                }
+            }
+
             clearInterval(state.progressMonitorTimer);
             state.progressMonitorTimer = setInterval(() => {
                 const progPanel = document.querySelector('[data-view-panel="progress"]');
                 if (progPanel && progPanel.classList.contains('is-visible')) {
                     renderGrade5ProgressMonitor();
                 }
-            }, 4000);
+            }, 8000);
         } else {
             clearInterval(state.progressMonitorTimer);
         }
@@ -2858,35 +2867,40 @@
         const container = $('quick-observer-list');
         if (!container) return;
         const parentList = (state.tokens || []).filter(item => item.role === 'parent' || item.role === 'observer_grade5' || item.role === 'observer');
+        let nextHtml = '';
         if (parentList.length === 0) {
-            container.innerHTML = '<p class="muted-copy" style="font-size:12px;margin:4px 0 0 0;"><i class="fa-solid fa-info-circle"></i> Chưa có IP hoặc IP-Token người theo dõi nào. Nhập IP ở ô trên rồi bấm "Cấp Quyền Theo Dõi".</p>';
-            return;
-        }
-        container.innerHTML = parentList.map(item => {
-            const ipDisplay = item.ip ? `<code style="font-size:10px;padding:2px 5px;background:var(--surface-3);border-radius:4px;">${esc(item.ip)}</code>` : '<span class="muted-copy" style="font-size:10px;">Khóa theo Token</span>';
-            return `
-                <div class="stack-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--surface-3);border-radius:10px;">
-                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-                        <span style="color:var(--amber,#f59e0b);font-size:12px;"><i class="fa-solid fa-eye"></i></span>
-                        <div style="min-width:0;flex:1;">
-                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                                <strong style="font-size:12px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</strong>
-                                <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
-                                ${ipDisplay}
+            nextHtml = '<p class="muted-copy" style="font-size:12px;margin:4px 0 0 0;"><i class="fa-solid fa-info-circle"></i> Chưa có IP hoặc IP-Token người theo dõi nào. Nhập IP ở ô trên rồi bấm "Cấp Quyền Theo Dõi".</p>';
+        } else {
+            nextHtml = parentList.map(item => {
+                const ipDisplay = item.ip ? `<code style="font-size:10px;padding:2px 5px;background:var(--surface-3);border-radius:4px;">${esc(item.ip)}</code>` : '<span class="muted-copy" style="font-size:10px;">Khóa theo Token</span>';
+                return `
+                    <div class="stack-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--surface-3);border-radius:10px;">
+                        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                            <span style="color:var(--amber,#f59e0b);font-size:12px;"><i class="fa-solid fa-eye"></i></span>
+                            <div style="min-width:0;flex:1;">
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    <strong style="font-size:12px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</strong>
+                                    <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                    ${ipDisplay}
+                                </div>
                             </div>
                         </div>
+                        <div style="display:flex;align-items:center;gap:6px;shrink-0;">
+                            <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
+                                <i class="fa-solid fa-link"></i> Link
+                            </button>
+                            <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:3px 8px;" title="Thu hồi">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:6px;shrink-0;">
-                        <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
-                            <i class="fa-solid fa-link"></i> Link
-                        </button>
-                        <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:3px 8px;" title="Thu hồi">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        }
+        if (state.lastQuickObserversHtml !== nextHtml) {
+            state.lastQuickObserversHtml = nextHtml;
+            container.innerHTML = nextHtml;
+        }
     }
 
     async function addQuickObserver() {
@@ -3804,6 +3818,100 @@
     }
 
 
+    function renderStudentsTableSmoothly(tbody, rows, online, bannedIpSet, nowMs, safeRowTime) {
+        if (!tbody) return;
+        if (!rows || rows.length === 0) {
+            if (!tbody.querySelector('.empty-state')) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>';
+            }
+            return;
+        }
+
+        const empty = tbody.querySelector('.empty-state');
+        if (empty) empty.closest('tr')?.remove();
+
+        const existingRows = new Map();
+        tbody.querySelectorAll('tr[data-session-key]').forEach(tr => {
+            existingRows.set(tr.dataset.sessionKey, tr);
+        });
+
+        const activeKeys = new Set();
+
+        rows.forEach((row, index) => {
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+            const name = row.player_name || 'Học sinh';
+            const dev = String(row.device_info || '—');
+            const key = String(row.id || `${ip}__${name}__${dev}`);
+            activeKeys.add(key);
+
+            const isOnline = online.includes(row);
+            const isRowBanned = String(row.status || '').startsWith('BANNED') || bannedIpSet.has(ip);
+            const status = isRowBanned ? 'banned' : isOnline ? 'online' : 'offline';
+            const displayTimeMs = safeRowTime ? safeRowTime(row) : 0;
+            const timeFormatted = displayTimeMs ? new Date(Math.min(displayTimeMs, nowMs)).toLocaleString('vi-VN') : '—';
+            const statusText = status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline';
+
+            let tr = existingRows.get(key);
+            if (!tr) {
+                tr = document.createElement('tr');
+                tr.dataset.sessionKey = key;
+                tr.style.transition = 'background-color 0.25s ease, opacity 0.25s ease';
+                tr.innerHTML = `
+                    <td><b>${esc(name)}</b></td>
+                    <td><code>${esc(ip || 'Chưa xác định')}</code></td>
+                    <td>${esc(dev)}</td>
+                    <td class="session-col-time">${esc(timeFormatted)}</td>
+                    <td class="session-col-status"><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${statusText}</span></td>
+                    <td class="align-right">
+                        <div class="table-actions">
+                            ${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}
+                            <button class="table-action" data-grant-token-name="${esc(name)}" data-grant-token-ip="${esc(ip)}" data-grant-token-device="${esc(dev)}" title="Kích hoạt quyền thiết bị này"><i class="fa-solid fa-key"></i></button>
+                            <button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button>
+                            <button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(dev)}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </td>
+                `;
+                const targetChild = tbody.children[index];
+                tbody.insertBefore(tr, targetChild || null);
+            } else {
+                const timeEl = tr.querySelector('.session-col-time');
+                if (timeEl && timeEl.textContent !== timeFormatted) {
+                    timeEl.textContent = timeFormatted;
+                }
+
+                const statusEl = tr.querySelector('.session-col-status');
+                const badge = statusEl ? statusEl.querySelector('.table-status') : null;
+                if (badge) {
+                    if (!badge.classList.contains(status) || !badge.textContent.includes(statusText)) {
+                        badge.className = `table-status ${status}`;
+                        badge.innerHTML = `<i class="fa-solid fa-circle"></i> ${statusText}`;
+
+                        const actionsEl = tr.querySelector('.table-actions');
+                        if (actionsEl) {
+                            const banBtn = actionsEl.querySelector('[data-ban-row], [data-unban-row]');
+                            if (status === 'banned' && banBtn && banBtn.hasAttribute('data-ban-row')) {
+                                banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
+                            } else if (status !== 'banned' && banBtn && banBtn.hasAttribute('data-unban-row')) {
+                                banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
+                            }
+                        }
+                    }
+                }
+
+                const targetChild = tbody.children[index];
+                if (targetChild !== tr) {
+                    tbody.insertBefore(tr, targetChild || null);
+                }
+            }
+        });
+
+        existingRows.forEach((tr, k) => {
+            if (!activeKeys.has(k)) {
+                tr.remove();
+            }
+        });
+    }
+
     async function loadStudents() {
         if (state.isClearingStudents) return;
         ensureMonitorTable();
@@ -3917,30 +4025,7 @@
             $('monitor-stats').innerHTML = nextStatsHtml;
         }
 
-        const nextBodyHtml = rows.map((row) => {
-            const isOnline = online.includes(row);
-            const ip = String(row.ip_address || row.client_ip || '').trim();
-            const isRowBanned = String(row.status || '').startsWith('BANNED') || bannedIpSet.has(ip);
-            const status = isRowBanned ? 'banned' : isOnline ? 'online' : 'offline';
-            const name = row.player_name || 'Học sinh';
-            const displayTimeMs = safeRowTime(row);
-            const rawStatus = String(row.status || '');
-            const rawScore = String(row.score_summary || '');
-            let progressTag = '';
-            if (rawStatus.includes('Tiến độ:') || rawStatus.includes('Đã nộp bài') || rawScore.includes('Đúng') || rawScore.includes('điểm')) {
-                const isDone = rawStatus.includes('Đã nộp bài') || rawScore.includes('điểm');
-                const tagColor = isDone ? 'var(--primary)' : 'var(--emerald)';
-                const tagBg = isDone ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)';
-                const tagText = esc(rawStatus.startsWith('[') ? rawStatus : (rawScore.startsWith('[') ? rawScore : rawStatus));
-                progressTag = `<div style="font-size:10px;font-weight:700;color:${tagColor};background:${tagBg};padding:2px 6px;border-radius:4px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;" title="${esc(rawStatus)} | ${esc(rawScore)}">${tagText}</div>`;
-            }
-            return `<tr><td><b>${esc(name)}</b></td><td><code>${esc(ip || 'Chưa xác định')}</code></td><td>${esc(row.device_info || '—')}</td><td>${displayTimeMs ? new Date(Math.min(displayTimeMs, nowMs)).toLocaleString('vi-VN') : '—'}</td><td><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline'}</span>${progressTag}</td><td class="align-right"><div class="table-actions">${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}<button class="table-action" data-grant-token-name="${esc(name)}" data-grant-token-ip="${esc(ip)}" data-grant-token-device="${esc(row.device_info || '')}" title="Kích hoạt quyền thiết bị này"><i class="fa-solid fa-key"></i></button><button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button><button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(row.device_info || '')}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button></div></td></tr>`;
-        }).join('') || '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>';
-
-        if ($('students-body') && state.lastStudentsBodyHtml !== nextBodyHtml) {
-            state.lastStudentsBodyHtml = nextBodyHtml;
-            $('students-body').innerHTML = nextBodyHtml;
-        }
+        renderStudentsTableSmoothly($('students-body'), rows, online, bannedIpSet, nowMs, safeRowTime);
 
         $('banned-count') && ($('banned-count').textContent = `${banned.length} IP`);
         const nextBannedHtml = banned.map((row) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-ban"></i></span><span class="stack-item-main"><b>${esc(row.ip_address)}</b><small>${esc(row.score_summary || row.device_info || 'Vi phạm quy chế')}</small></span><button data-unban-row="${esc(row.ip_address)}"><i class="fa-solid fa-unlock"></i></button></div>`).join('') || '<p class="muted-copy">Chưa có IP bị chặn.</p>';
@@ -4120,123 +4205,189 @@
             return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
         });
 
-        container.innerHTML = sortedList.map(p => {
-            const timeAgo = formatTimeAgo(p.lastActive, nowMs);
+        renderGrade5CardsSmoothly(container, sortedList, nowMs);
+    }
 
-            // 1. Trường hợp đang ở trạng thái chờ trang chủ
-            if (p.isWaiting) {
-                return `
-                    <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;opacity:0.85;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <div style="width:38px;height:38px;border-radius:10px;background:rgba(148,163,184,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:16px;">
-                                    <i class="fa-solid fa-user-clock"></i>
-                                </div>
-                                <div>
-                                    <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                                    <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
-                                </div>
-                            </div>
-                            <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
-                                <i class="fa-solid fa-hourglass-half"></i> Đang chờ
-                            </span>
-                        </div>
-
-                        <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
-                            <span style="font-size:11px;color:var(--muted);font-style:italic;">Chưa chọn đề thi</span>
-                        </div>
-
-                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
-                            <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                            <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                        </div>
-                    </article>
-                `;
-            }
-
-            // 2. Trường hợp ĐÃ NỘP BÀI
-            if (p.isCompleted) {
-                const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 100;
-                return `
-                    <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;">
-                                    <i class="fa-solid fa-award"></i>
-                                </div>
-                                <div>
-                                    <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                                    <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
-                                </div>
-                            </div>
-                            <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                                <i class="fa-solid fa-circle-check"></i> Đã nộp bài
-                            </span>
-                        </div>
-
-                        <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                                <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> ${esc(p.subject)}</span>
-                                <span style="font-size:12px;font-weight:700;color:var(--primary);">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
-                            </div>
-                            <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;position:relative;">
-                                <div style="width:100%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;"></div>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
-                                <span>Đúng: <b style="color:var(--text);">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
-                                <span style="font-size:13px;font-weight:800;color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-trophy"></i> ${p.score10.toFixed(1)} / 10 đ</span>
-                            </div>
-                        </div>
-
-                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
-                            <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                            <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                        </div>
-                    </article>
-                `;
-            }
-
-            // 3. Trường hợp ĐANG LÀM BÀI
-            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : 0;
+    function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
+        if (cardType === 'waiting') {
             return `
-                <article class="panel" style="margin:0;padding:16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;">
-                                <i class="fa-solid fa-user-pen"></i>
-                            </div>
-                            <div>
-                                <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                                <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> ${esc(timeAgo)}</small>
-                            </div>
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:38px;height:38px;border-radius:10px;background:rgba(148,163,184,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:16px;">
+                            <i class="fa-solid fa-user-clock"></i>
                         </div>
-                        <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                            <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
-                        </span>
+                        <div>
+                            <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
+                            <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
+                        </div>
                     </div>
+                    <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+                        <i class="fa-solid fa-hourglass-half"></i> Đang chờ
+                    </span>
+                </div>
 
-                    <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                            <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> ${esc(p.subject)}</span>
-                            <span style="font-size:12px;font-weight:700;color:var(--primary);">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
-                        </div>
-                        <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;position:relative;">
-                            <div style="width:${percent}%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;transition:width 0.4s ease;"></div>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
-                            <span>Tiến độ: <b style="color:var(--text);">${percent}%</b></span>
-                            <span>Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
-                        </div>
-                    </div>
+                <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
+                    <span style="font-size:11px;color:var(--muted);font-style:italic;">Chưa chọn đề thi</span>
+                </div>
 
-                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
-                        <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                        <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
-                    </div>
-                </article>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                    <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                    <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                </div>
             `;
-        }).join('');
+        }
+
+        if (cardType === 'completed') {
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;">
+                            <i class="fa-solid fa-award"></i>
+                        </div>
+                        <div>
+                            <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
+                            <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
+                        </div>
+                    </div>
+                    <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                        <i class="fa-solid fa-circle-check"></i> Đã nộp bài
+                    </span>
+                </div>
+
+                <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
+                        <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                    </div>
+                    <div style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
+                        <div class="g5-progress-fill" style="width:100%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;box-shadow:0 0 10px rgba(16,185,129,0.3);"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
+                        <span>Đúng: <b style="color:var(--text);">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                        <span style="font-size:13px;font-weight:800;color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-trophy"></i> ${p.score10.toFixed(1)} / 10 đ</span>
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                    <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                    <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                </div>
+            `;
+        }
+
+        // CardType: doing
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;">
+                        <i class="fa-solid fa-user-pen"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
+                        <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
+                    </div>
+                </div>
+                <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                    <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
+                </span>
+            </div>
+
+            <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
+                    <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
+                </div>
+                <div style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
+                    <div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #6366f1 100%);border-radius:99px;transition:width 0.7s cubic-bezier(0.34, 1.25, 0.64, 1);box-shadow:0 0 10px rgba(6,182,212,0.4);"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
+                    <span>Tiến độ: <b style="color:var(--text);" class="g5-card-percent">${percent}%</b></span>
+                    <span class="g5-card-score">Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+            </div>
+        `;
+    }
+
+    function renderGrade5CardsSmoothly(container, sortedList, nowMs) {
+        const existingCards = new Map();
+        container.querySelectorAll('[data-student-id]').forEach(el => {
+            existingCards.set(el.dataset.studentId, el);
+        });
+
+        const activeIds = new Set(sortedList.map(s => s.id));
+        existingCards.forEach((cardEl, id) => {
+            if (!activeIds.has(id)) {
+                cardEl.remove();
+                existingCards.delete(id);
+            }
+        });
+
+        sortedList.forEach((p, index) => {
+            const timeAgo = formatTimeAgo(p.lastActive, nowMs);
+            const cardType = p.isWaiting ? 'waiting' : (p.isCompleted ? 'completed' : 'doing');
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+
+            let card = existingCards.get(p.id);
+
+            if (!card) {
+                card = document.createElement('article');
+                card.className = 'panel grade5-live-card';
+                card.style.margin = '0';
+                card.style.padding = '16px';
+                card.style.borderRadius = '14px';
+                card.style.background = 'var(--surface-2)';
+                card.style.border = '1px solid var(--border)';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '12px';
+                card.style.transition = 'all 0.3s ease';
+                card.dataset.studentId = p.id;
+                card.dataset.cardType = cardType;
+                card.innerHTML = buildGrade5CardInnerHtml(p, cardType, percent, timeAgo);
+                const targetChild = container.children[index];
+                container.insertBefore(card, targetChild || null);
+            } else {
+                if (card.dataset.cardType !== cardType) {
+                    card.dataset.cardType = cardType;
+                    card.innerHTML = buildGrade5CardInnerHtml(p, cardType, percent, timeAgo);
+                } else {
+                    const elTime = card.querySelector('.g5-card-time');
+                    if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
+
+                    if (cardType === 'doing') {
+                        const elCount = card.querySelector('.g5-card-count');
+                        const countText = `${p.answered}/${p.total > 0 ? p.total : 41} câu`;
+                        if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
+
+                        const elBar = card.querySelector('.g5-progress-fill');
+                        if (elBar) {
+                            const targetWidth = `${percent}%`;
+                            if (elBar.style.width !== targetWidth) {
+                                elBar.style.width = targetWidth;
+                            }
+                        }
+
+                        const elPercent = card.querySelector('.g5-card-percent');
+                        if (elPercent && elPercent.textContent !== `${percent}%`) elPercent.textContent = `${percent}%`;
+
+                        const elScore = card.querySelector('.g5-card-score');
+                        if (elScore) {
+                            elScore.innerHTML = `Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)`;
+                        }
+                    }
+                }
+                const targetChild = container.children[index];
+                if (targetChild !== card) {
+                    container.insertBefore(card, targetChild || null);
+                }
+            }
+        });
     }
 
     async function broadcastNotice() {

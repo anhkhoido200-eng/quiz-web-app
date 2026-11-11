@@ -1983,4 +1983,28 @@ body.dark .library-toolbar input[type="search"] {
     vertical-align: middle;
 }
 
+/* ==========================================================================
+   Smooth Realtime Progress Monitor & Session Table (Chuyển động mượt mà, không giật)
+   ========================================================================== */
+.g5-progress-fill, .obs-progress-fill {
+    transition: width 0.7s cubic-bezier(0.34, 1.25, 0.64, 1) !important;
+    will-change: width;
+}
+
+.grade5-live-card, .obs-student-card {
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease !important;
+}
+
+.grade5-live-card:hover, .obs-student-card:hover {
+    transform: translateY(-2px);
+}
+
+.data-table tbody tr {
+    transition: background-color 0.25s ease, opacity 0.25s ease;
+}
+
+.table-status {
+    transition: color 0.3s ease;
+}
+
 
