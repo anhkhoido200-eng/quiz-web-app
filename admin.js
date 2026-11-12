@@ -4227,7 +4227,7 @@
     }
 
     function buildProgressDeleteButton(p) {
-        return `<button type="button" class="progress-card-delete" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa học sinh và lịch sử phiên" aria-label="Xóa ${esc(p.name)} và lịch sử phiên"><i class="fa-solid fa-trash-can"></i></button>`;
+        return `<button type="button" class="progress-card-delete" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(p.name)}"><i class="fa-solid fa-trash-can"></i></button>`;
     }
 
     async function renderGrade5ProgressMonitor() {
@@ -4580,14 +4580,20 @@
             await loadStudents();
         }
     }
-    async function deleteStudentSession(name, ip, device = '') {
+    async function deleteStudentSession(name, ip, device = '', loginId = '') {
         const cleanName = String(name || '').trim();
         const cleanIp = String(ip || '').trim();
         const cleanDev = String(device || '').trim();
+        const cleanLoginId = String(loginId || '').trim();
         const systemIds = Object.values(SYSTEM);
-        const { data, error: selectError } = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info');
+        let lookup = state.client.from('quiz_logins').select('id, player_name, ip_address, device_info');
+        if (cleanLoginId) lookup = lookup.eq('id', cleanLoginId);
+        const { data, error: selectError } = await lookup;
         if (selectError) return notify(`Không thể xóa phiên: ${selectError.message}`, true);
-        const ids = (data || []).filter((row) => {
+        const candidateRows = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__'));
+        const ids = cleanLoginId
+            ? candidateRows.filter((row) => String(row.id) === cleanLoginId).map((row) => row.id).filter(Boolean)
+            : (data || []).filter((row) => {
             if (systemIds.includes(row.id) || String(row.player_name || '').startsWith('__')) return false;
             const rowName = String(row.player_name || '').trim().toLowerCase();
             const rowIp = String(row.ip_address || '').trim();
@@ -4602,7 +4608,7 @@
             return false;
         }).map((row) => row.id).filter(Boolean);
         if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
-        if (!(await confirmDialog({ title: 'Xóa phiên học sinh?', message: `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp}?`, confirmText: 'Xóa phiên', variant: 'danger' }))) return;
+        if (!(await confirmDialog({ title: 'Xóa phiên học sinh?', message: cleanLoginId ? `Xóa phiên đang hiển thị của ${cleanName || cleanIp}?` : `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp}?`, confirmText: 'Xóa phiên', variant: 'danger' }))) return;
         if (ids.length) {
             const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
             if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
@@ -5066,8 +5072,8 @@
           $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
           $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
           $('grade5-progress-cards')?.addEventListener('click', (event) => {
-              const button = event.target.closest('[data-delete-progress-name]');
-              if (button) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice));
+              const button = event.target.closest('[data-delete-progress-id]');
+              if (button) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId));
           });
           $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
          $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
