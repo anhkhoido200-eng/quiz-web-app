@@ -4475,6 +4475,11 @@ Giải thích: Biên độ A = 5 cm.`;
     async fetchAndRenderObserverFullscreen() {
         const container = document.getElementById('observer-progress-cards');
         if (!container) return;
+        if (this.observerProgressLoading) {
+            this.observerProgressRefreshQueued = true;
+            return;
+        }
+        this.observerProgressLoading = true;
 
         let rows = [];
         try {
@@ -4495,8 +4500,24 @@ Giải thích: Biên độ A = 5 cm.`;
             '00000000-0000-0000-0000-000000000007',
             '00000000-0000-0000-0000-000000000008'
         ];
-        const studentRows = (rows || []).filter(r => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
-        const parsed = studentRows.map(r => this.parseStudentProgressRecord(r)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
+        const studentRows = (rows || []).filter(r => {
+            const name = String(r.player_name || '').trim().toLowerCase();
+            const status = String(r.status || '').toLowerCase();
+            return !systemIds.includes(r.id) && !name.startsWith('__') &&
+                name !== 'khách truy cập' && name !== 'visitor' &&
+                !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
+        });
+        const latestByStudent = new Map();
+        for (const row of studentRows) {
+            const name = String(row.player_name || '').trim().toLowerCase();
+            const ip = String(row.ip_address || '').trim().toLowerCase();
+            const device = String(row.device_info || '').trim().toLowerCase();
+            const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
+            const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
+            const old = latestByStudent.get(key);
+            if (!old || time > old.time) latestByStudent.set(key, { row, time });
+        }
+        const parsed = Array.from(latestByStudent.values()).map(item => this.parseStudentProgressRecord(item.row)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
 
         let doingCount = 0;
         let submittedCount = 0;
@@ -4521,6 +4542,11 @@ Giải thích: Biên độ A = 5 cm.`;
         });
 
         this.renderObserverCardsSmoothly(container, sorted);
+        this.observerProgressLoading = false;
+        if (this.observerProgressRefreshQueued) {
+            this.observerProgressRefreshQueued = false;
+            setTimeout(() => this.fetchAndRenderObserverFullscreen(), 500);
+        }
     }
 
     async fetchAndRenderParentProgress() {

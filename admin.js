@@ -4200,6 +4200,11 @@
     async function renderGrade5ProgressMonitor() {
         const container = $('grade5-progress-cards');
         if (!container) return;
+        if (state.progressLoading) {
+            state.progressRefreshQueued = true;
+            return;
+        }
+        state.progressLoading = true;
 
         let logins = [];
         try {
@@ -4215,13 +4220,29 @@
             console.warn('Lỗi tải tiến trình:', e);
         }
 
-        if (!logins || logins.length === 0) {
-            logins = state.logins || [];
-        }
+        if (!logins || logins.length === 0) logins = state.logins || [];
 
         const systemIds = Object.values(SYSTEM || {});
-        const studentRows = (logins || []).filter(r => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
-        const allParsed = studentRows.map(parseStudentProgress);
+        const studentRows = (logins || []).filter(r => {
+            const name = String(r.player_name || '').trim().toLowerCase();
+            const status = String(r.status || '').toLowerCase();
+            return !systemIds.includes(r.id) && !name.startsWith('__') &&
+                name !== 'khách truy cập' && name !== 'visitor' &&
+                !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
+        });
+        // Chỉ giữ phiên mới nhất của mỗi học sinh/IP/thiết bị. Realtime heartbeat
+        // có thể tạo nhiều attempt, nhưng không được làm phình bộ đếm tổng học sinh.
+        const latestByStudent = new Map();
+        for (const row of studentRows) {
+            const name = String(row.player_name || '').trim().toLowerCase();
+            const ip = String(row.ip_address || '').trim().toLowerCase();
+            const device = String(row.device_info || '').trim().toLowerCase();
+            const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
+            const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
+            const old = latestByStudent.get(key);
+            if (!old || time > old.time) latestByStudent.set(key, { row, time });
+        }
+        const allParsed = Array.from(latestByStudent.values()).map(item => parseStudentProgress(item.row));
         const filter = state.progressFilter || 'all';
         const parsedList = filter === 'all'
             ? allParsed
@@ -4257,6 +4278,8 @@
                     </p>
                 </div>
             `;
+            state.progressLoading = false;
+            if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
             return;
         }
 
@@ -4269,6 +4292,8 @@
         });
 
         renderGrade5CardsSmoothly(container, sortedList, nowMs);
+        state.progressLoading = false;
+        if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
     }
 
     function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
