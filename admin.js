@@ -21,7 +21,7 @@
         page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
-        tokens: [],
+        tokens: [], reportRows: null, reportAllRows: [], reportLoading: false,
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
@@ -115,7 +115,7 @@
                             <button type="button" id="admin-confirm-close" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
                         </div>
                         <div id="admin-confirm-message" class="admin-confirm-message"></div>
-                        <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
+                         <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
                         <div class="admin-confirm-actions">
                             <button type="button" id="admin-confirm-cancel" class="button button-secondary">Hủy bỏ</button>
                             <button type="button" id="admin-confirm-ok" class="button button-primary"><i class="fa-solid fa-check"></i> <span id="admin-confirm-ok-text">Xác nhận</span></button>
@@ -146,6 +146,7 @@
         if (titleEl) titleEl.textContent = opts.title || (variant === 'danger' ? 'Xác nhận xóa dữ liệu?' : 'Xác nhận thao tác?');
         if (msgEl) msgEl.textContent = msg;
         if (inputEl) {
+            inputEl.type = opts.inputType || 'text';
             if (opts.withInput) {
                 inputEl.classList.remove('hidden');
                 inputEl.placeholder = opts.placeholder || 'Nhập nội dung...';
@@ -498,7 +499,7 @@
 
             // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
             try {
-                const row8 = await systemRow(SYSTEM.accessTokens);
+            const row8 = await systemRow(SYSTEM.tokens);
                 if (row8 && row8.score_summary) {
                     const tokens = JSON.parse(row8.score_summary || '[]');
                     if (Array.isArray(tokens)) {
@@ -547,7 +548,7 @@
         const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
         const masterIp = String(config.masterIp || '').trim();
         if (masterIp || allowed.length) return notify('Hệ thống đã có whitelist Admin. Hãy dùng tài khoản/IP được cấp.', true);
-        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để thiết lập quyền Master lần đầu cho thiết bị này:', placeholder: 'Nhập mật khẩu Admin...', confirmText: 'Xác nhận', icon: 'fa-key' });
+        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để thiết lập quyền Master lần đầu cho thiết bị này:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
         if (password === null) return;
         if (password !== '034569') return notify('Mật khẩu Admin không đúng.', true);
         const payload = { masterIp: state.clientIp, allowedIps: [{ ip: state.clientIp, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
@@ -584,7 +585,7 @@
 
         if (!isMatch) {
             try {
-                const row8 = await systemRow(SYSTEM.accessTokens);
+                const row8 = await systemRow(SYSTEM.tokens);
                 if (row8 && row8.score_summary) {
                     const tokens = JSON.parse(row8.score_summary || '[]');
                     const clean = val.toLowerCase();
@@ -702,10 +703,14 @@
             state.importSubject = selectedSubject;
         }
         if ($('leaderboard-subject')) {
-            const prevLeaderSub = $('leaderboard-subject').value || '';
-            $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
-            if (prevLeaderSub && allSubjects().some((item) => item.key === prevLeaderSub)) {
-                $('leaderboard-subject').value = prevLeaderSub;
+            if (state.reportRows) {
+                populateLeaderboardSubjects();
+            } else {
+                const prevLeaderSub = $('leaderboard-subject').value || '';
+                $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+                if (prevLeaderSub && allSubjects().some((item) => item.key === prevLeaderSub)) {
+                    $('leaderboard-subject').value = prevLeaderSub;
+                }
             }
         }
     }
@@ -2487,6 +2492,8 @@
                     renderGrade5ProgressMonitor();
                 }
             }, 8000);
+        } else if (view === 'reports') {
+            runAction(loadScoreReport);
         } else {
             clearInterval(state.progressMonitorTimer);
         }
@@ -2515,6 +2522,7 @@
     }
 
     function configureAdminLabels() {
+        ensureReportWorkspace();
         const reportsDescription = document.querySelector('[data-view-panel="reports"] .page-heading p:not(.eyebrow)');
         if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, cấu hình giải thích bài tập, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
         const aiHeading = document.querySelector('.ai-config-panel h2');
@@ -2530,6 +2538,16 @@
         }
         const importButton = $('import-button');
         if (importButton) importButton.innerHTML = '<i class="fa-solid fa-file-import"></i> Nạp JSON';
+    }
+
+    function ensureReportWorkspace() {
+        const panel = document.querySelector('[data-view-panel="reports"]');
+        const template = $('report-workspace-template');
+        if (!panel || !template || panel.dataset.reportReady === 'true') return;
+        const aiConfig = panel.querySelector('.ai-config-panel');
+        panel.replaceChildren(template.content.cloneNode(true));
+        if (aiConfig) panel.appendChild(aiConfig);
+        panel.dataset.reportReady = 'true';
     }
 
     async function loadMaintenance() {
@@ -4313,7 +4331,7 @@
             <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
-                    <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
+                    <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">${p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`}</span>
                 </div>
                 <div style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
                     <div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #6366f1 100%);border-radius:99px;transition:width 0.7s cubic-bezier(0.34, 1.25, 0.64, 1);box-shadow:0 0 10px rgba(6,182,212,0.4);"></div>
@@ -4379,7 +4397,7 @@
 
                     if (cardType === 'doing') {
                         const elCount = card.querySelector('.g5-card-count');
-                        const countText = `${p.answered}/${p.total > 0 ? p.total : 41} câu`;
+                        const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
                         if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
 
                         const elBar = card.querySelector('.g5-progress-fill');
@@ -4540,76 +4558,154 @@
     function exportJson(name, payload) { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); URL.revokeObjectURL(link.href); }
     function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
     function exportExcel() { if (!window.XLSX) return exportJson('quiz-questions.json', state.questions); const rows = state.questions.map((q) => ({ ID: q.id, Mon: subjectName(q.subject_key), Loai: TYPE_LABELS[q.qType], CauHoi: q.question, DapAn: q.qType === 'mcq' ? 'ABCD'[q.correct] : q.qType === 'short_answer' ? q.correctValue : q.statements.map((s) => `${s.key}:${s.answer ? 'Đúng' : 'Sai'}`).join(', '), GiaiThich: q.explanation })); const book = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(book, window.XLSX.utils.json_to_sheet(rows), 'Questions'); window.XLSX.writeFile(book, `quiz-questions-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất bảng câu hỏi Excel.'); }
-    async function loadLeaderboard() {
+
+    const reportNumber = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '—';
+    const reportDate = (value) => {
+        const date = value ? new Date(value) : null;
+        return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('vi-VN') : '—';
+    };
+    const reportRowsFromData = (data) => {
+        const systemIds = new Set(Object.values(SYSTEM));
+        return (data || []).filter((row) => {
+            const name = String(row.player_name || '').trim();
+            return !systemIds.has(row.id) && !name.startsWith('__') && !/^banned/i.test(String(row.status || ''));
+        }).map((row) => {
+            const status = String(row.status || '');
+            const summary = String(row.score_summary || '');
+            const combined = `${status} ${summary}`;
+            const ratio = summary.match(/(?:đúng|hoàn thành|kết quả)\s*(\d+)\s*\/\s*(\d+)/i) || (/(?:đã nộp bài|hoàn thành)/i.test(status) ? combined.match(/(\d+)\s*\/\s*(\d+)\s*(?:câu|ý)?/i) : null);
+            const scoreMatch = summary.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
+            const scoreRaw = scoreMatch ? Number(scoreMatch[1].replace(',', '.')) : null;
+            const correct = ratio ? Number(ratio[1]) : null;
+            const total = ratio ? Number(ratio[2]) : null;
+            const score10 = Number.isFinite(scoreRaw) ? (scoreRaw > 10 ? scoreRaw / 10 : scoreRaw) : (correct !== null && total > 0 ? (correct / total) * 10 : null);
+            const completed = /đã nộp bài|hoàn thành/i.test(combined) || Number.isFinite(scoreRaw) || Boolean(summary.match(/đúng\s*\d+\s*\/\s*\d+/i));
+            const subjectMatch = status.match(/^\[(.*?)\]/) || summary.match(/^\[(.*?)\]/);
+            const subject = subjectMatch ? subjectMatch[1].trim() : 'Chưa xác định';
+            return { ...row, name: String(row.player_name || 'Học sinh').trim() || 'Học sinh', subject, score10: Number.isFinite(score10) ? Math.max(0, Math.min(10, score10)) : null, correct, total, completed, submittedAt: row.last_active || row.created_at || '' };
+        }).filter((row) => row.completed && Number.isFinite(row.score10));
+    };
+    const setActionBusy = (id, busy, label) => {
+        const button = $(id);
+        if (!button) return;
+        if (busy) {
+            button.dataset.reportLabel = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> ${esc(label || 'Đang xử lý...')}`;
+        } else {
+            button.disabled = false;
+            if (button.dataset.reportLabel) button.innerHTML = button.dataset.reportLabel;
+        }
+    };
+    const reportAction = (id, action, label) => $(id)?.addEventListener('click', () => runAction(async () => { setActionBusy(id, true, label); try { await action(); } finally { setActionBusy(id, false); } }));
+    const setReportState = (mode, message = '') => {
+        ['loading', 'error', 'empty'].forEach((key) => $(`report-state-${key}`)?.classList.toggle('hidden', key !== mode));
+        if (message && $('report-state-error-text')) $('report-state-error-text').textContent = message;
+        $('report-summary')?.classList.toggle('hidden', mode !== 'ready');
+    };
+    function renderReportSummary(rows) {
+        const scores = rows.map((row) => row.score10).sort((a, b) => a - b);
+        const sum = scores.reduce((total, score) => total + score, 0);
+        const mean = scores.length ? sum / scores.length : NaN;
+        const median = scores.length ? (scores.length % 2 ? scores[(scores.length - 1) / 2] : (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2) : NaN;
+        const sd = scores.length ? Math.sqrt(scores.reduce((total, score) => total + ((score - mean) ** 2), 0) / scores.length) : NaN;
+        const students = new Set(rows.map((row) => {
+            const name = row.name.toLowerCase();
+            return name && name !== 'khách truy cập' ? `name:${name}` : `ip:${row.ip_address || ''}`;
+        }));
+        const denominatorRows = rows.filter((row) => row.total > 0 && row.correct !== null);
+        const completed = denominatorRows.filter((row) => row.correct >= row.total).length;
+        const omissions = denominatorRows.map((row) => row.total - row.correct).filter((value) => value >= 0);
+        const explicitOmissions = (Array.isArray(state.reportAllRows) ? state.reportAllRows : []).map((row) => {
+            const match = `${row.status || ''} ${row.score_summary || ''}`.match(/(?:bỏ sót|chưa\s+(?:trả lời|làm)|còn)\s*(\d+)/i);
+            return match ? Number(match[1]) : null;
+        }).filter((value) => Number.isFinite(value));
+        if (!omissions.length && explicitOmissions.length) omissions.push(...explicitOmissions);
+        const dates = rows.map((row) => new Date(row.submittedAt).getTime()).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+        $('report-attempts').textContent = String(rows.length);
+        $('report-students').textContent = String(students.size);
+        $('report-mean').textContent = reportNumber(mean);
+        $('report-median').textContent = reportNumber(median);
+        $('report-sd').textContent = reportNumber(sd);
+        $('report-range').textContent = scores.length ? `${reportNumber(scores[0])} - ${reportNumber(scores[scores.length - 1])}` : '—';
+        $('report-completion').textContent = denominatorRows.length ? `${Math.round((completed / denominatorRows.length) * 100)}% (${completed}/${denominatorRows.length})` : 'Không có dữ liệu';
+        $('report-omission').textContent = omissions.length ? `${reportNumber(omissions.reduce((a, b) => a + b, 0) / omissions.length)} câu/lượt` : 'Không có dữ liệu';
+        $('report-date-range').textContent = dates.length ? `${reportDate(dates[0])} - ${reportDate(dates[dates.length - 1])}` : 'Không có dữ liệu';
+        $('report-selection-rule').textContent = 'Lượt có điểm hoặc tỷ lệ đúng; không gộp lượt';
+        $('report-method-note').textContent = 'Điểm được chuẩn hóa về thang /10 từ score_summary; chỉ tính bản ghi học sinh hợp lệ, loại bản ghi hệ thống và bị chặn.';
+        setReportState('ready');
+    }
+    function populateLeaderboardSubjects() {
+        const select = $('leaderboard-subject');
+        if (!select) return;
+        const current = select.value;
+        const subjects = [...new Set((state.reportRows || []).map((row) => row.subject).filter((subject) => subject && subject !== 'Chưa xác định'))];
+        select.innerHTML = '<option value="">Tất cả môn</option>' + subjects.map((subject) => `<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+        if (subjects.includes(current)) select.value = current;
+    }
+    function renderLeaderboard() {
+        const content = $('leaderboard-content');
+        if (!content) return;
         const subject = $('leaderboard-subject')?.value || '';
+        const rows = (state.reportRows || []).filter((row) => !subject || row.subject === subject).sort((a, b) => b.score10 - a.score10 || new Date(a.submittedAt) - new Date(b.submittedAt)).slice(0, 10);
+        $('leaderboard-summary').textContent = rows.length ? `Top ${rows.length} lượt thi${subject ? ` môn ${subject}` : ''}; sắp xếp theo điểm /10.` : 'Chưa có kết quả phù hợp.';
+        $('leaderboard-empty')?.classList.toggle('hidden', rows.length > 0);
+        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${index + 1}">#${index + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div>` : '';
+    }
+    async function fetchReportRows() {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const { data, error } = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).limit(1000);
+        if (error) throw error;
+        const systemIds = new Set(Object.values(SYSTEM));
+        state.reportAllRows = (data || []).filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')));
+        return reportRowsFromData(data);
+    }
+    async function loadScoreReport() {
+        if (state.reportLoading) return;
+        state.reportLoading = true;
+        setActionBusy('refresh-score-report', true, 'Đang tải');
+        setReportState('loading');
         try {
-            let rows = [];
-            if (window.dbService && typeof window.dbService.fetchLeaderboard === 'function') {
-                rows = await window.dbService.fetchLeaderboard(subject, 10);
+            state.reportRows = await fetchReportRows();
+            populateLeaderboardSubjects();
+            if (!state.reportRows.length) {
+                setReportState('empty');
+                $('leaderboard-content').innerHTML = '';
+                $('leaderboard-summary').textContent = 'Chưa có dữ liệu hợp lệ.';
             } else {
-                const { data, error } = await state.client.from('quiz_logins').select('*').order('last_active', { ascending: false }).limit(350);
-                if (error) return notify(error.message, true);
-                const subObj = state.subjects.find((s) => (s.key || s.subject_key) === subject);
-                const subName = String(subObj?.name || subObj?.title || '').trim().toLowerCase();
-                const parseTimeSec = (t) => {
-                    const m = String(t || '').match(/^(\d{1,3}):(\d{2})$/);
-                    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : Number.MAX_SAFE_INTEGER;
-                };
-                const submitted = (data || []).filter((item) => {
-                    if (Object.values(SYSTEM).includes(item.id) || String(item.player_name || '').startsWith('__')) return false;
-                    const status = String(item.status || '').toLowerCase();
-                    const summary = String(item.score_summary || '').toLowerCase();
-                    const isFinished = status.includes('đã nộp') || status.includes('hoàn thành') || summary.includes('điểm');
-                    if (!isFinished) return false;
-                    if (subject) {
-                        const combined = `${status} ${summary}`;
-                        if (subName && combined.includes(subName)) return true;
-                        if (subject === 'geography' && (combined.includes('địa') || combined.includes('/67'))) return true;
-                        if (subject === 'physics' && (combined.includes('lí') || combined.includes('vật') || combined.includes('/52') || combined.includes('/43'))) return true;
-                        if (subject === 'history' && (combined.includes('sử') || combined.includes('/101') || combined.includes('/74'))) return true;
-                        if (combined.includes(subject.toLowerCase())) return true;
-                        return false;
-                    }
-                    return true;
-                });
-                const bestMap = new Map();
-                submitted.forEach((item) => {
-                    const scoreMatch = String(item.score_summary || '').match(/(\d+(?:\.\d+)?)\s*điểm/i);
-                    let score = scoreMatch ? parseFloat(scoreMatch[1]) : 0;
-                    const ratioMatch = String(item.score_summary || '').match(/đúng\s*(\d+)\/(\d+)/i) || String(item.status || '').match(/(\d+)\/(\d+)/i);
-                    if (ratioMatch && !score && parseInt(ratioMatch[2], 10) > 0) {
-                        score = Math.round((parseInt(ratioMatch[1], 10) / parseInt(ratioMatch[2], 10)) * 100) / 10;
-                    }
-                    const timeMatch = String(item.score_summary || '').match(/-\s*(\d{1,2}:\d{2})/);
-                    const timeSpent = timeMatch ? timeMatch[1] : '—';
-                    const rec = {
-                        ...item,
-                        score,
-                        timeSpent,
-                        scoreSummary: item.score_summary,
-                        submittedAt: item.last_active || item.created_at
-                    };
-                    const normName = String(item.player_name || '').toLowerCase().trim();
-                    const key = (normName && normName !== 'khách truy cập') ? `name:${normName}` : `ip:${item.ip_address || ''}`;
-                    const prev = bestMap.get(key);
-                    if (!prev || prev.score < rec.score || (prev.score === rec.score && parseTimeSec(rec.timeSpent) < parseTimeSec(prev.timeSpent))) {
-                        bestMap.set(key, rec);
-                    }
-                });
-                rows = Array.from(bestMap.values()).sort((a, b) => {
-                    if (b.score !== a.score) return b.score - a.score;
-                    const tA = parseTimeSec(a.timeSpent);
-                    const tB = parseTimeSec(b.timeSpent);
-                    if (tA !== tB) return tA - tB;
-                    return new Date(a.submittedAt) - new Date(b.submittedAt);
-                }).slice(0, 10);
+                renderReportSummary(state.reportRows);
+                renderLeaderboard();
             }
-            $('leaderboard-content').innerHTML = `<div class="leaderboard-list">${rows.map((row, index) => `<div class="leader-row"><strong>#${index + 1}</strong><span>${esc(row.player_name || row.playerName || 'Học sinh')}</span><b>${esc(row.scoreSummary || row.score_summary || (row.score !== undefined ? `${row.score} điểm` : '—'))}</b><small>${esc(row.timeSpent || row.time_spent || (row.submittedAt ? new Date(row.submittedAt).toLocaleDateString('vi-VN') : (row.last_active ? new Date(row.last_active).toLocaleDateString('vi-VN') : '')))}</small></div>`).join('') || '<div class="empty-state">Chưa có kết quả.</div>'}</div>`;
+            if ($('report-last-updated')) $('report-last-updated').textContent = `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`;
         } catch (error) {
-            notify(error.message || 'Lỗi tải bảng xếp hạng', true);
+            state.reportRows = null;
+            setReportState('error', error?.message || 'Không thể tải dữ liệu báo cáo.');
+            $('leaderboard-content').innerHTML = '';
+            $('leaderboard-summary').textContent = 'Không thể tải bảng xếp hạng.';
+        } finally {
+            state.reportLoading = false;
+            setActionBusy('refresh-score-report', false);
         }
     }
-
+    async function loadLeaderboard() {
+        if (!state.reportRows) await loadScoreReport();
+        if (!state.reportRows) return;
+        setActionBusy('load-leaderboard', true, 'Đang tải');
+        $('leaderboard-loading')?.classList.remove('hidden');
+        $('leaderboard-error')?.classList.add('hidden');
+        $('leaderboard-empty')?.classList.add('hidden');
+        try { renderLeaderboard(); } catch (error) { $('leaderboard-error')?.classList.remove('hidden'); $('leaderboard-error-text').textContent = error.message || 'Không thể tải bảng xếp hạng.'; }
+        finally { $('leaderboard-loading')?.classList.add('hidden'); setActionBusy('load-leaderboard', false); }
+    }
+    function exportScoreReport() {
+        if (!state.reportRows) return notify('Hãy tải báo cáo điểm trước khi xuất file.', true);
+        const scores = state.reportRows.map((row) => row.score10);
+        const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        const ordered = [...scores].sort((a, b) => a - b);
+        const median = ordered.length % 2 ? ordered[(ordered.length - 1) / 2] : (ordered[ordered.length / 2 - 1] + ordered[ordered.length / 2]) / 2;
+        exportJson(`quiz-studio-score-report-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), scale: '/10', selectionRule: 'Lượt có điểm hoặc tỷ lệ đúng; không gộp lượt', summary: { validAttempts: scores.length, uniqueStudents: new Set(state.reportRows.map((row) => row.name.toLowerCase())).size, mean: Number(mean.toFixed(3)), median: Number(median.toFixed(3)) }, attempts: state.reportRows.map((row) => ({ student: row.name, subject: row.subject, score10: Number(row.score10.toFixed(3)), correct: row.correct, total: row.total, percentage: row.correct !== null && row.total ? Number(((row.correct / row.total) * 100).toFixed(2)) : null, submittedAt: row.submittedAt })) });
+        notify('Đã tải báo cáo điểm JSON.');
+    }
     function syncThemeIcon() {
         const isDark = document.body.classList.contains('dark');
         const toggle = $('theme-toggle');
@@ -4792,7 +4888,7 @@
         });
         $('export-pdf-heading')?.addEventListener('click', openPrintModal);
         $('export-pdf-library')?.addEventListener('click', openPrintModal);
-        $('export-pdf-report')?.addEventListener('click', () => { fillLibrarySubjects(); openPrintModal(); });
+         reportAction('export-pdf-report', () => { fillLibrarySubjects(); openPrintModal(); }, 'Đang mở');
         $('open-trash-button')?.addEventListener('click', () => { renderTrashModal(); openModal('trash-modal'); });
         $('trash-search-input')?.addEventListener('input', renderTrashModal);
         $('trash-subject-filter')?.addEventListener('change', renderTrashModal);
@@ -4984,8 +5080,10 @@
              else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName));
          });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
-        $('export-backup')?.addEventListener('click', () => runAction(exportBackup)); $('export-excel')?.addEventListener('click', () => runAction(exportExcel)); $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
-        $('archive-data')?.addEventListener('click', () => runAction(async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__')); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }));
+         reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
+         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
+         $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
+         reportAction('archive-data', async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__')); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }, 'Đang dọn dữ liệu');
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
          $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });

@@ -73,6 +73,7 @@ ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 
 -- 5. CHÍNH SÁCH TRUY CẬP CÔNG KHAI CHO WEB THI (ANON KEY CHO CLIENT SPA)
 DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public read quiz_logins" ON public.quiz_logins;
 CREATE POLICY "Public read quiz_logins"
 ON public.quiz_logins
 FOR SELECT
@@ -86,16 +87,25 @@ TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
+-- CẢNH BÁO: Policy này giữ tương thích với SPA hiện tại nhưng chưa phải là
+-- ranh giới bảo mật. Trước khi dùng production, chuyển ghi/đọc quiz_logins
+-- sang Auth/RPC/Edge Function và thu hẹp policy để bảo vệ PII/cấu hình.
+
 -- TODO: Khi triển khai RPC/Edge Function cho Admin, thay policy trên bằng RLS
 -- chỉ cho phép session của học sinh và tách các bản ghi cấu hình hệ thống.
 
 DROP POLICY IF EXISTS "Public access to quiz_questions" ON public.quiz_questions;
-CREATE POLICY "Public access to quiz_questions"
+DROP POLICY IF EXISTS "Public access active quiz_questions" ON public.quiz_questions;
+-- Chỉ cho phép câu hỏi đang hoạt động xuất hiện trong ứng dụng học sinh.
+CREATE POLICY "Public access active quiz_questions"
 ON public.quiz_questions
-FOR ALL
+FOR SELECT
 TO anon, authenticated
-USING (true)
-WITH CHECK (true);
+USING (is_deleted = false);
+
+-- Lưu ý bảo mật: thao tác quản trị (INSERT/UPDATE/DELETE trên câu hỏi,
+-- cấu hình và lịch sử) cần được chuyển sang Auth/RPC/Edge Function có quyền
+-- server-side trước khi gỡ các policy FOR ALL hiện hữu trên môi trường cũ.
 
 -- 6. KHỞI TẠO CÁC BẢN GHI HỆ THỐNG CỐ ĐỊNH (SYSTEM CONFIG RECORDS)
 -- Bản ghi 1: Cấu hình Whitelist IP Admin (ID: 00000000-0000-0000-0000-000000000001)

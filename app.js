@@ -22,6 +22,9 @@ class QuizApp {
         // Đồng hồ bấm giờ (Luyện tập: Đếm tiến / Thi thử: Đếm ngược)
         this.secondsElapsed = 0;
         this.timerInterval = null;
+        this.awayAutoSubmitTimer = null;
+        this.idleAutoSubmitTimer = null;
+        this.isFinishingQuiz = false;
         this.isExamMode = false;
         this.examMinutes = 45;
         this.examSecondsRemaining = 45 * 60;
@@ -1253,7 +1256,7 @@ class QuizApp {
                     const cloudQuestions = await window.dbService.fetchQuestionsBySubject(this.currentSubject);
                     if (Array.isArray(cloudQuestions)) {
                         cloudQuestionsLoaded = Boolean(window.dbService.isSupabaseActive);
-                        questions = cloudQuestions;
+                        questions = cloudQuestions.filter((question) => question?.is_deleted !== true);
                         console.debug('[QuizApp] Cloud questions loaded:', { subject: this.currentSubject, count: questions.length });
                         // Lưu cache ngoại tuyến vào localStorage
                         try {
@@ -1273,7 +1276,7 @@ class QuizApp {
                 if (cachedRaw) {
                     const parsedCache = JSON.parse(cachedRaw);
                     if (Array.isArray(parsedCache) && parsedCache.length > 0) {
-                        questions = parsedCache;
+                        questions = parsedCache.filter((question) => question?.is_deleted !== true);
                     }
                 }
             } catch (ce) { }
@@ -1282,11 +1285,11 @@ class QuizApp {
         // 3. Dự phòng 2: Dữ liệu biến toàn cục đã nhúng trong file JS
         if (questions.length === 0 && (!navigator.onLine || !cloudQuestionsLoaded)) {
             if (this.currentSubject === 'history' && Array.isArray(window.QUIZ_QUESTIONS)) {
-                questions = [...window.QUIZ_QUESTIONS];
+                questions = window.QUIZ_QUESTIONS.filter((question) => question?.is_deleted !== true);
             } else if (this.currentSubject === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
-                questions = [...window.PHYSICS_QUESTIONS];
+                questions = window.PHYSICS_QUESTIONS.filter((question) => question?.is_deleted !== true);
             } else if (this.currentSubject === 'geography' && Array.isArray(window.GEOGRAPHY_QUESTIONS)) {
-                questions = [...window.GEOGRAPHY_QUESTIONS];
+                questions = window.GEOGRAPHY_QUESTIONS.filter((question) => question?.is_deleted !== true);
             }
         }
 
@@ -4628,6 +4631,7 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         this.isRevengeMode = false;
+        this.isFinishingQuiz = false;
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
             this.allQuestions = [...this.fullQuestionsPool];
         }
@@ -5083,8 +5087,72 @@ Giải thích: Biên độ A = 5 cm.`;
         }
     }
 
+    startAwayAutoSubmitTimer(reason = 'unknown') {
+        if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+        if (this.awayAutoSubmitTimer !== null) {
+            console.debug('[QuizApp] Away auto-submit timer already running:', { reason });
+            return;
+        }
+        const delayMs = 5 * 60 * 1000;
+        console.debug('[QuizApp] Away auto-submit timer started:', { reason, delayMs });
+        this.awayAutoSubmitTimer = window.setTimeout(() => {
+            this.awayAutoSubmitTimer = null;
+            console.debug('[QuizApp] Away auto-submit timer fired:', {
+                reason,
+                currentScreen: this.currentScreen,
+                hidden: document.hidden,
+                windowUnfocused: typeof document.hasFocus === 'function' && !document.hasFocus()
+            });
+
+            if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+
+            this.showToastNotification('⏰ Bạn đã rời khỏi bài thi quá 5 phút. Hệ thống đã tự động nộp bài để bảo toàn kết quả.', 'warning');
+            this.finishQuiz();
+        }, delayMs);
+    }
+
+    startIdleAutoSubmitTimer(reason = 'no activity') {
+        if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+        if (this.idleAutoSubmitTimer !== null) return;
+        const delayMs = 5 * 60 * 1000;
+        console.debug('[QuizApp] Idle auto-submit timer started:', { reason, delayMs });
+        this.idleAutoSubmitTimer = window.setTimeout(() => {
+            this.idleAutoSubmitTimer = null;
+            if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+            console.debug('[QuizApp] Idle auto-submit timer fired:', { reason });
+            this.showToastNotification('⏰ Bạn không thao tác trong 5 phút. Hệ thống đã tự động nộp bài để bảo toàn kết quả.', 'warning');
+            this.finishQuiz();
+        }, delayMs);
+    }
+
+    resetIdleAutoSubmitTimer(reason = 'user activity') {
+        if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+        this.cancelIdleAutoSubmitTimer(reason);
+        this.startIdleAutoSubmitTimer(reason);
+    }
+
+    cancelAwayAutoSubmitTimer(reason = 'unknown') {
+        const hadTimer = this.awayAutoSubmitTimer !== null;
+        if (hadTimer) {
+            clearTimeout(this.awayAutoSubmitTimer);
+            this.awayAutoSubmitTimer = null;
+        }
+        console.debug('[QuizApp] Away auto-submit timer cancelled:', { reason, hadTimer });
+    }
+
+    cancelIdleAutoSubmitTimer(reason = 'unknown') {
+        const hadTimer = this.idleAutoSubmitTimer !== null;
+        if (hadTimer) {
+            clearTimeout(this.idleAutoSubmitTimer);
+            this.idleAutoSubmitTimer = null;
+        }
+        console.debug('[QuizApp] Idle auto-submit timer cancelled:', { reason, hadTimer });
+    }
+
     stopStopwatch() {
         clearInterval(this.timerInterval);
+        this.cancelAwayAutoSubmitTimer('stop stopwatch');
+        this.cancelIdleAutoSubmitTimer('stop stopwatch');
     }
 
     async confirmSubmit() {
@@ -5130,6 +5198,11 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     finishQuiz() {
+        if (this.isFinishingQuiz) {
+            console.debug('[QuizApp] Duplicate finishQuiz call ignored.');
+            return;
+        }
+        this.isFinishingQuiz = true;
         this.stopStopwatch();
 
         const questions = this.allQuestions || [];
@@ -5533,6 +5606,7 @@ Giải thích: Biên độ A = 5 cm.`;
         // Kích hoạt chế độ Phục Thù
         this.isRevengeMode = true;
         this.isMistakeMode = true;
+        this.isFinishingQuiz = false;
         this.allQuestions = [...mistakeQuestions];
         this.userAnswers = {};
         this.currentFilter = 'all';
@@ -5588,6 +5662,18 @@ Giải thích: Biên độ A = 5 cm.`;
 
     switchScreen(screenName) {
         this.currentScreen = screenName;
+        if (screenName === 'quiz') {
+            this.resetIdleAutoSubmitTimer('quiz screen active');
+            const windowUnfocused = typeof document.hasFocus === 'function' && !document.hasFocus();
+            if (document.hidden || windowUnfocused) {
+                this.startAwayAutoSubmitTimer('quiz screen entered while away');
+            } else {
+                this.cancelAwayAutoSubmitTimer('quiz screen active');
+            }
+        } else {
+            this.cancelAwayAutoSubmitTimer(`screen changed to ${screenName}`);
+            this.cancelIdleAutoSubmitTimer(`screen changed to ${screenName}`);
+        }
         const mainHeader = document.getElementById('main-header');
         if (mainHeader) {
             if (screenName === 'quiz') {
@@ -5645,6 +5731,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         this.stopStopwatch();
         this.isRevengeMode = false;
+        this.isFinishingQuiz = false;
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
             this.allQuestions = [...this.fullQuestionsPool];
         }
@@ -5664,6 +5751,9 @@ Giải thích: Biên độ A = 5 cm.`;
             okIcon: 'fa-solid fa-rotate-left'
         });
         if (!ok) return;
+        this.cancelAwayAutoSubmitTimer('quiz reset');
+        this.cancelIdleAutoSubmitTimer('quiz reset');
+        this.isFinishingQuiz = false;
         this.userAnswers = {};
         this.clearAutoSaveProgress();
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
@@ -7331,6 +7421,31 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
     }
 
     initEventListeners() {
+        document.addEventListener('visibilitychange', () => {
+            if (this.currentScreen !== 'quiz') return;
+            if (document.hidden) {
+                this.startAwayAutoSubmitTimer('document hidden');
+            } else {
+                this.cancelAwayAutoSubmitTimer('document visible');
+            }
+        }, { passive: true });
+
+        window.addEventListener('blur', () => {
+            if (this.currentScreen === 'quiz') {
+                this.startAwayAutoSubmitTimer('window blur');
+            }
+        }, { passive: true });
+
+        window.addEventListener('focus', () => {
+            if (this.currentScreen === 'quiz') {
+                this.cancelAwayAutoSubmitTimer('window focus');
+            }
+        }, { passive: true });
+
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach((eventName) => {
+            document.addEventListener(eventName, () => this.resetIdleAutoSubmitTimer(eventName), { passive: true });
+        });
+
         // Nhấn phím Enter hoặc thay đổi tên học sinh -> tự động ghi nhớ & ghi nhận trạng thái
         const nameInput = document.getElementById('player-name-input');
         if (nameInput) {

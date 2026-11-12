@@ -729,6 +729,9 @@ class DatabaseService {
     async fetchQuestionsOnline(subjectKey = 'history') {
         if (this.isSupabaseActive && this.client) {
             try {
+                // Query the legacy-compatible shape first. The deployed project
+                // may not yet contain the optional is_deleted migration; active
+                // rows are filtered below when the column is available.
                 let query = this.client
                     .from('quiz_questions')
                     .select('*')
@@ -738,11 +741,11 @@ class DatabaseService {
                     query = query.eq('subject_key', subjectKey);
                 }
 
-                const { data, error } = await query;
+                let { data, error } = await query;
 
         if (!error) {
                     console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: (data || []).length });
-                    return (data || []).map(row => ({
+                    return (data || []).filter(row => row.is_deleted !== true).map(row => ({
                         id: row.id,
                         subjectKey: row.subject_key || 'history',
                         category: row.category || 'Bài học',
@@ -767,7 +770,10 @@ class DatabaseService {
 
         // Cache cục bộ
         const cached = localStorage.getItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${subjectKey}`);
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            return Array.isArray(parsed) ? parsed.filter((question) => question?.is_deleted !== true) : [];
+        }
         return [];
     }
 
