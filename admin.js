@@ -471,6 +471,15 @@
                 allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
             };
             const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
+            const normalizeAdminCode = (value) => {
+                const clean = String(value || '').trim().toLowerCase();
+                if (!clean) return '';
+                const parts = clean.split('-');
+                // IP-Token / IP-Mã: chỉ dùng phần mã sau IP khi xác thực Admin.
+                return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                    ? parts.slice(1).join('-')
+                    : clean;
+            };
 
             // 1. Khớp Master IP
             if (state.clientIp && state.clientIp === state.adminConfig.masterIp) return true;
@@ -481,16 +490,19 @@
             // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
             if (currentToken) {
                 const tok = currentToken.toLowerCase();
+                const tokCode = normalizeAdminCode(tok);
                 const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
                     if (typeof item === 'string') {
                         const str = item.toLowerCase();
-                        return tok && str === tok;
+                        return tok && (str === tok || normalizeAdminCode(str) === tokCode);
                     }
                     const itemToken = String(item.token || '').toLowerCase();
                     const itemRaw = String(item.rawCode || '').toLowerCase();
                     if (tok && tok.length >= 6) {
                         if (itemToken && itemToken === tok) return true;
                         if (itemRaw && itemRaw === tok) return true;
+                        if (tokCode && normalizeAdminCode(itemToken) === tokCode) return true;
+                        if (tokCode && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
                     }
                     return false;
                 });
@@ -507,12 +519,15 @@
                         const adminTokens = tokens.filter(t => t.role === 'admin');
                         if (currentToken) {
                             const tok = currentToken.toLowerCase();
+                            const tokCode = normalizeAdminCode(tok);
                             const foundAdmin = adminTokens.find(t => {
                                 const tToken = String(t.token || '').toLowerCase();
                                 const tRaw = String(t.rawCode || '').toLowerCase();
                                 if (tok && tok.length >= 6) {
                                     if (tToken && tToken === tok) return true;
                                     if (tRaw && tRaw === tok) return true;
+                                    if (tokCode && normalizeAdminCode(tToken) === tokCode) return true;
+                                    if (tokCode && tRaw && normalizeAdminCode(tRaw) === tokCode) return true;
                                 }
                                 return false;
                             });
@@ -566,18 +581,29 @@
         state.clientIp = await getClientIp();
 
         let isMatch = false;
+        const normalizeAdminCode = (value) => {
+            const clean = String(value || '').trim().toLowerCase();
+            if (!clean) return '';
+            const parts = clean.split('-');
+            return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                ? parts.slice(1).join('-')
+                : clean;
+        };
         try {
             const row = await systemRow(SYSTEM.admin);
             if (row && row.score_summary) {
                 const config = JSON.parse(row.score_summary || '{}');
                 const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
                 const clean = val.toLowerCase();
+                const cleanCode = normalizeAdminCode(clean);
                 isMatch = allowed.some(it => {
-                    if (typeof it === 'string') return it.toLowerCase() === clean;
+                    if (typeof it === 'string') return it.toLowerCase() === clean || normalizeAdminCode(it) === cleanCode;
                     const itTok = String(it.token || '').toLowerCase();
                     const itRaw = String(it.rawCode || '').toLowerCase();
                     if (itTok && itTok === clean) return true;
                     if (itRaw && itRaw === clean && itRaw.length >= 6) return true;
+                    if (cleanCode && normalizeAdminCode(itTok) === cleanCode) return true;
+                    if (cleanCode && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
                     return false;
                 });
             }
@@ -589,6 +615,7 @@
                 if (row8 && row8.score_summary) {
                     const tokens = JSON.parse(row8.score_summary || '[]');
                     const clean = val.toLowerCase();
+                    const cleanCode = normalizeAdminCode(clean);
                     isMatch = tokens.some(t => {
                         // CHỈ ROLE ADMIN ĐƯỢC MỞ KHÓA ADMIN
                         if (t.role !== 'admin') return false;
@@ -596,6 +623,8 @@
                         const tRaw = String(t.rawCode || '').toLowerCase();
                         if (tTok && tTok === clean) return true;
                         if (tRaw && tRaw === clean && tRaw.length >= 6) return true;
+                        if (cleanCode && normalizeAdminCode(tTok) === cleanCode) return true;
+                        if (cleanCode && tRaw && normalizeAdminCode(tRaw) === cleanCode) return true;
                         return false;
                     });
                 }

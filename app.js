@@ -1563,14 +1563,25 @@ class QuizApp {
 
         const storedAdminToken = (localStorage.getItem('quiz_admin_token') || '').trim();
         if (storedAdminToken) {
+            const normalizeAdminCode = (value) => {
+                const clean = String(value || '').trim().toLowerCase();
+                if (!clean) return '';
+                const parts = clean.split('-');
+                return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                    ? parts.slice(1).join('-')
+                    : clean;
+            };
             const rawAllowed = Array.isArray(this.adminConfigAllowed) ? this.adminConfigAllowed : [];
             const cleanToken = storedAdminToken.toLowerCase();
+            const cleanCode = normalizeAdminCode(cleanToken);
             const matchedToken = rawAllowed.some(it => {
-                if (typeof it === 'string') return it.toLowerCase() === cleanToken;
+                if (typeof it === 'string') return it.toLowerCase() === cleanToken || normalizeAdminCode(it) === cleanCode;
                 const itTok = String(it.token || '').toLowerCase();
                 const itRaw = String(it.rawCode || '').toLowerCase();
                 if (itTok && itTok === cleanToken) return true;
                 if (itRaw && itRaw === cleanToken && itRaw.length >= 6) return true;
+                if (cleanCode && normalizeAdminCode(itTok) === cleanCode) return true;
+                if (cleanCode && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
                 return false;
             });
             if (matchedToken) return true;

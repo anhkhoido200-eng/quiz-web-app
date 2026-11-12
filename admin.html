@@ -23,15 +23,15 @@
             <span class="access-icon"><i class="fa-solid fa-lock"></i></span>
             <p class="eyebrow">PRIVATE ADMIN AREA</p>
             <h1>Thiết bị chưa được cấp quyền</h1>
-            <p>Control Center chỉ mở cho IP hoặc IP-Token đã được cấp trong whitelist Admin.</p>
+            <p>Control Center chỉ mở khi mã Admin đã được cấp quyền. Mã vẫn dùng được khi bạn đổi mạng hoặc IP.</p>
 
             <!-- Ô nhập IP-Token mở khóa trực tiếp -->
             <div style="margin:16px 0;background:rgba(255,255,255,0.04);padding:14px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);">
                 <p style="font-size:12px;font-weight:600;color:var(--amber,#f59e0b);margin-bottom:8px;">
-                    <i class="fa-solid fa-key"></i> Bạn đã có IP-Token hoặc Mã Admin?
+                    <i class="fa-solid fa-key"></i> Bạn đã có mã Admin?
                 </p>
                 <div class="inline-form" style="gap:6px;">
-                    <input id="admin-token-unlock-input" placeholder="Dán mã IP-Token Admin tại đây..." style="text-align:center;font-weight:700;font-family:monospace;letter-spacing:0.5px;">
+                    <input id="admin-token-unlock-input" placeholder="Dán mã Admin hoặc phần mã sau dấu -..." style="text-align:center;font-weight:700;font-family:monospace;letter-spacing:0.5px;">
                     <button id="btn-unlock-admin-token" class="button button-primary" type="button"><i class="fa-solid fa-unlock"></i> Mở khóa</button>
                 </div>
             </div>
