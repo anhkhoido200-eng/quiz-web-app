@@ -4953,16 +4953,16 @@ Giải thích: Biên độ A = 5 cm.`;
                         : (!this.isExamMode && isAnswered ? 'is-locked' : '');
 
                     return `
-                                <div class="tf-statement-row p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                                    <div class="flex items-start gap-2 flex-1">
-                                        <span class="font-bold text-indigo-400">${String.fromCharCode(97 + sIdx)})</span>
-                                        <span class="text-slate-200 font-medium">${this.formatScientificNotation(st.text)}</span>
+                                <div class="tf-statement-row p-2.5 sm:p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 text-xs" id="tf-row-${q.id}-${sIdx}">
+                                    <div class="flex items-start gap-2 flex-1 min-w-0">
+                                        <span class="font-bold text-indigo-400 shrink-0">${String.fromCharCode(97 + sIdx)})</span>
+                                        <span class="text-slate-200 font-medium leading-relaxed break-words">${this.formatScientificNotation(st.text)}</span>
                                     </div>
-                                    <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
+                                    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -5040,6 +5040,18 @@ Giải thích: Biên độ A = 5 cm.`;
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
         this.updateLiveStats();
+
+        // Cập nhật DOM cục bộ trong chế độ thi để tránh giật/nhảy trang
+        const card = document.getElementById(`q-card-${qId}`);
+        if (card && this.isExamMode) {
+            const optButtons = card.querySelectorAll('.quiz-option-tile');
+            optButtons.forEach((btn, idx) => {
+                const isSelected = (idx === oIdx);
+                btn.className = `quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${isSelected ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 font-bold option-selected-user' : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:border-slate-500'}`;
+            });
+            return;
+        }
+
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
@@ -5063,6 +5075,37 @@ Giải thích: Biên độ A = 5 cm.`;
         console.debug('[QuizApp] Đã ghi nhận lựa chọn Đúng/Sai:', { qId, stmtIdx, answer: Boolean(isTrue) });
         this.saveAutoSaveProgress();
         this.updateLiveStats();
+
+        // Cập nhật DOM cục bộ NGAY LẬP TỨC (0ms lag, không vẽ lại toàn bộ danh sách gây nhảy cuộn)
+        const btnTrue = document.getElementById(`tf-btn-${qId}-${stmtIdx}-true`);
+        const btnFalse = document.getElementById(`tf-btn-${qId}-${stmtIdx}-false`);
+        if (btnTrue && btnFalse) {
+            const q = this.allQuestions.find(item => String(item.id) === String(qId));
+            const st = q?.statements?.[stmtIdx];
+            const choice = Boolean(isTrue);
+
+            if (this.isExamMode) {
+                btnTrue.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === true ? 'is-exam-selected is-selected bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
+                btnFalse.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === false ? 'is-exam-selected is-selected bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
+                btnTrue.setAttribute('aria-pressed', String(choice === true));
+                btnFalse.setAttribute('aria-pressed', String(choice === false));
+            } else {
+                const isCorrect = (choice === st?.answer);
+                btnTrue.disabled = true;
+                btnFalse.disabled = true;
+                if (choice === true) {
+                    btnTrue.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold is-selected ${isCorrect ? 'is-selected-correct bg-emerald-600 border-emerald-500 text-white font-bold' : 'is-selected-wrong bg-rose-600 border-rose-500 text-white font-bold'}`;
+                    btnFalse.className = 'tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold is-locked bg-slate-900 border-slate-700 text-slate-300';
+                } else {
+                    btnFalse.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold is-selected ${isCorrect ? 'is-selected-correct bg-emerald-600 border-emerald-500 text-white font-bold' : 'is-selected-wrong bg-rose-600 border-rose-500 text-white font-bold'}`;
+                    btnTrue.className = 'tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold is-locked bg-slate-900 border-slate-700 text-slate-300';
+                }
+                btnTrue.setAttribute('aria-pressed', String(choice === true));
+                btnFalse.setAttribute('aria-pressed', String(choice === false));
+            }
+            return;
+        }
+
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));

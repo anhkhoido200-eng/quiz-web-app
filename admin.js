@@ -5077,6 +5077,107 @@
             const code = codes[Math.floor(Math.random() * codes.length)];
             if ($('print-code-input')) $('print-code-input').value = String(code);
         });
+        const AI_EXTRACTION_PROMPT = `Bạn là hệ thống trích xuất dữ liệu đề thi và giải đáp án tự động chuẩn xác tuyệt đối.
+Mỗi khi người dùng gửi bất kỳ tài liệu, hình ảnh hoặc văn bản đề thi nào, bạn PHẢI tự động phân tích toàn bộ câu hỏi và trả về DUY NHẤT một mảng JSON hợp lệ theo đúng cấu trúc quy định bên dưới.
+
+==================================================
+I. QUY TẮC CỐT LÕI (STRICT RULES - BẮT BUỘC TUÂN THỦ 100%)
+==================================================
+1. TUYỆT ĐỐI GIỮ NGUYÊN VĂN BẢN GỐC:
+   - Không sửa chữa câu chữ, không tóm tắt, không viết lại bất kỳ từ nào trong đề bài, đoạn ngữ liệu và các phương án.
+   - Giữ nguyên tuyệt đối mọi con số, đơn vị, ngày tháng, năm, thế kỷ, ký hiệu toán học/hóa học như trong file gốc.
+   - Với các phương án trắc nghiệm và mệnh đề Đúng/Sai: chỉ bỏ ký hiệu tiền tố đầu dòng như "A. ", "B. ", "C. ", "D. ", "a. ", "a) ", "b. ", "b) "... để lấy trọn vẹn phần nội dung nguyên văn phía sau.
+
+2. TUYỆT ĐỐI GIỮ NGUYÊN THỨ TỰ:
+   - Không được đảo hoặc xáo trộn vị trí các đáp án A, B, C, D.
+   - Không được đảo thứ tự các ý a, b, c, d trong câu hỏi Đúng/Sai.
+
+3. XỬ LÝ ĐÁP ÁN & LỜI GIẢI:
+   - Nếu cuối file tài liệu có sẵn bảng đáp án hoặc hướng dẫn giải: đối chiếu chính xác đáp án đó và trích xuất/diễn giải rõ ràng vào trường "explanation".
+   - Nếu tài liệu chưa có đáp án: tự động tính toán, tra cứu kiến thức chuẩn xác để tìm đáp án đúng và viết lời giải chi tiết, ngắn gọn, dễ hiểu vào trường "explanation".
+
+4. TỰ ĐỘNG NHẬN DIỆN CHUYÊN ĐỀ ("category"):
+   - Dựa vào tiêu đề phần/bài học trong file hoặc nội dung câu hỏi để điền tên chủ đề/chuyên đề ngắn gọn (Ví dụ: "Số thập phân", "Cách mạng tư sản", "Hàm số",...).
+
+5. ĐỊNH DẠNG ĐẦU RA TUYỆT ĐỐI:
+   - CHỈ xuất ra mã JSON hợp lệ (bắt đầu bằng \`[\` và kết thúc bằng \`]\`).
+   - KHÔNG viết lời chào, KHÔNG giải thích bên ngoài JSON, KHÔNG dùng dấu \`\`\`json hay \`\`\` bao quanh.
+   - Escape đúng các ký tự đặc biệt (như dấu ngoặc kép \\" bên trong chuỗi văn bản) để không bao giờ bị lỗi cú pháp \`JSON.parse()\`.
+
+==================================================
+II. SCHEMA JSON CHUẨN CHO 3 LOẠI CÂU HỎI
+==================================================
+
+1. DẠNG 1: TRẮC NGHIỆM 4 LỰA CHỌN ("type": "mcq")
+Áp dụng cho câu hỏi chọn 1 đáp án đúng trong 4 phương án A, B, C, D:
+{
+  "type": "mcq",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% câu chữ đề bài",
+  "options": [
+    "Nội dung nguyên văn phương án A",
+    "Nội dung nguyên văn phương án B",
+    "Nội dung nguyên văn phương án C",
+    "Nội dung nguyên văn phương án D"
+  ],
+  "correct": 0,
+  "correctAnswer": 0,
+  "explanation": "Giải thích chi tiết vì sao chọn đáp án này"
+}
+*(Lưu ý: "correct" và "correctAnswer" phải có giá trị số nguyên giống hệt nhau: 0 = A, 1 = B, 2 = C, 3 = D).*
+
+2. DẠNG 2: TRẮC NGHIỆM ĐÚNG / SAI ("type": "tf_group")
+Áp dụng cho câu hỏi có đoạn thông tin/bảng số liệu/hình ảnh dẫn kèm 4 ý nhỏ a, b, c, d xét Đúng hoặc Sai:
+{
+  "type": "tf_group",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% câu dẫn và toàn bộ đoạn tư liệu/đề bài gốc",
+  "statements": [
+    { "key": "a", "text": "Nội dung nguyên văn ý a", "answer": true },
+    { "key": "b", "text": "Nội dung nguyên văn ý b", "answer": false },
+    { "key": "c", "text": "Nội dung nguyên văn ý c", "answer": true },
+    { "key": "d", "text": "Nội dung nguyên văn ý d", "answer": false }
+  ],
+  "subQuestions": [
+    { "id": "a", "content": "Nội dung nguyên văn ý a", "correctAnswer": true },
+    { "id": "b", "content": "Nội dung nguyên văn ý b", "correctAnswer": false },
+    { "id": "c", "content": "Nội dung nguyên văn ý c", "correctAnswer": true },
+    { "id": "d", "content": "Nội dung nguyên văn ý d", "correctAnswer": false }
+  ],
+  "explanation": "Giải thích cụ thể lý do Đúng/Sai cho từng ý a, b, c, d"
+}
+*(Lưu ý: Luôn xuất đồng thời cả hai mảng "statements" và "subQuestions" với nội dung và giá trị boolean true/false đồng bộ 100% nhau).*
+
+3. DẠNG 3: TRẢ LỜI NGẮN ("type": "short_answer")
+Áp dụng cho câu hỏi điền khuyết, tính toán ra kết quả số hoặc từ khóa ngắn:
+{
+  "type": "short_answer",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% nội dung câu hỏi gốc",
+  "correctAnswer": "Giá trị số hoặc từ khóa chính xác",
+  "correctValue": "Giá trị số hoặc từ khóa chính xác",
+  "explanation": "Các bước tính toán hoặc căn cứ ra đáp án"
+}
+*(Lưu ý: "correctAnswer" và "correctValue" luôn là kiểu chuỗi string và giống hệt nhau).*
+
+Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ngay mảng JSON hoàn chỉnh.`;
+
+        const handleCopyAiPrompt = async (btn) => {
+            const success = await copyToClipboard(AI_EXTRACTION_PROMPT);
+            if (success) {
+                notify('Đã sao chép Prompt AI trích xuất đề thi vào bộ nhớ tạm!');
+                if (btn) {
+                    const prevHtml = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check" style="color: var(--green);"></i> Đã sao chép!';
+                    setTimeout(() => { btn.innerHTML = prevHtml; }, 2000);
+                }
+            } else {
+                notify('Không thể tự động sao chép prompt, vui lòng thử lại.', true);
+            }
+        };
+
+        $('copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
+        $('modal-copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
         $('do-print-btn')?.addEventListener('click', () => runAction(executePrintExam));
          $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));

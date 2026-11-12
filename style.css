@@ -1,9 +1,9 @@
 /* style.css - QuizMaster Pro v4.0 Gen Z Cyber Aurora Edition */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-sans: 'Be Vietnam Pro', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: 'Be Vietnam Pro', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 body:not(.admin-body) {
@@ -121,13 +121,17 @@ body:not(.admin-body) {
 
 @media (max-width: 640px) {
     #questions-container { padding-inline: .8rem; }
-    .quiz-question-card { padding: 1rem; }
+    .quiz-question-card { padding: 1rem; scroll-margin-top: 150px; }
     .quiz-option-tile {
         min-height: 3.5rem;
         grid-template-columns: 1.85rem minmax(0, 1fr) auto;
         padding-inline: .8rem;
     }
-    .tf-choice-button { min-width: 4.1rem; }
+    .tf-choice-button { min-width: 3.5rem; min-height: 1.95rem; padding: 0.25rem 0.5rem; font-size: 0.72rem; }
+}
+
+.quiz-question-card {
+    scroll-margin-top: 155px;
 }
 
 body.light-theme .quiz-question-card {
@@ -481,8 +485,8 @@ body.light-theme .home-grade-tab.is-active {
 
 /* --- Nút Đúng/Sai: chọn một lần, phản hồi mượt, không rung layout --- */
 .tf-choice-button {
-    min-width: 4.7rem;
-    min-height: 2.25rem;
+    min-width: 4.2rem;
+    min-height: 2.2rem;
     transform: translateZ(0);
     transition:
         transform 260ms cubic-bezier(.22, 1, .36, 1),
