@@ -74,12 +74,7 @@ ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 -- 5. CHÍNH SÁCH TRUY CẬP CÔNG KHAI CHO WEB THI (ANON KEY CHO CLIENT SPA)
 DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
 DROP POLICY IF EXISTS "Public read quiz_logins" ON public.quiz_logins;
-CREATE POLICY "Public read quiz_logins"
-ON public.quiz_logins
-FOR SELECT
-TO anon, authenticated
-USING (true)
-;
+
 CREATE POLICY "Public access to quiz_logins"
 ON public.quiz_logins
 FOR ALL
@@ -195,6 +190,34 @@ VALUES (
     '__AI_IPS_CONFIG__',
     'SYSTEM',
     'AI_IP_WHITELIST',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 7: Thùng rác câu hỏi tạm xóa (ID: 00000000-0000-0000-0000-000000000007)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000007',
+    '__TRASH_QUESTIONS__',
+    'SYSTEM',
+    'TRASH_BIN',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 8: Danh sách Token phân quyền học sinh & Quản trị (ID: 00000000-0000-0000-0000-000000000008)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000008',
+    '__ACCESS_TOKENS__',
+    'SYSTEM',
+    'UNIFIED_TOKENS',
     'ACTIVE',
     '[]',
     NOW(),

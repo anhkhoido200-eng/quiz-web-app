@@ -1,4 +1,4 @@
-﻿/**
+/**
  * geography_questions.js - Đề cương ôn tập kiểm tra Giữa Học Kì I - Năm học 2026 – 2027
  * Môn: Địa lí, Lớp 11 (Trung tâm GDNN - GDTX Dầu Tiếng)
  * 
@@ -917,7 +917,11 @@ const rawAllGeographyQuestions = [
         isMultiple: false
     })),
     ...rawGeographyTrueFalse,
-    ...rawGeographyShortAnswer
+    ...rawGeographyShortAnswer.map(q => ({
+        ...q,
+        correct_value: String(q.correct_value ?? q.correctValue ?? ''),
+        correctValue: String(q.correctValue ?? q.correct_value ?? '')
+    }))
 ];
 
 // Xuất ra biến toàn cục window

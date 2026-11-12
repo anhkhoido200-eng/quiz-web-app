@@ -91,6 +91,32 @@
         }
     };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const copyToClipboard = async (text) => {
+        const cleanText = String(text ?? '').trim();
+        if (!cleanText) return false;
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(cleanText);
+                return true;
+            }
+        } catch (e) {
+            console.warn('[Quiz Studio Admin] Clipboard API failed, trying fallback...', e);
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = cleanText;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return success;
+        } catch (err) {
+            prompt('Sao chép nội dung bên dưới:', cleanText);
+            return true;
+        }
+    };
     const confirmDialog = (options = {}) => {
         const opts = typeof options === 'string' ? { message: options } : (options || {});
         const msg = String(opts.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?');
@@ -3675,8 +3701,8 @@
         const link = getStudentActivationLink(autoToken);
         await copyToClipboard(link);
 
-        $('ai-ip-input').value = '';
-        $('ai-ip-name').value = '';
+        if ($('ai-ip-input')) $('ai-ip-input').value = '';
+        if ($('ai-ip-name')) $('ai-ip-name').value = '';
         renderAccess();
         notify(`Đã cấp quyền AI cho IP ${ip} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
     }
@@ -4017,12 +4043,16 @@
         ].map((ip) => String(ip || '').trim()).filter(Boolean));
         const data = [];
         let error = null;
-        for (let offset = 0; ; offset += 500) {
-            // session_id is optional on older projects; the monitor does not depend on it.
-            const page = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).range(offset, offset + 499);
-            if (page.error) { error = page.error; break; }
-            data.push(...(page.data || []));
-            if (!page.data || page.data.length < 500) break;
+        // Giới hạn 300 phiên hoạt động mới nhất để chống tràn API Supabase định kỳ 5s
+        const page = await state.client
+            .from('quiz_logins')
+            .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+            .order('last_active', { ascending: false })
+            .limit(300);
+        if (page.error) {
+            error = page.error;
+        } else if (Array.isArray(page.data)) {
+            data.push(...page.data);
         }
         if (error) {
             console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);

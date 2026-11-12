@@ -4893,7 +4893,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         : '';
 
                     return `
-                                <button type="button" onclick="app.selectOption(${JSON.stringify(q.id)}, ${oIdx})" ${isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${JSON.stringify(q.id)}, ${oIdx})" ${!this.isExamMode && isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                     ${feedbackIcon}
@@ -4947,10 +4947,10 @@ Giải thích: Biên độ A = 5 cm.`;
 
                     const trueStateClass = val === true
                         ? `is-selected ${!this.isExamMode ? (st.answer === true ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (isAnswered ? 'is-locked' : '');
+                        : (!this.isExamMode && isAnswered ? 'is-locked' : '');
                     const falseStateClass = val === false
                         ? `is-selected ${!this.isExamMode ? (st.answer === false ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (isAnswered ? 'is-locked' : '');
+                        : (!this.isExamMode && isAnswered ? 'is-locked' : '');
 
                     return `
                                 <div class="tf-statement-row p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
@@ -4959,10 +4959,10 @@ Giải thích: Biên độ A = 5 cm.`;
                                         <span class="text-slate-200 font-medium">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
+                                        <button type="button" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -4999,6 +4999,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     </div>
                 ` : '';
 
+                const isInputLocked = !this.isExamMode && hasSubmitted;
+
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs">Câu ${idx + 1} (Trả lời ngắn)</span>
@@ -5007,10 +5009,10 @@ Giải thích: Biên độ A = 5 cm.`;
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onchange="app.saveShortAnswer(${JSON.stringify(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${JSON.stringify(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
-                        <button type="button" ${hasSubmitted ? 'disabled' : ''} aria-disabled="${hasSubmitted}" onclick="app.saveShortAnswer(${JSON.stringify(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${JSON.stringify(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${JSON.stringify(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${JSON.stringify(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
-                            <span>${hasSubmitted ? 'Đã ghi nhận' : 'Ghi nhận'}</span>
+                            <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
                         </button>
                     </div>
                     ${shortFeedbackHtml}
@@ -5027,9 +5029,10 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     selectOption(qId, oIdx) {
+        if (this.isFinishingQuiz) return;
         const q = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!q) return;
-        if (this.hasSubmittedAnswer(qId)) {
+        if (!this.isExamMode && this.hasSubmittedAnswer(qId)) {
             console.debug('[QuizApp] Bỏ qua lần chọn trắc nghiệm thứ hai:', { qId, existing: this.userAnswers[qId] });
             return;
         }
@@ -5043,11 +5046,12 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     selectTfOption(qId, stmtIdx, isTrue) {
+        if (this.isFinishingQuiz) return;
         qId = this.allQuestions.find(item => String(item.id) === String(qId))?.id ?? qId;
         const currentAnswers = this.userAnswers[qId];
         const hasExistingAnswer = currentAnswers && typeof currentAnswers === 'object'
             && Object.prototype.hasOwnProperty.call(currentAnswers, stmtIdx);
-        if (hasExistingAnswer) {
+        if (!this.isExamMode && hasExistingAnswer) {
             console.debug('[QuizApp] Bỏ qua lần chọn Đúng/Sai thứ hai:', { qId, stmtIdx, existing: currentAnswers[stmtIdx] });
             return;
         }
@@ -5065,9 +5069,10 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     saveShortAnswer(qId, val) {
+        if (this.isFinishingQuiz) return;
         const question = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!question || question.qType !== 'short_answer') return;
-        if (this.hasSubmittedAnswer(qId)) {
+        if (!this.isExamMode && this.hasSubmittedAnswer(qId)) {
             console.debug('[QuizApp] Bỏ qua lần nhập trả lời ngắn thứ hai:', { qId, existing: this.userAnswers[qId] });
             return;
         }

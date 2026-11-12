@@ -85,11 +85,21 @@ class DatabaseService {
         if (!this.url || !this.anonKey) return;
         try {
             const t0 = Date.now();
+            let signal;
+            let timeoutId;
+            if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+                signal = AbortSignal.timeout(4000);
+            } else if (typeof AbortController !== 'undefined') {
+                const controller = new AbortController();
+                timeoutId = setTimeout(() => controller.abort(), 4000);
+                signal = controller.signal;
+            }
             const res = await fetch(`${this.url}/rest/v1/quiz_questions?select=id&limit=1`, {
                 method: 'HEAD',
                 headers: { apikey: this.anonKey },
-                signal: AbortSignal.timeout(4000)
+                signal
             });
+            if (timeoutId) clearTimeout(timeoutId);
             const dateHeader = res.headers?.get('date');
             if (dateHeader) {
                 const serverMs = new Date(dateHeader).getTime();
@@ -817,8 +827,12 @@ class DatabaseService {
         // Cache cục bộ
         const cached = localStorage.getItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${subjectKey}`);
         if (cached) {
-            const parsed = JSON.parse(cached);
-            return Array.isArray(parsed) ? parsed.filter((question) => question?.is_deleted !== true) : [];
+            try {
+                const parsed = JSON.parse(cached);
+                return Array.isArray(parsed) ? parsed.filter((question) => question?.is_deleted !== true) : [];
+            } catch (e) {
+                console.warn("[DatabaseService] Lỗi parse cache questions:", e);
+            }
         }
         return [];
     }
@@ -2392,8 +2406,8 @@ class DatabaseService {
             const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
             const ipVal = String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
 
-            // 1. Khớp theo địa chỉ IP thiết bị học sinh
-            if (cleanIp && ipVal && (cleanIp === ipVal || cleanIp.endsWith(ipVal) || ipVal.endsWith(cleanIp))) return true;
+            // 1. Khớp theo địa chỉ IP thiết bị học sinh (chính xác hoặc dạng IPv6 prefix ::ffff:ip)
+            if (cleanIp && ipVal && (cleanIp === ipVal || cleanIp.endsWith(':' + ipVal) || ipVal.endsWith(':' + cleanIp))) return true;
 
             // 2. Khớp chính xác theo chuỗi gửi lên (clean)
             if (clean) {
