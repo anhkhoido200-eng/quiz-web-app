@@ -3935,7 +3935,7 @@
                             ${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}
                             <button class="table-action" data-grant-token-name="${esc(name)}" data-grant-token-ip="${esc(ip)}" data-grant-token-device="${esc(dev)}" title="Kích hoạt quyền thiết bị này"><i class="fa-solid fa-key"></i></button>
                             <button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(name)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button>
-                            <button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(dev)}" title="Xóa lịch sử học sinh này"><i class="fa-solid fa-trash-can"></i></button>
+                            <button class="table-action danger" data-delete-student-name="${esc(name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(dev)}" title="Xóa toàn bộ thông tin của học sinh này"><i class="fa-solid fa-trash-can"></i></button>
                         </div>
                     </td>
                 `;
@@ -4599,8 +4599,9 @@
             const rowIp = String(row.ip_address || '').trim();
             const rowDev = String(row.device_info || '').trim();
             if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
-                if (rowName !== cleanName.toLowerCase()) return false;
-                return !cleanDev || rowDev === cleanDev;
+                // Xóa toàn bộ dữ liệu của đúng tên, không giới hạn theo thiết bị.
+                // Một học sinh có thể tạo nhiều phiên/thiết bị và tất cả phải biến mất.
+                return rowName === cleanName.toLowerCase();
             }
             if (cleanIp && rowIp === cleanIp) {
                 return !cleanDev || rowDev === cleanDev;
@@ -4608,7 +4609,7 @@
             return false;
         }).map((row) => row.id).filter(Boolean);
         if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
-        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa thông tin trong bảng?', message: cleanLoginId ? `Xóa thông tin phiên đang hiển thị của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.` : `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa khỏi bảng', variant: 'danger' }))) return;
+        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa toàn bộ thông tin học sinh?', message: cleanLoginId ? `Xóa thông tin phiên đang hiển thị của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.` : `Xóa toàn bộ ${ids.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nTất cả phiên mang tên này sẽ bị xóa. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
         if (ids.length) {
             const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
             if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
@@ -4616,6 +4617,15 @@
             if (verifyError) return notify(`Không thể xác minh sau khi xóa: ${verifyError.message}`, true);
             if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`, true);
         }
+        // Xóa bản ghi cục bộ cùng tên để dữ liệu không quay lại khi tải fallback.
+        try {
+            const localKey = 'quiz_local_logins_history';
+            const localRows = JSON.parse(localStorage.getItem(localKey) || '[]');
+            const filteredLocal = cleanName && cleanName.toLowerCase() !== 'khách truy cập'
+                ? localRows.filter((row) => String(row.player_name || '').trim().toLowerCase() !== cleanName.toLowerCase())
+                : localRows.filter((row) => String(row.ip_address || '').trim() !== cleanIp);
+            localStorage.setItem(localKey, JSON.stringify(filteredLocal));
+        } catch (e) { /* Local cache is optional. */ }
         state.lastStudentsHtml = '';
         state.lastStudentsBodyHtml = '';
         notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
