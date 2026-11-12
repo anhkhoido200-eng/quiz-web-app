@@ -604,22 +604,18 @@ class DatabaseService {
                 this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
             } else {
                 try {
-                    const { data: currentRow } = await this.client
-                        .from('quiz_logins')
-                        .select('score_summary')
-                        .eq('id', loginId)
-                        .limit(1);
-                    const prevSummary = String(currentRow?.[0]?.score_summary || '');
-                    const nextSummary = /điểm/i.test(prevSummary) ? prevSummary : scoreText;
-                    await this.client
+                    // Chỉ cần một UPDATE cho mỗi snapshot. SELECT trước UPDATE
+                    // khiến mỗi lần chọn đáp án phải chờ thêm một round-trip mạng.
+                    const { error } = await this.client
                         .from('quiz_logins')
                         .update({
                             status: statusText,
-                            score_summary: nextSummary,
+                            score_summary: scoreText,
                             last_active: nowIso
                         })
                         .eq('id', loginId)
                         .not('status', 'like', 'BANNED%');
+                    if (error) throw error;
                 } catch (e) {
                     this.enqueueOfflineSync('updateProgress', { loginId, statusText, scoreText, last_active: nowIso });
                 }

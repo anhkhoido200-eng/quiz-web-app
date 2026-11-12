@@ -1231,6 +1231,15 @@ class QuizApp {
         return s ? s.name : 'Ôn tập';
     }
 
+    animateHomeCount(target, value) {
+        const element = typeof target === 'string' ? document.getElementById(target) : target;
+        if (!element) return;
+        const nextValue = Math.max(0, Number(value) || 0);
+        // Cập nhật ngay lập tức để số lượng câu hỏi không bị hiển thị 0
+        // trong lúc animation hoặc khi trình duyệt đang tiết kiệm tài nguyên.
+        element.textContent = String(nextValue);
+    }
+
     async selectSubject(subjKey) {
         const selected = (this.dynamicSubjects || []).find((subject) => subject.key === subjKey);
         console.debug('[QuizApp] Subject selection requested:', { subjKey, selected, currentSubject: this.currentSubject, visible: this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey) });
@@ -1257,6 +1266,9 @@ class QuizApp {
         let cloudQuestionsLoaded = false;
         this.isLoadingQuestions = true;
         const subjectAtStart = this.currentSubject;
+        const previousQuestions = Array.isArray(this.allQuestions) && this.allQuestions.length > 0
+            ? [...this.allQuestions]
+            : [];
         console.debug('[QuizApp] Loading questions:', { subject: this.currentSubject, online: navigator.onLine, supabaseActive: Boolean(window.dbService?.isSupabaseActive) });
 
         // 1. Thử lấy từ Supabase Cloud nếu Online
@@ -1265,13 +1277,21 @@ class QuizApp {
                 if (window.dbService && typeof window.dbService.fetchQuestionsBySubject === 'function') {
                     const cloudQuestions = await window.dbService.fetchQuestionsBySubject(this.currentSubject);
                     if (Array.isArray(cloudQuestions)) {
-                        cloudQuestionsLoaded = Boolean(window.dbService.isSupabaseActive);
                         questions = cloudQuestions.filter((question) => question?.is_deleted !== true);
-                        console.debug('[QuizApp] Cloud questions loaded:', { subject: this.currentSubject, count: questions.length });
-                        // Lưu cache ngoại tuyến vào localStorage
-                        try {
-                            localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(questions));
-                        } catch (ce) { }
+                        // Một truy vấn Cloud thành công nhưng trả [] không đồng nghĩa
+                        // với việc ngân hàng câu hỏi đã bị xóa. Giữ cache/bộ câu hỏi
+                        // nhúng làm nguồn dự phòng để không làm màn hình học sinh rỗng.
+                        cloudQuestionsLoaded = Boolean(window.dbService.isSupabaseActive && questions.length > 0);
+                        console.debug('[QuizApp] Cloud questions loaded:', {
+                            subject: this.currentSubject,
+                            count: questions.length,
+                            usableCloudData: cloudQuestionsLoaded
+                        });
+                        if (questions.length > 0) {
+                            try {
+                                localStorage.setItem(`quiz_cache_${this.currentSubject}`, JSON.stringify(questions));
+                            } catch (ce) { }
+                        }
                     }
                 }
             } catch (e) {
@@ -1301,6 +1321,15 @@ class QuizApp {
             } else if (this.currentSubject === 'geography' && Array.isArray(window.GEOGRAPHY_QUESTIONS)) {
                 questions = window.GEOGRAPHY_QUESTIONS.filter((question) => question?.is_deleted !== true);
             }
+        }
+
+        // Không xóa đề đang hiển thị chỉ vì một lần tải nền bị trả rỗng/lỗi.
+        if (questions.length === 0 && previousQuestions.length > 0) {
+            questions = previousQuestions;
+            console.warn('[QuizApp] Cloud/cache không có dữ liệu mới; giữ lại bộ câu hỏi đang hiển thị:', {
+                subject: this.currentSubject,
+                count: questions.length
+            });
         }
 
         if (this.currentSubject !== subjectAtStart) {
@@ -5007,10 +5036,10 @@ Giải thích: Biên độ A = 5 cm.`;
 
         this.userAnswers[qId] = oIdx;
         this.saveAutoSaveProgress();
+        this.updateLiveStats();
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
-        this.updateLiveStats();
     }
 
     selectTfOption(qId, stmtIdx, isTrue) {
@@ -5029,10 +5058,10 @@ Giải thích: Biên độ A = 5 cm.`;
         this.userAnswers[qId][stmtIdx] = Boolean(isTrue);
         console.debug('[QuizApp] Đã ghi nhận lựa chọn Đúng/Sai:', { qId, stmtIdx, answer: Boolean(isTrue) });
         this.saveAutoSaveProgress();
+        this.updateLiveStats();
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
-        this.updateLiveStats();
     }
 
     saveShortAnswer(qId, val) {
@@ -5048,10 +5077,10 @@ Giải thích: Biên độ A = 5 cm.`;
         this.userAnswers[qId] = normalizedValue;
         console.debug('[QuizApp] Đã ghi nhận trả lời ngắn:', { qId, answered: true });
         this.saveAutoSaveProgress();
+        this.updateLiveStats();
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
-        this.updateLiveStats();
     }
 
     isQuestionWrong(q) {
