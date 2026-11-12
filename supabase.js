@@ -155,14 +155,22 @@ class DatabaseService {
     /**
      * Ghi nhận lượt đăng nhập (IP, Tên, Thiết bị, Trạng thái)
      * Hỗ trợ cả 2 dạng gọi: recordLogin(object) hoặc recordLogin(name, ip, device, subject)
+     * Có thể truyền { newAttempt: true } ở tham số cuối để luôn tạo lượt mới.
      */
-    async recordLogin(data, ipAddress, deviceInfo, subjectTitle, scoreSummaryParam = "", existingLoginId = null) {
+    async recordLogin(data, ipAddress, deviceInfo, subjectTitle, scoreSummaryParam = "", existingLoginId = null, options = {}) {
+        let recordOptions = options && typeof options === 'object' ? options : {};
+        if (existingLoginId && typeof existingLoginId === 'object') {
+            recordOptions = existingLoginId;
+            existingLoginId = null;
+        }
         let cleanName = "";
         let cleanIp = "Chưa xác định";
         let cleanDevice = "Trình duyệt Web";
         let status = "Đang làm bài";
         let scoreSummary = "";
         let targetLoginId = existingLoginId || null;
+        let attemptId = '';
+        let forceNewAttempt = Boolean(recordOptions.newAttempt);
 
         if (typeof data === 'object' && data !== null) {
             cleanName = (data.playerName || data.name || "").trim();
@@ -171,6 +179,8 @@ class DatabaseService {
             status = data.status || "Đang làm bài";
             scoreSummary = data.scoreSummary || (data.subjectTitle ? `Môn: ${data.subjectTitle}` : "");
             targetLoginId = data.loginId || data.id || existingLoginId || null;
+            attemptId = String(data.attemptId || data.sessionId || recordOptions.attemptId || recordOptions.sessionId || '').trim();
+            forceNewAttempt = forceNewAttempt || data.newAttempt === true || Boolean(attemptId);
         } else {
             cleanName = String(data || "").trim();
             cleanIp = String(ipAddress || "").trim();
@@ -183,7 +193,11 @@ class DatabaseService {
             if (existingLoginId) {
                 targetLoginId = existingLoginId;
             }
+            attemptId = String(recordOptions.attemptId || recordOptions.sessionId || '').trim();
+            forceNewAttempt = forceNewAttempt || Boolean(attemptId);
         }
+
+        if (forceNewAttempt) targetLoginId = null;
 
         if (!cleanName) cleanName = "Khách truy cập";
         if (!cleanIp || cleanIp === "Đang nhận diện..." || cleanIp === "—") cleanIp = "Chưa xác định";
@@ -208,7 +222,7 @@ class DatabaseService {
             device_info: cleanDevice,
             status: status,
             score_summary: scoreSummary,
-            session_id: sessionId,
+            session_id: attemptId || sessionId,
             last_active: nowIso,
             created_at: nowIso
         };
@@ -224,7 +238,7 @@ class DatabaseService {
             let localLogs = this._getLocalLogins();
             record.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
             const normName = cleanName.toLowerCase();
-            const existingLocal = localLogs.find((item) => {
+            const existingLocal = forceNewAttempt ? null : localLogs.find((item) => {
                 const itemName = String(item.player_name || '').trim().toLowerCase();
                 if (normName && normName !== 'khách truy cập' && itemName === normName) return true;
                 return item.session_id === sessionId || (cleanIp !== 'Chưa xác định' && item.ip_address === cleanIp && itemName === normName);
@@ -247,7 +261,7 @@ class DatabaseService {
                 let existingRows = [];
 
                 // 1. Nếu client đã lưu sẵn loginId của chính máy mình -> truy vấn trực tiếp theo ID
-                if (targetLoginId && !String(targetLoginId).startsWith('local_')) {
+                if (!forceNewAttempt && targetLoginId && !String(targetLoginId).startsWith('local_')) {
                     const { data: byId } = await this.client
                         .from('quiz_logins')
                         .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
@@ -259,7 +273,7 @@ class DatabaseService {
                 }
 
                 // 2. Nếu chưa có loginId, tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
-                if (existingRows.length === 0) {
+                if (!forceNewAttempt && existingRows.length === 0) {
                     if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                         const { data: byName } = await this.client
                             .from('quiz_logins')
@@ -286,14 +300,14 @@ class DatabaseService {
 
                 // Lọc đúng thiết bị này (cleanDevice) để cập nhật, bảo toàn thiết bị khác khi mở cùng lúc
                 const normDev = String(cleanDevice || '').trim().toLowerCase();
-                const sameDeviceRows = (targetLoginId && existingRows.length > 0 && existingRows[0].id === targetLoginId)
+                const sameDeviceRows = (!forceNewAttempt && targetLoginId && existingRows.length > 0 && existingRows[0].id === targetLoginId)
                     ? existingRows
                     : existingRows.filter((r) => {
                         const rDev = String(r.device_info || '').trim().toLowerCase();
                         return rDev === normDev;
                     });
 
-                if (sameDeviceRows.length > 0) {
+                if (!forceNewAttempt && sameDeviceRows.length > 0) {
                     const targetRow = sameDeviceRows[0];
                     const existingBanned = sameDeviceRows.find((r) => String(r.status || '').startsWith('BANNED'));
                     const existingScored = sameDeviceRows.find((r) => /điểm/i.test(String(r.score_summary || '')));
@@ -337,6 +351,7 @@ class DatabaseService {
                     device_info: cleanDevice,
                     status,
                     score_summary: scoreSummary,
+                    session_id: record.session_id,
                     last_active: nowIso,
                     created_at: nowIso
                 };
@@ -348,6 +363,14 @@ class DatabaseService {
 
                 if (!error && inserted && inserted[0]) {
                     const finalId = inserted[0].id;
+                    try {
+                        const localMirror = this._getLocalLogins();
+                        const localRow = localMirror.find((item) => item.id === record.id);
+                        if (localRow) {
+                            localRow.id = finalId;
+                            localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localMirror));
+                        }
+                    } catch (e) {}
                     const resObj = { id: finalId, success: true };
                     resObj.toString = () => finalId;
                     return resObj;

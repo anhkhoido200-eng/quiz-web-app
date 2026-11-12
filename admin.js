@@ -4113,8 +4113,8 @@
         if (isCompleted && percent === 0 && total > 0) percent = 100;
 
         let finalScore = null;
-        const scoreMatch = rawScore.match(/(\d+)\s*điểm/i);
-        if (scoreMatch) finalScore = parseInt(scoreMatch[1], 10);
+        const scoreMatch = rawScore.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
+        if (scoreMatch) finalScore = Number(scoreMatch[1].replace(',', '.'));
 
         const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
 
@@ -4122,9 +4122,10 @@
         let score10 = 0;
         if (isCompleted) {
             if (finalScore !== null && !isNaN(finalScore)) {
-                let s = Number(finalScore);
-                if (total > 0 && s > 10) s = (s / total) * 10;
-                else if (s > 10) s = 10;
+                // score_summary của app lưu điểm phần trăm (0–100).
+                // Quy đổi nhất quán sang thang 10, không dùng tổng câu để
+                // biến 75/50 thành 10/10.
+                const s = Number(finalScore) / 10;
                 score10 = Math.min(10, Math.max(0, Math.round(s * 10) / 10));
             } else if (total > 0) {
                 score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
@@ -4578,7 +4579,9 @@
             const scoreRaw = scoreMatch ? Number(scoreMatch[1].replace(',', '.')) : null;
             const correct = ratio ? Number(ratio[1]) : null;
             const total = ratio ? Number(ratio[2]) : null;
-            const score10 = Number.isFinite(scoreRaw) ? (scoreRaw > 10 ? scoreRaw / 10 : scoreRaw) : (correct !== null && total > 0 ? (correct / total) * 10 : null);
+            // App lưu `điểm` theo phần trăm 0–100. Chuẩn hóa một lần về /10;
+            // không suy đoán số <= 10 là đã ở thang /10 vì 10% phải là 1/10.
+            const score10 = Number.isFinite(scoreRaw) ? (scoreRaw / 10) : (correct !== null && total > 0 ? (correct / total) * 10 : null);
             const completed = /đã nộp bài|hoàn thành/i.test(combined) || Number.isFinite(scoreRaw) || Boolean(summary.match(/đúng\s*\d+\s*\/\s*\d+/i));
             const subjectMatch = status.match(/^\[(.*?)\]/) || summary.match(/^\[(.*?)\]/);
             const subject = subjectMatch ? subjectMatch[1].trim() : 'Chưa xác định';
@@ -4654,11 +4657,49 @@
     }
     async function fetchReportRows() {
         if (!state.client) throw new Error('Chưa kết nối Supabase.');
-        const { data, error } = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).limit(1000);
-        if (error) throw error;
+        const pageSize = 500;
+        const data = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const { data: page, error } = await state.client.from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .order('last_active', { ascending: false })
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            data.push(...(page || []));
+            if (!page || page.length < pageSize) break;
+        }
         const systemIds = new Set(Object.values(SYSTEM));
-        state.reportAllRows = (data || []).filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')));
+        state.reportAllRows = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')));
         return reportRowsFromData(data);
+    }
+    async function fetchAllLoginRows() {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const pageSize = 500;
+        const rows = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await state.client.from('quiz_logins').select('*').order('created_at', { ascending: true }).range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            rows.push(...(data || []));
+            if (!data || data.length < pageSize) break;
+        }
+        return rows;
+    }
+    async function archiveExamData() {
+        if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return;
+        const data = await fetchAllLoginRows();
+        const systemIds = new Set(Object.values(SYSTEM));
+        const records = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__'));
+        exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { schemaVersion: 1, archivedAt: new Date().toISOString(), recordCount: records.length, records });
+        const ids = records.map((row) => row.id).filter(Boolean);
+        let deleted = 0;
+        for (let offset = 0; offset < ids.length; offset += 100) {
+            const batch = ids.slice(offset, offset + 100);
+            const { data: removed, error } = await state.client.from('quiz_logins').delete().in('id', batch).select('id');
+            if (error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${error.message}`);
+            deleted += (removed || []).length;
+        }
+        if (deleted !== ids.length) throw new Error(`Chỉ xóa được ${deleted}/${ids.length} bản ghi; đã giữ lại backup để kiểm tra.`);
+        state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify(`Đã backup và dọn ${deleted} bản ghi lịch sử kỳ thi.`); await loadStudents();
     }
     async function loadScoreReport() {
         if (state.reportLoading) return;
@@ -5083,7 +5124,7 @@
          reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
          $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
          $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
-         reportAction('archive-data', async () => { if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return; const { data, error } = await state.client.from('quiz_logins').select('*'); if (error) throw error; const systemIds = Object.values(SYSTEM); const records = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__')); exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { archivedAt: new Date().toISOString(), records }); const ids = records.map((row) => row.id).filter(Boolean); if (ids.length) { const result = await state.client.from('quiz_logins').delete().in('id', ids); if (result.error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${result.error.message}`); } state.studentPulseMap.clear(); state.lastStudentsBodyHtml = ''; notify('Đã backup và dọn lịch sử kỳ thi.'); await loadStudents(); }, 'Đang dọn dữ liệu');
+          reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
          $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });

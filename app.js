@@ -24,6 +24,8 @@ class QuizApp {
         this.timerInterval = null;
         this.awayAutoSubmitTimer = null;
         this.idleAutoSubmitTimer = null;
+        this.loginRecordPromise = null;
+        this.quizAttemptId = null;
         this.isFinishingQuiz = false;
         this.isExamMode = false;
         this.examMinutes = 45;
@@ -4560,6 +4562,7 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         this.playerName = name;
+        this.currentLoginId = null;
         localStorage.setItem('quiz_user_name', name);
 
         const startButton = document.getElementById('btn-start-quiz');
@@ -4616,18 +4619,38 @@ Giải thích: Biên độ A = 5 cm.`;
             await this.fetchClientIp();
         }
 
+        // Bài mới phải có ID riêng, không để heartbeat/tiến độ chạm vào lượt cũ.
+        this.currentLoginId = null;
+        try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
+
         // Khởi tạo bài thi trên Cloud Supabase ở nền; không bắt học sinh chờ
         // truy vấn lookup + insert/update trước khi nhìn thấy câu hỏi.
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
-            window.dbService.recordLogin(this.playerName, this.clientIp, this.deviceInfo, this.getSubjectTitle(), "[Bắt đầu làm bài]", this.currentLoginId)
+            // Giữ promise để auto-submit có thể chờ ID cloud trước khi ghi điểm.
+            this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            this.loginRecordPromise = window.dbService.recordLogin({
+                playerName: this.playerName,
+                clientIp: this.clientIp,
+                deviceInfo: this.deviceInfo,
+                subjectTitle: this.getSubjectTitle(),
+                scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
+                attemptId: this.quizAttemptId,
+                newAttempt: true
+            })
                 .then((res) => {
                     const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
                     if (loginId) {
                         this.currentLoginId = loginId;
                         try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
                     }
+                    return loginId;
                 })
-                .catch((error) => console.warn("Lỗi lưu đăng nhập lên Supabase:", error));
+                .catch((error) => {
+                    console.warn("Lỗi lưu đăng nhập lên Supabase:", error);
+                    return null;
+                });
+        } else {
+            this.loginRecordPromise = Promise.resolve(null);
         }
 
         this.isRevengeMode = false;
@@ -5104,10 +5127,14 @@ Giải thích: Biên độ A = 5 cm.`;
                 windowUnfocused: typeof document.hasFocus === 'function' && !document.hasFocus()
             });
 
-            if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
+            const stillAway = Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
+            if (this.currentScreen !== 'quiz' || this.isFinishingQuiz || !stillAway) {
+                console.debug('[QuizApp] Away auto-submit skipped because focus returned.');
+                return;
+            }
 
             this.showToastNotification('⏰ Bạn đã rời khỏi bài thi quá 5 phút. Hệ thống đã tự động nộp bài để bảo toàn kết quả.', 'warning');
-            this.finishQuiz();
+            this.finishQuiz('away');
         }, delayMs);
     }
 
@@ -5121,7 +5148,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (this.currentScreen !== 'quiz' || this.isFinishingQuiz) return;
             console.debug('[QuizApp] Idle auto-submit timer fired:', { reason });
             this.showToastNotification('⏰ Bạn không thao tác trong 5 phút. Hệ thống đã tự động nộp bài để bảo toàn kết quả.', 'warning');
-            this.finishQuiz();
+            this.finishQuiz('idle');
         }, delayMs);
     }
 
@@ -5197,13 +5224,17 @@ Giải thích: Biên độ A = 5 cm.`;
         }
     }
 
-    finishQuiz() {
+    async finishQuiz(autoSubmitReason = '') {
         if (this.isFinishingQuiz) {
             console.debug('[QuizApp] Duplicate finishQuiz call ignored.');
             return;
         }
         this.isFinishingQuiz = true;
         this.stopStopwatch();
+
+        if (autoSubmitReason && this.loginRecordPromise) {
+            try { await this.loginRecordPromise; } catch (error) { console.warn('[QuizApp] Không chờ được bản ghi phiên trước khi tự nộp:', error); }
+        }
 
         const questions = this.allQuestions || [];
         let totalItems = 0;
@@ -5567,6 +5598,7 @@ Giải thích: Biên độ A = 5 cm.`;
         // Tuyệt đối không bắt học sinh phải thoát ra màn hình chính hay chọn lại môn
         let name = this.playerName || (document.getElementById('player-name-input')?.value.trim()) || localStorage.getItem('quiz_user_name') || 'Học sinh';
         this.playerName = name;
+        this.currentLoginId = null;
         try { localStorage.setItem('quiz_user_name', name); } catch (e) {}
 
         // Đảm bảo ngân hàng câu hỏi gốc đã sẵn sàng
@@ -5630,18 +5662,30 @@ Giải thích: Biên độ A = 5 cm.`;
             topSubTitle.textContent = `${this.getSubjectTitle()} (Phục thù ${mistakeQuestions.length} câu)`;
         }
 
+        // Đề phục thù là một lượt làm bài độc lập với lượt vừa chấm điểm.
+        this.currentLoginId = null;
+        try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
+
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
-            window.dbService.recordLogin(
-                this.playerName,
-                this.clientIp,
-                this.deviceInfo,
-                `[Phục thù] ${this.getSubjectTitle()}`,
-                `[Bắt đầu Đề Phục Thù: ${mistakeQuestions.length} câu]`,
-                this.currentLoginId
-            ).then((res) => {
+            this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            this.loginRecordPromise = window.dbService.recordLogin({
+                playerName: this.playerName,
+                clientIp: this.clientIp,
+                deviceInfo: this.deviceInfo,
+                subjectTitle: `[Phục thù] ${this.getSubjectTitle()}`,
+                scoreSummary: `[Bắt đầu Đề Phục Thù: ${mistakeQuestions.length} câu]`,
+                attemptId: this.quizAttemptId,
+                newAttempt: true
+            }).then((res) => {
                 const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
                 if (loginId) this.currentLoginId = loginId;
-            }).catch(() => {});
+                if (loginId) {
+                    try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                }
+                return loginId;
+            }).catch(() => null);
+        } else {
+            this.loginRecordPromise = Promise.resolve(null);
         }
 
         // Chuyển ngay sang màn hình thi và bắt đầu tính giờ
@@ -5671,6 +5715,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 this.cancelAwayAutoSubmitTimer('quiz screen active');
             }
         } else {
+            this.quizAttemptId = null;
             this.cancelAwayAutoSubmitTimer(`screen changed to ${screenName}`);
             this.cancelIdleAutoSubmitTimer(`screen changed to ${screenName}`);
         }
@@ -7427,6 +7472,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 this.startAwayAutoSubmitTimer('document hidden');
             } else {
                 this.cancelAwayAutoSubmitTimer('document visible');
+                this.resetIdleAutoSubmitTimer('document visible');
             }
         }, { passive: true });
 
@@ -7439,6 +7485,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         window.addEventListener('focus', () => {
             if (this.currentScreen === 'quiz') {
                 this.cancelAwayAutoSubmitTimer('window focus');
+                this.resetIdleAutoSubmitTimer('window focus');
             }
         }, { passive: true });
 

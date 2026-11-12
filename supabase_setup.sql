@@ -103,6 +103,16 @@ FOR SELECT
 TO anon, authenticated
 USING (is_deleted = false);
 
+-- Tương thích với SPA quản trị hiện tại. Trước production nên thay các policy
+-- này bằng Supabase Auth/RPC/Edge Function có role admin; không dùng anon FOR ALL.
+DROP POLICY IF EXISTS "Admin manage quiz_questions" ON public.quiz_questions;
+CREATE POLICY "Admin manage quiz_questions"
+ON public.quiz_questions
+FOR ALL
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
 -- Lưu ý bảo mật: thao tác quản trị (INSERT/UPDATE/DELETE trên câu hỏi,
 -- cấu hình và lịch sử) cần được chuyển sang Auth/RPC/Edge Function có quyền
 -- server-side trước khi gỡ các policy FOR ALL hiện hữu trên môi trường cũ.
