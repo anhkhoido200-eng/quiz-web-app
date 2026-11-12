@@ -662,10 +662,12 @@ class QuizApp {
             return r === 'parent' || r === 'phuhuynh' || r === 'observer' || r === 'observer_grade5';
         }
         if (role === 'grade5') {
-            return r === 'grade5' || r === 'class5' || r === 'lop5' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
+            // Học sinh Lớp 5, gói VIP và cả Người giám sát/theo dõi đều có quyền coi/làm đề Lớp 5
+            return r === 'grade5' || r === 'class5' || r === 'lop5' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin' || r === 'parent' || r === 'observer' || r === 'observer_grade5' || r === 'phuhuynh';
         }
         if (role === 'ai') {
-            return r === 'ai' || r === 'gemini' || r === 'troly_ai' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
+            // Học sinh AI, gói VIP và cả Người giám sát/theo dõi đều có quyền dùng Trợ lý AI
+            return r === 'ai' || r === 'gemini' || r === 'troly_ai' || r === 'all' || r === 'full' || r === 'combo' || r === 'admin' || r === 'parent' || r === 'observer' || r === 'observer_grade5' || r === 'phuhuynh';
         }
         if (role === 'all') {
             return r === 'all' || r === 'full' || r === 'combo' || r === 'admin';
@@ -792,7 +794,7 @@ class QuizApp {
                 const roleDesc = matched.role === 'admin'
                     ? 'Quản Trị Viên (Toàn quyền)'
                     : (isObserverRole
-                        ? 'Quyền Giám Sát Tiến Trình'
+                        ? 'Quyền Giám Sát (Kèm Xem Đề & Trợ Lý AI)'
                         : (matched.role === 'all' 
                             ? 'Gói VIP (Lớp 5 + Trợ lý AI)' 
                             : (matched.role === 'ai' ? 'Trợ lý AI' : 'Lớp 5')));
@@ -853,7 +855,7 @@ class QuizApp {
                 badge.classList.remove('hidden');
             } else if (isParent) {
                 badge.className = "text-[11px] font-bold px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30";
-                badge.innerHTML = '<i class="fa-solid fa-eye mr-1 text-amber-400"></i> Quyền Quan Sát Lớp 5';
+                badge.innerHTML = '<i class="fa-solid fa-eye mr-1 text-amber-400"></i> Giám sát (Xem Đề + AI)';
                 badge.classList.remove('hidden');
             } else if (canG5) {
                 const roleText = info?.role === 'all' ? 'VIP (Lớp 5 + AI)' : 'Lớp 5';
@@ -878,13 +880,13 @@ class QuizApp {
             if (badgesEl) {
                 let html = '';
                 if (this.hasTokenRole('grade5')) {
-                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Lớp 5</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Coi & Làm Đề Lớp 5</span>';
                 }
                 if (this.hasTokenRole('ai')) {
                     html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 text-purple-300 border border-purple-500/40">✓ Trợ lý AI</span>';
                 }
                 if (isParent) {
-                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40">✓ Quan sát Lớp 5</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40">✓ Giám sát tiến trình</span>';
                 }
                 badgesEl.innerHTML = html;
             }
@@ -943,7 +945,7 @@ class QuizApp {
             this.closeTokenModal();
             const isObserverRole = !this.hasTokenRole('admin') && (this.hasTokenRole('parent') || matched.role === 'parent' || matched.role === 'observer');
             if (isObserverRole) {
-                this.showToastNotification('🎉 Đã kích hoạt quyền theo dõi! Bạn có thể bấm nút [👁 Xem Tiến Trình] ở góc phải bất cứ lúc nào.', 'success');
+                this.showToastNotification('🎉 Đã kích hoạt quyền giám sát (kèm xem đề & Trợ lý AI)! Bạn có thể xem đề thi, hỏi AI và bấm nút [👁 Xem Tiến Trình] bất cứ lúc nào.', 'success');
             }
         }
     }
@@ -987,7 +989,7 @@ class QuizApp {
 
         // 4. Kiểm tra cache quyền token đã lưu trên thiết bị
         const cached = this.getCachedTokenInfo();
-        if (cached && (cached.role === 'all' || cached.role === 'grade5' || cached.role === 'class5')) {
+        if (cached && (cached.role === 'all' || cached.role === 'grade5' || cached.role === 'class5' || cached.role === 'parent' || cached.role === 'observer' || cached.role === 'observer_grade5')) {
             return true;
         }
 
@@ -1931,7 +1933,7 @@ class QuizApp {
         const tokenList = (window.dbService && Array.isArray(window.dbService.cachedTokens)) 
             ? window.dbService.cachedTokens 
             : [];
-        return tokenList.some(t => (t.role === 'ai' || t.role === 'all') && String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase() === currentIp);
+        return tokenList.some(t => (t.role === 'ai' || t.role === 'all' || t.role === 'parent' || t.role === 'observer' || t.role === 'observer_grade5') && String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase() === currentIp);
     }
 
     async adminToggleStudentAiRole(ip, studentName) {

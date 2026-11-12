@@ -2838,6 +2838,7 @@
                                         <i class="fa-solid fa-user-shield"></i>
                                     </span>
                                     <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</b>
+                                    <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;">Kèm Đề + AI</span>
                                 </div>
                             </td>
                             <td>
@@ -2880,6 +2881,7 @@
                             <div style="min-width:0;flex:1;">
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                                     <strong style="font-size:12px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</strong>
+                                    <span style="font-size:10px;color:var(--emerald);background:rgba(16,185,129,0.15);padding:1px 5px;border-radius:4px;font-weight:600;">Xem Đề + AI</span>
                                     <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
                                     ${ipDisplay}
                                 </div>
@@ -2972,7 +2974,7 @@
         const observerLink = `${origin}/?token=${encodeURIComponent(combinedToken)}&view=progress`;
         try {
             await navigator.clipboard.writeText(observerLink);
-            notify(`✅ Đã cấp quyền người theo dõi: "${combinedToken}"!\n📋 Đã tự động sao chép Link Theo Dõi.`);
+            notify(`✅ Đã cấp quyền người giám sát (kèm xem đề + AI): "${combinedToken}"!\n📋 Đã tự động sao chép Link Theo Dõi.`);
         } catch (e) {
             prompt('Sao chép Link Theo Dõi gửi người giám sát:', observerLink);
         }
@@ -3237,7 +3239,7 @@
 
         renderUnifiedAccess();
 
-        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Dành cho Người theo dõi / Phụ huynh)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5')));
+        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Kèm Xem Đề + AI)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5')));
         notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
     }
 
@@ -3874,27 +3876,42 @@
                 const targetChild = tbody.children[index];
                 tbody.insertBefore(tr, targetChild || null);
             } else {
+                const nameEl = tr.querySelector('td:first-child b');
+                if (nameEl && nameEl.textContent !== name) {
+                    nameEl.textContent = name;
+                }
+
+                const devCell = tr.children[2];
+                if (devCell && devCell.textContent !== dev) {
+                    devCell.textContent = dev;
+                }
+
                 const timeEl = tr.querySelector('.session-col-time');
                 if (timeEl && timeEl.textContent !== timeFormatted) {
                     timeEl.textContent = timeFormatted;
                 }
 
                 const statusEl = tr.querySelector('.session-col-status');
-                const badge = statusEl ? statusEl.querySelector('.table-status') : null;
-                if (badge) {
-                    if (!badge.classList.contains(status) || !badge.textContent.includes(statusText)) {
-                        badge.className = `table-status ${status}`;
-                        badge.innerHTML = `<i class="fa-solid fa-circle"></i> ${statusText}`;
+                if (statusEl) {
+                    // Tuyệt đối chỉ giữ huy hiệu kết nối (Online / Offline / Bị chặn), loại bỏ vĩnh viễn tag tiến độ [toán đề ...]
+                    const cleanStatusHtml = `<span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${statusText}</span>`;
+                    if (statusEl.innerHTML.trim() !== cleanStatusHtml) {
+                        statusEl.innerHTML = cleanStatusHtml;
+                    }
+                }
+                tr.querySelectorAll('div, small').forEach(el => {
+                    if (el.textContent.includes('Tiến độ:') || el.textContent.includes('câu (') || el.style?.color?.includes('cyan')) {
+                        el.remove();
+                    }
+                });
 
-                        const actionsEl = tr.querySelector('.table-actions');
-                        if (actionsEl) {
-                            const banBtn = actionsEl.querySelector('[data-ban-row], [data-unban-row]');
-                            if (status === 'banned' && banBtn && banBtn.hasAttribute('data-ban-row')) {
-                                banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
-                            } else if (status !== 'banned' && banBtn && banBtn.hasAttribute('data-unban-row')) {
-                                banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
-                            }
-                        }
+                const actionsEl = tr.querySelector('.table-actions');
+                if (actionsEl) {
+                    const banBtn = actionsEl.querySelector('[data-ban-row], [data-unban-row]');
+                    if (status === 'banned' && banBtn && banBtn.hasAttribute('data-ban-row')) {
+                        banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
+                    } else if (status !== 'banned' && banBtn && banBtn.hasAttribute('data-unban-row')) {
+                        banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
                     }
                 }
 
