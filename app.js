@@ -26,6 +26,8 @@ class QuizApp {
         this.idleAutoSubmitTimer = null;
         this.loginRecordPromise = null;
         this.quizAttemptId = null;
+        this.pendingStudentProgress = null;
+        this.progressSyncRunning = false;
         this.isFinishingQuiz = false;
         this.isExamMode = false;
         this.examMinutes = 45;
@@ -1162,7 +1164,7 @@ class QuizApp {
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
                     <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${this.escapeHtml(sub.semester || 'Đề cương')}</span>
-                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i>${sub.count || 0} câu</span>
+                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${Number(sub.count) || 0}">0</span> câu</span>
                 </div>
             `;
             fragment.appendChild(card);
@@ -1170,6 +1172,9 @@ class QuizApp {
 
         grid.innerHTML = '';
         grid.appendChild(fragment);
+        grid.querySelectorAll('[data-home-count]').forEach((element) => {
+            this.animateHomeCount(element, Number(element.dataset.homeCount) || 0);
+        });
         this.updateNavbarAndBadge();
     }
 
@@ -1212,7 +1217,10 @@ class QuizApp {
 
         if (navTitle) navTitle.textContent = 'Ôn tập';
         if (navSub) navSub.textContent = `Hệ Thống Ôn Luyện Thông Minh • ${name}`;
-        if (badge) badge.textContent = `${name} (${count} câu)`;
+        if (badge) {
+            badge.innerHTML = `${this.escapeHtml(name)} (<span id="home-subject-count" data-home-count="${count}">0</span> câu)`;
+            this.animateHomeCount('home-subject-count', count);
+        }
         if (topTitle) topTitle.textContent = name;
         const uploadSubLabel = document.getElementById('home-upload-current-sub-label');
         if (uploadSubLabel) uploadSubLabel.textContent = name;
@@ -4664,6 +4672,8 @@ Giải thích: Biên độ A = 5 cm.`;
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             // Giữ promise để auto-submit có thể chờ ID cloud trước khi ghi điểm.
             this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            this.pendingStudentProgress = null;
+            this.progressSyncRunning = false;
             const attemptId = this.quizAttemptId;
             this.loginRecordPromise = window.dbService.recordLogin({
                 playerName: this.playerName,
@@ -4676,9 +4686,10 @@ Giải thích: Biên độ A = 5 cm.`;
             })
                 .then((res) => {
                     const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
-                    if (loginId && this.quizAttemptId === attemptId && this.currentScreen === 'quiz') {
+                    if (loginId && this.quizAttemptId === attemptId) {
                         this.currentLoginId = loginId;
-                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
+                        try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                        this.flushStudentProgress(attemptId);
                     }
                     return loginId;
                 })
@@ -5112,9 +5123,35 @@ Giải thích: Biên độ A = 5 cm.`;
         if (progressText) progressText.textContent = `Đã làm ${attemptedCount}/${totalItems} ý (${percent}%)`;
         if (progressBar) progressBar.style.width = `${percent}%`;
 
-        // Đồng bộ lên Supabase Cloud
-        if (window.dbService && this.currentLoginId && typeof window.dbService.updateStudentProgress === 'function') {
-            window.dbService.updateStudentProgress(this.currentLoginId, attemptedCount, totalItems, correctCount, this.getSubjectTitle());
+        // Đồng bộ ngay lên Supabase; nếu attempt còn đang tạo thì giữ bản mới nhất
+        // và flush ngay sau khi loginRecordPromise trả về ID.
+        this.pendingStudentProgress = {
+            attemptedCount, totalItems, correctCount,
+            subjectName: this.getSubjectTitle(),
+            attemptId: this.quizAttemptId
+        };
+        this.flushStudentProgress(this.quizAttemptId);
+    }
+
+    async flushStudentProgress(attemptId = this.quizAttemptId) {
+        const progress = this.pendingStudentProgress;
+        if (!progress || !attemptId || progress.attemptId !== attemptId || !this.currentLoginId ||
+            !window.dbService || typeof window.dbService.updateStudentProgress !== 'function' || this.progressSyncRunning) return;
+        this.progressSyncRunning = true;
+        try {
+            await window.dbService.updateStudentProgress(
+                this.currentLoginId,
+                progress.attemptedCount,
+                progress.totalItems,
+                progress.correctCount,
+                progress.subjectName
+            );
+        } finally {
+            this.progressSyncRunning = false;
+            // Nếu học sinh chọn thêm trong lúc request trước đang chạy, gửi snapshot mới nhất.
+            if (this.pendingStudentProgress && this.pendingStudentProgress !== progress && this.currentScreen === 'quiz') {
+                this.flushStudentProgress(attemptId);
+            }
         }
     }
 
@@ -5714,6 +5751,8 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            this.pendingStudentProgress = null;
+            this.progressSyncRunning = false;
             const attemptId = this.quizAttemptId;
             this.loginRecordPromise = window.dbService.recordLogin({
                 playerName: this.playerName,
@@ -5725,9 +5764,13 @@ Giải thích: Biên độ A = 5 cm.`;
                 newAttempt: true
             }).then((res) => {
                 const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
-                if (loginId && this.quizAttemptId === attemptId && this.currentScreen === 'quiz') this.currentLoginId = loginId;
                 if (loginId && this.quizAttemptId === attemptId) {
-                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
+                    this.currentLoginId = loginId;
+                    try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                    this.flushStudentProgress(attemptId);
+                }
+                if (loginId && this.quizAttemptId === attemptId) {
+                    try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
                 }
                 return loginId;
             }).catch(() => null);
@@ -5977,7 +6020,10 @@ Giải thích: Biên độ A = 5 cm.`;
     updateTotalQuestionDisplay() {
         const count = this.allQuestions ? this.allQuestions.length : 0;
         const countText = document.getElementById('home-rules-count-text');
-        if (countText) countText.innerHTML = `Nội dung: <strong>${count} câu hỏi</strong> trắc nghiệm (Tự động chấm & hiện đáp án ngay).`;
+        if (countText) {
+            countText.innerHTML = 'Nội dung: <strong><span id="home-rules-count" data-home-count="' + count + '">0</span> câu hỏi</strong> trắc nghiệm (Tự động chấm & hiện đáp án ngay).';
+            this.animateHomeCount('home-rules-count', count);
+        }
     }
 
     renderFilterTabs() {
