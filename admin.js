@@ -4226,6 +4226,10 @@
         return new Date(timeMs).toLocaleDateString('vi-VN');
     }
 
+    function buildProgressDeleteButton(p) {
+        return `<button type="button" class="progress-card-delete" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa học sinh và lịch sử phiên" aria-label="Xóa ${esc(p.name)} và lịch sử phiên"><i class="fa-solid fa-trash-can"></i></button>`;
+    }
+
     async function renderGrade5ProgressMonitor() {
         const container = $('grade5-progress-cards');
         if (!container) return;
@@ -4338,9 +4342,12 @@
                             <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
                         </div>
                     </div>
-                    <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
-                        <i class="fa-solid fa-hourglass-half"></i> Đang chờ
-                    </span>
+                    <div class="progress-card-actions">
+                        <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+                            <i class="fa-solid fa-hourglass-half"></i> Đang chờ
+                        </span>
+                        ${buildProgressDeleteButton(p)}
+                    </div>
                 </div>
 
                 <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
@@ -4367,9 +4374,12 @@
                             <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
                         </div>
                     </div>
-                    <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                        <i class="fa-solid fa-circle-check"></i> Đã nộp bài
-                    </span>
+                    <div class="progress-card-actions">
+                        <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                            <i class="fa-solid fa-circle-check"></i> Đã nộp bài
+                        </span>
+                        ${buildProgressDeleteButton(p)}
+                    </div>
                 </div>
 
                 <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
@@ -4405,9 +4415,12 @@
                         <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
                     </div>
                 </div>
-                <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                    <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
-                </span>
+                <div class="progress-card-actions">
+                    <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                        <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
+                    </span>
+                    ${buildProgressDeleteButton(p)}
+                </div>
             </div>
 
             <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
@@ -4601,6 +4614,7 @@
         state.lastStudentsBodyHtml = '';
         notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
         await loadStudents();
+        await renderGrade5ProgressMonitor();
     }
     async function banIp(ip, reason = '') { if (!ip) return; const cleanIp = String(ip).trim(); const cleanReason = reason || 'Vi phạm quy chế ôn tập'; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }).eq('ip_address', cleanIp).select(); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: cleanIp, device_info: 'Manual Ban', status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }); if (error) return notify(error.message, true); } if ($('ban-ip-input')) $('ban-ip-input').value = ''; if ($('ban-reason-input')) $('ban-reason-input').value = ''; state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã chặn IP ${cleanIp}.`); await loadStudents(); }
     async function unbanIp(ip) { const cleanIp = String(ip || '').trim(); if (!cleanIp) return; const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', cleanIp); if (error) return notify(error.message, true); await state.client.from('quiz_logins').update({ status: 'Đang ôn tập', last_active: new Date().toISOString() }).eq('ip_address', cleanIp).like('status', 'BANNED%'); state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã mở khóa IP ${cleanIp}.`); await loadStudents(); }
@@ -5049,9 +5063,13 @@
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
         $('notice-input')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); runAction(broadcastNotice); } });
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
-         $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
-         $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
-         $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
+          $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
+          $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
+          $('grade5-progress-cards')?.addEventListener('click', (event) => {
+              const button = event.target.closest('[data-delete-progress-name]');
+              if (button) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice));
+          });
+          $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
          $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
          $('quick-observer-name')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
          document.querySelectorAll('[data-progress-grade]').forEach(btn => {

@@ -2020,6 +2020,38 @@ body.dark .library-toolbar input[type="search"] {
     transform: translateY(-2px);
 }
 
+.progress-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.progress-card-delete {
+    width: 30px;
+    height: 30px;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid rgba(239, 68, 68, .3);
+    border-radius: 9px;
+    background: rgba(239, 68, 68, .1);
+    color: #ef4444;
+    transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+.progress-card-delete:hover {
+    transform: translateY(-1px);
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, .2);
+}
+
+.progress-card-delete:focus-visible {
+    outline: 2px solid #ef4444;
+    outline-offset: 2px;
+}
+
 .data-table tbody tr {
     transition: background-color 0.25s ease, opacity 0.25s ease;
 }
