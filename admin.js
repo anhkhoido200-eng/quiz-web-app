@@ -4230,6 +4230,21 @@
         return `<button type="button" class="progress-card-delete" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(p.name)}"><i class="fa-solid fa-trash-can"></i></button>`;
     }
 
+    function setProgressEmptyState(container, visible, filterLabel = 'nào') {
+        if (!container) return;
+        let empty = container.querySelector('[data-progress-empty]');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.dataset.progressEmpty = 'true';
+            empty.style.cssText = 'grid-column:1 / -1;text-align:center;padding:48px 16px;background:var(--surface-2);border-radius:16px;border:1px dashed var(--border);';
+            empty.innerHTML = '<div style="font-size:32px;color:var(--amber,#f59e0b);margin-bottom:8px;"><i class="fa-solid fa-graduation-cap"></i></div><h3 style="font-size:16px;font-weight:700;color:var(--text);"></h3><p style="font-size:13px;color:var(--muted);margin-top:4px;max-width:420px;margin-inline:auto;">Khi học sinh vào làm các đề thi, số câu làm được và tiến trình sẽ hiển thị trực tiếp theo thời gian thực tại đây.</p>';
+            container.appendChild(empty);
+        }
+        const title = empty.querySelector('h3');
+        if (title) title.textContent = filterLabel ? `Chưa có học sinh ${filterLabel} nào` : 'Chưa có học sinh nào';
+        empty.hidden = !visible;
+    }
+
     async function renderGrade5ProgressMonitor() {
         const container = $('grade5-progress-cards');
         if (!container) return;
@@ -4301,16 +4316,9 @@
         renderQuickObservers();
 
         if (parsedList.length === 0) {
-            const filterLabel = filter === 'all' ? 'nào' : `Lớp ${filter}`;
-            container.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; background: var(--surface-2); border-radius: 16px; border: 1px dashed var(--border);">
-                    <div style="font-size: 32px; color: var(--amber,#f59e0b); margin-bottom: 8px;"><i class="fa-solid fa-graduation-cap"></i></div>
-                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text);">Chưa có học sinh ${filterLabel} nào</h3>
-                    <p style="font-size: 13px; color: var(--muted); margin-top: 4px; max-width: 420px; margin-inline: auto;">
-                        Khi học sinh vào làm các đề thi, số câu làm được và tiến trình sẽ hiển thị trực tiếp theo thời gian thực tại đây.
-                    </p>
-                </div>
-            `;
+            const filterLabel = filter === 'all' ? '' : `Lớp ${filter}`;
+            container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+            setProgressEmptyState(container, true, filterLabel);
             state.progressLoading = false;
             if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
             return;
@@ -4324,6 +4332,7 @@
             return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
         });
 
+        setProgressEmptyState(container, false);
         renderGrade5CardsSmoothly(container, sortedList, nowMs);
         state.progressLoading = false;
         if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
@@ -5088,7 +5097,7 @@
               event.stopPropagation();
               const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
               const confirmed = window.confirm(`Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`);
-              if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId, true));
+               if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, '', true));
           });
           $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
          $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
@@ -5245,7 +5254,7 @@
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;
             }
-            showApp(); configureAdminLabels(); bindEvents(); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
+            showApp(); configureAdminLabels(); bindEvents(); switchView('overview'); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
             await loadSubjects();
             await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();

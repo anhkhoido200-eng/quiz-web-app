@@ -1030,7 +1030,6 @@ body.light-theme footer {
 }
 .quiz-option-tile:hover:not(:disabled),
 .quiz-option-tile:active:not(:disabled) { transform: translateZ(0); }
-.option-selected-correct, .option-selected-wrong { animation: none !important; }
 .quiz-option-content { min-width: 0; }
 .quiz-question-card img { display: block; aspect-ratio: 16 / 9; min-height: 8rem; object-fit: contain; background: rgba(15, 23, 42, .35); }
 /* ==========================================================================
