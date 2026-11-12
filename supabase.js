@@ -266,7 +266,7 @@ class DatabaseService {
                 if (!forceNewAttempt && targetLoginId && !String(targetLoginId).startsWith('local_')) {
                     const { data: byId } = await this.client
                         .from('quiz_logins')
-                         .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
+                         .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                         .eq('id', targetLoginId)
                         .limit(1);
                     if (Array.isArray(byId) && byId.length > 0) {
@@ -274,21 +274,14 @@ class DatabaseService {
                     }
                 }
 
-                // 2. Nếu chưa có loginId, tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
-                if (!forceNewAttempt && existingRows.length === 0 && isVisitorAttempt) {
-                    const { data: bySession } = await this.client
-                        .from('quiz_logins')
-                        .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
-                        .eq('session_id', record.session_id)
-                        .limit(1);
-                    if (Array.isArray(bySession)) existingRows = bySession.filter((r) => !systemIds.includes(r.id));
-                }
-
+                // 2. Visitor records use their own loginId. Do not query the optional
+                // session_id column here because older deployments do not have it.
+                // This also avoids a visitor presence request racing with a quiz attempt.
                 if (!forceNewAttempt && existingRows.length === 0 && !isVisitorAttempt) {
                     if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                         const { data: byName } = await this.client
                             .from('quiz_logins')
-                             .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
+                             .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                             .ilike('player_name', cleanName)
                             .order('last_active', { ascending: false })
                             .limit(20);
@@ -298,7 +291,7 @@ class DatabaseService {
                     } else if (cleanIp && cleanIp !== 'Chưa xác định') {
                         const { data: byIp } = await this.client
                             .from('quiz_logins')
-                             .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
+                             .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                             .eq('ip_address', cleanIp)
                             .eq('player_name', 'Khách truy cập')
                             .order('last_active', { ascending: false })
@@ -367,6 +360,14 @@ class DatabaseService {
                     created_at: nowIso
                 };
                 let { data: inserted, error } = await this.client.from('quiz_logins').insert([payload]).select('id');
+                // Existing deployments may not have session_id yet. Retry once without
+                // the optional column so monitoring/submission keeps working safely.
+                if (error && (error.code === '42703' || /session_id|column .* does not exist/i.test(error.message || ''))) {
+                    const legacyPayload = { ...payload };
+                    delete legacyPayload.session_id;
+                    ({ data: inserted, error } = await this.client.from('quiz_logins').insert([legacyPayload]).select('id'));
+                    console.warn('[DatabaseService] Supabase chưa có quiz_logins.session_id; đã dùng payload tương thích schema cũ. Chạy supabase_setup.sql để bật attempt ID cloud.');
+                }
 
                 if (error && /policy|permission|not allowed/i.test(error.message || '')) {
                     console.warn('[DatabaseService] Supabase từ chối ghi phiên, không dùng fallback giả online.');
@@ -651,11 +652,20 @@ class DatabaseService {
         };
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data, error } = await this.client
+                let { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
                     .order('last_active', { ascending: false })
                     .limit(limit);
+
+                // Keep compatibility with databases that still have older column names.
+                if (error && /column .* does not exist|session_id/i.test(error.message || '')) {
+                    ({ data, error } = await this.client
+                        .from('quiz_logins')
+                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                        .order('last_active', { ascending: false })
+                        .limit(limit));
+                }
 
                 if (!error && Array.isArray(data)) {
                     console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length });

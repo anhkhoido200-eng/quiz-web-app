@@ -2468,7 +2468,10 @@
             const isActive = panel.dataset.viewPanel === view;
             panel.classList.toggle('is-visible', isActive);
             panel.classList.remove('view-enter');
-            if (isActive) requestAnimationFrame(() => panel.classList.add('view-enter'));
+            if (isActive) {
+                // Force a fresh animation cycle even when the same tab is opened repeatedly.
+                requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.add('view-enter')));
+            }
         });
         document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === view));
         $('view-title') && ($('view-title').textContent = titles[view] || view);
@@ -3986,7 +3989,8 @@
         const data = [];
         let error = null;
         for (let offset = 0; ; offset += 500) {
-            const page = await state.client.from('quiz_logins').select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).range(offset, offset + 499);
+            // session_id is optional on older projects; the monitor does not depend on it.
+            const page = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).range(offset, offset + 499);
             if (page.error) { error = page.error; break; }
             data.push(...(page.data || []));
             if (!page.data || page.data.length < 500) break;

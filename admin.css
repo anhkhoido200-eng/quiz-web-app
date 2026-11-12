@@ -2079,3 +2079,8 @@ body.dark .library-toolbar input[type="search"] {
 }
 /* Report leaderboard pagination */
 .leaderboard-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px;color:var(--muted);font-size:11px}.leaderboard-pagination .button{padding:8px 11px}.leaderboard-pagination .button:disabled{opacity:.5;cursor:not-allowed}
+
+/* View state must be explicit so hidden panels cannot cover the active tab. */
+.content-wrap > .view{display:none}
+.content-wrap > .view.is-visible{display:block}
+.content-wrap > .view.view-enter{will-change:opacity,transform}
