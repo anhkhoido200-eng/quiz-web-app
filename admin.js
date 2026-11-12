@@ -4620,11 +4620,17 @@
         if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
         if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa toàn bộ thông tin học sinh?', message: cleanLoginId ? `Xóa thông tin phiên đang hiển thị của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.` : `Xóa toàn bộ ${ids.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nTất cả phiên mang tên này sẽ bị xóa. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
         if (ids.length) {
-            const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
-            if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
-            const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', ids);
-            if (verifyError) return notify(`Không thể xác minh sau khi xóa: ${verifyError.message}`, true);
-            if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`, true);
+            // Xóa theo lô nhỏ để URL query của Supabase không vượt giới hạn khi
+            // một học sinh có nhiều phiên cũ trùng tên.
+            const chunkSize = 50;
+            for (let offset = 0; offset < ids.length; offset += chunkSize) {
+                const chunk = ids.slice(offset, offset + chunkSize);
+                const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
+                if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
+                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', chunk);
+                if (verifyError) return notify(`Không thể xác minh sau khi xóa: ${verifyError.message}`, true);
+                if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`, true);
+            }
         }
         // Xóa bản ghi cục bộ cùng tên để dữ liệu không quay lại khi tải fallback.
         try {
