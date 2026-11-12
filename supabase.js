@@ -226,6 +226,7 @@ class DatabaseService {
             last_active: nowIso,
             created_at: nowIso
         };
+        const isVisitorAttempt = String(record.session_id || '').startsWith('visitor_');
 
         // 1. Lưu LocalStorage tức thì
         try {
@@ -239,6 +240,7 @@ class DatabaseService {
             record.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
             const normName = cleanName.toLowerCase();
             const existingLocal = forceNewAttempt ? null : localLogs.find((item) => {
+                if (isVisitorAttempt) return item.session_id === record.session_id;
                 const itemName = String(item.player_name || '').trim().toLowerCase();
                 if (normName && normName !== 'khách truy cập' && itemName === normName) return true;
                 return item.session_id === sessionId || (cleanIp !== 'Chưa xác định' && item.ip_address === cleanIp && itemName === normName);
@@ -264,7 +266,7 @@ class DatabaseService {
                 if (!forceNewAttempt && targetLoginId && !String(targetLoginId).startsWith('local_')) {
                     const { data: byId } = await this.client
                         .from('quiz_logins')
-                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
+                         .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
                         .eq('id', targetLoginId)
                         .limit(1);
                     if (Array.isArray(byId) && byId.length > 0) {
@@ -273,11 +275,20 @@ class DatabaseService {
                 }
 
                 // 2. Nếu chưa có loginId, tìm theo tên học sinh (hoặc theo IP nếu là Khách truy cập)
-                if (!forceNewAttempt && existingRows.length === 0) {
+                if (!forceNewAttempt && existingRows.length === 0 && isVisitorAttempt) {
+                    const { data: bySession } = await this.client
+                        .from('quiz_logins')
+                        .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
+                        .eq('session_id', record.session_id)
+                        .limit(1);
+                    if (Array.isArray(bySession)) existingRows = bySession.filter((r) => !systemIds.includes(r.id));
+                }
+
+                if (!forceNewAttempt && existingRows.length === 0 && !isVisitorAttempt) {
                     if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                         const { data: byName } = await this.client
                             .from('quiz_logins')
-                            .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
+                             .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
                             .ilike('player_name', cleanName)
                             .order('last_active', { ascending: false })
                             .limit(20);
@@ -287,7 +298,7 @@ class DatabaseService {
                     } else if (cleanIp && cleanIp !== 'Chưa xác định') {
                         const { data: byIp } = await this.client
                             .from('quiz_logins')
-                            .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
+                             .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active')
                             .eq('ip_address', cleanIp)
                             .eq('player_name', 'Khách truy cập')
                             .order('last_active', { ascending: false })
@@ -474,7 +485,8 @@ class DatabaseService {
         try {
             let list = this._getLocalLogins();
             if (list.length > 0) {
-                const item = list.find(l => l.id === loginId) || list[0];
+            const item = list.find(l => l.id === loginId);
+            if (!item) return;
                 if (!String(item.status || '').startsWith('BANNED')) {
                     item.status = status;
                 }
@@ -641,7 +653,7 @@ class DatabaseService {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                    .select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
                     .order('last_active', { ascending: false })
                     .limit(limit);
 
@@ -722,12 +734,17 @@ class DatabaseService {
             if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập trước khi xóa: ${selectError.message}`);
 
             const ids = (data || [])
-                .filter(item => !systemIds.includes(item.id) && (!String(item.player_name || '').startsWith('__') || item.player_name === '__SYSTEM_NOTICE__'))
+                .filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__'))
                 .map(item => item.id)
                 .filter(Boolean);
             if (ids.length > 0) {
-                const { error: deleteError } = await this.client.from('quiz_logins').delete().in('id', ids);
-                if (deleteError) throw new Error(`Không thể xóa lịch sử đăng nhập: ${deleteError.message}`);
+                for (let offset = 0; offset < ids.length; offset += 100) {
+                    const { error: deleteError } = await this.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));
+                    if (deleteError) throw new Error(`Không thể xóa lịch sử đăng nhập: ${deleteError.message}`);
+                }
+                const { data: remaining, error: verifyError } = await this.client.from('quiz_logins').select('id').in('id', ids);
+                if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
+                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`);
             }
         }
         localStorage.removeItem(STORAGE_KEYS.LOCAL_LOGINS);
@@ -1322,23 +1339,14 @@ class DatabaseService {
             last_active: nowIso
         };
 
-        try {
-            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: noticeId,
-                message: cleanMsg,
-                targetIp: cleanTargetIp,
-                targetName: cleanTargetName,
-                timestamp: Date.now()
-            }));
-        } catch (e) {}
-
         if (this.isSupabaseActive && this.client) {
             try {
                 // Dọn các thông báo cũ trước khi chèn thông báo mới để bảng quiz_logins luôn sạch
-                await this.client
+                const { error: deleteError } = await this.client
                     .from('quiz_logins')
                     .delete()
                     .eq('player_name', '__SYSTEM_NOTICE__');
+                if (deleteError) throw deleteError;
                 const { error } = await this.client
                     .from('quiz_logins')
                     .insert([record]);
@@ -1348,6 +1356,13 @@ class DatabaseService {
                 return { success: false, error: err.message };
             }
         }
+
+        try {
+            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
+                id: noticeId, message: cleanMsg, targetIp: cleanTargetIp,
+                targetName: cleanTargetName, timestamp: Date.now()
+            }));
+        } catch (e) { console.warn('[DatabaseService] Không lưu được cache thông báo:', e); }
 
         return { success: true, id: noticeId, message: cleanMsg, targetIp: cleanTargetIp, targetName: cleanTargetName };
     }
@@ -2078,7 +2093,7 @@ class DatabaseService {
             .map(item => {
                 let score = 0;
                 const scoreMatch = (item.score_summary || "").match(/(\d+(?:\.\d+)?)\s*điểm/i);
-                if (scoreMatch) score = parseFloat(scoreMatch[1]);
+                if (scoreMatch) score = Math.min(100, Math.max(0, parseFloat(scoreMatch[1])));
 
                 let correctCount = '-';
                 let totalItems = '-';

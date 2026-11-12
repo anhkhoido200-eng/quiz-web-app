@@ -574,11 +574,11 @@ class QuizApp {
         try { await this.initMaintenance(); } catch (e) { console.warn(e); }
         // Khôi phục hoặc tạo phiên hiện diện ngay khi mở trang web trên thiết bị
         try {
-            this.currentLoginId = sessionStorage.getItem('quiz_current_login_id') || null;
+            this.visitorLoginId = sessionStorage.getItem('quiz_visitor_login_id') || null;
         } catch (e) {
-            this.currentLoginId = null;
+            this.visitorLoginId = null;
         }
-        if (!this.currentLoginId) {
+        if (!this.visitorLoginId) {
             this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
         }
         this.startRealtimeHeartbeat();
@@ -4166,7 +4166,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         let finalScore = null;
         const scoreMatch = rawScore.match(/(\d+)\s*điểm/i);
-        if (scoreMatch) finalScore = parseInt(scoreMatch[1], 10);
+        if (scoreMatch) finalScore = Number(scoreMatch[1].replace(',', '.'));
 
         const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
 
@@ -4174,9 +4174,8 @@ Giải thích: Biên độ A = 5 cm.`;
         let score10 = 0;
         if (isCompleted) {
             if (finalScore !== null && !isNaN(finalScore)) {
-                let s = Number(finalScore);
-                if (total > 0 && s > 10) s = (s / total) * 10;
-                else if (s > 10) s = 10;
+                // score_summary stores percentage points (0-100), never raw points.
+                const s = Number(finalScore) / 10;
                 score10 = Math.min(10, Math.max(0, Math.round(s * 10) / 10));
             } else if (total > 0) {
                 score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
@@ -4628,20 +4627,21 @@ Giải thích: Biên độ A = 5 cm.`;
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             // Giữ promise để auto-submit có thể chờ ID cloud trước khi ghi điểm.
             this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            const attemptId = this.quizAttemptId;
             this.loginRecordPromise = window.dbService.recordLogin({
                 playerName: this.playerName,
                 clientIp: this.clientIp,
                 deviceInfo: this.deviceInfo,
                 subjectTitle: this.getSubjectTitle(),
                 scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
-                attemptId: this.quizAttemptId,
+                attemptId,
                 newAttempt: true
             })
                 .then((res) => {
                     const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
-                    if (loginId) {
+                    if (loginId && this.quizAttemptId === attemptId && this.currentScreen === 'quiz') {
                         this.currentLoginId = loginId;
-                        try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
                     }
                     return loginId;
                 })
@@ -5087,12 +5087,13 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (this.isExamMode) {
             this.examSecondsRemaining = this.examMinutes * 60;
+            if (timerDisplay) timerDisplay.textContent = `${String(this.examMinutes).padStart(2, '0')}:00`;
             this.timerInterval = setInterval(() => {
                 this.examSecondsRemaining--;
                 if (this.examSecondsRemaining <= 0) {
                     clearInterval(this.timerInterval);
                     this.showAlertModal("⏰ ĐÃ HẾT GIỜ LÀM BÀI! Hệ thống đang tự động nộp bài của bạn.");
-                    this.finishQuiz();
+                    this.finishQuiz('time-expired');
                     return;
                 }
                 const m = Math.floor(this.examSecondsRemaining / 60);
@@ -5232,8 +5233,13 @@ Giải thích: Biên độ A = 5 cm.`;
         this.isFinishingQuiz = true;
         this.stopStopwatch();
 
-        if (autoSubmitReason && this.loginRecordPromise) {
-            try { await this.loginRecordPromise; } catch (error) { console.warn('[QuizApp] Không chờ được bản ghi phiên trước khi tự nộp:', error); }
+        if (this.loginRecordPromise) {
+            try {
+                await Promise.race([
+                    this.loginRecordPromise,
+                    new Promise((resolve) => window.setTimeout(resolve, 5000))
+                ]);
+            } catch (error) { console.warn('[QuizApp] Không chờ được bản ghi phiên trước khi nộp:', error); }
         }
 
         const questions = this.allQuestions || [];
@@ -5271,10 +5277,12 @@ Giải thích: Biên độ A = 5 cm.`;
         // Cập nhật màn hình Kết Quả
         const scoreEl = document.getElementById('result-score');
         const ratioEl = document.getElementById('result-correct-ratio');
+        const score10El = document.getElementById('result-score-10');
         const timeSpentEl = document.getElementById('result-time-spent');
         const greetingEl = document.getElementById('result-player-greeting');
 
-        if (scoreEl) scoreEl.textContent = '0';
+        if (scoreEl) scoreEl.textContent = '0%';
+        if (score10El) score10El.textContent = '0.0';
         if (ratioEl) ratioEl.textContent = `${correctCount}/${totalItems}`;
 
         let secondsUsed = this.secondsElapsed;
@@ -5336,6 +5344,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.renderReviewList();
         this.switchScreen('result');
         this.animateResultScore(finalScore);
+        if (score10El) score10El.textContent = (finalScore / 10).toFixed(1);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -5346,7 +5355,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const target = Math.max(0, Number(targetScore) || 0);
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         if (reduceMotion) {
-            scoreEl.textContent = String(target);
+            scoreEl.textContent = `${target}%`;
             return;
         }
 
@@ -5355,7 +5364,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const tick = (now) => {
             const progress = Math.min((now - start) / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
-            scoreEl.textContent = String(Math.round(target * eased));
+            scoreEl.textContent = `${Math.round(target * eased)}%`;
             if (progress < 1) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -5668,19 +5677,20 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            const attemptId = this.quizAttemptId;
             this.loginRecordPromise = window.dbService.recordLogin({
                 playerName: this.playerName,
                 clientIp: this.clientIp,
                 deviceInfo: this.deviceInfo,
                 subjectTitle: `[Phục thù] ${this.getSubjectTitle()}`,
                 scoreSummary: `[Bắt đầu Đề Phục Thù: ${mistakeQuestions.length} câu]`,
-                attemptId: this.quizAttemptId,
+                attemptId,
                 newAttempt: true
             }).then((res) => {
                 const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
-                if (loginId) this.currentLoginId = loginId;
-                if (loginId) {
-                    try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                if (loginId && this.quizAttemptId === attemptId && this.currentScreen === 'quiz') this.currentLoginId = loginId;
+                if (loginId && this.quizAttemptId === attemptId) {
+                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
                 }
                 return loginId;
             }).catch(() => null);
@@ -5903,16 +5913,26 @@ Giải thích: Biên độ A = 5 cm.`;
 
     async recordVisitorPresence(statusText = 'Đang xem trang chủ') {
         if (!window.dbService || typeof window.dbService.recordLogin !== 'function') return;
+        if (this.currentScreen === 'quiz' || this.isFinishingQuiz || this.quizAttemptId) return;
         if (!this.clientIp || this.clientIp.startsWith('Đang')) {
             await this.fetchClientIp();
         }
         const name = this.playerName || (document.getElementById('player-name-input')?.value || '').trim() || 'Khách truy cập';
         try {
-            const res = await window.dbService.recordLogin(name, this.clientIp, this.deviceInfo, statusText, "", this.currentLoginId);
+            if (this.currentScreen === 'quiz' || this.isFinishingQuiz || this.quizAttemptId) return;
+            const res = await window.dbService.recordLogin({
+                playerName: name,
+                clientIp: this.clientIp,
+                deviceInfo: this.deviceInfo,
+                subjectTitle: statusText,
+                scoreSummary: '',
+                sessionId: this.visitorSessionId || (this.visitorSessionId = `visitor_${this.clientIp}_${this.deviceInfo}`),
+                loginId: this.visitorLoginId || null
+            });
             const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
             if (loginId) {
-                this.currentLoginId = loginId;
-                try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                this.visitorLoginId = loginId;
+                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
             }
         } catch (e) { }
     }

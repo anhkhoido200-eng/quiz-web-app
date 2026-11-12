@@ -2041,3 +2041,41 @@ body.dark .library-toolbar input[type="search"] {
 @media(max-width:900px){.admin-body .report-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-body .report-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.admin-body .report-grid{grid-template-columns:1fr}.admin-body .report-card{min-height:160px}.admin-body .report-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-body .report-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-body .report-detail-grid{grid-template-columns:1fr}.admin-body .report-hero{align-items:flex-start;flex-direction:column}.admin-body .report-hero-actions{width:100%;justify-content:space-between}.admin-body .panel-title{align-items:flex-start;flex-direction:column}.admin-body .report-controls{width:100%}.admin-body .report-select-label{flex:1}.admin-body .report-select-label select{flex:1;min-width:0}.admin-body .report-filter-actions{width:100%;flex-wrap:wrap}.admin-body .report-filter-label{flex:1}.admin-body .report-filter-label select{flex:1;min-width:0}}
 @media(prefers-reduced-motion:reduce){.admin-body .report-card{transition:none}.admin-body .report-card:hover{transform:none}}
+
+/* Motion khi chuyển tab: khôi phục nhịp xuất hiện cho chữ, số liệu và panel. */
+.admin-body .view-enter .eyebrow,
+.admin-body .view-enter .page-heading h1,
+.admin-body .view-enter .page-heading p:not(.eyebrow),
+.admin-body .view-enter .heading-actions,
+.admin-body .view-enter .report-hero h1,
+.admin-body .view-enter .report-hero p:not(.eyebrow),
+.admin-body .view-enter .report-hero-actions {
+    animation: adminTextRise .52s cubic-bezier(.22,1,.36,1) both;
+}
+.admin-body .view-enter .page-heading h1{animation-delay:.06s}
+.admin-body .view-enter .page-heading p:not(.eyebrow){animation-delay:.12s}
+.admin-body .view-enter .heading-actions{animation-delay:.18s}
+.admin-body .view-enter .stat-grid .metric-card{
+    animation: adminCardRise .58s cubic-bezier(.22,1,.36,1) both;
+}
+.admin-body .view-enter .stat-grid .metric-card:nth-child(1){animation-delay:.08s}
+.admin-body .view-enter .stat-grid .metric-card:nth-child(2){animation-delay:.14s}
+.admin-body .view-enter .stat-grid .metric-card:nth-child(3){animation-delay:.20s}
+.admin-body .view-enter .stat-grid .metric-card:nth-child(4){animation-delay:.26s}
+.admin-body .view-enter .stat-grid .metric-icon i{animation:adminIconFloat .7s ease-out both;animation-delay:.25s}
+.admin-body .view-enter .overview-grid > .panel,
+.admin-body .view-enter .overview-grid.lower > .panel{
+    animation: adminPanelRise .56s cubic-bezier(.22,1,.36,1) both;
+}
+.admin-body .view-enter .overview-grid > .panel:nth-child(2){animation-delay:.12s}
+.admin-body .view-enter .overview-grid.lower > .panel:nth-child(1){animation-delay:.18s}
+.admin-body .view-enter .overview-grid.lower > .panel:nth-child(2){animation-delay:.24s}
+@keyframes adminTextRise{from{opacity:0;transform:translateY(12px);filter:blur(3px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+@keyframes adminCardRise{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes adminPanelRise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes adminIconFloat{from{opacity:0;transform:translateY(5px) scale(.75) rotate(-8deg)}to{opacity:1;transform:translateY(0) scale(1) rotate(0)}}
+@media(prefers-reduced-motion:reduce){
+    .admin-body .view-enter .eyebrow,.admin-body .view-enter .page-heading h1,.admin-body .view-enter .page-heading p:not(.eyebrow),.admin-body .view-enter .heading-actions,.admin-body .view-enter .report-hero h1,.admin-body .view-enter .report-hero p:not(.eyebrow),.admin-body .view-enter .report-hero-actions,.admin-body .view-enter .stat-grid .metric-card,.admin-body .view-enter .stat-grid .metric-icon i,.admin-body .view-enter .overview-grid > .panel,.admin-body .view-enter .overview-grid.lower > .panel{animation:none!important}
+}
+/* Report leaderboard pagination */
+.leaderboard-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px;color:var(--muted);font-size:11px}.leaderboard-pagination .button{padding:8px 11px}.leaderboard-pagination .button:disabled{opacity:.5;cursor:not-allowed}

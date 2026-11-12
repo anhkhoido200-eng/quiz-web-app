@@ -21,7 +21,7 @@
         page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
-        tokens: [], reportRows: null, reportAllRows: [], reportLoading: false,
+        tokens: [], reportRows: null, reportAllRows: [], reportLoading: false, reportLeaderboardPage: 1,
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
@@ -880,6 +880,18 @@
         animateMetricValue('stat-grade5', grade5);
         animateMetricValue('stat-grade11', grade11);
         $('nav-question-count') && ($('nav-question-count').textContent = state.questions.length);
+    }
+
+    function replayOverviewMetrics() {
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        ['stat-total', 'stat-grade5', 'stat-grade11', 'stat-online'].forEach((id) => {
+            const element = $(id);
+            if (!element) return;
+            const value = Number(element.dataset.metricValue || element.textContent || 0) || 0;
+            cancelAnimationFrame(element.metricAnimationFrame);
+            element.dataset.metricValue = '0';
+            animateMetricValue(id, value);
+        });
     }
 
     function typeChip(q) {
@@ -2462,6 +2474,10 @@
         $('view-title') && ($('view-title').textContent = titles[view] || view);
         $('sidebar')?.classList.remove('is-open');
 
+        if (view === 'overview') {
+            requestAnimationFrame(() => replayOverviewMetrics());
+        }
+
         if (view === 'progress') {
             renderGrade5ProgressMonitor();
 
@@ -3967,7 +3983,14 @@
             state.adminConfig.masterIp,
             ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)
         ].map((ip) => String(ip || '').trim()).filter(Boolean));
-        const { data, error } = await state.client.from('quiz_logins').select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).limit(200);
+        const data = [];
+        let error = null;
+        for (let offset = 0; ; offset += 500) {
+            const page = await state.client.from('quiz_logins').select('id, session_id, player_name, ip_address, device_info, status, score_summary, last_active, created_at').order('last_active', { ascending: false }).range(offset, offset + 499);
+            if (page.error) { error = page.error; break; }
+            data.push(...(page.data || []));
+            if (!page.data || page.data.length < 500) break;
+        }
         if (error) {
             console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);
             return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
@@ -4429,28 +4452,8 @@
     async function broadcastNotice() {
         const message = $('notice-input')?.value.trim();
         if (!message) return notify('Nhập nội dung thông báo.', true);
-        const noticeId = crypto.randomUUID();
-        const nowIso = new Date().toISOString();
-        try {
-            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: noticeId,
-                message,
-                targetIp: 'ALL',
-                targetName: '',
-                timestamp: Date.now()
-            }));
-        } catch (e) {}
-        await state.client.from('quiz_logins').delete().eq('player_name', '__SYSTEM_NOTICE__');
-        const { error } = await state.client.from('quiz_logins').insert({
-            id: noticeId,
-            player_name: '__SYSTEM_NOTICE__',
-            ip_address: 'ALL',
-            device_info: 'ALL',
-            status: 'ACTIVE',
-            score_summary: message,
-            last_active: nowIso
-        });
-        if (error) return notify(`Không thể phát thông báo: ${error.message}`, true);
+        const result = await window.dbService.sendBroadcastNotice(message, 'ALL', '');
+        if (!result?.success) return notify(`Không thể phát thông báo: ${result?.error || 'Lỗi không xác định'}`, true);
         if ($('notice-input')) $('notice-input').value = '';
         addActivityLog('Phát thông báo toàn phòng', message, 'broadcast');
         notify('Đã phát thông báo tới toàn bộ học sinh.');
@@ -4472,28 +4475,8 @@
         });
         if (message === null || !message.trim()) return;
         const cleanMsg = message.trim();
-        const noticeId = crypto.randomUUID();
-        const nowIso = new Date().toISOString();
-        try {
-            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
-                id: noticeId,
-                message: cleanMsg,
-                targetIp: targetIp || 'ALL',
-                targetName: cleanName,
-                timestamp: Date.now()
-            }));
-        } catch (e) {}
-        await state.client.from('quiz_logins').delete().eq('player_name', '__SYSTEM_NOTICE__');
-        const { error } = await state.client.from('quiz_logins').insert({
-            id: noticeId,
-            player_name: '__SYSTEM_NOTICE__',
-            ip_address: targetIp || 'ALL',
-            device_info: cleanName || '5s',
-            status: 'ACTIVE',
-            score_summary: cleanMsg,
-            last_active: nowIso
-        });
-        if (error) return notify(`Không thể gửi thông báo riêng: ${error.message}`, true);
+        const result = await window.dbService.sendBroadcastNotice(cleanMsg, targetIp || 'ALL', cleanName);
+        if (!result?.success) return notify(`Không thể gửi thông báo riêng: ${result?.error || 'Lỗi không xác định'}`, true);
         addActivityLog(`Gửi thông báo riêng (${cleanName})`, cleanMsg, 'broadcast');
         notify(`Đã gửi thông báo riêng tới ${cleanName}.`);
     }
@@ -4507,11 +4490,14 @@
             const ids = (data || []).filter((row) => {
                 const playerName = String(row.player_name || '').trim();
                 const isBanned = String(row.status || '').startsWith('BANNED') || playerName === '__BANNED_IP__';
-                return !systemIds.includes(row.id) && !isBanned && (!playerName.startsWith('__') || playerName === '__SYSTEM_NOTICE__');
+                return !systemIds.includes(row.id) && !isBanned && !playerName.startsWith('__');
             }).map((row) => row.id).filter(Boolean);
             if (ids.length) {
                 const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
                 if (error) throw new Error(`Không thể xóa lịch sử học sinh: ${error.message}`);
+                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', ids);
+                if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
+                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`);
             }
             try { localStorage.removeItem('quiz_local_logins_history'); } catch (e) {}
             state.studentPulseMap?.clear();
@@ -4544,9 +4530,14 @@
             }
             return false;
         }).map((row) => row.id).filter(Boolean);
+        if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
+        if (!(await confirmDialog({ title: 'Xóa phiên học sinh?', message: `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp}?`, confirmText: 'Xóa phiên', variant: 'danger' }))) return;
         if (ids.length) {
             const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
             if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
+            const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', ids);
+            if (verifyError) return notify(`Không thể xác minh sau khi xóa: ${verifyError.message}`, true);
+            if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`, true);
         }
         state.lastStudentsHtml = '';
         state.lastStudentsBodyHtml = '';
@@ -4650,10 +4641,15 @@
         const content = $('leaderboard-content');
         if (!content) return;
         const subject = $('leaderboard-subject')?.value || '';
-        const rows = (state.reportRows || []).filter((row) => !subject || row.subject === subject).sort((a, b) => b.score10 - a.score10 || new Date(a.submittedAt) - new Date(b.submittedAt)).slice(0, 10);
-        $('leaderboard-summary').textContent = rows.length ? `Top ${rows.length} lượt thi${subject ? ` môn ${subject}` : ''}; sắp xếp theo điểm /10.` : 'Chưa có kết quả phù hợp.';
+        const filtered = (state.reportRows || []).filter((row) => !subject || row.subject === subject).sort((a, b) => b.score10 - a.score10 || new Date(a.submittedAt) - new Date(b.submittedAt));
+        const pageSize = 10;
+        const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+        state.reportLeaderboardPage = Math.min(pageCount, Math.max(1, state.reportLeaderboardPage || 1));
+        const start = (state.reportLeaderboardPage - 1) * pageSize;
+        const rows = filtered.slice(start, start + pageSize);
+        $('leaderboard-summary').textContent = rows.length ? `Top ${rows.length} lượt thi, trang ${state.reportLeaderboardPage}/${pageCount}${subject ? ` môn ${subject}` : ''}; sắp xếp theo điểm /10.` : 'Chưa có kết quả phù hợp.';
         $('leaderboard-empty')?.classList.toggle('hidden', rows.length > 0);
-        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${index + 1}">#${index + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div>` : '';
+        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${(start + index) + 1}">#${(start + index) + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div><div class="leaderboard-pagination"><button class="button secondary" ${state.reportLeaderboardPage <= 1 ? 'disabled' : ''} data-report-page="prev">Trang trước</button><span>Trang ${state.reportLeaderboardPage}/${pageCount}</span><button class="button secondary" ${state.reportLeaderboardPage >= pageCount ? 'disabled' : ''} data-report-page="next">Trang sau</button></div>` : '';
     }
     async function fetchReportRows() {
         if (!state.client) throw new Error('Chưa kết nối Supabase.');
@@ -5122,7 +5118,7 @@
          });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
          reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
-         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => runAction(loadLeaderboard)); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
+         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
          $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
           reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
