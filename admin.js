@@ -4580,7 +4580,7 @@
             await loadStudents();
         }
     }
-    async function deleteStudentSession(name, ip, device = '', loginId = '') {
+    async function deleteStudentSession(name, ip, device = '', loginId = '', alreadyConfirmed = false) {
         const cleanName = String(name || '').trim();
         const cleanIp = String(ip || '').trim();
         const cleanDev = String(device || '').trim();
@@ -4608,7 +4608,7 @@
             return false;
         }).map((row) => row.id).filter(Boolean);
         if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
-        if (!(await confirmDialog({ title: 'Xóa phiên học sinh?', message: cleanLoginId ? `Xóa phiên đang hiển thị của ${cleanName || cleanIp}?` : `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp}?`, confirmText: 'Xóa phiên', variant: 'danger' }))) return;
+        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa thông tin trong bảng?', message: cleanLoginId ? `Xóa thông tin phiên đang hiển thị của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.` : `Xóa ${ids.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa khỏi bảng', variant: 'danger' }))) return;
         if (ids.length) {
             const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
             if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
@@ -5073,7 +5073,12 @@
           $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
           $('grade5-progress-cards')?.addEventListener('click', (event) => {
               const button = event.target.closest('[data-delete-progress-id]');
-              if (button) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId));
+              if (!button) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
+              const confirmed = window.confirm(`Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`);
+              if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId, true));
           });
           $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
          $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
