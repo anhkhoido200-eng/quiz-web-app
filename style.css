@@ -1704,3 +1704,220 @@ body.light-theme #badge-all-correct-result {
 .table-status {
     transition: color 0.3s ease;
 }
+
+/* =========================================================================
+   UIVERSE PRO MICRO-INTERACTIONS (Tối ưu cho QuizMaster Pro & Admin)
+   ========================================================================= */
+
+/* 1. Hiệu ứng ánh sáng lướt (Shimmer Swipe) cho nút Bắt đầu & Nộp bài */
+.btn-3d-indigo,
+.btn-3d-emerald {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.btn-3d-indigo::before,
+.btn-3d-emerald::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+        120deg,
+        transparent,
+        rgba(255, 255, 255, 0.28),
+        transparent
+    );
+    transform: skewX(-25deg);
+    transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.btn-3d-indigo:hover::before,
+.btn-3d-emerald:hover::before {
+    left: 160%;
+}
+
+/* 2. Hiệu ứng viền sáng tinh tế khi rê chuột vào đáp án A, B, C, D */
+.quiz-option-tile {
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.22s ease, background-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.quiz-option-tile::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.6), rgba(129, 140, 248, 0.6));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    pointer-events: none;
+}
+
+.quiz-option-tile:hover:not(:disabled)::before {
+    opacity: 1;
+}
+
+.quiz-option-tile:hover:not(:disabled) .quiz-option-letter {
+    background: linear-gradient(135deg, #38bdf8, #6366f1);
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+    transition: all 0.2s ease;
+}
+
+/* 3. Hiệu ứng nút Đúng / Sai phản hồi dứt khoát */
+.tf-choice-button {
+    position: relative;
+    overflow: hidden;
+}
+
+.tf-choice-button:not(:disabled):hover {
+    border-color: rgba(129, 140, 248, 0.8);
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.25);
+}
+
+/* 4. Hiệu ứng nút Hỏi AI giải thích (Viền Gradient chuyển động nhẹ) */
+button[id^="ai-btn-"] {
+    position: relative;
+    border: 1px solid rgba(192, 132, 252, 0.45);
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.28);
+    transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.18s ease;
+}
+
+button[id^="ai-btn-"]:hover:not(:disabled) {
+    border-color: #e879f9;
+    box-shadow: 0 6px 22px rgba(168, 85, 247, 0.48), 0 0 0 2px rgba(192, 132, 252, 0.18);
+}
+
+/* 5. Tối ưu cho chế độ giảm chuyển động & Mobile */
+@media (prefers-reduced-motion: reduce), (hover: none) and (pointer: coarse) {
+    .btn-3d-indigo::before,
+    .btn-3d-emerald::before,
+    .quiz-option-tile::before,
+    .subject-card-interactive::after {
+        display: none;
+    }
+}
+
+/* =========================================================================
+   ADVANCED MICRO-UI ELEMENTS (QuizMaster Pro Edition)
+   ========================================================================= */
+
+/* 1. Thẻ môn học có viền ánh sáng Aurora khi rê chuột */
+.subject-card-interactive {
+    position: relative;
+    overflow: hidden;
+}
+
+.subject-card-interactive::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.7), rgba(34, 211, 238, 0.7), rgba(168, 85, 247, 0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.28s ease;
+    pointer-events: none;
+}
+
+.subject-card-interactive:hover::after {
+    opacity: 1;
+}
+
+/* 2. Thanh tiến trình có đầu sáng Laser tinh tế */
+#quiz-progress-bar {
+    position: relative;
+    background: linear-gradient(90deg, #6366f1 0%, #38bdf8 60%, #34d399 100%);
+}
+
+#quiz-progress-bar::before {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 10px 2px #38bdf8, 0 0 18px 4px rgba(99, 102, 241, 0.8);
+}
+
+/* 3. Khung giải thích AI có dải nhấn Gradient sang trọng */
+.ai-explanation-box {
+    position: relative;
+    overflow: hidden;
+    animation: aiCardReveal 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ai-explanation-box::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, #a855f7, #6366f1, #22d3ee);
+}
+
+@keyframes aiCardReveal {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 4. Nhãn trạng thái Live (Đang trực tuyến / Đang làm bài) nhịp thở êm */
+.live-dot-pulse {
+    position: relative;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #10b981;
+}
+
+.live-dot-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid #10b981;
+    animation: liveRingPulse 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+@keyframes liveRingPulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.85;
+    }
+    100% {
+        transform: scale(2.1);
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .live-dot-pulse::after {
+        animation: none;
+    }
+}

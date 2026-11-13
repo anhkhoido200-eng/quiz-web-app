@@ -2295,3 +2295,71 @@ body.dark .library-toolbar input[type="search"] {
 [data-live-pane="control"] .quick-notices button{border-radius:999px;padding:6px 12px;font-size:11px;font-weight:600;transition:.16s}
 [data-live-pane="control"] .quick-notices button:hover{transform:translateY(-1px)}
 [data-live-pane="control"] .students-panel{margin-top:17px}
+
+/* =========================================================================
+   ADMIN CONTROL CENTER - UIVERSE MICRO-INTERACTIONS
+   ========================================================================= */
+
+/* 1. Nút hành động chính trong Admin có ánh sáng lướt mượt */
+.button-primary,
+.button-purple {
+    position: relative;
+    overflow: hidden;
+}
+
+.button-primary::after,
+.button-purple::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.55s ease;
+    pointer-events: none;
+}
+
+.button-primary:hover::after,
+.button-purple:hover::after {
+    left: 150%;
+}
+
+/* 2. Hiệu ứng phản hồi khi bấm Copy IP / Copy Token */
+.ip-copy-btn,
+.token-copy-icon {
+    transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.ip-copy-btn:active,
+.token-copy-icon:active {
+    transform: scale(0.9);
+}
+
+/* 3. Thẻ Shortcut có vệt sáng góc khi rê chuột */
+.shortcut {
+    position: relative;
+    overflow: hidden;
+}
+
+.shortcut::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 65%);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+}
+
+.shortcut:hover::before {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .button-primary::after,
+    .button-purple::after {
+        display: none;
+    }
+}
