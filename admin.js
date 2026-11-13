@@ -4512,6 +4512,26 @@
         if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
     }
 
+    function buildProgressBarInnerHtml(p, percent) {
+        const items = p.detail?.items;
+        if (Array.isArray(items) && items.length > 0) {
+            return `<div class="g5-progress-segments">${items.map((it, idx) => {
+                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                return `<span class="g5-progress-seg ${cls}" title="Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Chưa làm')}"></span>`;
+            }).join('')}</div>`;
+        }
+        const totalBase = p.total > 0 ? p.total : Math.max(1, (p.correct || 0) + (p.wrong || 0));
+        const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
+        const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round(((p.wrong || 0) / totalBase) * 1000) / 10) : 0;
+        if (okPct === 0 && badPct === 0 && percent > 0) {
+            return `<div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #6366f1 100%);border-radius:99px;"></div>`;
+        }
+        return `<div class="g5-progress-split">
+            ${okPct > 0 ? `<div class="g5-progress-fill is-ok" style="width:${okPct}%" title="Đúng: ${p.correct}"></div>` : ''}
+            ${badPct > 0 ? `<div class="g5-progress-fill is-bad" style="width:${badPct}%" title="Sai: ${p.wrong}"></div>` : ''}
+        </div>`;
+    }
+
     function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
         const status = getProgressCardStatus(p);
         const statusColors = {
@@ -4613,8 +4633,8 @@
                     <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
                     <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">${p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`}</span>
                 </div>
-                <div style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
-                    <div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #6366f1 100%);border-radius:99px;transition:width 0.7s cubic-bezier(0.34, 1.25, 0.64, 1);box-shadow:0 0 10px rgba(6,182,212,0.4);"></div>
+                <div class="g5-progress-track" style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
+                    ${buildProgressBarInnerHtml(p, percent)}
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
                     <span>Tiến độ: <b style="color:var(--text);" class="g5-card-percent">${percent}%</b></span>
@@ -4684,11 +4704,11 @@
                         const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
                         if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
 
-                        const elBar = card.querySelector('.g5-progress-fill');
-                        if (elBar) {
-                            const targetWidth = `${percent}%`;
-                            if (elBar.style.width !== targetWidth) {
-                                elBar.style.width = targetWidth;
+                        const track = card.querySelector('.g5-progress-track');
+                        if (track) {
+                            const nextBarHtml = buildProgressBarInnerHtml(p, percent);
+                            if (track.innerHTML !== nextBarHtml) {
+                                track.innerHTML = nextBarHtml;
                             }
                         }
 
