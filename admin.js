@@ -4614,8 +4614,8 @@
                         <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
                         <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
                     </div>
-                    <div style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
-                        <div class="g5-progress-fill" style="width:100%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:99px;box-shadow:0 0 10px rgba(16,185,129,0.3);"></div>
+                    <div class="g5-progress-track" style="height:10px;background:rgba(0,0,0,0.3);border-radius:99px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
+                        ${buildProgressBarInnerHtml({ ...p, wrong: p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0)) }, 100)}
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
                         <span>Đúng: <b style="color:var(--text);">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>

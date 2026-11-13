@@ -5010,26 +5010,7 @@ Giải thích: Biên độ A = 5 cm.`;
             else if (q.qType === 'short_answer') {
                 const hasSubmitted = this.hasSubmittedAnswer(q.id);
                 const userVal = hasSubmitted ? String(this.userAnswers[q.id] ?? '') : '';
-                const isCorrect = hasSubmitted && this.isShortAnswerCorrect(q, userVal);
-                const correctValue = String(q.correctValue ?? '').trim() || String(q.acceptedValues?.[0] ?? '').trim();
-                const shortFeedbackHtml = hasSubmitted ? `
-                    <div class="short-answer-feedback ${this.isExamMode ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
-                        <div class="short-answer-feedback-title">
-                            <i class="fa-solid ${this.isExamMode ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
-                            <span>${this.isExamMode ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
-                        </div>
-                        <div class="short-answer-feedback-line">
-                            <span>Bạn nhập:</span>
-                            <strong>${this.escapeHtml(userVal)}</strong>
-                        </div>
-                        ${!this.isExamMode ? `
-                            <div class="short-answer-feedback-line">
-                                <span>Đáp án đúng:</span>
-                                <strong>${correctValue ? this.formatScientificNotation(correctValue) : 'Chưa thiết lập'}</strong>
-                            </div>
-                        ` : ''}
-                    </div>
-                ` : '';
+                const shortFeedbackHtml = hasSubmitted ? this.buildShortAnswerFeedbackHtml(q, userVal) : '';
 
                 const isInputLocked = !this.isExamMode && hasSubmitted;
 
@@ -5041,7 +5022,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
                         <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
                             <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
@@ -5170,6 +5151,29 @@ Giải thích: Biên độ A = 5 cm.`;
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
     }
 
+    buildShortAnswerFeedbackHtml(question, userVal) {
+        const isCorrect = this.isShortAnswerCorrect(question, userVal);
+        const correctValue = String(question.correctValue ?? '').trim() || String(question.acceptedValues?.[0] ?? '').trim();
+        return `
+            <div class="short-answer-feedback ${this.isExamMode ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
+                <div class="short-answer-feedback-title">
+                    <i class="fa-solid ${this.isExamMode ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
+                    <span>${this.isExamMode ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
+                </div>
+                <div class="short-answer-feedback-line">
+                    <span>Bạn nhập:</span>
+                    <strong>${this.escapeHtml(userVal)}</strong>
+                </div>
+                ${!this.isExamMode ? `
+                    <div class="short-answer-feedback-line">
+                        <span>Đáp án đúng:</span>
+                        <strong>${correctValue ? this.formatScientificNotation(correctValue) : 'Chưa thiết lập'}</strong>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
     saveShortAnswer(qId, val) {
         if (this.isFinishingQuiz) return;
         const question = this.allQuestions.find(item => String(item.id) === String(qId));
@@ -5186,9 +5190,36 @@ Giải thích: Biên độ A = 5 cm.`;
         this.saveAutoSaveProgress();
         this.updateLiveStats();
 
-        const scrollY = window.scrollY;
-        this.renderAllQuestions(true, true);
-        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
+        const card = document.getElementById(`q-card-${qId}`);
+        if (!card) {
+            this.renderAllQuestions(true, true);
+            return;
+        }
+
+        const isInputLocked = !this.isExamMode;
+        const inputEl = card.querySelector('.answer-text-input');
+        const submitBtn = card.querySelector('.answer-submit-button');
+        if (inputEl) {
+            inputEl.value = normalizedValue;
+            inputEl.classList.add('is-submitted');
+            inputEl.disabled = isInputLocked;
+            inputEl.setAttribute('aria-disabled', String(isInputLocked));
+        }
+        if (submitBtn) {
+            submitBtn.classList.add('is-submitted');
+            submitBtn.disabled = isInputLocked;
+            submitBtn.setAttribute('aria-disabled', String(isInputLocked));
+            submitBtn.innerHTML = `<i class="fa-solid fa-check"></i><span>${this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận'}</span>`;
+        }
+
+        const feedbackHtml = this.buildShortAnswerFeedbackHtml(question, normalizedValue);
+        const existingFeedback = card.querySelector('.short-answer-feedback');
+        if (existingFeedback) {
+            existingFeedback.outerHTML = feedbackHtml;
+        } else {
+            const inputRow = inputEl?.closest('div');
+            if (inputRow) inputRow.insertAdjacentHTML('afterend', feedbackHtml);
+        }
     }
 
     isQuestionWrong(q) {
@@ -6192,7 +6223,9 @@ Giải thích: Biên độ A = 5 cm.`;
         if (submitBtn) submitBtn.classList.toggle('hidden', Boolean(this.isReviewingResult));
         this.switchScreen('quiz');
         this.renderAllQuestions();
-        window.scrollTo({ top: 100, behavior: 'smooth' });
+        if (window.scrollY > 120) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }
 
     switchUser() {

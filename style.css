@@ -6,6 +6,12 @@
     --font-heading: 'Be Vietnam Pro', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+html,
+body {
+    overflow-x: clip;
+    max-width: 100%;
+}
+
 body:not(.admin-body) {
     font-family: var(--font-sans);
     background-color: #080c16;
@@ -1919,5 +1925,15 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
 @media (prefers-reduced-motion: reduce) {
     .live-dot-pulse::after {
         animation: none;
+    }
+}
+
+/* Chống iOS Safari tự động zoom & lệch khung khi bấm ô nhập (trả lời ngắn, tên, AI) */
+@media (max-width: 768px) {
+    input,
+    textarea,
+    select,
+    .answer-text-input {
+        font-size: 16px !important;
     }
 }
