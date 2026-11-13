@@ -603,14 +603,19 @@ class DatabaseService {
     /**
      * Cập nhật tiến độ chi tiết của thí sinh
      */
-    async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName, durationSeconds = 0) {
+    async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName, durationSeconds = 0, detailPayload = null) {
         if (!loginId) return;
         const nowIso = this.getNowIso();
         const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
         const subj = subjectName || 'Lịch Sử 11';
         const duration = Number(durationSeconds) > 0 ? ` - Đã làm: ${Math.floor(Number(durationSeconds) / 60)}p ${String(Math.floor(Number(durationSeconds) % 60)).padStart(2, '0')}s` : '';
         const statusText = `[${subj}] ${answeredCount >= totalCount && totalCount > 0 ? `Chờ nộp bài: ${answeredCount}/${totalCount} câu (100%)` : `Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`}`;
-        const scoreText = `[${subj}] Đúng ${correctCount}/${answeredCount} câu đã làm${duration}`;
+        let scoreText = `[${subj}] Đúng ${correctCount}/${answeredCount} câu đã làm${duration}`;
+        if (detailPayload && typeof detailPayload === 'object') {
+            try {
+                scoreText += `\n__DETAIL__:${JSON.stringify(detailPayload)}`;
+            } catch (e) {}
+        }
 
         try {
             let list = this._getLocalLogins();

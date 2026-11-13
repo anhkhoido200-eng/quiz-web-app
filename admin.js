@@ -4182,7 +4182,15 @@
 
     function parseStudentProgress(row) {
         const rawStatus = String(row.status || '');
-        const rawScore = String(row.score_summary || '');
+        const fullRawScore = String(row.score_summary || '');
+        let detail = null;
+        const detailMarkerIdx = fullRawScore.indexOf('\n__DETAIL__:');
+        const rawScore = detailMarkerIdx !== -1 ? fullRawScore.slice(0, detailMarkerIdx) : fullRawScore;
+        if (detailMarkerIdx !== -1) {
+            try {
+                detail = JSON.parse(fullRawScore.slice(detailMarkerIdx + '\n__DETAIL__:'.length));
+            } catch (e) { detail = null; }
+        }
         const rawPayload = [rawStatus, rawScore].join(' ');
         let subjectName = '';
         const subjMatch = rawStatus.match(/^\[(.*?)\]/) || rawScore.match(/^\[(.*?)\]/);
@@ -4283,6 +4291,7 @@
             lastActive: row.last_active,
             rawStatus,
             rawScore,
+            detail,
             row
         };
     }
@@ -4700,15 +4709,188 @@
         });
     }
 
+    function buildParentProgressComment(p) {
+        const detail = p.detail;
+        const statusText = p.isCompleted ? `Đã nộp bài (${p.score10.toFixed(1)}/10)` : `Đang làm (${p.answered}/${p.total || 0} ý - ${p.percent}%)`;
+        const lines = [
+            `📋 BÁO CÁO HỌC TẬP: ${p.name}`,
+            `• Môn: ${p.subject} (Lớp ${p.grade})`,
+            `• Trạng thái: ${statusText}`,
+            `• Kết quả đúng/sai: ${p.correct} đúng / ${p.wrong} sai`,
+            `• Thời gian làm bài: ${p.durationLabel || 'Chưa có'}`
+        ];
+        if (detail && detail.cats && Object.keys(detail.cats).length > 0) {
+            const entries = Object.entries(detail.cats).map(([name, arr]) => {
+                const c = Number(arr?.[0] || 0);
+                const a = Number(arr?.[1] || 0);
+                const t = Number(arr?.[2] || 0);
+                const pct = a > 0 ? Math.round((c / a) * 100) : (t > 0 ? 0 : 0);
+                return { name, c, a, t, pct };
+            });
+            const good = entries.filter(e => e.a > 0 && e.pct >= 80).map(e => `${e.name} (${e.c}/${e.a})`);
+            const weak = entries.filter(e => e.a > 0 && e.pct < 60).map(e => `${e.name} (${e.c}/${e.a})`);
+            if (good.length) lines.push(`• Phần làm tốt: ${good.join(', ')}`);
+            if (weak.length) lines.push(`• Phần cần ôn thêm: ${weak.join(', ')}`);
+        }
+        return lines.join('\n');
+    }
+
     function renderStudentProgressDetail(p) {
         const modal = $('student-progress-modal');
         const body = $('student-progress-modal-body');
         if (!modal || !body || !p) return;
         const status = getProgressCardStatus(p);
-        const rawQuestionCount = Number(p.total || 0);
+        const detail = p.detail && typeof p.detail === 'object' ? p.detail : null;
         const subjectQuestions = state.questions.filter((question) => subjectMatchKey(subjectName(question.subject_key)) === subjectMatchKey(p.subject));
-        const questionRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `<li><span>Câu ${index + 1}</span><strong>${esc(notationText(question.question).slice(0, 150))}</strong><em>Chưa có dữ liệu đáp án trong phiên theo dõi</em></li>`).join('');
-        body.innerHTML = `<div class="student-detail-summary"><div><span class="student-detail-avatar"><i class="fa-solid fa-user-graduate"></i></span><div><h3>${esc(p.name)}</h3><p>${esc(p.subject)} · Lớp ${esc(p.grade)} · ${esc(status.label)}</p></div></div><span class="student-detail-score">${p.score10.toFixed(1)}<small>/10</small></span></div><div class="student-detail-metrics"><span><b>Tiến độ</b>${p.answered}/${p.total || '—'} câu (${p.percent}%)</span><span><b>Thời gian thực tế</b>${esc(p.durationLabel)}</span><span><b>Đúng / Sai</b>${p.correct} / ${p.wrong}</span><span><b>Hoạt động cuối</b>${esc(formatTimeAgo(p.lastActive))}</span></div><section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi</h4>${questionRows ? `<ul class="student-detail-questions">${questionRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án đúng, đáp án học sinh chọn hoặc lịch sử thay đổi.</p></div>'}</section><details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>`;
+        const qById = new Map(subjectQuestions.map(q => [String(q.id), q]));
+
+        // 1. Phân tích tốc độ & hành vi
+        const avgSec = (p.answered > 0 && p.durationSeconds > 0) ? Math.round(p.durationSeconds / p.answered) : 0;
+        const isRushed = avgSec > 0 && avgSec < 3 && p.wrong > p.correct;
+        const paceLabel = avgSec > 0
+            ? (isRushed ? `Làm rất nhanh (${avgSec}s/ý — có thể khoanh vội)` : `Trung bình ${avgSec}s / ý`)
+            : 'Chưa đủ dữ liệu tốc độ';
+        const modeLabel = detail?.mode === 'exam' ? 'Thi thử (tính giờ)' : (detail?.mode === 'practice' ? 'Luyện tập' : 'Tự do');
+
+        // 2. Phân tích theo chuyên đề
+        let catsHtml = '';
+        if (detail?.cats && Object.keys(detail.cats).length > 0) {
+            const catEntries = Object.entries(detail.cats).map(([catName, arr]) => {
+                const c = Number(arr?.[0] || 0);
+                const a = Number(arr?.[1] || 0);
+                const t = Number(arr?.[2] || 0);
+                const pct = a > 0 ? Math.round((c / a) * 100) : 0;
+                const level = a === 0 ? 'neutral' : (pct >= 80 ? 'good' : (pct >= 50 ? 'mid' : 'weak'));
+                return { catName, c, a, t, pct, level };
+            }).sort((x, y) => x.pct - y.pct);
+
+            catsHtml = `
+                <section class="student-detail-section">
+                    <h4><i class="fa-solid fa-layer-group"></i> Phân tích theo chuyên đề</h4>
+                    <div class="student-detail-cats">
+                        ${catEntries.map((item) => `
+                            <div class="student-detail-cat-row is-${item.level}">
+                                <div class="student-detail-cat-head">
+                                    <strong>${esc(item.catName)}</strong>
+                                    <span>${item.c}/${item.a || item.t} đúng (${item.a > 0 ? `${item.pct}%` : 'Chưa làm'})${item.level === 'weak' ? ' · <em>Cần ôn lại</em>' : ''}</span>
+                                </div>
+                                <div class="student-detail-cat-bar"><span style="width:${item.a > 0 ? item.pct : 0}%"></span></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            `;
+        }
+
+        // 3. Chi tiết từng câu hỏi (từ detail.items hoặc fallback)
+        const optChars = ['A', 'B', 'C', 'D'];
+        let questionsHtml = '';
+        if (Array.isArray(detail?.items) && detail.items.length > 0) {
+            const chipsHtml = detail.items.map((it, idx) => {
+                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                return `<span class="student-q-chip ${cls}" title="Câu ${idx + 1}">${idx + 1}</span>`;
+            }).join('');
+
+            const rowsHtml = detail.items.map((it, idx) => {
+                const qObj = qById.get(String(it.id));
+                const qTitle = qObj ? esc(notationText(qObj.question).slice(0, 140)) : `Câu ${idx + 1} (${esc(it.cat || 'Chung')})`;
+                const stateCls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                const filterTag = it.ok === true ? 'ok' : (it.ok === false ? 'wrong' : 'unanswered');
+                let answerDetail = '';
+                if (it.t === 'mcq') {
+                    const uaStr = it.ua !== null && it.ua !== undefined ? (optChars[it.ua] ?? it.ua) : 'Chưa chọn';
+                    const caStr = it.ca !== null && it.ca !== undefined ? (optChars[it.ca] ?? it.ca) : '—';
+                    answerDetail = `Bạn chọn: <b>${esc(uaStr)}</b> · Đáp án đúng: <b>${esc(caStr)}</b>`;
+                } else if (it.t === 'tf') {
+                    const uaArr = Array.isArray(it.ua) ? it.ua : [];
+                    const caArr = Array.isArray(it.ca) ? it.ca : [];
+                    answerDetail = caArr.map((exp, sIdx) => {
+                        const ch = uaArr[sIdx];
+                        const mark = ch === null || ch === undefined ? '—' : (ch === exp ? '✓' : '✗');
+                        return `${String.fromCharCode(97 + sIdx)}) ${ch === true ? 'Đ' : (ch === false ? 'S' : '—')}/${exp ? 'Đ' : 'S'} ${mark}`;
+                    }).join(' · ');
+                } else {
+                    const uaStr = it.ua !== null && it.ua !== undefined ? it.ua : 'Chưa trả lời';
+                    answerDetail = `Bạn nhập: <b>${esc(uaStr)}</b> · Đáp án: <b>${esc(it.ca || '—')}</b>`;
+                }
+                return `
+                    <li class="student-detail-answer-row ${stateCls}" data-q-filter-state="${filterTag}">
+                        <span>Câu ${idx + 1}</span>
+                        <div>
+                            <strong>${qTitle}</strong>
+                            <em>${answerDetail}</em>
+                        </div>
+                    </li>
+                `;
+            }).join('');
+
+            questionsHtml = `
+                <section class="student-detail-section">
+                    <div class="student-detail-q-header">
+                        <h4><i class="fa-solid fa-list-check"></i> Chi tiết từng câu (${detail.items.length} câu)</h4>
+                        <div class="student-detail-filters" role="group" aria-label="Lọc câu hỏi">
+                            <button type="button" class="is-active" data-detail-filter="all">Tất cả</button>
+                            <button type="button" data-detail-filter="wrong">Câu sai (${detail.items.filter(i => i.ok === false).length})</button>
+                            <button type="button" data-detail-filter="unanswered">Chưa làm (${detail.items.filter(i => i.ok === null).length})</button>
+                        </div>
+                    </div>
+                    <div class="student-detail-chips">${chipsHtml}</div>
+                    <ul class="student-detail-questions" id="student-detail-questions-list">${rowsHtml}</ul>
+                </section>
+            `;
+        } else {
+            const rawQuestionCount = Number(p.total || 0);
+            const fallbackRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `<li><span>Câu ${index + 1}</span><strong>${esc(notationText(question.question).slice(0, 150))}</strong><em>Phiên cũ chưa có dữ liệu chi tiết từng câu</em></li>`).join('');
+            questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi</h4>${fallbackRows ? `<ul class="student-detail-questions">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
+        }
+
+        body.innerHTML = `
+            <div class="student-detail-summary">
+                <div>
+                    <span class="student-detail-avatar"><i class="fa-solid fa-user-graduate"></i></span>
+                    <div>
+                        <h3>${esc(p.name)}</h3>
+                        <p>${esc(p.subject)} · Lớp ${esc(p.grade)} · ${esc(status.label)}</p>
+                    </div>
+                </div>
+                <div class="student-detail-summary-right">
+                    <span class="student-detail-score">${p.score10.toFixed(1)}<small>/10</small></span>
+                    <button type="button" id="btn-copy-parent-comment" class="button button-secondary compact student-copy-report-btn"><i class="fa-regular fa-copy"></i> Copy nhận xét Zalo</button>
+                </div>
+            </div>
+            <div class="student-detail-metrics">
+                <span><b>Tiến độ</b>${p.answered}/${p.total || '—'} ý (${p.percent}%)</span>
+                <span><b>Thời gian thực tế</b>${esc(p.durationLabel)}</span>
+                <span><b>Đúng / Sai</b>${p.correct} / ${p.wrong}</span>
+                <span><b>Hoạt động cuối</b>${esc(formatTimeAgo(p.lastActive))}</span>
+            </div>
+            <div class="student-detail-insights">
+                <span class="${isRushed ? 'is-warn' : ''}"><i class="fa-solid fa-gauge-high"></i> ${esc(paceLabel)}</span>
+                <span><i class="fa-solid fa-compass"></i> Chế độ: ${esc(modeLabel)}</span>
+                ${detail?.away > 0 ? `<span class="is-warn"><i class="fa-solid fa-arrow-up-right-from-square"></i> Chuyển tab: ${detail.away} lần</span>` : ''}
+            </div>
+            ${catsHtml}
+            ${questionsHtml}
+            <details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>
+        `;
+
+        $('btn-copy-parent-comment')?.addEventListener('click', async () => {
+            const text = buildParentProgressComment(p);
+            await copyToClipboard(text);
+            notify('📋 Đã sao chép nhận xét học tập để gửi Zalo/Phụ huynh!');
+        });
+
+        body.querySelectorAll('[data-detail-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.detailFilter;
+                body.querySelectorAll('[data-detail-filter]').forEach(b => b.classList.toggle('is-active', b === btn));
+                body.querySelectorAll('#student-detail-questions-list > li').forEach((li) => {
+                    const st = li.dataset.qFilterState;
+                    li.classList.toggle('hidden', mode !== 'all' && st !== mode);
+                });
+            });
+        });
+
         $('student-progress-modal-title').textContent = `Tiến trình của ${p.name}`;
         $('student-progress-modal-subtitle').textContent = `${p.subject} · Cập nhật ${formatTimeAgo(p.lastActive)}`;
         modal.classList.remove('hidden');
