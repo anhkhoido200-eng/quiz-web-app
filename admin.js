@@ -5388,13 +5388,20 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
           $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
         $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
-          $('grade5-progress-cards')?.addEventListener('click', (event) => {
+          $('grade5-progress-cards')?.addEventListener('click', async (event) => {
               const button = event.target.closest('[data-delete-progress-id]');
               if (button) {
                   event.preventDefault();
                   event.stopPropagation();
                   const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
-                  const confirmed = window.confirm(`Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`);
+                  const confirmed = await confirmDialog({
+                      eyebrow: 'XÓA PHIÊN THEO DÕI',
+                      title: `Xóa thông tin của ${studentName}?`,
+                      message: `Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`,
+                      okText: 'Xóa khỏi bảng',
+                      cancelText: 'Hủy bỏ',
+                      variant: 'danger'
+                  });
                   if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, '', true));
                   return;
               }
