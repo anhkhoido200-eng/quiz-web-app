@@ -1685,6 +1685,48 @@ body.light-theme #badge-all-correct-result {
     will-change: width;
 }
 
+.obs-progress-segments {
+    display: flex;
+    align-items: stretch;
+    gap: 1.5px;
+    width: 100%;
+    height: 100%;
+}
+
+.obs-progress-seg {
+    flex: 1 1 0;
+    min-width: 2px;
+    height: 100%;
+    border-radius: 2px;
+    background: rgba(148, 163, 184, 0.22);
+}
+
+.obs-progress-seg.is-ok {
+    background: linear-gradient(180deg, #34d399, #10b981);
+}
+
+.obs-progress-seg.is-bad {
+    background: linear-gradient(180deg, #fb7185, #ef4444);
+}
+
+.obs-progress-split {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 999px;
+}
+
+.obs-progress-fill.is-ok {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.obs-progress-fill.is-bad {
+    height: 100%;
+    background: linear-gradient(90deg, #f43f5e, #ef4444);
+}
+
 @keyframes progressShimmer {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }

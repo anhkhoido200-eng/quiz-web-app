@@ -4197,7 +4197,15 @@ Giải thích: Biên độ A = 5 cm.`;
 
     parseStudentProgressRecord(row) {
         const rawStatus = String(row?.status || '');
-        const rawScore = String(row?.score_summary || '');
+        const fullRawScore = String(row?.score_summary || '');
+        const detailMarkerIdx = fullRawScore.indexOf('\n__DETAIL__:');
+        let detail = null;
+        if (detailMarkerIdx >= 0) {
+            try {
+                detail = JSON.parse(fullRawScore.slice(detailMarkerIdx + '\n__DETAIL__:'.length));
+            } catch (e) {}
+        }
+        const rawScore = detailMarkerIdx >= 0 ? fullRawScore.slice(0, detailMarkerIdx) : fullRawScore;
         let subjectName = '';
         const subjMatch = rawStatus.match(/^\[(.*?)\]/) || rawScore.match(/^\[(.*?)\]/);
         if (subjMatch) subjectName = subjMatch[1].trim();
@@ -4251,6 +4259,26 @@ Giải thích: Biên độ A = 5 cm.`;
             score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
         }
 
+        const durationSecFromDetail = Number(detail?.sec);
+        let durationSec = Number.isFinite(durationSecFromDetail) && durationSecFromDetail >= 0 ? durationSecFromDetail : null;
+        if (durationSec === null) {
+            const elapsedMatch = rawScore.match(/(\d+)\s*giây/i) || rawStatus.match(/(\d+)\s*giây/i);
+            if (elapsedMatch) durationSec = parseInt(elapsedMatch[1], 10);
+        }
+        let durationLabel = 'Vừa bắt đầu';
+        if (durationSec !== null) {
+            const m = Math.floor(durationSec / 60);
+            const s = durationSec % 60;
+            durationLabel = m > 0 ? `${m}p ${s}s` : `${s}s`;
+        } else if (row?.created_at && row?.last_active) {
+            const diffSec = Math.max(0, Math.round((new Date(row.last_active).getTime() - new Date(row.created_at).getTime()) / 1000));
+            if (Number.isFinite(diffSec) && diffSec > 0) {
+                const m = Math.floor(diffSec / 60);
+                const s = diffSec % 60;
+                durationLabel = m > 0 ? `${m}p ${s}s` : `${s}s`;
+            }
+        }
+
         return {
             id: row?.id,
             name: row?.player_name || 'Học sinh',
@@ -4267,6 +4295,8 @@ Giải thích: Biên độ A = 5 cm.`;
             score10,
             isCompleted,
             isWaiting,
+            detail,
+            durationLabel,
             lastActive: row?.last_active,
             rawStatus,
             rawScore
@@ -4335,6 +4365,27 @@ Giải thích: Biên độ A = 5 cm.`;
         this.exitObserverMode();
     }
 
+    buildObserverProgressBarHtml(p, percent) {
+        const items = p.detail?.items;
+        if (Array.isArray(items) && items.length > 0) {
+            return `<div class="obs-progress-segments">${items.map((it, idx) => {
+                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                return `<span class="obs-progress-seg ${cls}" title="Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Chưa làm')}"></span>`;
+            }).join('')}</div>`;
+        }
+        const wrongCount = p.isCompleted ? (p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0))) : (p.wrong || 0);
+        const totalBase = p.total > 0 ? p.total : Math.max(1, (p.correct || 0) + wrongCount);
+        const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
+        const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round((wrongCount / totalBase) * 1000) / 10) : 0;
+        if (okPct === 0 && badPct === 0 && percent > 0) {
+            return `<div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500" style="width:${percent}%;"></div>`;
+        }
+        return `<div class="obs-progress-split">
+            ${okPct > 0 ? `<div class="obs-progress-fill is-ok" style="width:${okPct}%"></div>` : ''}
+            ${badPct > 0 ? `<div class="obs-progress-fill is-bad" style="width:${badPct}%"></div>` : ''}
+        </div>`;
+    }
+
     buildObserverCardInnerHtml(p, cardType, percent, timeAgo) {
         // 1. Trường hợp ĐANG CHỜ Ở TRANG CHỦ
         if (cardType === 'waiting') {
@@ -4393,11 +4444,11 @@ Giải thích: Biên độ A = 5 cm.`;
                         </span>
                         <span class="font-bold text-indigo-400 shrink-0 obs-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
                     </div>
-                    <div class="h-3 w-full bg-slate-900 rounded-full p-0.5 overflow-hidden border border-slate-800 shadow-inner">
-                        <div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-indigo-500 via-emerald-400 to-teal-400 shadow-sm shadow-emerald-500/30" style="width: 100%;"></div>
+                    <div class="obs-progress-track h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
+                        ${this.buildObserverProgressBarHtml(p, 100)}
                     </div>
                     <div class="flex items-center justify-between text-xs pt-0.5">
-                        <span class="text-slate-300">Đúng: <b class="text-white">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                        <span class="text-slate-300">Đúng: <b class="text-emerald-400">${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0))}</span> (${percent}%)</span>
                         <span class="text-xs font-extrabold text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-sm">
                             <i class="fa-solid fa-trophy mr-1"></i> ${p.score10.toFixed(1)} / 10 điểm
                         </span>
@@ -4405,8 +4456,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 </div>
 
                 <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
+                    <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
                 </div>
             `;
         }
@@ -4435,8 +4486,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     </span>
                     <span class="font-bold text-cyan-400 shrink-0 obs-card-count">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
                 </div>
-                <div class="h-3 w-full bg-slate-900 rounded-full p-0.5 overflow-hidden border border-slate-800 shadow-inner">
-                    <div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500 shadow-sm shadow-cyan-500/40 progress-shimmer" style="width: ${percent}%;"></div>
+                <div class="obs-progress-track h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
+                    ${this.buildObserverProgressBarHtml(p, percent)}
                 </div>
                 <div class="flex items-center justify-between text-xs pt-0.5">
                     <span class="text-slate-400">Tiến độ: <b class="text-white obs-card-percent">${percent}%</b></span>
@@ -4447,13 +4498,22 @@ Giải thích: Biên độ A = 5 cm.`;
             </div>
 
             <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen text-slate-500"></i> ${this.escapeHtml(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
+                <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
             </div>
         `;
     }
 
     renderObserverCardsSmoothly(container, sorted) {
+        this.observerRecordsMap = new Map((sorted || []).map(item => [String(item.id), item]));
+        if (!container.dataset.obsDetailBound) {
+            container.dataset.obsDetailBound = 'true';
+            container.addEventListener('click', (event) => {
+                const card = event.target.closest('.obs-student-card[data-student-id]');
+                if (!card || card.dataset.cardType === 'waiting') return;
+                this.openObserverStudentDetail(card.dataset.studentId);
+            });
+        }
         if (!sorted || sorted.length === 0) {
             container.innerHTML = `
                 <div class="col-span-1 md:col-span-2 text-center py-12 px-4 bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
@@ -4492,13 +4552,14 @@ Giải thích: Biên độ A = 5 cm.`;
 
             if (!card) {
                 card = document.createElement('div');
-                card.className = 'obs-student-card p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition-all duration-300';
+                card.className = `obs-student-card p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col gap-3 shadow-lg hover:border-slate-700 transition-all duration-300${cardType !== 'waiting' ? ' cursor-pointer' : ''}`;
                 card.dataset.studentId = p.id;
                 card.dataset.cardType = cardType;
                 card.innerHTML = this.buildObserverCardInnerHtml(p, cardType, percent, timeAgo);
                 const targetChild = container.children[index];
                 container.insertBefore(card, targetChild || null);
             } else {
+                card.classList.toggle('cursor-pointer', cardType !== 'waiting');
                 if (card.dataset.cardType !== cardType) {
                     card.dataset.cardType = cardType;
                     card.innerHTML = this.buildObserverCardInnerHtml(p, cardType, percent, timeAgo);
@@ -4506,17 +4567,19 @@ Giải thích: Biên độ A = 5 cm.`;
                     const elTime = card.querySelector('.obs-card-time');
                     if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
 
+                    const elDur = card.querySelector('.obs-card-duration');
+                    const durText = `Đã làm: ${p.durationLabel || '—'}`;
+                    if (elDur && elDur.textContent !== durText) elDur.textContent = durText;
+
                     if (cardType === 'doing') {
                         const elCount = card.querySelector('.obs-card-count');
                         const countText = `${p.answered}/${p.total > 0 ? p.total : 41} câu`;
                         if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
 
-                        const elBar = card.querySelector('.obs-progress-fill');
-                        if (elBar) {
-                            const targetWidth = `${percent}%`;
-                            if (elBar.style.width !== targetWidth) {
-                                elBar.style.width = targetWidth;
-                            }
+                        const track = card.querySelector('.obs-progress-track');
+                        if (track) {
+                            const nextBarHtml = this.buildObserverProgressBarHtml(p, percent);
+                            if (track.innerHTML !== nextBarHtml) track.innerHTML = nextBarHtml;
                         }
 
                         const elPercent = card.querySelector('.obs-card-percent');
@@ -4527,8 +4590,11 @@ Giải thích: Biên độ A = 5 cm.`;
                             elScore.innerHTML = `<b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)`;
                         }
                     } else if (cardType === 'completed') {
-                        const elBar = card.querySelector('.obs-progress-fill');
-                        if (elBar && elBar.style.width !== '100%') elBar.style.width = '100%';
+                        const track = card.querySelector('.obs-progress-track');
+                        if (track) {
+                            const nextBarHtml = this.buildObserverProgressBarHtml(p, 100);
+                            if (track.innerHTML !== nextBarHtml) track.innerHTML = nextBarHtml;
+                        }
                     }
                 }
                 const targetChild = container.children[index];
@@ -4537,6 +4603,107 @@ Giải thích: Biên độ A = 5 cm.`;
                 }
             }
         });
+    }
+
+    openObserverStudentDetail(studentId) {
+        const p = this.observerRecordsMap?.get(String(studentId));
+        if (!p) return;
+
+        let modal = document.getElementById('observer-detail-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'observer-detail-modal';
+            modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-5';
+            modal.innerHTML = `
+                <div class="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-4 sm:p-6 space-y-4 text-slate-100">
+                    <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                        <div>
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-400">Chi tiết bài làm học sinh</p>
+                            <h3 id="obs-modal-title" class="text-lg font-bold text-white mt-0.5"></h3>
+                            <p id="obs-modal-subtitle" class="text-xs text-slate-400 mt-0.5"></p>
+                        </div>
+                        <button type="button" id="obs-modal-close" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div id="obs-modal-body" class="space-y-4"></div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal || e.target.closest('#obs-modal-close')) {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                }
+            });
+        }
+
+        const totalQ = p.total || p.answered || 0;
+        const wrongCount = p.isCompleted ? (p.wrong || Math.max(0, totalQ - p.correct)) : p.wrong;
+        const unansweredCount = Math.max(0, totalQ - p.correct - wrongCount);
+        const items = Array.isArray(p.detail?.items) ? p.detail.items : [];
+        const cats = Array.isArray(p.detail?.cats) ? p.detail.cats : [];
+
+        document.getElementById('obs-modal-title').textContent = `${p.name} — ${p.subject}`;
+        document.getElementById('obs-modal-subtitle').textContent = `${p.isCompleted ? 'Đã nộp bài' : 'Đang làm bài'} • Thời gian làm: ${p.durationLabel || '—'} • Điểm: ${p.score10.toFixed(1)}/10`;
+
+        const catsHtml = cats.length > 0 ? `
+            <div class="space-y-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Phân tích theo chuyên đề</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    ${cats.map(c => {
+                        const pct = c.t > 0 ? Math.round((c.c / c.t) * 100) : 0;
+                        const tone = pct >= 80 ? 'text-emerald-400' : (pct >= 50 ? 'text-amber-400' : 'text-rose-400');
+                        return `<div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs">
+                            <span class="font-medium text-slate-200 truncate pr-2">${this.escapeHtml(c.n || 'Chuyên đề')}</span>
+                            <b class="${tone} shrink-0">${c.c}/${c.t} (${pct}%)</b>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>
+        ` : '';
+
+        const itemsHtml = items.length > 0 ? `
+            <div class="space-y-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Chi tiết từng câu (${items.length} câu)</h4>
+                <div class="flex flex-wrap gap-1.5">
+                    ${items.map((it, idx) => {
+                        const cls = it.ok === true
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : (it.ok === false
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : 'bg-slate-800 text-slate-400 border-slate-700');
+                        const ansNote = it.ans ? ` — Chọn: ${this.escapeHtml(String(it.ans))}` : '';
+                        return `<span class="px-2 py-1 rounded-lg border text-[11px] font-bold ${cls}" title="Câu ${idx + 1}${ansNote}">Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Trống')}${it.ans ? ` (${this.escapeHtml(String(it.ans))})` : ''}</span>`;
+                    }).join('')}
+                </div>
+            </div>
+        ` : `<p class="text-xs text-slate-400 italic">Phiên làm bài này chưa có dữ liệu chi tiết từng câu.</p>`;
+
+        document.getElementById('obs-modal-body').innerHTML = `
+            <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                    <div class="text-lg font-extrabold text-emerald-400">${p.correct}</div>
+                    <div class="text-[11px] text-slate-300">Câu đúng</div>
+                </div>
+                <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30">
+                    <div class="text-lg font-extrabold text-rose-400">${wrongCount}</div>
+                    <div class="text-[11px] text-slate-300">Câu sai</div>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-800/80 border border-slate-700">
+                    <div class="text-lg font-extrabold text-slate-300">${unansweredCount}</div>
+                    <div class="text-[11px] text-slate-400">Chưa làm</div>
+                </div>
+            </div>
+            <div class="obs-progress-track h-3 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                ${this.buildObserverProgressBarHtml(p, 100)}
+            </div>
+            ${catsHtml}
+            ${itemsHtml}
+        `;
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
     }
 
     async fetchAndRenderObserverFullscreen() {
