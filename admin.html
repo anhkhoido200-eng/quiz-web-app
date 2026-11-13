@@ -586,6 +586,12 @@
                                     <button type="button" class="subject-grade-button" data-subject-grade="5"><i class="fa-solid fa-seedling"></i> Lớp 5</button>
                                 </div>
                                 <input type="hidden" id="subject-grade-input" value="11">
+                                <label class="grade-picker-label">Chế độ làm bài <span>Quy định cách chấm điểm cho học sinh</span></label>
+                                <div id="subject-mode-picker" class="subject-grade-picker" role="group" aria-label="Chọn chế độ làm bài">
+                                    <button type="button" class="subject-grade-button is-selected" data-subject-mode="practice"><i class="fa-solid fa-book-open-reader"></i> Luyện tập</button>
+                                    <button type="button" class="subject-grade-button" data-subject-mode="exam"><i class="fa-solid fa-trophy"></i> Thi đấu</button>
+                                </div>
+                                <input type="hidden" id="subject-mode-input" value="practice">
                                 <div class="form-grid two-columns">
                                     <label>Màu nhận diện
                                         <select id="subject-gradient-input">

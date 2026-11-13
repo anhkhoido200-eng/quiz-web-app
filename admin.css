@@ -2363,3 +2363,16 @@ body.dark .library-toolbar input[type="search"] {
         display: none;
     }
 }
+
+.subject-grade-button[data-subject-mode="practice"].is-selected {
+    border-color: #0f9f72;
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.16);
+}
+.subject-grade-button[data-subject-mode="exam"].is-selected {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.14);
+    color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}

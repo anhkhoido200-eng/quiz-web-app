@@ -1250,6 +1250,7 @@ class QuizApp {
         }
         if (subjKey === this.currentSubject) return;
         this.currentSubject = subjKey;
+        this.setExamMode(selected?.mode === 'exam');
         localStorage.setItem('quiz_last_selected_subject', subjKey);
         this.renderHomeSubjects();
         await this.loadQuestionsForCurrentSubject();
@@ -4055,8 +4056,21 @@ Giải thích: Biên độ A = 5 cm.`;
         this.isExamMode = Boolean(isExam);
         const ind = document.getElementById('exam-mode-indicator-text');
         if (ind) {
-            ind.textContent = this.isExamMode ? "Chế độ Thi thử (Ẩn đáp án)" : "Chế độ Luyện Tập (Xem đáp án ngay)";
+            ind.textContent = this.isExamMode ? "Chế độ Thi đấu (Ẩn đáp án)" : "Chế độ Luyện tập (Xem đáp án ngay)";
             ind.className = this.isExamMode ? "text-[11px] font-bold text-amber-400" : "text-[11px] font-bold text-emerald-400";
+        }
+        const badge = document.getElementById('quiz-mode-badge');
+        if (badge) {
+            badge.textContent = this.isExamMode ? 'Thi đấu' : 'Luyện tập';
+            badge.className = this.isExamMode
+                ? 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 hidden sm:inline-block'
+                : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block';
+        }
+        const homeRules = document.getElementById('home-rules-count-text');
+        if (homeRules) {
+            homeRules.textContent = this.isExamMode
+                ? 'Chế độ thi đấu: Ẩn đáp án khi làm bài, chấm điểm sau khi nộp bài.'
+                : 'Chế độ luyện tập: Tự động chấm điểm & xem đáp án ngay.';
         }
     }
 
@@ -4929,11 +4943,8 @@ Giải thích: Biên độ A = 5 cm.`;
         const topSubTitle = document.getElementById('quiz-top-subject-title');
         if (topSubTitle) topSubTitle.textContent = this.getSubjectTitle();
 
-        const modeBadge = document.getElementById('quiz-mode-badge');
-        if (modeBadge) {
-            modeBadge.textContent = "Luyện Tập";
-            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block";
-        }
+        const currentSubjectObj = (this.dynamicSubjects || []).find((subject) => subject.key === this.currentSubject);
+        this.setExamMode(currentSubjectObj?.mode === 'exam');
 
         // Tải Auto-Save tiến độ cũ nếu có
         this.loadAutoSaveProgress();
@@ -6355,11 +6366,8 @@ Giải thích: Biên độ A = 5 cm.`;
         }
         this.isRevengeMode = false;
         this.isMistakeMode = false;
-        const modeBadge = document.getElementById('quiz-mode-badge');
-        if (modeBadge) {
-            modeBadge.textContent = "Luyện Tập";
-            modeBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block";
-        }
+        const currentSubjectObj = (this.dynamicSubjects || []).find((subject) => subject.key === this.currentSubject);
+        this.setExamMode(currentSubjectObj?.mode === 'exam');
         const topSubTitle = document.getElementById('quiz-top-subject-title');
         if (topSubTitle) topSubTitle.textContent = this.getSubjectTitle();
         this.switchScreen('quiz');

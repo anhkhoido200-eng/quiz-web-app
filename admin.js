@@ -3861,6 +3861,7 @@
     }
 
     function setSubjectGrade(grade) { const value = String(grade) === '5' ? '5' : '11'; if ($('subject-grade-input')) $('subject-grade-input').value = value; document.querySelectorAll('[data-subject-grade]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectGrade === value)); }
+    function setSubjectMode(mode) { const value = String(mode) === 'exam' ? 'exam' : 'practice'; if ($('subject-mode-input')) $('subject-mode-input').value = value; document.querySelectorAll('[data-subject-mode]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectMode === value)); }
     function moveSubjectFormToDialog() {
         const form = $('subject-form');
         const dialogContent = $('subject-dialog-content');
@@ -3877,6 +3878,7 @@
         if ($('subject-gradient-input')) $('subject-gradient-input').value = 'indigo';
         if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC';
         setSubjectGrade('11');
+        setSubjectMode('practice');
         state.subjectEditingKey = null;
         if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học';
     }
@@ -3899,6 +3901,7 @@
             $('subject-gradient-input').value = subject.gradient || 'indigo';
             $('subject-visibility-input').value = subject.visibility || 'PUBLIC';
             setSubjectGrade(subjectGrade(subject));
+            setSubjectMode(subject.mode || 'practice');
             $('subject-editor-title').textContent = `Sửa môn ${subject.name || state.subjectEditingKey}`;
         }
         const dialog = $('subject-dialog');
@@ -3911,7 +3914,7 @@
         const key = $('subject-key-input')?.value.trim();
         const name = $('subject-name-input')?.value.trim();
         if (!key || !name) return notify('Nhập tên và mã môn học.', true);
-        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
+        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
         const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
         const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
         if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
@@ -5897,6 +5900,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
           reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
+        $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
          $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
