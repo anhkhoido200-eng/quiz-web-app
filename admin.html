@@ -291,55 +291,59 @@
 
                     <div data-live-pane="control" class="hidden">
                         <div class="live-control-toolbar">
-                            <div class="actions">
-                                <button id="refresh-students" class="btn btn-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới phiên</button>
-                                <button id="clear-logins" class="btn btn-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử đăng nhập</button>
+                            <div class="heading-actions">
+                                <button id="refresh-students" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới phiên</button>
+                                <button id="clear-logins" class="button button-danger-solid" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử đăng nhập</button>
                             </div>
                         </div>
 
                         <div class="monitor-stats" id="monitor-stats"></div>
 
                         <section class="panel broadcast-panel">
-                            <div class="panel-header">
+                            <div class="panel-title">
                                 <div>
+                                    <p class="eyebrow">BROADCAST</p>
                                     <h2>Thông báo toàn lớp</h2>
                                     <p>Gửi thông báo trực tiếp tới màn hình học sinh đang làm bài</p>
                                 </div>
                             </div>
-                            <div class="broadcast-form">
+                            <div class="broadcast-row">
                                 <input id="notice-input" type="text" placeholder="Nhập nội dung thông báo gửi tới toàn lớp...">
-                                <button id="send-notice" class="btn btn-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi thông báo</button>
+                                <button id="send-notice" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi thông báo</button>
                             </div>
                             <div class="quick-notices">
-                                <button class="chip" type="button" data-notice="Các em chú ý làm bài cẩn thận, còn 10 phút nữa hết giờ!">Còn 10 phút</button>
-                                <button class="chip" type="button" data-notice="Nhắc nhở: Không chuyển tab hay tìm kiếm đáp án bên ngoài khi đang làm bài!">Nhắc không chuyển tab</button>
-                                <button class="chip" type="button" data-notice="Các em hãy kiểm tra lại các câu đã làm trước khi bấm Nộp bài nhé.">Kiểm tra trước khi nộp</button>
+                                <span>Gửi nhanh:</span>
+                                <button type="button" data-notice="Các em chú ý làm bài cẩn thận, còn 10 phút nữa hết giờ!">Còn 10 phút</button>
+                                <button type="button" data-notice="Nhắc nhở: Không chuyển tab hay tìm kiếm đáp án bên ngoài khi đang làm bài!">Nhắc không chuyển tab</button>
+                                <button type="button" data-notice="Các em hãy kiểm tra lại các câu đã làm trước khi bấm Nộp bài nhé.">Kiểm tra trước khi nộp</button>
                             </div>
                         </section>
 
                         <section class="panel danger-panel">
-                            <div class="panel-header">
+                            <div class="panel-title">
                                 <div>
+                                    <p class="eyebrow">SECURITY</p>
                                     <h2>Chặn IP khẩn cấp</h2>
                                     <p>Ngăn thiết bị hoặc địa chỉ IP truy cập vào hệ thống thi</p>
                                 </div>
-                                <span id="banned-count" class="badge badge-danger">0 IP bị chặn</span>
+                                <span id="banned-count" class="status-badge danger">0 IP bị chặn</span>
                             </div>
-                            <div class="ban-form">
+                            <div class="ban-row">
                                 <input id="ban-ip-input" type="text" placeholder="Nhập địa chỉ IP cần chặn...">
                                 <input id="ban-reason-input" type="text" placeholder="Lý do chặn (không bắt buộc)...">
-                                <button id="ban-ip-button" class="btn btn-danger" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button>
+                                <button id="ban-ip-button" class="button button-danger-solid" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button>
                             </div>
                             <div id="banned-list" class="banned-list"></div>
                         </section>
 
                         <section class="panel students-panel">
-                            <div class="panel-header">
+                            <div class="panel-title">
                                 <div>
+                                    <p class="eyebrow">SESSIONS</p>
                                     <h2>Danh sách phiên truy cập</h2>
                                     <p>Theo dõi thiết bị, IP, trạng thái trực tuyến và cảnh báo vi phạm</p>
                                 </div>
-                                <span id="student-count" class="badge">0 phiên</span>
+                                <span id="student-count" class="status-badge pending">0 phiên</span>
                             </div>
                             <div class="table-wrap">
                                 <table>

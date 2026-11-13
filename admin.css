@@ -230,49 +230,49 @@ body:not(.dark) .switch span {
 }
 .lock-switch-track {
     position: relative;
-    width: 84px;
-    height: 42px;
+    width: 60px;
+    height: 30px;
     border-radius: 999px;
     background: #10b981;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
+    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25);
     transition: background-color 0.3s ease, box-shadow 0.3s ease;
     outline: none;
 }
 .lock-switch-track::after {
     content: '';
     position: absolute;
-    top: 4px;
-    left: 4px;
-    width: 34px;
-    height: 34px;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
     border-radius: 999px;
     background: #f9fafb;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.25);
     transition: transform 0.3s ease;
     z-index: 2;
 }
 .lock-switch:hover .lock-switch-track::after {
-    transform: scale(0.95);
+    transform: scale(0.94);
 }
 .lock-switch-input:focus-visible + .lock-switch-track {
-    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.35), 0 4px 12px rgba(16, 185, 129, 0.28);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.35), 0 3px 10px rgba(16, 185, 129, 0.25);
 }
 .lock-switch-input:checked + .lock-switch-track {
     background: #fb7185;
-    box-shadow: 0 4px 14px rgba(251, 113, 133, 0.38);
+    box-shadow: 0 3px 12px rgba(251, 113, 133, 0.35);
     animation: maintenancePulseRing 2s infinite ease-in-out;
 }
 .lock-switch-input:checked + .lock-switch-track::after {
-    transform: translateX(42px);
+    transform: translateX(30px);
 }
 .lock-switch:hover .lock-switch-input:checked + .lock-switch-track::after {
-    transform: translateX(42px) scale(0.95);
+    transform: translateX(30px) scale(0.94);
 }
 .lock-switch-icon {
     position: absolute;
-    top: 6px;
-    width: 30px;
-    height: 30px;
+    top: 5px;
+    width: 20px;
+    height: 20px;
     fill: #111827;
     stroke: #111827;
     stroke-width: 1;
@@ -280,10 +280,10 @@ body:not(.dark) .switch span {
     pointer-events: none;
 }
 .lock-switch-icon.is-locked {
-    left: 6px;
+    left: 5px;
 }
 .lock-switch-icon.is-unlocked {
-    left: 48px;
+    left: 35px;
 }
 .maintenance-toggle-label {
     font-size: 12px;
@@ -2289,3 +2289,9 @@ body.dark .library-toolbar input[type="search"] {
 .live-subtab:hover{color:var(--text);border-color:rgba(99,91,255,.35)}
 .live-subtab.is-active{background:var(--primary-soft);color:var(--primary);border-color:var(--primary)}
 .live-subtab em{font-style:normal;font-size:10px;padding:2px 7px;border-radius:99px;background:rgba(148,163,184,.18);color:var(--text)}
+.live-control-toolbar{display:flex;justify-content:flex-end;margin-bottom:14px}
+[data-live-pane="control"] .broadcast-row,[data-live-pane="control"] .ban-row{gap:10px;max-width:100%}
+[data-live-pane="control"] .broadcast-row input,[data-live-pane="control"] .ban-row input{flex:1;min-width:180px}
+[data-live-pane="control"] .quick-notices button{border-radius:999px;padding:6px 12px;font-size:11px;font-weight:600;transition:.16s}
+[data-live-pane="control"] .quick-notices button:hover{transform:translateY(-1px)}
+[data-live-pane="control"] .students-panel{margin-top:17px}
