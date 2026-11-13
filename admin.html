@@ -61,12 +61,11 @@
                 <i class="fa-solid fa-circle-check identity-check" title="Thiết bị hợp lệ"></i>
             </div>
             <nav class="side-nav" aria-label="Khu vực quản trị">
-                <p class="nav-label">WORKSPACE</p>
+                <p class="nav-label">QUẢN LÝ HỌC TẬP</p>
                 <button class="nav-item is-active" data-view="overview" type="button"><i class="fa-solid fa-grid-2"></i><span>Tổng quan</span></button>
-                <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Ngân hàng &amp; môn học</span><em id="nav-question-count">0</em></button>
-                <button class="nav-item" data-view="students" type="button"><i class="fa-solid fa-radar"></i><span>Giám sát học sinh</span><em id="nav-online-count">0</em></button>
-                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-chart-pie" style="color:var(--amber,#f59e0b);"></i><span>Tiến trình học sinh</span><em id="nav-progress-count" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">0</em></button>
-                <p class="nav-label nav-label-gap">SYSTEM</p>
+                <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Đề thi &amp; môn học</span><em id="nav-question-count">0</em></button>
+                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-tower-broadcast" style="color:var(--amber,#f59e0b);"></i><span>Lớp học trực tiếp</span><em id="nav-progress-count" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">0</em></button>
+                <p class="nav-label nav-label-gap">HỆ THỐNG</p>
                 <button class="nav-item" data-view="access" type="button"><i class="fa-solid fa-user-shield"></i><span>Quyền truy cập</span></button>
                 <button class="nav-item" data-view="reports" type="button"><i class="fa-solid fa-chart-line"></i><span>Báo cáo &amp; dữ liệu</span></button>
             </nav>
@@ -134,9 +133,16 @@
                             </div>
                             <p id="maintenance-copy">Trang web đang mở công khai cho học sinh.</p>
                             <div class="maintenance-control">
-                                <label class="switch" title="Bật/tắt chế độ khóa web bảo trì">
-                                    <input type="checkbox" id="maintenance-toggle">
-                                    <span></span>
+                                <label class="lock-switch" title="Bật/tắt chế độ khóa web bảo trì">
+                                    <input type="checkbox" id="maintenance-toggle" class="lock-switch-input">
+                                    <div class="lock-switch-track" aria-hidden="true">
+                                        <svg class="lock-switch-icon is-unlocked" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M50,18A19.9,19.9,0,0,0,30,38v8a8,8,0,0,0-8,8V74a8,8,0,0,0,8,8H70a8,8,0,0,0,8-8V54a8,8,0,0,0-8-8H38V38a12,12,0,0,1,23.6-3,4,4,0,1,0,7.8-2A20.1,20.1,0,0,0,50,18Z"></path>
+                                        </svg>
+                                        <svg class="lock-switch-icon is-locked" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M30,46V38a20,20,0,0,1,40,0v8a8,8,0,0,1,8,8V74a8,8,0,0,1-8,8H30a8,8,0,0,1-8-8V54A8,8,0,0,1,30,46Zm32-8v8H38V38a12,12,0,0,1,24,0Z" fill-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
                                 </label>
                                 <b id="maintenance-toggle-label" class="maintenance-toggle-label">Khóa Web</b>
                                 <button id="edit-maintenance" class="text-button" type="button"><i class="fa-solid fa-pen"></i> Đổi lời nhắn</button>
@@ -198,20 +204,25 @@
                     <section id="content-library-section" class="panel library-panel"><div class="panel-title"><div><p class="eyebrow">LIBRARY</p><h2>Danh sách câu hỏi <span id="library-count" class="heading-count">0</span></h2></div><div class="panel-title-actions"><span id="result-summary" class="muted-copy">0 kết quả</span><button id="export-pdf-library" class="button button-secondary" type="button"><i class="fa-solid fa-file-pdf"></i> In đề thi</button><button id="open-trash-button" class="button button-secondary" type="button"><i class="fa-solid fa-trash-can-arrow-up"></i> Thùng rác <span id="trash-count-badge" class="badge-count">0</span></button><button id="delete-scope-button" class="button button-secondary button-danger-hover" type="button"><i class="fa-solid fa-trash-can"></i> Xóa câu hỏi...</button></div></div><div class="library-toolbar"><div class="grade-filters"><button type="button" class="grade-filter is-active" data-grade="all">Tất cả</button><button type="button" class="grade-filter" data-grade="5">Lớp 5</button><button type="button" class="grade-filter" data-grade="11">Lớp 11</button></div><select id="library-subject-filter"><option value="all">Tất cả môn học</option></select><select id="question-type-filter"><option value="all">Tất cả dạng câu</option><option value="mcq">4 lựa chọn</option><option value="tf_group">Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select><input id="search-input" type="search" placeholder="Tìm nội dung câu hỏi..."></div><div id="library-subject-tabs" class="library-subject-tabs"></div><div id="library-bulk-bar" class="library-bulk-bar hidden"><div class="bulk-bar-left"><label class="bulk-checkbox-label"><input type="checkbox" id="bulk-select-all-checkbox"><span>Chọn tất cả (<span id="bulk-filtered-count">0</span> câu đang lọc)</span></label><span class="bulk-badge">Đã chọn: <strong id="bulk-selected-count">0</strong></span></div><div class="bulk-bar-right"><button type="button" id="bulk-deselect-btn" class="button button-secondary button-sm">Bỏ chọn</button><button type="button" id="bulk-delete-btn" class="button button-danger-solid button-sm"><i class="fa-solid fa-trash-can"></i> Xóa các câu đã chọn (<span id="bulk-delete-count">0</span>)</button></div></div><div id="questions-list" class="questions-list"></div><div id="empty-state" class="empty-state hidden"><i class="fa-solid fa-box-open"></i><p>Không tìm thấy câu hỏi phù hợp.</p></div><div id="library-pagination" class="library-pagination"></div></section>
                 </section>
 
-                <section class="view" data-view-panel="students"><div class="page-heading compact-heading"><div><p class="eyebrow">LIVE MONITOR</p><h1>Giám sát học sinh</h1><p>Theo dõi thiết bị, trạng thái làm bài và phát thông báo thời gian thực.</p></div><div class="heading-actions"><button id="refresh-students" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button><button id="clear-logins" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử</button></div></div><div class="monitor-stats" id="monitor-stats"></div><section class="panel broadcast-panel"><div class="panel-title"><div><p class="eyebrow">BROADCAST</p><h2>Phát thông báo tới học sinh</h2></div><span class="info-badge">Hiện trong 5 giây</span></div><div class="broadcast-row"><input id="notice-input" maxlength="160" placeholder="Ví dụ: Còn 10 phút nữa hết giờ làm bài..."><button id="send-notice" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi toàn phòng</button></div><div class="quick-notices"><span>Mẫu nhanh:</span><button type="button" data-notice="Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!">Còn 10 phút</button><button type="button" data-notice="Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!">Còn 5 phút</button><button type="button" data-notice="Các em tập trung làm bài, nghiêm túc, không trao đổi!">Nghiêm túc</button><button type="button" data-notice="Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.">Hết giờ</button></div></section><section class="panel danger-panel"><div class="panel-title"><div><p class="eyebrow">SAFETY CONTROL</p><h2>Chặn IP khẩn cấp</h2></div><span id="banned-count" class="status-badge danger">0 IP</span></div><div class="ban-row"><input id="ban-ip-input" placeholder="Nhập địa chỉ IP cần chặn..."><input id="ban-reason-input" placeholder="Lý do (không bắt buộc)"><button id="ban-ip-button" class="button button-danger" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button></div><div id="banned-list" class="banned-list"></div></section><section class="panel students-panel"><div class="panel-title"><div><p class="eyebrow">SESSIONS</p><h2>Phiên truy cập <span id="student-count" class="heading-count">0</span></h2></div></div><div class="table-wrap"><table><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"></tbody></table></div></section></section>
-
                 <section class="view" data-view-panel="progress">
                     <div class="page-heading compact-heading">
                         <div>
-                            <p class="eyebrow" style="color:var(--amber,#f59e0b);">REALTIME PROGRESS MONITOR</p>
-                            <h1>Theo dõi tiến trình làm bài trực tiếp</h1>
-                            <p>Theo dõi trực tiếp số câu đã làm, môn thi và trạng thái làm bài của học sinh theo thời gian thực.</p>
+                            <p class="eyebrow" style="color:var(--amber,#f59e0b);">LIVE CLASSROOM</p>
+                            <h1>Lớp học trực tiếp</h1>
+                            <p>Theo dõi tiến trình chi tiết từng câu, phát thông báo toàn phòng và kiểm soát phiên truy cập.</p>
                         </div>
                         <div class="heading-actions">
                             <button id="refresh-progress" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button>
                             <button id="copy-parent-link-head" class="button button-warning" type="button" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;"><i class="fa-solid fa-share-nodes"></i> Sao chép Link Theo Dõi</button>
                         </div>
                     </div>
+
+                    <div class="live-subtabs" role="tablist" aria-label="Chế độ lớp học trực tiếp">
+                        <button type="button" class="live-subtab is-active" data-live-tab="cards" role="tab" aria-selected="true"><i class="fa-solid fa-chart-pie"></i> Tiến trình &amp; Chi tiết bài làm</button>
+                        <button type="button" class="live-subtab" data-live-tab="control" role="tab" aria-selected="false"><i class="fa-solid fa-radar"></i> Giám sát, Thông báo &amp; Chặn IP <em id="nav-online-count">0</em></button>
+                    </div>
+
+                    <div data-live-pane="cards">
 
                     <!-- KHU VỰC CẤP NHANH IP / TOKEN NGƯỜI THEO DÕI NGAY TRÊN BẢNG TIẾN TRÌNH -->
                     <section class="panel" style="margin-bottom: 20px; border-left: 4px solid var(--amber,#f59e0b);">
@@ -276,6 +287,78 @@
                             <!-- Progress cards render here -->
                         </div>
                     </section>
+                    </div>
+
+                    <div data-live-pane="control" class="hidden">
+                        <div class="live-control-toolbar">
+                            <div class="actions">
+                                <button id="refresh-students" class="btn btn-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới phiên</button>
+                                <button id="clear-logins" class="btn btn-danger" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử đăng nhập</button>
+                            </div>
+                        </div>
+
+                        <div class="monitor-stats" id="monitor-stats"></div>
+
+                        <section class="panel broadcast-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Thông báo toàn lớp</h2>
+                                    <p>Gửi thông báo trực tiếp tới màn hình học sinh đang làm bài</p>
+                                </div>
+                            </div>
+                            <div class="broadcast-form">
+                                <input id="notice-input" type="text" placeholder="Nhập nội dung thông báo gửi tới toàn lớp...">
+                                <button id="send-notice" class="btn btn-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi thông báo</button>
+                            </div>
+                            <div class="quick-notices">
+                                <button class="chip" type="button" data-notice="Các em chú ý làm bài cẩn thận, còn 10 phút nữa hết giờ!">Còn 10 phút</button>
+                                <button class="chip" type="button" data-notice="Nhắc nhở: Không chuyển tab hay tìm kiếm đáp án bên ngoài khi đang làm bài!">Nhắc không chuyển tab</button>
+                                <button class="chip" type="button" data-notice="Các em hãy kiểm tra lại các câu đã làm trước khi bấm Nộp bài nhé.">Kiểm tra trước khi nộp</button>
+                            </div>
+                        </section>
+
+                        <section class="panel danger-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Chặn IP khẩn cấp</h2>
+                                    <p>Ngăn thiết bị hoặc địa chỉ IP truy cập vào hệ thống thi</p>
+                                </div>
+                                <span id="banned-count" class="badge badge-danger">0 IP bị chặn</span>
+                            </div>
+                            <div class="ban-form">
+                                <input id="ban-ip-input" type="text" placeholder="Nhập địa chỉ IP cần chặn...">
+                                <input id="ban-reason-input" type="text" placeholder="Lý do chặn (không bắt buộc)...">
+                                <button id="ban-ip-button" class="btn btn-danger" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button>
+                            </div>
+                            <div id="banned-list" class="banned-list"></div>
+                        </section>
+
+                        <section class="panel students-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Danh sách phiên truy cập</h2>
+                                    <p>Theo dõi thiết bị, IP, trạng thái trực tuyến và cảnh báo vi phạm</p>
+                                </div>
+                                <span id="student-count" class="badge">0 phiên</span>
+                            </div>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Học sinh</th>
+                                            <th>Trạng thái</th>
+                                            <th>IP / Thiết bị</th>
+                                            <th>Hoạt động cuối</th>
+                                            <th>Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="students-body">
+                                        <!-- Sessions render here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
                 </section>
 
                 <section class="view" data-view-panel="access">

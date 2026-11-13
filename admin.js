@@ -2532,9 +2532,28 @@
         return grade === 'all' ? 'Tiến trình Tất cả môn' : `Tiến trình Lớp ${grade}`;
     }
 
+    function switchLiveSubtab(tab = 'cards') {
+        const target = tab === 'control' ? 'control' : 'cards';
+        document.querySelectorAll('[data-live-tab]').forEach((btn) => {
+            const active = btn.dataset.liveTab === target;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-live-pane]').forEach((pane) => {
+            pane.classList.toggle('hidden', pane.dataset.livePane !== target);
+        });
+        if (target === 'control') loadStudents().catch(() => {});
+        else renderGrade5ProgressMonitor();
+    }
+
     function switchView(view) {
         if (view === 'subjects') view = 'questions';
-        const titles = { overview: 'Tổng quan', questions: 'Ngân hàng & môn học', students: 'Giám sát học sinh', progress: getProgressFilterTitle(), access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' };
+        let requestedLiveTab = null;
+        if (view === 'students') {
+            view = 'progress';
+            requestedLiveTab = 'control';
+        }
+        const titles = { overview: 'Tổng quan', questions: 'Đề thi & môn học', progress: 'Lớp học trực tiếp', access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' };
         document.querySelectorAll('[data-view-panel]').forEach((panel) => {
             const isActive = panel.dataset.viewPanel === view;
             panel.classList.toggle('is-visible', isActive);
@@ -2553,7 +2572,8 @@
         }
 
         if (view === 'progress') {
-            renderGrade5ProgressMonitor();
+            if (requestedLiveTab) switchLiveSubtab(requestedLiveTab);
+            else renderGrade5ProgressMonitor();
 
             // Kích hoạt Realtime Supabase live feed cho Admin (cập nhật ngay khi học sinh chọn đáp án)
             if (!state.progressRealtimeChannel && state.client && typeof state.client.channel === 'function') {
@@ -5370,6 +5390,7 @@
         moveSubjectFormToDialog();
         document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
         document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
+        document.querySelectorAll('[data-live-tab]').forEach((button) => button.addEventListener('click', () => switchLiveSubtab(button.dataset.liveTab)));
         $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
         $('theme-toggle')?.addEventListener('click', () => {
             document.body.classList.toggle('dark');

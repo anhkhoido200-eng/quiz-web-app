@@ -209,6 +209,82 @@ body:not(.dark) .switch span {
     transform: translateX(20px);
     background: #ffffff;
 }
+/* Uiverse-style Lock/Unlock Web Switch */
+.lock-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.lock-switch-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.lock-switch-track {
+    position: relative;
+    width: 84px;
+    height: 42px;
+    border-radius: 999px;
+    background: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    outline: none;
+}
+.lock-switch-track::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: #f9fafb;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+    transition: transform 0.3s ease;
+    z-index: 2;
+}
+.lock-switch:hover .lock-switch-track::after {
+    transform: scale(0.95);
+}
+.lock-switch-input:focus-visible + .lock-switch-track {
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.35), 0 4px 12px rgba(16, 185, 129, 0.28);
+}
+.lock-switch-input:checked + .lock-switch-track {
+    background: #fb7185;
+    box-shadow: 0 4px 14px rgba(251, 113, 133, 0.38);
+    animation: maintenancePulseRing 2s infinite ease-in-out;
+}
+.lock-switch-input:checked + .lock-switch-track::after {
+    transform: translateX(42px);
+}
+.lock-switch:hover .lock-switch-input:checked + .lock-switch-track::after {
+    transform: translateX(42px) scale(0.95);
+}
+.lock-switch-icon {
+    position: absolute;
+    top: 6px;
+    width: 30px;
+    height: 30px;
+    fill: #111827;
+    stroke: #111827;
+    stroke-width: 1;
+    z-index: 1;
+    pointer-events: none;
+}
+.lock-switch-icon.is-locked {
+    left: 6px;
+}
+.lock-switch-icon.is-unlocked {
+    left: 48px;
+}
 .maintenance-toggle-label {
     font-size: 12px;
     font-weight: 600;
@@ -2208,3 +2284,8 @@ body.dark .library-toolbar input[type="search"] {
 .student-q-exp b{color:#fbbf24}
 .student-q-old-note{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .student-q-chip{cursor:pointer}
+.live-subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:-8px 0 18px}
+.live-subtab{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;font-weight:700;transition:.18s}
+.live-subtab:hover{color:var(--text);border-color:rgba(99,91,255,.35)}
+.live-subtab.is-active{background:var(--primary-soft);color:var(--primary);border-color:var(--primary)}
+.live-subtab em{font-style:normal;font-size:10px;padding:2px 7px;border-radius:99px;background:rgba(148,163,184,.18);color:var(--text)}
