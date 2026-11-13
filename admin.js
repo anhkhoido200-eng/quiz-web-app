@@ -2533,7 +2533,7 @@
     }
 
     function switchLiveSubtab(tab = 'cards') {
-        const target = tab === 'control' ? 'control' : 'cards';
+        const target = tab === 'control' ? 'control' : (tab === 'arena' ? 'arena' : 'cards');
         document.querySelectorAll('[data-live-tab]').forEach((btn) => {
             const active = btn.dataset.liveTab === target;
             btn.classList.toggle('is-active', active);
@@ -2543,6 +2543,7 @@
             pane.classList.toggle('hidden', pane.dataset.livePane !== target);
         });
         if (target === 'control') loadStudents().catch(() => {});
+        else if (target === 'arena') window.ArenaHost?.mount(state.subjects);
         else renderGrade5ProgressMonitor();
     }
 

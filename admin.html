@@ -220,6 +220,7 @@
                     <div class="live-subtabs" role="tablist" aria-label="Chế độ lớp học trực tiếp">
                         <button type="button" class="live-subtab is-active" data-live-tab="cards" role="tab" aria-selected="true"><i class="fa-solid fa-chart-pie"></i> Tiến trình &amp; Chi tiết bài làm</button>
                         <button type="button" class="live-subtab" data-live-tab="control" role="tab" aria-selected="false"><i class="fa-solid fa-radar"></i> Giám sát, Thông báo &amp; Chặn IP <em id="nav-online-count">0</em></button>
+                        <button type="button" class="live-subtab" data-live-tab="arena" role="tab" aria-selected="false"><i class="fa-solid fa-trophy"></i> Phòng thi đấu</button>
                     </div>
 
                     <div data-live-pane="cards">
@@ -362,6 +363,10 @@
                                 </table>
                             </div>
                         </section>
+                    </div>
+
+                    <div data-live-pane="arena" class="hidden">
+                        <div id="arena-host-root"></div>
                     </div>
                 </section>
 
@@ -936,6 +941,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase.js?v=20261112e"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script defer src="arena.js?v=20261113a"></script>
     <script src="admin.js?v=20261112j"></script>
 </body>
 </html>

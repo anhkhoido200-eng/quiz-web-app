@@ -2376,3 +2376,14 @@ body.dark .library-toolbar input[type="search"] {
     color: #f59e0b;
     box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
 }
+
+.arena-host-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 17px;
+}
+@media (max-width: 900px) {
+    .arena-host-grid {
+        grid-template-columns: 1fr;
+    }
+}
