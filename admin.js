@@ -22,6 +22,7 @@
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         tokens: [], reportRows: null, reportAllRows: [], reportLoading: false, reportLeaderboardPage: 1,
+        progressFilter: 'all', progressSubject: 'all', progressSearch: '', progressSort: 'recent', progressRecords: [], progressRawLogins: [], progressLoading: false, progressRefreshQueued: false,
         subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
@@ -42,6 +43,7 @@
     };
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+    const escBody = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const notationText = (value) => {
         if (typeof MathNotation !== 'undefined' && typeof MathNotation.readValue === 'function') {
             return MathNotation.readValue(value).text;
@@ -51,10 +53,12 @@
     };
     const storageText = (value) => {
         if (value && typeof value === 'object') {
+            const text = String(value.text ?? value.value ?? value.content ?? '').trim();
             const math = value.math ?? value.latex ?? value.formula;
             if (math !== undefined && math !== null && String(math).trim()) {
                 const source = String(math).trim();
-                return /^\$[^$]+\$$|^\$\$[\s\S]*\$\$$/.test(source) ? source : `$${source}$`;
+                const mathStr = /^\$[^$]+\$$|^\$\$[\s\S]*\$\$$/.test(source) ? source : `$${source}$`;
+                return text ? `${text} ${mathStr}` : mathStr;
             }
             return String(value.text ?? value.value ?? value.content ?? '');
         }
@@ -66,7 +70,7 @@
             ? MathNotation.format(source)
             : String(source ?? '');
     };
-    const htmlText = (value, fallback = '') => esc(formatNotation(value, fallback)).replace(/\r?\n/g, '<br>');
+    const htmlText = (value, fallback = '') => escBody(formatNotation(value, fallback)).replace(/\r?\n/g, '<br>');
     const renderMath = (root) => {
         if (!root) return;
         if (typeof renderMathInElement !== 'function') {
@@ -799,6 +803,7 @@
 
     function readQuestion() {
         const q = {
+            grade: $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'),
             subject_key: $('subject-select')?.value || state.importSubject,
             category: $('category-input')?.value || 'Ôn tập',
             q_type: state.type,
@@ -1252,8 +1257,9 @@
 
     function toRecord(q, subjectKey, id) {
         const normalized = normalizeAiQuestion(q);
+        const resolvedGrade = String(normalized.grade || $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'));
         const record = {
-            ...(id ? { id: Number(id) } : {}), subject_key: subjectKey || normalized.subject_key || 'history', category: normalized.category || 'Bài tập',
+            ...(id ? { id: Number(id) } : {}), subject_key: subjectKey || normalized.subject_key || 'history', grade: resolvedGrade, category: normalized.category || 'Bài tập',
             q_type: normalized.qType, question: storageText(normalized.question), options: normalized.qType === 'mcq' ? normalized.options.map(storageText) : [],
             statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: storageText(item.text ?? item.content), answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
             correct: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
@@ -2516,9 +2522,19 @@
         }
     }
 
+    function getProgressFilterTitle() {
+        const grade = state.progressFilter || 'all';
+        const subject = state.progressSubject || 'all';
+        if (subject !== 'all') {
+            const selected = allSubjects().find((item) => subjectMatchKey(item.key) === subjectMatchKey(subject) || subjectMatchKey(item.name) === subjectMatchKey(subject));
+            return `Tiến trình ${selected?.name || subject}`;
+        }
+        return grade === 'all' ? 'Tiến trình Tất cả môn' : `Tiến trình Lớp ${grade}`;
+    }
+
     function switchView(view) {
         if (view === 'subjects') view = 'questions';
-        const titles = { overview: 'Tổng quan', questions: 'Ngân hàng & môn học', students: 'Giám sát học sinh', progress: 'Tiến trình Lớp 5', access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' };
+        const titles = { overview: 'Tổng quan', questions: 'Ngân hàng & môn học', students: 'Giám sát học sinh', progress: getProgressFilterTitle(), access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' };
         document.querySelectorAll('[data-view-panel]').forEach((panel) => {
             const isActive = panel.dataset.viewPanel === view;
             panel.classList.toggle('is-visible', isActive);
@@ -2929,12 +2945,12 @@
                                     <span class="stack-item-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
                                         <i class="fa-solid fa-user-shield"></i>
                                     </span>
-                                    <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</b>
-                                    <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;">Kèm Đề + AI</span>
+                                     <b style="font-size:13px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</b>
+                                     <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>Kèm Đề + AI</span>
                                 </div>
                             </td>
                             <td>
-                                <code style="font-weight:700;color:var(--amber,#f59e0b);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                     <code style="font-weight:700;color:var(--amber,#f59e0b);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code><button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
                             </td>
                             <td>${ipDisplay}</td>
                             <td>
@@ -2972,17 +2988,18 @@
                             <span style="color:var(--amber,#f59e0b);font-size:12px;"><i class="fa-solid fa-eye"></i></span>
                             <div style="min-width:0;flex:1;">
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                                    <strong style="font-size:12px;color:var(--text);">${esc(item.name || 'Người theo dõi')}</strong>
+                                     <strong style="font-size:12px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</strong>
                                     <span style="font-size:10px;color:var(--emerald);background:rgba(16,185,129,0.15);padding:1px 5px;border-radius:4px;font-weight:600;">Xem Đề + AI</span>
-                                    <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                     <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code><button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
                                     ${ipDisplay}
                                 </div>
                             </div>
                         </div>
                         <div style="display:flex;align-items:center;gap:6px;shrink-0;">
-                            <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
-                                <i class="fa-solid fa-link"></i> Link
-                            </button>
+                             <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
+                                 <i class="fa-solid fa-link"></i> Link
+                             </button>
+                             <button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
                             <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:3px 8px;" title="Thu hồi">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
@@ -4047,6 +4064,7 @@
         const page = await state.client
             .from('quiz_logins')
             .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+            .neq('player_name', '__TRASH_BIN__')
             .order('last_active', { ascending: false })
             .limit(300);
         if (page.error) {
@@ -4165,16 +4183,17 @@
     function parseStudentProgress(row) {
         const rawStatus = String(row.status || '');
         const rawScore = String(row.score_summary || '');
+        const rawPayload = [rawStatus, rawScore].join(' ');
         let subjectName = '';
         const subjMatch = rawStatus.match(/^\[(.*?)\]/) || rawScore.match(/^\[(.*?)\]/);
         if (subjMatch) subjectName = subjMatch[1].trim();
 
-        const isGrade5 = /lớp\s*5|toán|math5|toán\s*đề/i.test(subjectName) || 
+        const isGrade5 = /lớp\s*5|toán|math5|toán\s*đề/i.test(subjectName) ||
                         /lớp\s*5/i.test(rawStatus) || /lớp\s*5/i.test(rawScore) ||
                         subjectName.toLowerCase().startsWith('toán');
 
         let answered = 0, total = 0, percent = 0;
-        const progMatch = rawStatus.match(/(\d+)\s*\/\s*(\d+)/);
+        const progMatch = rawStatus.match(/(\d+)\s*\/\s*(\d+)/) || rawScore.match(/(\d+)\s*\/\s*(\d+)/);
         if (progMatch) {
             answered = parseInt(progMatch[1], 10);
             total = parseInt(progMatch[2], 10);
@@ -4195,14 +4214,35 @@
             }
         }
 
-        const isCompleted = /đã nộp bài/i.test(rawStatus) || /hoàn thành/i.test(rawScore) || /điểm/i.test(rawScore);
+        const isCompleted = /đã nộp bài|hoàn thành/i.test(rawPayload) || /điểm/i.test(rawScore);
+        const isFullyAnswered = total > 0 && answered >= total;
+        const isReadyToSubmit = !isCompleted && isFullyAnswered;
         if (isCompleted && percent === 0 && total > 0) percent = 100;
+        if (isFullyAnswered) percent = 100;
 
         let finalScore = null;
         const scoreMatch = rawScore.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
         if (scoreMatch) finalScore = Number(scoreMatch[1].replace(',', '.'));
 
-        const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
+        const isWaiting = !isCompleted && !isReadyToSubmit && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
+
+        const timeMatch = rawPayload.match(/(?:thời gian làm bài|đã làm|làm bài)\s*[:：-]?\s*(\d{1,3})(?:\s*phút|\s*p)?\s*(?:(\d{1,2})\s*(?:giây|s))?/i)
+            || rawPayload.match(/-\s*(\d{1,3}:\d{2})/);
+        let durationSeconds = 0;
+        let durationLabel = 'Chưa có dữ liệu';
+        if (timeMatch) {
+            if (String(timeMatch[1]).includes(':')) {
+                const [minutes, seconds] = String(timeMatch[1]).split(':').map(Number);
+                durationSeconds = (minutes * 60) + seconds;
+            } else {
+                durationSeconds = (Number(timeMatch[1]) * 60) + Number(timeMatch[2] || 0);
+            }
+            if (durationSeconds > 0) {
+                const minutes = Math.floor(durationSeconds / 60);
+                const seconds = durationSeconds % 60;
+                durationLabel = minutes ? `${minutes}p ${String(seconds).padStart(2, '0')}s` : `${seconds}s`;
+            }
+        }
 
         // Quy đổi điểm sang Thang Điểm 10 khoa học (Tối đa 10 điểm mỗi đề)
         let score10 = 0;
@@ -4225,7 +4265,8 @@
             name: row.player_name || 'Học sinh',
             ip: row.ip_address || '',
             device: row.device_info || '',
-            subject: subjectName || 'Toán Lớp 5',
+            subject: subjectName || 'Chưa chọn môn',
+            grade: isGrade5 ? '5' : '11',
             isGrade5,
             answered,
             total,
@@ -4235,10 +4276,14 @@
             finalScore,
             score10,
             isCompleted,
+            isReadyToSubmit,
             isWaiting,
+            durationSeconds,
+            durationLabel,
             lastActive: row.last_active,
             rawStatus,
-            rawScore
+            rawScore,
+            row
         };
     }
 
@@ -4275,6 +4320,79 @@
         empty.hidden = !visible;
     }
 
+    function formatExamStatus(subject) {
+        const configured = allSubjects().find((item) => subjectMatchKey(item.key) === subjectMatchKey(subject) || subjectMatchKey(item.name) === subjectMatchKey(subject));
+        const source = `${configured?.status || configured?.state || configured?.name || subject}`.toLowerCase();
+        return /đóng|closed|khóa/i.test(source) ? 'Đã đóng' : 'Đang mở';
+    }
+
+    function renderProgressSubjectOptions(records = []) {
+        const select = $('progress-subject-filter');
+        if (!select) return;
+        const subjects = new Map();
+        records.forEach((record) => {
+            const key = record.subject && record.subject !== 'Chưa chọn môn' ? record.subject : '';
+            if (key) subjects.set(subjectMatchKey(key), key);
+        });
+        allSubjects().forEach((item) => {
+            if (!subjects.has(subjectMatchKey(item.name))) subjects.set(subjectMatchKey(item.name), item.name);
+        });
+        const selected = state.progressSubject || 'all';
+        select.innerHTML = `<option value="all">Tất cả môn học</option>${Array.from(subjects.values()).sort((a, b) => a.localeCompare(b, 'vi')).map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('')}`;
+        select.value = Array.from(select.options).some((option) => subjectMatchKey(option.value) === subjectMatchKey(selected)) ? selected : 'all';
+        if (select.value !== selected) state.progressSubject = 'all';
+    }
+
+    function observerIsOnline(item) {
+        const now = Date.now();
+        return (state.progressRawLogins || []).some((row) => {
+            const sameIp = item.ip && String(row.ip_address || '').trim() === String(item.ip).trim();
+            const sameName = item.name && String(row.player_name || '').trim().toLowerCase() === String(item.name).trim().toLowerCase();
+            const time = new Date(row.last_active || row.created_at || 0).getTime();
+            return (sameIp || sameName) && time > 0 && now - time < 300000 && !String(row.status || '').startsWith('BANNED');
+        });
+    }
+
+    function renderProgressSubjectInfo(records = []) {
+        const target = $('progress-subject-info');
+        if (!target) return;
+        const subject = state.progressSubject || 'all';
+        if (subject === 'all') {
+            const total = records.length;
+            const completed = records.filter((item) => item.isCompleted).length;
+            const completion = total ? Math.round((completed / total) * 100) : 0;
+            target.innerHTML = `<div class="progress-subject-empty"><i class="fa-solid fa-layer-group"></i><div><strong>Tổng quan theo bộ lọc hiện tại</strong><span>${total ? `${total} học sinh · ${completion}% đã hoàn thành` : 'Chọn một môn học cụ thể để xem thông tin đề thi.'}</span></div></div>`;
+            return;
+        }
+        const matched = records.filter((item) => subjectMatchKey(item.subject) === subjectMatchKey(subject));
+        const first = matched[0];
+        const configured = allSubjects().find((item) => subjectMatchKey(item.name || item.key) === subjectMatchKey(subject));
+        const totalQuestions = Math.max(Number(configured?.count || 0), ...matched.map((item) => Number(item.total || 0)), 0);
+        const average = matched.length ? matched.reduce((sum, item) => sum + Number(item.score10 || 0), 0) / matched.length : 0;
+        const completion = matched.length ? Math.round((matched.filter((item) => item.isCompleted || item.percent >= 100).length / matched.length) * 100) : 0;
+        const grade = configured ? subjectGrade(configured) : (first?.grade || '—');
+        target.innerHTML = `<div class="progress-subject-summary"><div class="progress-subject-identity"><span class="progress-subject-icon"><i class="fa-solid fa-book-open"></i></span><div><p class="eyebrow">THÔNG TIN MÔN HỌC</p><h3>${esc(configured?.name || subject)}</h3><span>Khối ${esc(grade)} · Mã đề: ${esc(configured?.examCode || configured?.code || 'Chưa thiết lập')}</span></div></div><div class="progress-subject-facts"><span><b>Thời gian</b>${esc(configured?.duration || '45 phút')}</span><span><b>Trạng thái đề</b><em class="${formatExamStatus(subject) === 'Đang mở' ? 'is-open' : 'is-closed'}">${formatExamStatus(subject)}</em></span><span><b>Cấu trúc</b>${totalQuestions || '—'} câu · ${esc(configured?.format || 'Trắc nghiệm')}</span><span><b>Thang điểm</b>${esc(configured?.scale || '10')}</span><span><b>Điểm trung bình</b>${matched.length ? average.toFixed(1) : '—'} / 10</span><span><b>Hoàn thành chung</b>${completion}%</span></div></div>`;
+    }
+
+    function getProgressCardStatus(p) {
+        if (p.isCompleted) return { type: 'completed', label: 'Hoàn thành', icon: 'fa-circle-check', tone: 'primary' };
+        if (p.isReadyToSubmit) return { type: 'ready', label: 'Chờ nộp bài', icon: 'fa-paper-plane', tone: 'blue' };
+        if (p.isWaiting) return { type: 'waiting', label: 'Đang chờ', icon: 'fa-hourglass-half', tone: 'muted' };
+        return { type: 'doing', label: 'Đang làm bài', icon: 'fa-pen-nib', tone: 'green' };
+    }
+
+    function progressSortRecords(records) {
+        const list = [...records];
+        const time = (item) => new Date(item.lastActive || 0).getTime() || 0;
+        if (state.progressSort === 'progress') return list.sort((a, b) => b.percent - a.percent || time(b) - time(a));
+        if (state.progressSort === 'score') return list.sort((a, b) => b.score10 - a.score10 || time(b) - time(a));
+        if (state.progressSort === 'score-asc') return list.sort((a, b) => a.score10 - b.score10 || time(b) - time(a));
+        return list.sort((a, b) => {
+            const statusWeight = (item) => item.isReadyToSubmit ? 3 : (item.isCompleted ? 2 : (item.isWaiting ? 0 : 1));
+            return statusWeight(b) - statusWeight(a) || time(b) - time(a);
+        });
+    }
+
     async function renderGrade5ProgressMonitor() {
         const container = $('grade5-progress-cards');
         if (!container) return;
@@ -4285,6 +4403,7 @@
         state.progressLoading = true;
 
         let logins = [];
+        let loadError = '';
         try {
             if (state.client) {
                 const { data, error } = await state.client
@@ -4292,9 +4411,11 @@
                     .select('*')
                     .order('last_active', { ascending: false })
                     .limit(100);
-                if (!error && data) logins = data;
+                if (error) loadError = error.message || 'Không thể tải dữ liệu tiến trình.';
+                else if (data) logins = data;
             }
         } catch (e) {
+            loadError = e?.message || 'Không thể tải dữ liệu tiến trình.';
             console.warn('Lỗi tải tiến trình:', e);
         }
 
@@ -4322,16 +4443,35 @@
         }
         const allParsed = Array.from(latestByStudent.values()).map(item => parseStudentProgress(item.row));
         const filter = state.progressFilter || 'all';
-        const parsedList = filter === 'all'
+        const gradeList = filter === 'all'
             ? allParsed
             : (filter === '5' ? allParsed.filter(p => p.isGrade5) : allParsed.filter(p => !p.isGrade5));
+        state.progressRecords = allParsed;
+        state.progressRawLogins = logins;
+        renderProgressSubjectOptions(allParsed);
+        const subjectList = state.progressSubject === 'all'
+            ? gradeList
+            : gradeList.filter((p) => subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject));
+        const keyword = String(state.progressSearch || '').trim().toLowerCase();
+        const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
+        renderProgressSubjectInfo(subjectList);
+        if (loadError && gradeList.length === 0) {
+            container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+            setProgressEmptyState(container, true, 'nào');
+            const title = container.querySelector('[data-progress-empty] h3');
+            if (title) title.textContent = 'Không thể tải dữ liệu';
+            const message = container.querySelector('[data-progress-empty] p');
+            if (message) message.textContent = loadError;
+            state.progressLoading = false;
+            return;
+        }
 
         const nowMs = Date.now();
         let doingCount = 0;
         let submittedCount = 0;
         let waitingCount = 0;
 
-        parsedList.forEach(p => {
+        subjectList.forEach(p => {
             if (p.isCompleted) submittedCount++;
             else if (p.isWaiting) waitingCount++;
             else doingCount++;
@@ -4340,8 +4480,8 @@
         $('g5-stat-doing') && ($('g5-stat-doing').textContent = doingCount);
         $('g5-stat-submitted') && ($('g5-stat-submitted').textContent = submittedCount);
         $('g5-stat-waiting') && ($('g5-stat-waiting').textContent = waitingCount);
-        $('g5-stat-total') && ($('g5-stat-total').textContent = parsedList.length);
-        $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || parsedList.length));
+        $('g5-stat-total') && ($('g5-stat-total').textContent = subjectList.length);
+        $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || subjectList.length));
 
         renderQuickObservers();
 
@@ -4355,12 +4495,7 @@
         }
 
         // Ưu tiên hiển thị: Học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ ở trang chủ
-        const sortedList = [...parsedList].sort((a, b) => {
-            const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
-            const bScore = (!b.isCompleted && !b.isWaiting) ? 2 : (b.isCompleted ? 1 : 0);
-            if (bScore !== aScore) return bScore - aScore;
-            return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
-        });
+        const sortedList = progressSortRecords(parsedList);
 
         setProgressEmptyState(container, false);
         renderGrade5CardsSmoothly(container, sortedList, nowMs);
@@ -4369,6 +4504,14 @@
     }
 
     function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
+        const status = getProgressCardStatus(p);
+        const statusColors = {
+            waiting: 'background:rgba(148,163,184,0.15);color:#94a3b8;',
+            completed: 'background:rgba(16,185,129,0.15);color:#34d399;',
+            ready: 'background:rgba(59,130,246,0.15);color:#60a5fa;',
+            doing: 'background:rgba(16,185,129,0.15);color:#34d399;'
+        };
+        const statusHtml = `<span class="status-badge" style="${statusColors[status.type] || statusColors.doing}font-weight:700;display:inline-flex;align-items:center;gap:5px;"><i class="fa-solid ${status.icon}"></i> ${status.label}</span>`;
         if (cardType === 'waiting') {
             return `
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -4382,9 +4525,7 @@
                         </div>
                     </div>
                     <div class="progress-card-actions">
-                        <span class="status-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
-                            <i class="fa-solid fa-hourglass-half"></i> Đang chờ
-                        </span>
+                        ${statusHtml}
                         ${buildProgressDeleteButton(p)}
                     </div>
                 </div>
@@ -4396,7 +4537,7 @@
 
                 <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                     <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                    <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                    <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
                 </div>
             `;
         }
@@ -4414,9 +4555,7 @@
                         </div>
                     </div>
                     <div class="progress-card-actions">
-                        <span class="status-badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                            <i class="fa-solid fa-circle-check"></i> Đã nộp bài
-                        </span>
+                        ${statusHtml}
                         ${buildProgressDeleteButton(p)}
                     </div>
                 </div>
@@ -4437,7 +4576,7 @@
 
                 <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                     <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                    <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                    <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
                 </div>
             `;
         }
@@ -4455,9 +4594,7 @@
                     </div>
                 </div>
                 <div class="progress-card-actions">
-                    <span class="status-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald);font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                        <span style="width:7px;height:7px;background:var(--emerald);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang làm bài
-                    </span>
+                    ${statusHtml}
                     ${buildProgressDeleteButton(p)}
                 </div>
             </div>
@@ -4478,7 +4615,7 @@
 
             <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                 <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
-                <span><i class="fa-solid fa-mobile-screen"></i> ${esc(p.device ? p.device.split(' ')[0] : 'Thiết bị')}</span>
+                <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
             </div>
         `;
     }
@@ -4499,7 +4636,7 @@
 
         sortedList.forEach((p, index) => {
             const timeAgo = formatTimeAgo(p.lastActive, nowMs);
-            const cardType = p.isWaiting ? 'waiting' : (p.isCompleted ? 'completed' : 'doing');
+            const cardType = p.isWaiting ? 'waiting' : (p.isCompleted ? 'completed' : (p.isReadyToSubmit ? 'ready' : 'doing'));
             const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
 
             let card = existingCards.get(p.id);
@@ -4518,6 +4655,7 @@
                 card.style.transition = 'all 0.3s ease';
                 card.dataset.studentId = p.id;
                 card.dataset.cardType = cardType;
+                card.dataset.progressStudent = p.id;
                 card.innerHTML = buildGrade5CardInnerHtml(p, cardType, percent, timeAgo);
                 const targetChild = container.children[index];
                 container.insertBefore(card, targetChild || null);
@@ -4529,7 +4667,10 @@
                     const elTime = card.querySelector('.g5-card-time');
                     if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
 
-                    if (cardType === 'doing') {
+                    const durationEl = card.querySelector('.g5-card-duration');
+                    if (durationEl) durationEl.innerHTML = `<i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}`;
+
+                    if (cardType === 'doing' || cardType === 'ready') {
                         const elCount = card.querySelector('.g5-card-count');
                         const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
                         if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
@@ -4557,6 +4698,26 @@
                 }
             }
         });
+    }
+
+    function renderStudentProgressDetail(p) {
+        const modal = $('student-progress-modal');
+        const body = $('student-progress-modal-body');
+        if (!modal || !body || !p) return;
+        const status = getProgressCardStatus(p);
+        const rawQuestionCount = Number(p.total || 0);
+        const subjectQuestions = state.questions.filter((question) => subjectMatchKey(subjectName(question.subject_key)) === subjectMatchKey(p.subject));
+        const questionRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `<li><span>Câu ${index + 1}</span><strong>${esc(notationText(question.question).slice(0, 150))}</strong><em>Chưa có dữ liệu đáp án trong phiên theo dõi</em></li>`).join('');
+        body.innerHTML = `<div class="student-detail-summary"><div><span class="student-detail-avatar"><i class="fa-solid fa-user-graduate"></i></span><div><h3>${esc(p.name)}</h3><p>${esc(p.subject)} · Lớp ${esc(p.grade)} · ${esc(status.label)}</p></div></div><span class="student-detail-score">${p.score10.toFixed(1)}<small>/10</small></span></div><div class="student-detail-metrics"><span><b>Tiến độ</b>${p.answered}/${p.total || '—'} câu (${p.percent}%)</span><span><b>Thời gian thực tế</b>${esc(p.durationLabel)}</span><span><b>Đúng / Sai</b>${p.correct} / ${p.wrong}</span><span><b>Hoạt động cuối</b>${esc(formatTimeAgo(p.lastActive))}</span></div><section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi</h4>${questionRows ? `<ul class="student-detail-questions">${questionRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án đúng, đáp án học sinh chọn hoặc lịch sử thay đổi.</p></div>'}</section><details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>`;
+        $('student-progress-modal-title').textContent = `Tiến trình của ${p.name}`;
+        $('student-progress-modal-subtitle').textContent = `${p.subject} · Cập nhật ${formatTimeAgo(p.lastActive)}`;
+        modal.classList.remove('hidden');
+        document.body.classList.add('progress-modal-open');
+    }
+
+    function closeStudentProgressDetail() {
+        $('student-progress-modal')?.classList.add('hidden');
+        document.body.classList.remove('progress-modal-open');
     }
 
     async function broadcastNotice() {
@@ -5226,26 +5387,51 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         $('notice-input')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); runAction(broadcastNotice); } });
         $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
           $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
-          $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
+        $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
           $('grade5-progress-cards')?.addEventListener('click', (event) => {
               const button = event.target.closest('[data-delete-progress-id]');
-              if (!button) return;
-              event.preventDefault();
-              event.stopPropagation();
-              const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
-              const confirmed = window.confirm(`Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`);
-               if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, '', true));
+              if (button) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
+                  const confirmed = window.confirm(`Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`);
+                  if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, '', true));
+                  return;
+              }
+              const card = event.target.closest('[data-student-id]');
+              if (card) {
+                  const record = state.progressRecords.find((item) => String(item.id) === String(card.dataset.studentId));
+                  if (record) renderStudentProgressDetail(record);
+              }
           });
           $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
          $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
          $('quick-observer-name')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
-         document.querySelectorAll('[data-progress-grade]').forEach(btn => {
+          document.querySelectorAll('[data-progress-grade]').forEach(btn => {
              btn.addEventListener('click', () => {
-                 state.progressFilter = btn.dataset.progressGrade;
-                 document.querySelectorAll('[data-progress-grade]').forEach(b => b.classList.toggle('is-active', b === btn));
-                 runAction(renderGrade5ProgressMonitor);
+                  state.progressFilter = btn.dataset.progressGrade;
+                  state.progressSubject = 'all';
+                  document.querySelectorAll('[data-progress-grade]').forEach(b => b.classList.toggle('is-active', b === btn));
+                  $('view-title') && ($('view-title').textContent = getProgressFilterTitle());
+                  runAction(renderGrade5ProgressMonitor);
              });
-         });
+          });
+          $('progress-subject-filter')?.addEventListener('change', (event) => {
+              state.progressSubject = event.target.value || 'all';
+              $('view-title') && ($('view-title').textContent = getProgressFilterTitle());
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('progress-search')?.addEventListener('input', (event) => {
+              state.progressSearch = event.target.value || '';
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('progress-sort')?.addEventListener('change', (event) => {
+              state.progressSort = event.target.value || 'recent';
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('student-progress-modal-close')?.addEventListener('click', closeStudentProgressDetail);
+          $('student-progress-modal')?.addEventListener('click', (event) => { if (event.target.id === 'student-progress-modal') closeStudentProgressDetail(); });
+          window.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeStudentProgressDetail(); });
          $('copy-parent-link-head')?.addEventListener('click', () => {
              const parentItem = (state.tokens || []).find(t => t.role === 'parent' || t.role === 'observer_grade5' || t.role === 'observer');
              const token = parentItem ? parentItem.token : '';
@@ -5395,7 +5581,10 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
             await loadSubjects();
             await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();
-            setInterval(() => loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error)), 5000);
+            setInterval(() => {
+                if (document.hidden) return;
+                loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error));
+            }, 5000);
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
             updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');

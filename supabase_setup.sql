@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_logins (
 
 -- Chỉ mục tối ưu tốc độ tra cứu tức thì cho Heartbeat & Bảng Admin
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_last_active ON public.quiz_logins(last_active DESC);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_created_at ON public.quiz_logins(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins(ip_address);
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_player_name ON public.quiz_logins(player_name);
 ALTER TABLE public.quiz_logins ADD COLUMN IF NOT EXISTS session_id TEXT;
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_questions (
     correct_value TEXT DEFAULT '',                -- Giá trị điền số (dành cho câu hỏi short_answer)
     explanation TEXT DEFAULT '',                  -- Lời giải thích chi tiết
     image_url TEXT DEFAULT '',                    -- Đường dẫn ảnh minh họa (nếu có)
+    grade TEXT DEFAULT '11',                      -- Khối lớp ('5', '11', ...)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -53,11 +55,28 @@ ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFA
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS grade TEXT DEFAULT '11';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 UPDATE public.quiz_questions SET subject_key = 'history' WHERE subject_key IS NULL;
 UPDATE public.quiz_questions SET is_deleted = false WHERE is_deleted IS NULL;
+
+-- TRIGGER TỰ ĐỘNG CẬP NHẬT updated_at KHI SỬA CÂU HỎI
+CREATE OR REPLACE FUNCTION public.set_quiz_questions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_quiz_questions_updated_at ON public.quiz_questions;
+CREATE TRIGGER trg_quiz_questions_updated_at
+    BEFORE UPDATE ON public.quiz_questions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_quiz_questions_updated_at();
 
 -- TẠO SEQUENCE TỰ ĐỘNG TĂNG ID NẾU BẢNG BỊ THIẾU AUTO INCREMENT
 CREATE SEQUENCE IF NOT EXISTS quiz_questions_id_seq;
@@ -98,15 +117,48 @@ FOR SELECT
 TO anon, authenticated
 USING (is_deleted = false);
 
--- Tương thích với SPA quản trị hiện tại. Trước production nên thay các policy
--- này bằng Supabase Auth/RPC/Edge Function có role admin; không dùng anon FOR ALL.
+-- Tương thích với SPA quản trị hiện tại (không dùng FOR SELECT USING(true) để tránh vô hiệu hóa lọc soft-delete).
+-- Trước production nên chuyển các thao tác ghi/sửa/xóa này sang Supabase Auth/RPC/Edge Function có role admin.
 DROP POLICY IF EXISTS "Admin manage quiz_questions" ON public.quiz_questions;
-CREATE POLICY "Admin manage quiz_questions"
+DROP POLICY IF EXISTS "Admin insert quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin update quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin delete quiz_questions" ON public.quiz_questions;
+
+CREATE POLICY "Admin insert quiz_questions"
 ON public.quiz_questions
-FOR ALL
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+CREATE POLICY "Admin update quiz_questions"
+ON public.quiz_questions
+FOR UPDATE
 TO anon, authenticated
 USING (true)
 WITH CHECK (true);
+
+CREATE POLICY "Admin delete quiz_questions"
+ON public.quiz_questions
+FOR DELETE
+TO anon, authenticated
+USING (true);
+
+-- BẬT SUPABASE REALTIME CHO CẢ 2 BẢNG (ĐỒNG BỘ TRỰC TIẾP TỨC THÌ)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'quiz_questions'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_questions;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'quiz_logins'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_logins;
+    END IF;
+END $$;
 
 -- Lưu ý bảo mật: thao tác quản trị (INSERT/UPDATE/DELETE trên câu hỏi,
 -- cấu hình và lịch sử) cần được chuyển sang Auth/RPC/Edge Function có quyền

@@ -345,7 +345,7 @@ class DatabaseService {
                     if (sameDeviceRows.length > 1) {
                         const duplicateIds = sameDeviceRows.slice(1).map((r) => r.id).filter(Boolean);
                         if (duplicateIds.length) {
-                            this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {});
+                            this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {}, () => {});
                         }
                     }
 
@@ -365,18 +365,21 @@ class DatabaseService {
                     device_info: cleanDevice,
                     status,
                     score_summary: scoreSummary,
-                    session_id: record.session_id,
                     last_active: nowIso,
                     created_at: nowIso
                 };
+                if (!this._skipSessionIdColumn && record.session_id) {
+                    payload.session_id = record.session_id;
+                }
                 let { data: inserted, error } = await this.client.from('quiz_logins').insert([payload]).select('id');
                 // Existing deployments may not have session_id yet. Retry once without
-                // the optional column so monitoring/submission keeps working safely.
-                if (error && (error.code === '42703' || /session_id|column .* does not exist/i.test(error.message || ''))) {
+                // the optional column and remember so monitoring/submission avoids repeated HTTP 400s.
+                if (error && (error.code === '42703' || error.code === 'PGRST204' || /session_id|column .* does not exist/i.test(error.message || ''))) {
+                    this._skipSessionIdColumn = true;
                     const legacyPayload = { ...payload };
                     delete legacyPayload.session_id;
                     ({ data: inserted, error } = await this.client.from('quiz_logins').insert([legacyPayload]).select('id'));
-                    console.warn('[DatabaseService] Supabase chưa có quiz_logins.session_id; đã dùng payload tương thích schema cũ. Chạy supabase_setup.sql để bật attempt ID cloud.');
+                    console.warn('[DatabaseService] Supabase chưa có quiz_logins.session_id; đã chuyển sang payload tương thích schema cũ.');
                 }
 
                 if (error && /policy|permission|not allowed/i.test(error.message || '')) {
@@ -477,7 +480,7 @@ class DatabaseService {
                 this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
             } else {
                 try {
-                    await this.client
+                    const { error } = await this.client
                         .from('quiz_logins')
                         .update({
                             status: status,
@@ -486,6 +489,7 @@ class DatabaseService {
                         })
                         .eq('id', loginId)
                         .not('status', 'like', 'BANNED%');
+                    if (error) throw error;
                 } catch (e) {
                     this.enqueueOfflineSync('updateStatus', { loginId, status, scoreSummary, last_active: nowIso });
                 }
@@ -543,28 +547,41 @@ class DatabaseService {
             for (const item of queue) {
                 let synced = false;
                 try {
-                    if (item.type === 'updateProgress' && item.payload) {
-                        const { loginId, statusText, scoreText, last_active } = item.payload;
+                    if ((item.type === 'updateProgress' || item.type === 'updateStatus') && item.payload) {
+                        const { loginId } = item.payload;
+                        const statusVal = item.type === 'updateProgress' ? item.payload.statusText : item.payload.status;
+                        const scoreVal = item.type === 'updateProgress' ? item.payload.scoreText : item.payload.scoreSummary;
+                        const lastActive = item.payload.last_active || new Date().toISOString();
+
                         if (loginId && !String(loginId).startsWith('local_')) {
                             const { error } = await this.client.from('quiz_logins').update({
-                                status: statusText,
-                                score_summary: scoreText,
-                                last_active: last_active || new Date().toISOString()
+                                status: statusVal,
+                                score_summary: scoreVal,
+                                last_active: lastActive
                             }).eq('id', loginId);
                             if (error) throw error;
                             syncedCount++;
                             synced = true;
-                        }
-                    } else if (item.type === 'updateStatus' && item.payload) {
-                        const { loginId, status, scoreSummary, last_active } = item.payload;
-                        if (loginId && !String(loginId).startsWith('local_')) {
-                            const { error } = await this.client.from('quiz_logins').update({
-                                status: status,
-                                score_summary: scoreSummary,
-                                last_active: last_active || new Date().toISOString()
-                            }).eq('id', loginId);
-                            if (error) throw error;
-                            syncedCount++;
+                        } else if (loginId && String(loginId).startsWith('local_')) {
+                            // Resolve offline-only local login by inserting/updating a cloud record
+                            const localRow = this._getLocalLogins().find((r) => r.id === loginId);
+                            if (localRow && localRow.player_name) {
+                                const cloudId = this.generateUUID();
+                                const { error } = await this.client.from('quiz_logins').insert([{
+                                    id: cloudId,
+                                    player_name: localRow.player_name,
+                                    ip_address: localRow.ip_address || 'Chưa xác định',
+                                    device_info: localRow.device_info || 'Trình duyệt',
+                                    status: statusVal || localRow.status || 'Đang ôn tập',
+                                    score_summary: scoreVal || localRow.score_summary || '',
+                                    last_active: lastActive,
+                                    created_at: localRow.created_at || lastActive
+                                }]);
+                                if (error) throw error;
+                                syncedCount++;
+                            }
+                            synced = true;
+                        } else {
                             synced = true;
                         }
                     }
@@ -586,13 +603,14 @@ class DatabaseService {
     /**
      * Cập nhật tiến độ chi tiết của thí sinh
      */
-    async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName) {
+    async updateStudentProgress(loginId, answeredCount, totalCount, correctCount, subjectName, durationSeconds = 0) {
         if (!loginId) return;
         const nowIso = this.getNowIso();
         const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
         const subj = subjectName || 'Lịch Sử 11';
-        const statusText = `[${subj}] Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`;
-        const scoreText = `[${subj}] Đúng ${correctCount}/${answeredCount} câu đã làm`;
+        const duration = Number(durationSeconds) > 0 ? ` - Đã làm: ${Math.floor(Number(durationSeconds) / 60)}p ${String(Math.floor(Number(durationSeconds) % 60)).padStart(2, '0')}s` : '';
+        const statusText = `[${subj}] ${answeredCount >= totalCount && totalCount > 0 ? `Chờ nộp bài: ${answeredCount}/${totalCount} câu (100%)` : `Tiến độ: ${answeredCount}/${totalCount} câu (${percent}%)`}`;
+        const scoreText = `[${subj}] Đúng ${correctCount}/${answeredCount} câu đã làm${duration}`;
 
         try {
             let list = this._getLocalLogins();
@@ -2041,7 +2059,7 @@ class DatabaseService {
                 correctCount = parseInt(ratioMatch[1], 10);
                 totalCount = parseInt(ratioMatch[2], 10);
                 if (!score && totalCount > 0) {
-                    score = Math.round((correctCount / totalCount) * 100) / 10;
+                    score = Math.round((correctCount / totalCount) * 100);
                 }
             }
 

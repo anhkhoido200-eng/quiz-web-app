@@ -32,10 +32,17 @@
         };
     }
 
+    function escapeHtmlUnsafe(value) {
+        return String(value ?? '')
+            .replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     function withInlineMath(value) {
         const source = String(value || '').trim();
         if (!source) return '';
-        if (/^\$\$[\s\S]*\$\$$/.test(source) || /^\$[^$]+\$$/.test(source)) return source;
+        if (/\$\$[\s\S]*?\$\$|\$[^$]+?\$/.test(source)) return source;
         return `$${source}$`;
     }
 
@@ -59,7 +66,7 @@
     function format(value) {
         const input = readValue(value);
         if (!input.text) return '';
-        if (input.explicitMath) return withInlineMath(input.text);
+        if (input.explicitMath) return escapeHtmlUnsafe(withInlineMath(input.text));
 
         let source = input.text;
         const tokens = [];
@@ -111,11 +118,11 @@
         source = source.replace(/\bK[Pp]\b/g, '$K_p$');
 
         // Units and common chemical formulas. Use a real fraction for rates.
-        source = source.replace(/(\d+)\s*(?:°C|\^oC|\*C)/g, (_, number) => `$${number}^{\\circ}\\text{C}$`);
-        source = source.replace(/\b(m|cm|km)\/s\^?2\b/g, (_, unit) => `$\\frac{\\text{${unit}}}{\\text{s}^2}$`);
-        source = source.replace(/\b(cm|km|m)\/s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
-        source = source.replace(/\b(km|cm|dm|mm|m)\^?2\b/g, (_, unit) => `$\\text{${unit}}^2$`);
-        source = source.replace(/\b(km|cm|dm|mm|m)\^?3\b/g, (_, unit) => `$\\text{${unit}}^3$`);
+        source = source.replace(/(\d+(?:[.,]\d+)?)\s*(?:°C|\^oC|\*C)/g, (_, number) => `$${number}^{\\circ}\\text{C}$`);
+        source = source.replace(/(?<![A-Za-zÀ-ỹ])(m|cm|km)\/s\^?2\b/gu, (_, unit) => `$\\frac{\\text{${unit}}}{\\text{s}^2}$`);
+        source = source.replace(/(?<![A-Za-zÀ-ỹ])(cm|km|m)\/s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
+        source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?2(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^2$`);
+        source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?3(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^3$`);
         const chemicalFormulae = {
             H2O: '$\\text{H}_2\\text{O}$', CO2: '$\\text{CO}_2$', H2SO4: '$\\text{H}_2\\text{SO}_4$',
             CaCO3: '$\\text{CaCO}_3$', SO2: '$\\text{SO}_2$', NH3: '$\\text{NH}_3$', N2: '$\\text{N}_2$',
@@ -131,13 +138,8 @@
         source = source.replace(/(?<![\w$])([A-Za-zα-ωΑ-Ω])\^(\d+)(?!\w)/g, (_, base, exponent) => `$${base}^{${exponent}}$`);
         source = protectMathBlocks(source, tokens);
 
-        // Escape &, <, > outside explicit/generated $...$ math blocks so text like "v < 0" or "A > 0" is not swallowed by HTML parsing.
-        source = source
-            .replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-
-        return restoreMathBlocks(source, tokens);
+        // Escape &, <, > across both plain text and math blocks before innerHTML injection to prevent Stored XSS.
+        return escapeHtmlUnsafe(restoreMathBlocks(source, tokens));
     }
 
     global.MathNotation = { format, readValue };

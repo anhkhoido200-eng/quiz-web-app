@@ -1,0 +1,1 @@
+{"code":"PGRST204","details":null,"hint":null,"message":"Could not find the 'session_id' column of 'quiz_logins' in the schema cache"}

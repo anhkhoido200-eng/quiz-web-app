@@ -121,17 +121,12 @@ body:not(.admin-body) {
 
 @media (max-width: 640px) {
     #questions-container { padding-inline: .8rem; }
-    .quiz-question-card { padding: 1rem; scroll-margin-top: 150px; }
+    .quiz-question-card { padding: 1rem; scroll-margin-top: calc(var(--quiz-header-height, 140px) + 16px); }
     .quiz-option-tile {
         min-height: 3.5rem;
         grid-template-columns: 1.85rem minmax(0, 1fr) auto;
         padding-inline: .8rem;
     }
-    .tf-choice-button { min-width: 3.5rem; min-height: 1.95rem; padding: 0.25rem 0.5rem; font-size: 0.72rem; }
-}
-
-.quiz-question-card {
-    scroll-margin-top: 155px;
 }
 
 body.light-theme .quiz-question-card {
@@ -460,14 +455,6 @@ body.light-theme .home-grade-tab.is-active {
     min-width: 0;
 }
 
-.tf-choice-button {
-    min-width: 4.4rem;
-    min-height: 2.25rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
 /* Hiệu ứng khi chọn ĐÚNG / SAI trong chế độ Luyện tập */
 .option-selected-correct {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
@@ -485,8 +472,11 @@ body.light-theme .home-grade-tab.is-active {
 
 /* --- Nút Đúng/Sai: chọn một lần, phản hồi mượt, không rung layout --- */
 .tf-choice-button {
-    min-width: 4.2rem;
+    min-width: 4.3rem;
     min-height: 2.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transform: translateZ(0);
     transition:
         transform 260ms cubic-bezier(.22, 1, .36, 1),
@@ -787,10 +777,50 @@ body.light-theme #screen-quiz > div:first-child {
     border-bottom-color: rgba(226, 232, 240, 0.9) !important;
 }
 
-body.light-theme .text-white,
+body.light-theme .text-white:not(.btn-3d-emerald):not(.btn-3d-indigo):not([class*="bg-gradient-"]):not(button[class*="bg-emerald-"]):not(button[class*="bg-indigo-"]):not(button[class*="bg-rose-"]):not(button[class*="bg-sky-"]):not(button[class*="bg-purple-"]):not(button[class*="bg-amber-"]):not(a[class*="bg-gradient-"]),
 body.light-theme .text-slate-100,
 body.light-theme .text-slate-200 {
     color: #0f172a !important;
+}
+
+body.light-theme .btn-3d-emerald,
+body.light-theme .btn-3d-indigo,
+body.light-theme button[class*="bg-gradient-"],
+body.light-theme .tf-choice-button[class*="bg-emerald-"],
+body.light-theme .tf-choice-button[class*="bg-rose-"],
+body.light-theme .tf-choice-button[class*="bg-indigo-"] {
+    color: #ffffff !important;
+}
+
+body.light-theme .tf-statement-row {
+    background: rgba(255, 255, 255, 0.88) !important;
+    border-color: rgba(203, 213, 225, 0.9) !important;
+}
+
+body.light-theme .option-selected-correct {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.10)) !important;
+    color: #065f46 !important;
+}
+
+body.light-theme .option-selected-wrong {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.15), rgba(225, 29, 72, 0.08)) !important;
+    color: #9f1239 !important;
+}
+
+body.light-theme .short-answer-feedback-title {
+    color: #1e293b;
+}
+
+@media (max-width: 640px) {
+    .tf-choice-button {
+        min-width: 3.5rem;
+        min-height: 1.95rem;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.72rem;
+    }
+    #screen-quiz {
+        padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    }
 }
 
 body.light-theme .text-slate-300 {

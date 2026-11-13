@@ -232,8 +232,8 @@
             <!-- Các nút điều hướng góc phải header -->
             <div class="flex items-center space-x-1.5 sm:space-x-2">
                 <!-- Nút chuyển đổi Dark / Light Mode -->
-                <button id="theme-toggle-btn" onclick="app.toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối">
-                    <i id="theme-toggle-icon" class="fa-solid fa-moon text-amber-300"></i>
+                <button id="theme-toggle-btn" onclick="app.toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
+                    <i id="theme-toggle-icon" class="fa-solid fa-moon text-amber-300 theme-toggle-icon-sync"></i>
                 </button>
 
                 <!-- Nút bật/tắt âm thanh Ting/Bíp -->
@@ -446,8 +446,8 @@
                             <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                         </button>
                         <!-- Nút Dark/Light Mode -->
-                        <button onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối">
-                            <i class="fa-solid fa-moon text-amber-300"></i>
+                        <button onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
+                            <i id="quiz-theme-toggle-icon" class="fa-solid fa-moon text-amber-300 theme-toggle-icon-sync"></i>
                         </button>
                         <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-sky-400 hover:text-sky-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
                             <i class="fa-solid fa-house text-[11px]"></i>
@@ -461,7 +461,11 @@
                             <i class="fa-solid fa-circle-xmark text-[11px]"></i>
                             <span>Sai (<span id="wrong-count-badge">0</span>)</span>
                         </button>
-                        <button onclick="app.confirmSubmit()" class="btn-3d btn-3d-emerald px-3.5 sm:px-4 py-2 rounded-xl text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <button onclick="app.backToResultScreen()" id="btn-back-to-result" class="hidden btn-3d px-3 sm:px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-trophy text-xs"></i>
+                            <span>Bảng Điểm</span>
+                        </button>
+                        <button onclick="app.confirmSubmit()" id="btn-submit-quiz" class="btn-3d btn-3d-emerald px-3.5 sm:px-4 py-2 rounded-xl text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-check text-xs"></i>
                             <span>Nộp Bài</span>
                         </button>
@@ -511,18 +515,18 @@
                     </p>
 
                     <!-- Chỉ số điểm số -->
-                    <div class="result-stats-grid grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5 mb-6 shadow-inner">
-                        <div class="result-stat-card text-center p-2">
+                    <div class="result-stats-grid grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-slate-900/80 border border-white/5 mb-6 shadow-inner">
+                        <div class="result-stat-card text-center p-2 sm:border-r border-slate-800/70">
                             <span class="block text-slate-400 text-xs mb-1">Điểm số</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold gradient-text-hero" id="result-score">0%</span>
                             <span class="text-[11px] text-slate-400">Điểm phần trăm</span>
                         </div>
-                        <div class="result-stat-card text-center p-2 border-r border-slate-800">
+                        <div class="result-stat-card text-center p-2 sm:border-r border-slate-800/70">
                             <span class="block text-slate-400 text-xs mb-1">Quy đổi</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold text-amber-300" id="result-score-10">0.0</span>
                             <span class="text-[11px] text-slate-400">/ 10 điểm</span>
                         </div>
-                        <div class="result-stat-card text-center p-2 border-x border-slate-800">
+                        <div class="result-stat-card text-center p-2 sm:border-r border-slate-800/70">
                             <span class="block text-slate-400 text-xs mb-1">Đúng / Tổng ý</span>
                             <span class="font-heading text-3xl sm:text-4xl font-extrabold text-emerald-400" id="result-correct-ratio">0/0</span>
                             <span class="text-[11px] text-slate-400">ý hỏi</span>
@@ -1474,7 +1478,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- ======================================================= -->
     <!-- MODAL 6: TRÌNH SOẠN THẢO / SỬA CÂU HỎI TRỰC TIẾP       -->
     <!-- ======================================================= -->
-    <div id="modal-question-editor" class="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div id="modal-question-editor" role="dialog" aria-modal="true" aria-labelledby="editor-modal-badge" class="fixed inset-0 z-[100010] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
         <div class="bg-slate-900 border border-emerald-500/40 rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
             <!-- Header Modal -->
             <div class="px-5 py-4 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">

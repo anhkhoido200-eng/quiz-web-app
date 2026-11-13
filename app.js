@@ -1543,6 +1543,10 @@ class QuizApp {
                 .channel('quiz-questions-live-sync')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_questions' }, (payload) => {
                     const changedSubject = payload?.new?.subject_key || payload?.old?.subject_key;
+                    if (this.currentScreen === 'quiz') {
+                        console.debug('[QuizApp] Đang làm bài, bỏ qua tải lại câu hỏi Realtime để tránh mất đáp án.');
+                        return;
+                    }
                     if (!changedSubject || changedSubject === this.currentSubject) {
                         this.loadQuestionsForCurrentSubject().catch((error) => console.debug('[QuizApp] Realtime question refresh skipped:', error));
                     }
@@ -4162,6 +4166,11 @@ Giải thích: Biên độ A = 5 cm.`;
         }[character]));
     }
 
+    attrArg(value) {
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+        return `'${String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;')}'`;
+    }
+
     formatRelativeTime(isoString) {
         if (!isoString) return 'Vừa mới đây';
         const timeMs = new Date(isoString).getTime();
@@ -4847,7 +4856,7 @@ Giải thích: Biên độ A = 5 cm.`;
             // Nút Hỏi AI dùng chung cho chế độ Luyện tập
             const aiButtonHtml = !this.isExamMode ? `
                 <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="app.askAiExplanation(${JSON.stringify(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
@@ -4893,7 +4902,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         : '';
 
                     return `
-                                <button type="button" onclick="app.selectOption(${JSON.stringify(q.id)}, ${oIdx})" ${!this.isExamMode && isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${this.attrArg(q.id)}, ${oIdx})" ${!this.isExamMode && isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                     ${feedbackIcon}
@@ -4959,10 +4968,10 @@ Giải thích: Biên độ A = 5 cm.`;
                                         <span class="text-slate-200 font-medium leading-relaxed break-words">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${JSON.stringify(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -5009,8 +5018,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${JSON.stringify(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${JSON.stringify(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
-                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${JSON.stringify(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
                             <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
                         </button>
@@ -5049,6 +5058,33 @@ Giải thích: Biên độ A = 5 cm.`;
                 const isSelected = (idx === oIdx);
                 btn.className = `quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${isSelected ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 font-bold option-selected-user' : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:border-slate-500'}`;
             });
+            return;
+        }
+
+        if (card && !this.isExamMode) {
+            const correctIdx = q.correct !== undefined ? q.correct : q.answer;
+            const optButtons = card.querySelectorAll('.quiz-option-tile');
+            optButtons.forEach((btn, idx) => {
+                btn.disabled = true;
+                if (idx === correctIdx) {
+                    btn.className = 'quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-default bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct';
+                    if (!btn.querySelector('.answer-feedback-icon')) {
+                        btn.insertAdjacentHTML('beforeend', '<span class="answer-feedback-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>');
+                    }
+                } else if (idx === oIdx) {
+                    btn.className = 'quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-default bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong';
+                } else {
+                    btn.className = 'quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-default bg-slate-900 border-slate-700/80 text-slate-300 opacity-75';
+                }
+            });
+            if (q.explanation && !card.querySelector('.practice-explanation-box')) {
+                const aiAnchor = card.querySelector(`#ai-btn-${qId}`)?.closest('div');
+                const expHtml = `<div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed"><p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p><p>${this.formatScientificNotation(q.explanation)}</p></div>`;
+                if (aiAnchor) {
+                    aiAnchor.insertAdjacentHTML('beforebegin', expHtml);
+                    this.renderMath(aiAnchor.previousElementSibling);
+                }
+            }
             return;
         }
 
@@ -5126,6 +5162,7 @@ Giải thích: Biên độ A = 5 cm.`;
         console.debug('[QuizApp] Đã ghi nhận trả lời ngắn:', { qId, answered: true });
         this.saveAutoSaveProgress();
         this.updateLiveStats();
+
         const scrollY = window.scrollY;
         this.renderAllQuestions(true, true);
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
@@ -5205,6 +5242,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.pendingStudentProgress = {
             attemptedCount, totalItems, correctCount,
             subjectName: this.getSubjectTitle(),
+            durationSeconds: this.isExamMode ? ((this.examMinutes * 60) - this.examSecondsRemaining) : this.secondsElapsed,
             attemptId: this.quizAttemptId
         };
         this.flushStudentProgress(this.quizAttemptId);
@@ -5221,7 +5259,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 progress.attemptedCount,
                 progress.totalItems,
                 progress.correctCount,
-                progress.subjectName
+                progress.subjectName,
+                progress.durationSeconds
             );
         } finally {
             this.progressSyncRunning = false;
@@ -5492,10 +5531,17 @@ Giải thích: Biên độ A = 5 cm.`;
             }
         }
 
+        this.isReviewingResult = true;
+        this.isFinishingQuiz = false;
         this.renderReviewList();
         this.switchScreen('result');
         this.animateResultScore(finalScore);
         if (score10El) score10El.textContent = (finalScore / 10).toFixed(1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    backToResultScreen() {
+        this.switchScreen('result');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -5540,9 +5586,10 @@ Giải thích: Biên độ A = 5 cm.`;
                     (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(userVal).trim().toLowerCase())) ||
                     String(q.correctValue).trim().toLowerCase() === String(userVal).trim().toLowerCase()
                 );
+                const correctVal = String(q.correctValue ?? q.acceptedValues?.[0] ?? '').trim();
                 ansReview = `
                     <div class="p-2.5 rounded-xl ${isMatch ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-bold">
-                        Đáp án của bạn: ${userVal || 'Chưa trả lời'} • Đáp án đúng: ${q.correctValue}
+                        Đáp án của bạn: ${userVal !== undefined && String(userVal).trim() !== '' ? this.escapeHtml(userVal) : 'Chưa trả lời'} • Đáp án đúng: ${correctVal ? this.formatScientificNotation(correctVal) : 'Chưa thiết lập'}
                     </div>
                 `;
             } else if (q.qType === 'tf_group') {
@@ -5565,21 +5612,31 @@ Giải thích: Biên độ A = 5 cm.`;
                 const sel = this.userAnswers[q.id];
                 const correctIdx = q.correct !== undefined ? q.correct : q.answer;
                 const isCorrect = sel === correctIdx;
+                const selText = sel !== undefined && q.options?.[sel] ? `${optChars[sel]}. ${this.formatScientificNotation(q.options[sel])}` : (sel !== undefined ? optChars[sel] : 'Chưa chọn');
+                const correctText = q.options?.[correctIdx] ? `${optChars[correctIdx]}. ${this.formatScientificNotation(q.options[correctIdx])}` : (optChars[correctIdx] || '—');
                 ansReview = `
-                    <div class="p-2.5 rounded-xl ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-semibold">
-                        Bạn chọn: <strong>${sel !== undefined ? optChars[sel] : 'Chưa chọn'}</strong> • Đáp án đúng: <strong>${optChars[correctIdx]}</strong>
+                    <div class="p-2.5 rounded-xl ${isCorrect ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-semibold space-y-1">
+                        <div>Bạn chọn: <strong>${selText}</strong></div>
+                        <div>Đáp án đúng: <strong>${correctText}</strong></div>
                     </div>
                 `;
             }
+
+            const reviewImgHtml = q.image_url ? `
+                <div class="rounded-xl overflow-hidden border border-slate-700/70 bg-slate-950/50 p-2 flex justify-center">
+                    <img src="${this.escapeHtml(q.image_url)}" alt="Hình minh họa câu ${idx + 1}" class="max-h-56 w-auto object-contain rounded-lg" loading="lazy">
+                </div>
+            ` : '';
 
             card.innerHTML = `
                 <div class="flex items-center justify-between font-bold text-white">
                     <span>Câu ${idx + 1}: ${this.formatScientificNotation(q.question)}</span>
                 </div>
+                ${reviewImgHtml}
                 ${ansReview}
                 ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${this.formatScientificNotation(q.explanation)}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
-                    <button type="button" onclick='app.askAiExplanation(${JSON.stringify(q.id)})' id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
@@ -5965,7 +6022,11 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!ok) return;
         this.cancelAwayAutoSubmitTimer('quiz reset');
         this.cancelIdleAutoSubmitTimer('quiz reset');
+        this.quizAttemptId = null;
         this.isFinishingQuiz = false;
+        this.isReviewingResult = false;
+        document.getElementById('btn-back-to-result')?.classList.add('hidden');
+        document.getElementById('btn-submit-quiz')?.classList.remove('hidden');
         this.userAnswers = {};
         this.clearAutoSaveProgress();
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
@@ -6002,6 +6063,10 @@ Giải thích: Biên độ A = 5 cm.`;
             });
         }
         // Bug 3 Fix: Luôn chuyển sang màn hình 'quiz' để người dùng nhìn thấy câu hỏi đã lọc
+        const backBtn = document.getElementById('btn-back-to-result');
+        const submitBtn = document.getElementById('btn-submit-quiz');
+        if (backBtn) backBtn.classList.toggle('hidden', !this.isReviewingResult);
+        if (submitBtn) submitBtn.classList.toggle('hidden', Boolean(this.isReviewingResult));
         this.switchScreen('quiz');
         this.renderAllQuestions();
         window.scrollTo({ top: 100, behavior: 'smooth' });
@@ -6323,7 +6388,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.hideStudentNotice();
         banner.classList.remove('hidden');
         try {
-            if (typeof this.playSound === 'function') this.playSound(true);
+            if (typeof this.playTingSound === 'function') this.playTingSound();
         } catch (e) { }
         const totalSeconds = 6;
         let secondsLeft = totalSeconds;
@@ -7358,13 +7423,13 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
 
     applyTheme(theme) {
         localStorage.setItem('quiz_theme', theme);
-        const icon = document.getElementById('theme-toggle-icon');
+        const icons = document.querySelectorAll('.theme-toggle-icon-sync, #theme-toggle-icon');
         if (theme === 'light') {
             document.body.classList.add('light-theme');
-            if (icon) icon.className = 'fa-solid fa-sun text-amber-400';
+            icons.forEach((icon) => { icon.className = 'fa-solid fa-sun text-amber-400 theme-toggle-icon-sync'; });
         } else {
             document.body.classList.remove('light-theme');
-            if (icon) icon.className = 'fa-solid fa-moon text-amber-300';
+            icons.forEach((icon) => { icon.className = 'fa-solid fa-moon text-amber-300 theme-toggle-icon-sync'; });
         }
     }
 
@@ -7681,6 +7746,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 if (val && val !== this.playerName) {
                     this.playerName = val;
                     localStorage.setItem('quiz_user_name', val);
+                    const savedNameEl = document.getElementById('saved-user-name');
+                    if (savedNameEl) savedNameEl.textContent = val;
                     this.updateHomeRevengeBanner();
                 }
             });
@@ -7688,6 +7755,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 const val = nameInput.value.trim();
                 if (val !== this.playerName) {
                     this.playerName = val;
+                    const savedNameEl = document.getElementById('saved-user-name');
+                    if (savedNameEl && val) savedNameEl.textContent = val;
                     this.updateHomeRevengeBanner();
                 }
             });
@@ -7703,7 +7772,10 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         const passInput = document.getElementById('admin-pass-input');
         if (passInput) {
             passInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') this.verifyAdminPassword();
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.verifyAdminPassword();
+                }
             });
         }
     }

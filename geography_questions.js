@@ -927,3 +927,4 @@ const rawAllGeographyQuestions = [
 // Xuất ra biến toàn cục window
 window.GEOGRAPHY_QUESTIONS = rawAllGeographyQuestions;
 window.GEOGRAPHY_ESSAY_OUTLINES = rawGeographyEssayOutlines;
+window.GEOGRAPHY_ESSAY_QUESTIONS = rawGeographyEssayOutlines;

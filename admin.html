@@ -65,7 +65,7 @@
                 <button class="nav-item is-active" data-view="overview" type="button"><i class="fa-solid fa-grid-2"></i><span>Tổng quan</span></button>
                 <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Ngân hàng &amp; môn học</span><em id="nav-question-count">0</em></button>
                 <button class="nav-item" data-view="students" type="button"><i class="fa-solid fa-radar"></i><span>Giám sát học sinh</span><em id="nav-online-count">0</em></button>
-                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-chart-pie" style="color:var(--amber,#f59e0b);"></i><span>Tiến trình Lớp 5</span><em id="nav-progress-count" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">0</em></button>
+                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-chart-pie" style="color:var(--amber,#f59e0b);"></i><span>Tiến trình học sinh</span><em id="nav-progress-count" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">0</em></button>
                 <p class="nav-label nav-label-gap">SYSTEM</p>
                 <button class="nav-item" data-view="access" type="button"><i class="fa-solid fa-user-shield"></i><span>Quyền truy cập</span></button>
                 <button class="nav-item" data-view="reports" type="button"><i class="fa-solid fa-chart-line"></i><span>Báo cáo &amp; dữ liệu</span></button>
@@ -219,7 +219,7 @@
                             <div>
                                 <p class="eyebrow" style="color:var(--amber,#f59e0b);">OBSERVER ACCESS HUB</p>
                                 <h2>Cấp IP / IP-Token Người Theo Dõi</h2>
-                                <p class="muted-copy" style="font-size:12px;">Cấp quyền cho người giám sát: vừa theo dõi tiến trình trực tiếp, vừa có quyền xem/làm bài thi Lớp 5 và sử dụng Trợ lý AI.</p>
+                            <p class="muted-copy" style="font-size:12px;">Cấp quyền cho người giám sát: vừa theo dõi tiến trình trực tiếp, vừa có quyền xem tiến trình học sinh và sử dụng Trợ lý AI.</p>
                             </div>
                             <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:11px;font-weight:700;">
                                 <i class="fa-solid fa-eye"></i> Quyền Quan Sát
@@ -239,7 +239,7 @@
                         </div>
                     </section>
 
-                    <div class="monitor-stats" id="grade5-monitor-stats">
+                        <div class="monitor-stats progress-stat-grid" id="grade5-monitor-stats">
                         <div class="monitor-stat"><span><b id="g5-stat-doing">0</b><small>Đang làm bài</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-pen-nib"></i></div>
                         <div class="monitor-stat"><span><b id="g5-stat-submitted">0</b><small>Đã nộp bài</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-circle-check"></i></div>
                         <div class="monitor-stat"><span><b id="g5-stat-waiting">0</b><small>Đang chờ</small></span><i style="color:var(--muted);background:rgba(148,163,184,0.15)" class="fa-solid fa-hourglass-half"></i></div>
@@ -248,23 +248,31 @@
 
                     <!-- BỘ LỌC MÔN VÀ DANH SÁCH TIẾN TRÌNH THỜI GIAN THỰC -->
                     <section class="panel">
-                        <div class="panel-title" style="flex-wrap:wrap;gap:12px;">
-                            <div>
-                                <p class="eyebrow">LIVE CARDS</p>
-                                <h2>Danh sách tiến trình học sinh</h2>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                                <div class="grade-filters" style="margin:0;">
-                                    <button type="button" class="grade-filter is-active" data-progress-grade="all">Tất cả môn</button>
-                                    <button type="button" class="grade-filter" data-progress-grade="5">Lớp 5</button>
-                                    <button type="button" class="grade-filter" data-progress-grade="11">Lớp 11</button>
+                            <div class="panel-title progress-list-heading" style="flex-wrap:wrap;gap:12px;">
+                                <div>
+                                    <p class="eyebrow">LIVE CARDS</p>
+                                    <h2>Danh sách tiến trình học sinh</h2>
                                 </div>
-                                <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
-                                    <i class="fa-solid fa-bolt text-emerald-400"></i> Trực tiếp thời gian thực
-                                </span>
+                                <div class="progress-toolbar">
+                                    <div class="grade-filters" style="margin:0;">
+                                        <button type="button" class="grade-filter is-active" data-progress-grade="all">Tất cả môn</button>
+                                        <button type="button" class="grade-filter" data-progress-grade="5">Lớp 5</button>
+                                        <button type="button" class="grade-filter" data-progress-grade="11">Lớp 11</button>
+                                    </div>
+                                    <select id="progress-subject-filter" class="progress-subject-filter" aria-label="Lọc theo môn học">
+                                        <option value="all">Tất cả môn học</option>
+                                    </select>
+                                    <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                        <i class="fa-solid fa-bolt text-emerald-400"></i> Trực tiếp thời gian thực
+                                    </span>
+                                </div>
                             </div>
+                        <div id="progress-subject-info" class="progress-subject-info" aria-live="polite"></div>
+                        <div class="progress-list-tools">
+                            <label class="progress-search-wrap" for="progress-search"><i class="fa-solid fa-magnifying-glass"></i><input id="progress-search" type="search" placeholder="Tìm theo tên học sinh..." autocomplete="off"></label>
+                            <label class="progress-sort-wrap" for="progress-sort"><span>Sắp xếp</span><select id="progress-sort"><option value="recent">Mới hoạt động gần nhất</option><option value="progress">Tiến độ cao nhất</option><option value="score">Điểm cao nhất</option><option value="score-asc">Điểm thấp nhất</option></select></label>
                         </div>
-                        <div id="grade5-progress-cards" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:16px;margin-top:14px;">
+                        <div id="grade5-progress-cards" class="progress-cards-grid">
                             <!-- Progress cards render here -->
                         </div>
                     </section>
@@ -532,7 +540,7 @@
                     </div>
                 </section>
 
-                <section class="view" data-view-panel="reports"><div class="page-heading compact-heading"><div><p class="eyebrow">REPORTING &amp; DATA</p><h1>Báo cáo &amp; dữ liệu</h1><p>Xuất kết quả, cấu hình AI, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.</p></div></div><div class="report-grid"><article class="report-card purple"><span><i class="fa-solid fa-file-pdf"></i></span><div><h2>Xuất đề thi &amp; Đáp án PDF</h2><p>In đề theo mẫu chuẩn Bộ GD&amp;ĐT: đề bài, ma trận đáp án và lời giải chi tiết.</p></div><button id="export-pdf-report" class="button button-purple" type="button"><i class="fa-solid fa-print"></i> Cấu hình &amp; Xuất đề</button></article><article class="report-card green"><span><i class="fa-solid fa-file-excel"></i></span><div><h2>Xuất bảng câu hỏi Excel</h2><p>Tải toàn bộ ngân hàng câu hỏi theo môn và dạng.</p></div><button id="export-excel" class="button button-success" type="button"><i class="fa-solid fa-download"></i> Tải Excel</button></article><article class="report-card blue"><span><i class="fa-solid fa-box-archive"></i></span><div><h2>Full backup JSON</h2><p>Lưu câu hỏi, môn học, IP, bảo trì và kết quả thành file an toàn.</p></div><button id="export-backup" class="button button-info" type="button"><i class="fa-solid fa-cloud-arrow-down"></i> Tải backup</button></article><article class="report-card gold"><span><i class="fa-solid fa-trophy"></i></span><div><h2>Bảng xếp hạng Top 10</h2><p>Xem các kết quả học sinh mới nhất.</p></div><button id="load-leaderboard" class="button button-warning" type="button"><i class="fa-solid fa-ranking-star"></i> Xem xếp hạng</button></article><article class="report-card red"><span><i class="fa-solid fa-broom"></i></span><div><h2>Dọn dữ liệu kỳ thi cũ</h2><p>Tự động tải backup trước, sau đó xóa lịch sử kết quả.</p></div><button id="archive-data" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Dọn dữ liệu</button></article></div><section class="panel ai-config-panel"><div class="panel-title"><div><p class="eyebrow">GEMINI AI</p><h2>Cấu hình trợ lý phân tích đề</h2><p class="muted-copy">API key chỉ dùng trực tiếp trên trình duyệt Admin để đọc DOCX/PDF và giải đề.</p></div><i class="fa-solid fa-wand-magic-sparkles accent-purple"></i></div><div class="inline-form"><input id="gemini-key-input" type="password" autocomplete="off" placeholder="Dán API key Gemini tại đây"><button id="save-gemini-key" class="button button-purple" type="button"><i class="fa-solid fa-key"></i> Lưu API Key</button><button id="test-gemini-key" class="button button-info" type="button"><i class="fa-solid fa-plug"></i> Kiểm tra key</button><button id="clear-gemini-key" class="button button-secondary" type="button"><i class="fa-solid fa-trash"></i> Xóa</button><span id="gemini-key-status" class="info-badge">Chưa kiểm tra</span></div></section><section class="panel leaderboard-panel"><div class="panel-title"><div><p class="eyebrow">LEADERBOARD</p><h2>Top 10 kết quả</h2></div><select id="leaderboard-subject"><option value="">Tất cả môn</option></select></div><div id="leaderboard-content" class="leaderboard-content"><div class="empty-state"><i class="fa-solid fa-ranking-star"></i><p>Bấm “Xem xếp hạng” để tải dữ liệu.</p></div></div></section></section>
+                <section class="view" data-view-panel="reports"><section class="panel ai-config-panel"><div class="panel-title"><div><p class="eyebrow">GEMINI AI</p><h2>Cấu hình trợ lý phân tích đề</h2><p class="muted-copy">API key chỉ dùng trực tiếp trên trình duyệt Admin để đọc DOCX/PDF và giải đề.</p></div><i class="fa-solid fa-wand-magic-sparkles accent-purple"></i></div><div class="inline-form"><input id="gemini-key-input" type="password" autocomplete="off" placeholder="Dán API key Gemini tại đây"><button id="save-gemini-key" class="button button-purple" type="button"><i class="fa-solid fa-key"></i> Lưu API Key</button><button id="test-gemini-key" class="button button-info" type="button"><i class="fa-solid fa-plug"></i> Kiểm tra key</button><button id="clear-gemini-key" class="button button-secondary" type="button"><i class="fa-solid fa-trash"></i> Xóa</button><span id="gemini-key-status" class="info-badge">Chưa kiểm tra</span></div></section></section>
             </div>
         </main>
     </div>
@@ -626,6 +634,14 @@
                 </button>
             </div>
         </section>
+
+    </div>
+
+    <div id="student-progress-modal" class="student-progress-modal hidden" role="dialog" aria-modal="true" aria-labelledby="student-progress-modal-title">
+        <div class="student-progress-modal-card">
+            <div class="student-progress-modal-head"><div><p class="eyebrow">STUDENT DETAIL</p><h2 id="student-progress-modal-title">Chi tiết tiến trình</h2><p id="student-progress-modal-subtitle" class="muted-copy"></p></div><button id="student-progress-modal-close" type="button" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button></div>
+            <div id="student-progress-modal-body" class="student-progress-modal-body"></div>
+        </div>
     </div>
 
     <div id="trash-modal" class="modal-backdrop hidden">
