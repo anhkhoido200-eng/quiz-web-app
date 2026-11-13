@@ -4782,13 +4782,81 @@
             `;
         }
 
-        // 3. Chi tiết từng câu hỏi (từ detail.items hoặc fallback)
+        // 3. Chi tiết từng câu hỏi (từ detail.items hoặc fallback) — ấn vào từng câu để xem đầy đủ lựa chọn
         const optChars = ['A', 'B', 'C', 'D'];
+        const renderExpandedBody = (qObj, it, idx) => {
+            const fullQuestion = qObj ? htmlText(qObj.question) : esc(`Câu ${idx + 1} (${it?.cat || 'Chung'})`);
+            let bodyContent = '';
+            if (it?.t === 'tf' || qObj?.q_type === 'tf_group' || qObj?.qType === 'tf_group') {
+                const stmts = Array.isArray(qObj?.statements) ? qObj.statements : [];
+                const uaArr = Array.isArray(it?.ua) ? it.ua : [];
+                const caArr = Array.isArray(it?.ca) ? it.ca : stmts.map(s => parseBool(s.answer));
+                const count = Math.max(stmts.length, caArr.length);
+                bodyContent = `<div class="student-q-tf-list">${Array.from({ length: count }).map((_, sIdx) => {
+                    const st = stmts[sIdx];
+                    const exp = caArr[sIdx];
+                    const ch = uaArr[sIdx];
+                    const hasPick = ch !== null && ch !== undefined;
+                    const isRight = hasPick && Boolean(ch) === Boolean(exp);
+                    const cls = !hasPick ? 'is-none' : (isRight ? 'is-ok' : 'is-bad');
+                    return `<div class="student-q-tf-item ${cls}">
+                        <span class="student-q-tf-text"><b>${String.fromCharCode(97 + sIdx)})</b> ${st ? htmlText(st.text) : `Ý ${String.fromCharCode(97 + sIdx)}`}</span>
+                        <span class="student-q-tf-badges">
+                            <em>Chọn: <b>${hasPick ? (ch ? 'Đúng' : 'Sai') : 'Chưa chọn'}</b></em>
+                            <em>Đáp án: <b>${exp ? 'Đúng' : 'Sai'}</b></em>
+                        </span>
+                    </div>`;
+                }).join('')}</div>`;
+            } else if (it?.t === 'sa' || qObj?.q_type === 'short_answer' || qObj?.qType === 'short_answer') {
+                const uaStr = it?.ua !== null && it?.ua !== undefined ? String(it.ua) : '';
+                const caStr = String(it?.ca ?? qObj?.correct_value ?? qObj?.correctValue ?? '').trim();
+                const hasPick = uaStr.trim() !== '';
+                bodyContent = `<div class="student-q-sa-box">
+                    <div><span>Học sinh nhập:</span> <strong class="${!hasPick ? '' : (it?.ok ? 'text-ok' : 'text-bad')}">${hasPick ? esc(uaStr) : 'Chưa trả lời'}</strong></div>
+                    <div><span>Đáp án đúng:</span> <strong class="text-ok">${caStr ? htmlText(caStr) : 'Chưa thiết lập'}</strong></div>
+                </div>`;
+            } else {
+                const options = Array.isArray(qObj?.options) ? qObj.options : [];
+                const caIdx = it?.ca !== null && it?.ca !== undefined ? Number(it.ca) : Number(qObj?.correct ?? qObj?.answer ?? 0);
+                const hasPick = it?.ua !== null && it?.ua !== undefined;
+                const uaIdx = hasPick ? Number(it.ua) : -1;
+                if (options.length > 0) {
+                    bodyContent = `<div class="student-q-opt-list">${options.map((opt, oIdx) => {
+                        const isPicked = hasPick && oIdx === uaIdx;
+                        const isCorrectOpt = oIdx === caIdx;
+                        let optCls = '';
+                        let tag = '';
+                        if (isPicked && isCorrectOpt) { optCls = 'is-ok'; tag = '✓ Học sinh chọn (Đúng)'; }
+                        else if (isPicked && !isCorrectOpt) { optCls = 'is-bad'; tag = '✗ Học sinh chọn (Sai)'; }
+                        else if (isCorrectOpt) { optCls = 'is-correct-hint'; tag = '✓ Đáp án đúng'; }
+                        return `<div class="student-q-opt ${optCls}">
+                            <span class="student-q-opt-letter">${optChars[oIdx] || oIdx + 1}</span>
+                            <span class="student-q-opt-text">${htmlText(opt)}</span>
+                            ${tag ? `<em class="student-q-opt-tag">${tag}</em>` : ''}
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    bodyContent = `<div class="student-q-sa-box">
+                        <div><span>Học sinh chọn:</span> <strong>${hasPick ? esc(optChars[uaIdx] ?? uaIdx) : 'Chưa chọn'}</strong></div>
+                        <div><span>Đáp án đúng:</span> <strong class="text-ok">${esc(optChars[caIdx] ?? caIdx)}</strong></div>
+                    </div>`;
+                }
+            }
+            const expHtml = qObj?.explanation ? `<div class="student-q-exp"><b><i class="fa-solid fa-lightbulb"></i> Giải thích:</b> ${htmlText(qObj.explanation)}</div>` : '';
+            const oldNote = !it ? `<div class="student-q-old-note"><i class="fa-solid fa-circle-info"></i> Phiên này được lưu trước khi bật ghi nhận lựa chọn từng câu, nên chỉ hiển thị đề và đáp án đúng.</div>` : '';
+            return `<div class="student-q-expanded-body">
+                <div class="student-q-full-text">${fullQuestion}</div>
+                ${bodyContent}
+                ${expHtml}
+                ${oldNote}
+            </div>`;
+        };
+
         let questionsHtml = '';
         if (Array.isArray(detail?.items) && detail.items.length > 0) {
             const chipsHtml = detail.items.map((it, idx) => {
                 const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
-                return `<span class="student-q-chip ${cls}" title="Câu ${idx + 1}">${idx + 1}</span>`;
+                return `<button type="button" class="student-q-chip ${cls}" data-jump-q="${idx}" title="Xem câu ${idx + 1}">${idx + 1}</button>`;
             }).join('');
 
             const rowsHtml = detail.items.map((it, idx) => {
@@ -4814,12 +4882,16 @@
                     answerDetail = `Bạn nhập: <b>${esc(uaStr)}</b> · Đáp án: <b>${esc(it.ca || '—')}</b>`;
                 }
                 return `
-                    <li class="student-detail-answer-row ${stateCls}" data-q-filter-state="${filterTag}">
-                        <span>Câu ${idx + 1}</span>
-                        <div>
-                            <strong>${qTitle}</strong>
-                            <em>${answerDetail}</em>
-                        </div>
+                    <li class="student-detail-answer-row ${stateCls}" data-q-filter-state="${filterTag}" data-q-index="${idx}">
+                        <button type="button" class="student-q-toggle" aria-expanded="false">
+                            <span class="student-q-num">Câu ${idx + 1}</span>
+                            <div class="student-q-summary">
+                                <strong>${qTitle}</strong>
+                                <em>${answerDetail}</em>
+                            </div>
+                            <i class="fa-solid fa-chevron-down student-q-chevron"></i>
+                        </button>
+                        <div class="student-q-collapse hidden">${renderExpandedBody(qObj, it, idx)}</div>
                     </li>
                 `;
             }).join('');
@@ -4827,7 +4899,7 @@
             questionsHtml = `
                 <section class="student-detail-section">
                     <div class="student-detail-q-header">
-                        <h4><i class="fa-solid fa-list-check"></i> Chi tiết từng câu (${detail.items.length} câu)</h4>
+                        <h4><i class="fa-solid fa-list-check"></i> Chi tiết từng câu (${detail.items.length} câu — bấm vào từng câu để xem)</h4>
                         <div class="student-detail-filters" role="group" aria-label="Lọc câu hỏi">
                             <button type="button" class="is-active" data-detail-filter="all">Tất cả</button>
                             <button type="button" data-detail-filter="wrong">Câu sai (${detail.items.filter(i => i.ok === false).length})</button>
@@ -4840,8 +4912,20 @@
             `;
         } else {
             const rawQuestionCount = Number(p.total || 0);
-            const fallbackRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `<li><span>Câu ${index + 1}</span><strong>${esc(notationText(question.question).slice(0, 150))}</strong><em>Phiên cũ chưa có dữ liệu chi tiết từng câu</em></li>`).join('');
-            questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi</h4>${fallbackRows ? `<ul class="student-detail-questions">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
+            const fallbackRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `
+                <li class="student-detail-answer-row is-none" data-q-index="${index}">
+                    <button type="button" class="student-q-toggle" aria-expanded="false">
+                        <span class="student-q-num">Câu ${index + 1}</span>
+                        <div class="student-q-summary">
+                            <strong>${esc(notationText(question.question).slice(0, 150))}</strong>
+                            <em>Bấm để xem đề &amp; đáp án đúng (phiên cũ chưa ghi nhận lựa chọn)</em>
+                        </div>
+                        <i class="fa-solid fa-chevron-down student-q-chevron"></i>
+                    </button>
+                    <div class="student-q-collapse hidden">${renderExpandedBody(question, null, index)}</div>
+                </li>
+            `).join('');
+            questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi (bấm vào câu để xem chi tiết)</h4>${fallbackRows ? `<ul class="student-detail-questions" id="student-detail-questions-list">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
         }
 
         body.innerHTML = `
@@ -4888,6 +4972,37 @@
                     const st = li.dataset.qFilterState;
                     li.classList.toggle('hidden', mode !== 'all' && st !== mode);
                 });
+            });
+        });
+
+        body.querySelectorAll('.student-q-toggle').forEach((toggleBtn) => {
+            toggleBtn.addEventListener('click', () => {
+                const li = toggleBtn.closest('li');
+                const panel = li?.querySelector('.student-q-collapse');
+                if (!li || !panel) return;
+                const willOpen = panel.classList.contains('hidden');
+                panel.classList.toggle('hidden', !willOpen);
+                li.classList.toggle('is-open', willOpen);
+                toggleBtn.setAttribute('aria-expanded', String(willOpen));
+                if (willOpen) renderMath(panel);
+            });
+        });
+
+        body.querySelectorAll('[data-jump-q]').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                const idx = chip.dataset.jumpQ;
+                const targetLi = body.querySelector(`#student-detail-questions-list > li[data-q-index="${idx}"]`);
+                if (!targetLi) return;
+                targetLi.classList.remove('hidden');
+                const panel = targetLi.querySelector('.student-q-collapse');
+                const toggleBtn = targetLi.querySelector('.student-q-toggle');
+                if (panel && panel.classList.contains('hidden')) {
+                    panel.classList.remove('hidden');
+                    targetLi.classList.add('is-open');
+                    toggleBtn?.setAttribute('aria-expanded', 'true');
+                    renderMath(panel);
+                }
+                targetLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
         });
 
