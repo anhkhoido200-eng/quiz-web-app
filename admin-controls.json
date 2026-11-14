@@ -1,12 +1,16 @@
 {
   "ids": [
-    "question-type-runtime-style",
     "access-denied",
+    "admin-token-unlock-input",
+    "btn-unlock-admin-token",
+    "bootstrap-admin",
     "app-shell",
     "sidebar",
     "current-ip",
+    "copy-admin-ip",
     "nav-question-count",
-    "nav-online-count",
+    "nav-progress-count",
+    "sidebar-maintenance-mini",
     "maintenance-dot",
     "maintenance-mini-label",
     "maintenance-mini-message",
@@ -16,10 +20,14 @@
     "theme-toggle",
     "refresh-button",
     "last-sync",
+    "metric-card-total",
     "stat-total",
     "stat-total-note",
+    "metric-card-grade5",
     "stat-grade5",
+    "metric-card-grade11",
     "stat-grade11",
+    "metric-card-online",
     "stat-online",
     "stat-visitor-note",
     "health-database",
@@ -28,13 +36,19 @@
     "health-content-badge",
     "health-maintenance",
     "health-maintenance-badge",
+    "maintenance-panel",
     "maintenance-badge",
     "maintenance-copy",
     "maintenance-toggle",
     "maintenance-toggle-label",
     "edit-maintenance",
+    "maintenance-preview-box",
+    "maintenance-message-preview",
     "quick-import",
+    "clear-activity-log",
     "recent-activity",
+    "export-pdf-heading",
+    "copy-ai-prompt-btn",
     "import-button",
     "new-question-button",
     "form-title",
@@ -55,15 +69,47 @@
     "short-editor",
     "explanation-input",
     "cancel-edit",
+    "submit-question",
     "submit-label",
     "preview-card",
+    "content-library-section",
     "library-count",
-    "search-input",
+    "result-summary",
+    "export-pdf-library",
+    "open-trash-button",
+    "trash-count-badge",
+    "delete-scope-button",
     "library-subject-filter",
     "question-type-filter",
-    "result-summary",
+    "search-input",
+    "library-subject-tabs",
+    "library-bulk-bar",
+    "bulk-select-all-checkbox",
+    "bulk-filtered-count",
+    "bulk-selected-count",
+    "bulk-deselect-btn",
+    "bulk-delete-btn",
+    "bulk-delete-count",
     "questions-list",
     "empty-state",
+    "library-pagination",
+    "refresh-progress",
+    "copy-parent-link-head",
+    "nav-online-count",
+    "quick-observer-ip",
+    "quick-observer-name",
+    "btn-add-quick-observer",
+    "quick-observer-list",
+    "grade5-monitor-stats",
+    "g5-stat-doing",
+    "g5-stat-submitted",
+    "g5-stat-waiting",
+    "g5-stat-total",
+    "progress-subject-filter",
+    "progress-subject-info",
+    "progress-search",
+    "progress-sort",
+    "grade5-progress-cards",
     "refresh-students",
     "clear-logins",
     "monitor-stats",
@@ -76,6 +122,7 @@
     "banned-list",
     "student-count",
     "students-body",
+    "arena-host-root",
     "access-current-ip",
     "save-master-ip",
     "admin-ip-count",
@@ -83,56 +130,144 @@
     "admin-ip-name",
     "add-admin-ip",
     "admin-ip-list",
-    "ai-ip-count",
-    "ai-ip-input",
-    "ai-ip-name",
-    "add-ai-ip",
-    "ai-ip-list",
+    "student-access-name",
+    "student-access-code",
+    "student-access-role",
+    "student-access-ip",
+    "btn-fill-current-ip",
+    "btn-grant-student-access",
+    "class5-student-count",
+    "class5-access-body",
+    "ai-student-count",
+    "ai-access-body",
+    "parent-observer-count",
+    "parent-access-body",
     "new-subject-button",
     "subject-count",
     "refresh-subjects",
     "subjects-list",
-    "privacy-private-count",
-    "subject-privacy-list",
-    "subject-editor-title",
     "subject-form",
     "subject-name-input",
     "subject-key-input",
     "subject-semester-input",
     "subject-icon-input",
+    "subject-grade-picker",
+    "subject-grade-input",
+    "subject-mode-picker",
+    "subject-mode-input",
     "subject-gradient-input",
     "subject-visibility-input",
     "clear-subject-form",
-    "class5-ip-count",
-    "class5-ip-input",
-    "add-class5-ip",
-    "add-current-class5-ip",
-    "class5-ip-list",
-    "export-excel",
-    "export-backup",
-    "load-leaderboard",
-    "archive-data",
-    "leaderboard-subject",
-    "leaderboard-content",
     "gemini-key-input",
     "save-gemini-key",
     "test-gemini-key",
     "clear-gemini-key",
     "gemini-key-status",
     "import-modal",
+    "modal-copy-ai-prompt-btn",
     "import-subject-select",
     "import-replace",
     "import-text",
     "import-file",
     "parse-import",
-    "ai-analyze-import",
     "save-import",
     "import-preview",
-    "subject-modal",
-    "go-subject-editor",
-    "toast"
+    "subject-dialog",
+    "subject-editor-title",
+    "subject-dialog-close",
+    "subject-dialog-content",
+    "print-modal",
+    "print-modal-title",
+    "print-subject-select",
+    "print-grade-select",
+    "print-school-input",
+    "print-code-input",
+    "print-random-code",
+    "print-title-input",
+    "print-duration-input",
+    "print-count-input",
+    "print-mode-select",
+    "print-shuffle-check",
+    "print-available-count",
+    "do-print-btn",
+    "student-progress-modal",
+    "student-progress-modal-title",
+    "student-progress-modal-subtitle",
+    "student-progress-modal-close",
+    "student-progress-modal-body",
+    "trash-modal",
+    "trash-modal-title",
+    "trash-search-input",
+    "trash-subject-filter",
+    "trash-restore-all-btn",
+    "trash-empty-btn",
+    "trash-modal-count",
+    "trash-list",
+    "trash-empty-state",
+    "delete-scope-modal",
+    "delete-scope-title",
+    "delete-scope-filtered-desc",
+    "delete-scope-filtered-badge",
+    "btn-delete-current-filter",
+    "btn-activate-selection-mode",
+    "delete-scope-total-count",
+    "delete-all-confirm-input",
+    "btn-delete-all-guarded",
+    "print-paper",
+    "toast",
+    "back-to-top-btn",
+    "report-workspace-template",
+    "report-last-updated",
+    "refresh-score-report",
+    "report-state-loading",
+    "report-state-error",
+    "report-state-error-text",
+    "report-retry",
+    "report-state-empty",
+    "report-summary",
+    "report-method-note",
+    "report-scale-badge",
+    "report-attempts",
+    "report-students",
+    "report-mean",
+    "report-median",
+    "report-sd",
+    "report-range",
+    "report-completion",
+    "report-omission",
+    "report-date-range",
+    "report-selection-rule",
+    "leaderboard-title",
+    "leaderboard-summary",
+    "leaderboard-subject",
+    "load-leaderboard",
+    "leaderboard-loading",
+    "leaderboard-error",
+    "leaderboard-error-text",
+    "leaderboard-empty",
+    "leaderboard-content",
+    "export-pdf-report",
+    "export-excel",
+    "export-backup",
+    "export-score-report",
+    "archive-data"
   ],
   "buttons": [
+    {
+      "id": "btn-unlock-admin-token",
+      "text": "Mở khóa",
+      "disabled": false
+    },
+    {
+      "id": "bootstrap-admin",
+      "text": "Đăng nhập mật khẩu Master",
+      "disabled": false
+    },
+    {
+      "id": "copy-admin-ip",
+      "text": "",
+      "disabled": false
+    },
     {
       "id": "",
       "text": "Tổng quan",
@@ -141,14 +276,14 @@
     },
     {
       "id": "",
-      "text": "Ngân hàng câu hỏi\n73",
+      "text": "Đề thi &amp; môn học 0",
       "view": "questions",
       "disabled": false
     },
     {
       "id": "",
-      "text": "Giám sát học sinh\n11",
-      "view": "students",
+      "text": "Lớp học trực tiếp 0",
+      "view": "progress",
       "disabled": false
     },
     {
@@ -159,13 +294,7 @@
     },
     {
       "id": "",
-      "text": "Môn học & quyền riêng tư",
-      "view": "subjects",
-      "disabled": false
-    },
-    {
-      "id": "",
-      "text": "Báo cáo & dữ liệu",
+      "text": "Báo cáo &amp; dữ liệu",
       "view": "reports",
       "disabled": false
     },
@@ -191,37 +320,56 @@
       "disabled": false
     },
     {
+      "id": "health-database-badge",
+      "text": "Đang kiểm tra",
+      "disabled": false
+    },
+    {
+      "id": "health-content-badge",
+      "text": "Đang tải",
+      "disabled": false
+    },
+    {
       "id": "edit-maintenance",
       "text": "Đổi lời nhắn",
       "disabled": false
     },
     {
       "id": "",
-      "text": "Soạn câu hỏi\nThêm hoặc sửa nội dung",
+      "text": "Soạn câu hỏi Thêm hoặc sửa nội dung",
       "go": "questions",
       "disabled": false
     },
     {
       "id": "quick-import",
-      "text": "Nạp đề hàng loạt\nText, JSON, Excel",
+      "text": "Nạp JSON câu hỏi JSON hoặc TXT hàng loạt",
       "disabled": false
     },
     {
       "id": "",
-      "text": "Phát thông báo\nGửi tới học sinh",
+      "text": "Phát thông báo Gửi tới học sinh",
       "go": "students",
       "disabled": false
     },
     {
       "id": "",
-      "text": "Xuất dữ liệu\nExcel hoặc backup JSON",
+      "text": "Xuất dữ liệu Excel hoặc backup JSON",
       "go": "reports",
       "disabled": false
     },
     {
-      "id": "",
-      "text": "Xem tất cả",
-      "go": "students",
+      "id": "clear-activity-log",
+      "text": "Xóa lịch sử",
+      "disabled": false
+    },
+    {
+      "id": "export-pdf-heading",
+      "text": "In đề / Xuất PDF",
+      "disabled": false
+    },
+    {
+      "id": "copy-ai-prompt-btn",
+      "text": "Copy Prompt AI",
       "disabled": false
     },
     {
@@ -240,23 +388,148 @@
       "disabled": false
     },
     {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
       "id": "cancel-edit",
       "text": "Hủy sửa",
       "disabled": false
     },
     {
-      "id": "refresh-students",
+      "id": "submit-question",
+      "text": "Lưu câu hỏi",
+      "disabled": false
+    },
+    {
+      "id": "export-pdf-library",
+      "text": "In đề thi",
+      "disabled": false
+    },
+    {
+      "id": "open-trash-button",
+      "text": "Thùng rác 0",
+      "disabled": false
+    },
+    {
+      "id": "delete-scope-button",
+      "text": "Xóa câu hỏi...",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Tất cả",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Lớp 5",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Lớp 11",
+      "disabled": false
+    },
+    {
+      "id": "bulk-deselect-btn",
+      "text": "Bỏ chọn",
+      "disabled": false
+    },
+    {
+      "id": "bulk-delete-btn",
+      "text": "Xóa các câu đã chọn ( 0 )",
+      "disabled": false
+    },
+    {
+      "id": "refresh-progress",
       "text": "Làm mới",
       "disabled": false
     },
     {
+      "id": "copy-parent-link-head",
+      "text": "Sao chép Link Theo Dõi",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Tiến trình &amp; Chi tiết bài làm",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Giám sát, Thông báo &amp; Chặn IP 0",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Phòng thi đấu",
+      "disabled": false
+    },
+    {
+      "id": "btn-add-quick-observer",
+      "text": "Cấp Quyền Theo Dõi",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Tất cả môn",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Lớp 5",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Lớp 11",
+      "disabled": false
+    },
+    {
+      "id": "refresh-students",
+      "text": "Làm mới phiên",
+      "disabled": false
+    },
+    {
       "id": "clear-logins",
-      "text": "Xóa lịch sử",
+      "text": "Xóa lịch sử đăng nhập",
       "disabled": false
     },
     {
       "id": "send-notice",
-      "text": "Gửi toàn phòng",
+      "text": "Gửi thông báo",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Còn 10 phút",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Nhắc không chuyển tab",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Kiểm tra trước khi nộp",
       "disabled": false
     },
     {
@@ -271,12 +544,17 @@
     },
     {
       "id": "add-admin-ip",
-      "text": "Cấp quyền",
+      "text": "Cấp IP-Token Admin",
       "disabled": false
     },
     {
-      "id": "add-ai-ip",
-      "text": "Cấp AI",
+      "id": "btn-fill-current-ip",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "btn-grant-student-access",
+      "text": "Kích hoạt quyền cho học sinh",
       "disabled": false
     },
     {
@@ -290,38 +568,38 @@
       "disabled": false
     },
     {
+      "id": "",
+      "text": "Lớp 11",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Lớp 5",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Luyện tập",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Thi đấu",
+      "disabled": false
+    },
+    {
       "id": "clear-subject-form",
       "text": "Làm mới",
       "disabled": false
     },
     {
-      "id": "add-class5-ip",
-      "text": "Cấp quyền",
+      "id": "",
+      "text": "Lưu môn học",
       "disabled": false
     },
     {
-      "id": "add-current-class5-ip",
-      "text": "Cấp quyền cho IP máy này",
-      "disabled": false
-    },
-    {
-      "id": "export-excel",
-      "text": "Tải Excel",
-      "disabled": false
-    },
-    {
-      "id": "export-backup",
-      "text": "Tải backup",
-      "disabled": false
-    },
-    {
-      "id": "load-leaderboard",
-      "text": "Xem xếp hạng",
-      "disabled": false
-    },
-    {
-      "id": "archive-data",
-      "text": "Dọn dữ liệu",
+      "id": "",
+      "text": "Đi tới Quản lý phân quyền học sinh",
       "disabled": false
     },
     {
@@ -340,13 +618,23 @@
       "disabled": false
     },
     {
-      "id": "parse-import",
-      "text": "Đọc JSON",
+      "id": "modal-copy-ai-prompt-btn",
+      "text": "Copy Prompt AI",
       "disabled": false
     },
     {
-      "id": "ai-analyze-import",
-      "text": "Gemini phân tích & giải",
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Hủy",
+      "disabled": false
+    },
+    {
+      "id": "parse-import",
+      "text": "Đọc JSON",
       "disabled": false
     },
     {
@@ -355,8 +643,123 @@
       "disabled": false
     },
     {
-      "id": "go-subject-editor",
-      "text": "Mở trình chỉnh sửa",
+      "id": "subject-dialog-close",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "print-random-code",
+      "text": "Ngẫu nhiên",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Hủy",
+      "disabled": false
+    },
+    {
+      "id": "do-print-btn",
+      "text": "Xem trước &amp; In ngay (PDF)",
+      "disabled": false
+    },
+    {
+      "id": "student-progress-modal-close",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "trash-restore-all-btn",
+      "text": "Khôi phục tất cả",
+      "disabled": false
+    },
+    {
+      "id": "trash-empty-btn",
+      "text": "Dọn sạch thùng rác",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "Đóng",
+      "disabled": false
+    },
+    {
+      "id": "",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "btn-delete-current-filter",
+      "text": "Xóa bài đang lọc",
+      "disabled": false
+    },
+    {
+      "id": "btn-activate-selection-mode",
+      "text": "Bật chọn câu",
+      "disabled": false
+    },
+    {
+      "id": "btn-delete-all-guarded",
+      "text": "Xóa sạch tất cả",
+      "disabled": true
+    },
+    {
+      "id": "",
+      "text": "Đóng",
+      "disabled": false
+    },
+    {
+      "id": "back-to-top-btn",
+      "text": "",
+      "disabled": false
+    },
+    {
+      "id": "refresh-score-report",
+      "text": "Làm mới báo cáo",
+      "disabled": false
+    },
+    {
+      "id": "report-retry",
+      "text": "Thử lại",
+      "disabled": false
+    },
+    {
+      "id": "load-leaderboard",
+      "text": "Xem xếp hạng",
+      "disabled": false
+    },
+    {
+      "id": "export-pdf-report",
+      "text": "Cấu hình &amp; Xuất đề",
+      "disabled": false
+    },
+    {
+      "id": "export-excel",
+      "text": "Tải Excel",
+      "disabled": false
+    },
+    {
+      "id": "export-backup",
+      "text": "Tải backup JSON",
+      "disabled": false
+    },
+    {
+      "id": "export-score-report",
+      "text": "Tải báo cáo điểm",
+      "disabled": false
+    },
+    {
+      "id": "archive-data",
+      "text": "Dọn dữ liệu",
       "disabled": false
     }
   ],

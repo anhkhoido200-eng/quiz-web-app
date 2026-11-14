@@ -875,11 +875,14 @@ body.light-theme .text-slate-400 {
 }
 
 body.light-theme .bg-slate-900,
-body.light-theme .bg-slate-950 {
+body.light-theme .bg-slate-950,
+body.light-theme #quiz-sticky-header [class*="bg-slate-900"],
+body.light-theme #quiz-sticky-header [class*="bg-slate-950"] {
     background-color: rgba(248, 250, 252, 0.95) !important;
 }
 
-body.light-theme .bg-slate-800 {
+body.light-theme .bg-slate-800,
+body.light-theme #quiz-sticky-header [class*="bg-slate-800"] {
     background-color: rgba(241, 245, 249, 0.9) !important;
 }
 

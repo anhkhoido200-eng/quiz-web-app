@@ -35,10 +35,14 @@
    - Vào mục **Project Settings** (biểu tượng bánh răng) -> Chọn **API**.
    - Sao chép 2 thông số:
      - `Project URL` (dạng: `https://xxxx.supabase.co`)
-     - `anon public key` (chuỗi dài bắt đầu bằng `ey...`)
+     - `anon public key` / `Publishable key` (chuỗi JWT `ey...` hoặc `sb_publishable_...`)
 3. **Gắn vào Web:**
    - Cách 1: Mở web trên trình duyệt, bấm nút **Bánh răng cài đặt (⚙️)** góc trên bên phải, dán URL và Key vào rồi bấm **Lưu Kết Nối**.
    - Cách 2: Hoặc dán trực tiếp vào file `supabase.js` ở mục `DEFAULT_SUPABASE_CONFIG`.
+4. **Lưu ý bảo mật Production:**
+   - File `supabase_setup.sql` và `supabase_arena_setup.sql` hiện mở RLS cho role `anon` để tương thích với kiến trúc SPA tĩnh không cần đăng nhập Supabase Auth.
+   - Trước khi triển khai môi trường thi chính thức / production, cần chuyển các thao tác quản trị (`quiz_questions` ghi/xóa, `quiz_logins` cấu hình hệ thống, `arena_create_room` / `arena_end_room`, và khóa Gemini API) sang Supabase Auth + RLS theo role hoặc Edge Functions / RPC kiểm tra quyền server-side.
+   - Chế độ Đấu trường (Arena) sử dụng thêm script `supabase_arena_setup.sql` và trang quản trị nằm tại `admin.html`.
 
 ---
 

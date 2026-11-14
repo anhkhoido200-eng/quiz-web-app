@@ -75,7 +75,7 @@ const rawGeographyMCQ = [
             "Sử dụng ít lao động nhưng có tỉ lệ đóng góp vào GDP cao.",
             "Sử dụng nhiều lao động và có tỉ lệ đóng góp vào GDP cao.",
             "Sử dụng ít lao động và có tỉ lệ đóng góp vào GDP rất nhỏ.",
-            "Sử dụng nhiều lao động nhưng có tỉ đóng góp vào GDP nhỏ."
+            "Sử dụng nhiều lao động nhưng có tỉ trọng đóng góp vào GDP nhỏ."
         ],
         answer: 2,
         correct: 2,
@@ -908,23 +908,32 @@ Cần phải bảo vệ hòa bình thế giới vì những lí do cấp thiết
 ];
 
 // Toàn bộ 52 câu trắc nghiệm ghép lại
+const stripGeoQuestionPrefix = (text) => String(text || '').replace(/^Câu\s+\d+[a-z]?:\s*/i, '').trim();
+
 const rawAllGeographyQuestions = [
     ...rawGeographyMCQ.map(q => ({
         ...q,
+        question: stripGeoQuestionPrefix(q.question),
         qType: 'mcq',
         correct: (q.correct !== undefined ? q.correct : q.answer),
         answer: (q.answer !== undefined ? q.answer : q.correct),
         isMultiple: false
     })),
-    ...rawGeographyTrueFalse,
+    ...rawGeographyTrueFalse.map(q => ({
+        ...q,
+        question: stripGeoQuestionPrefix(q.question)
+    })),
     ...rawGeographyShortAnswer.map(q => ({
         ...q,
+        question: stripGeoQuestionPrefix(q.question),
         correct_value: String(q.correct_value ?? q.correctValue ?? ''),
         correctValue: String(q.correctValue ?? q.correct_value ?? '')
     }))
 ];
 
 // Xuất ra biến toàn cục window
-window.GEOGRAPHY_QUESTIONS = rawAllGeographyQuestions;
-window.GEOGRAPHY_ESSAY_OUTLINES = rawGeographyEssayOutlines;
-window.GEOGRAPHY_ESSAY_QUESTIONS = rawGeographyEssayOutlines;
+if (typeof window !== 'undefined') {
+    window.GEOGRAPHY_QUESTIONS = rawAllGeographyQuestions;
+    window.GEOGRAPHY_ESSAY_OUTLINES = rawGeographyEssayOutlines;
+    window.GEOGRAPHY_ESSAY_QUESTIONS = rawGeographyEssayOutlines;
+}

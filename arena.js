@@ -11,6 +11,27 @@
             .replace(/'/g, '&#39;');
     }
 
+    function isSafeImageUrl(url) {
+        const raw = String(url || '').trim();
+        if (!raw) return false;
+        return /^https?:\/\//i.test(raw) || /^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(raw) || /^(\/|\.\/)?[a-zA-Z0-9_\-./]+$/.test(raw);
+    }
+
+    function renderMathSafe(container) {
+        if (!container || typeof window.renderMathInElement !== 'function') return;
+        try {
+            window.renderMathInElement(container, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                throwOnError: false
+            });
+        } catch (e) { /* ignore KaTeX render errors */ }
+    }
+
     function fmtMs(ms) {
         const totalSec = Math.max(0, Math.round(Number(ms || 0) / 1000));
         const m = Math.floor(totalSec / 60);
@@ -34,6 +55,21 @@
         return /match_rooms|PGRST205|42P01|does not exist|schema cache/i.test(msg);
     }
 
+    function getOrCreateClientId() {
+        try {
+            let cid = localStorage.getItem('arena_client_id');
+            if (!cid) {
+                cid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+                localStorage.setItem('arena_client_id', cid);
+            }
+            return cid;
+        } catch (e) {
+            return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+    }
+
     /* =========================================================================
        1. STUDENT ARENA CLIENT
        ========================================================================= */
@@ -51,7 +87,10 @@
         lastViolationAt: 0,
         antiCheatBound: false,
         pendingQueueKey: '',
+        pendingFinishKey: '',
         isFlushingQueue: false,
+        isSubmitting: false,
+        _onOnline: null,
 
         async syncClock() {
             const client = getClient();
@@ -89,7 +128,7 @@
                                     <p class="text-[11px] text-slate-400">Đồng bộ máy chủ • Chống gian lận • Xếp hạng công bằng</p>
                                 </div>
                             </div>
-                            <button type="button" id="arena-close-btn" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center">
+                            <button type="button" id="arena-close-btn" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer">
                                 <i class="fa-solid fa-xmark"></i>
                             </button>
                         </div>
@@ -107,6 +146,17 @@
         },
 
         closeModal() {
+            const inActiveExam = this.attempt &&
+                this.attempt.status === 'IN_PROGRESS' &&
+                this.room?.status === 'IN_PROGRESS' &&
+                document.getElementById('arena-exam-view');
+            if (inActiveExam) {
+                const ok = window.confirm('Bạn đang trong giờ làm bài. Bạn có chắc muốn đóng cửa sổ thi đấu? Đồng hồ máy chủ vẫn tiếp tục chạy.');
+                if (!ok) return;
+            }
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
             const modal = document.getElementById('arena-modal');
             if (modal) {
                 modal.classList.add('hidden');
@@ -118,7 +168,13 @@
 
         cleanupTimers() {
             clearInterval(this.tickTimer);
+            this.tickTimer = null;
             clearInterval(this.pollTimer);
+            this.pollTimer = null;
+            if (this._onOnline) {
+                window.removeEventListener('online', this._onOnline);
+                this._onOnline = null;
+            }
             if (this.realtimeChannel && getClient()?.removeChannel) {
                 try { getClient().removeChannel(this.realtimeChannel); } catch (e) {}
                 this.realtimeChannel = null;
@@ -150,7 +206,7 @@
                         <p>• Hệ thống ghi nhận chuyển tab, rời cửa sổ, thoát toàn màn hình và tự động nộp bài khi vượt ngưỡng.</p>
                         <p>• Điểm xếp hạng dựa trên số câu đúng và tốc độ phản hồi theo đồng hồ máy chủ.</p>
                     </div>
-                    <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-extrabold text-sm cursor-pointer">
+                    <button id="arena-join-submit" type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-extrabold text-sm cursor-pointer">
                         <i class="fa-solid fa-right-to-bracket mr-1.5"></i> Tham Gia Phòng Thi Đấu
                     </button>
                 </form>
@@ -166,6 +222,7 @@
 
         async joinRoom(code, playerName) {
             const errBox = document.getElementById('arena-join-error');
+            const submitBtn = document.getElementById('arena-join-submit');
             const showErr = (msg) => {
                 if (errBox) {
                     errBox.textContent = msg;
@@ -176,100 +233,125 @@
             if (!client) return showErr('Chưa kết nối được Supabase Cloud.');
             if (!code || !playerName) return showErr('Vui lòng nhập đầy đủ họ tên và mã phòng.');
 
-            localStorage.setItem('quiz_player_name', playerName);
-            const playerKey = playerName.toLowerCase().replace(/\s+/g, ' ').trim();
-            const tokenKey = `arena_session_${code.toUpperCase()}_${playerKey}`;
-            this.sessionToken = localStorage.getItem(tokenKey) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-            localStorage.setItem(tokenKey, this.sessionToken);
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-60');
+            }
+            try {
+                this.cleanupTimers();
+                this.unbindAntiCheat();
 
-            await this.syncClock();
-            const { data, error } = await client.rpc('arena_join_room', {
-                p_room_code: code.toUpperCase(),
-                p_player_name: playerName,
-                p_player_key: playerKey,
-                p_session_token: this.sessionToken
-            });
-            if (error) {
-                if (isMissingSchemaError(error)) {
-                    return showErr('Hệ thống chưa chạy file supabase_arena_setup.sql trên Supabase.');
+                localStorage.setItem('quiz_player_name', playerName);
+                const normalizedName = playerName.toLowerCase().replace(/\s+/g, ' ').trim();
+                const clientId = getOrCreateClientId();
+                const playerKey = `${normalizedName}::${clientId}`;
+                const tokenKey = `arena_session_${code.toUpperCase()}_${playerKey}`;
+                this.sessionToken = localStorage.getItem(tokenKey) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                localStorage.setItem(tokenKey, this.sessionToken);
+
+                await this.syncClock();
+                const { data, error } = await client.rpc('arena_join_room', {
+                    p_room_code: code.toUpperCase(),
+                    p_player_name: playerName,
+                    p_player_key: playerKey,
+                    p_session_token: this.sessionToken
+                });
+                if (error) {
+                    if (isMissingSchemaError(error)) {
+                        return showErr('Hệ thống chưa chạy file supabase_arena_setup.sql trên Supabase.');
+                    }
+                    return showErr(error.message || 'Không thể tham gia phòng.');
                 }
-                return showErr(error.message || 'Không thể tham gia phòng.');
-            }
 
-            if (data?.server_now) {
-                this.clockOffsetMs = new Date(data.server_now).getTime() - Date.now();
-            }
-            this.room = data.room;
-            this.attempt = data.attempt;
-            this.questions = Array.isArray(data.questions) ? data.questions : [];
-            this.currentIndex = Number(this.attempt?.current_index || 0);
-            this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
+                if (data?.server_now) {
+                    this.clockOffsetMs = new Date(data.server_now).getTime() - Date.now();
+                }
+                this.room = data.room;
+                this.attempt = data.attempt;
+                this.questions = Array.isArray(data.questions) ? data.questions : [];
+                this.currentIndex = Number(this.attempt?.current_index || 0);
+                this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
+                this.pendingFinishKey = `arena_pending_finish_${this.attempt.id}`;
 
-            this.subscribeRoom();
-            this.flushPendingAnswers();
-            this.routeByState();
+                this.subscribeRoom();
+                await this.flushPendingAnswers();
+                this.routeByState();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-60');
+                }
+            }
         },
 
         subscribeRoom() {
             const client = getClient();
             if (!client || !this.room?.id) return;
+            this.cleanupTimers();
+
             if (typeof client.channel === 'function') {
                 this.realtimeChannel = client
                     .channel(`arena-room-${this.room.id}`)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'match_rooms', filter: `id=eq.${this.room.id}` }, (payload) => {
                         if (payload?.new) {
+                            const prevStatus = this.room?.status;
                             this.room = payload.new;
-                            this.routeByState();
-                        }
-                    })
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'match_attempts', filter: `room_id=eq.${this.room.id}` }, (payload) => {
-                        if (payload?.new && payload.new.id === this.attempt?.id) {
-                            if (payload.new.active_session_token && payload.new.active_session_token !== this.sessionToken) {
-                                this.renderSessionReplaced();
-                                return;
+                            if (prevStatus !== this.room.status || this.room.status === 'FINISHED' || this.room.status === 'CANCELLED') {
+                                this.routeByState();
                             }
-                            this.attempt = payload.new;
-                        }
-                        if (this.room?.status === 'WAITING' || this.room?.status === 'FINISHED') {
-                            this.refreshLobbyOrLeaderboard();
                         }
                     })
                     .subscribe();
             }
-            clearInterval(this.pollTimer);
+            this._onOnline = () => {
+                this.flushPendingAnswers();
+                this.pollRoomState();
+            };
+            window.addEventListener('online', this._onOnline);
             this.pollTimer = setInterval(() => this.pollRoomState(), 4000);
         },
 
         async pollRoomState() {
             const client = getClient();
             if (!client || !this.room?.id) return;
-            const { data: roomRow } = await client.from('match_rooms').select('*').eq('id', this.room.id).maybeSingle();
-            if (roomRow) {
-                const prevStatus = this.room.status;
-                this.room = roomRow;
-                if (prevStatus !== roomRow.status) this.routeByState();
+            const { data, error } = await client.rpc('arena_get_room_state', {
+                p_room_id: this.room.id,
+                p_attempt_id: this.attempt?.id || null,
+                p_session_token: this.sessionToken || null
+            });
+            if (error || !data) return;
+
+            if (data.session_replaced) {
+                this.renderSessionReplaced();
+                return;
             }
-            if (this.attempt?.id) {
-                const { data: attRow } = await client.from('match_attempts').select('*').eq('id', this.attempt.id).maybeSingle();
-                if (attRow) {
-                    if (attRow.active_session_token && attRow.active_session_token !== this.sessionToken) {
-                        this.renderSessionReplaced();
-                        return;
-                    }
-                    this.attempt = attRow;
-                    if ((attRow.status === 'SUBMITTED' || attRow.status === 'FORCED') && document.getElementById('arena-exam-view')) {
-                        this.renderLeaderboardView();
-                    }
+            if (data.room) {
+                const prevStatus = this.room.status;
+                this.room = data.room;
+                if (prevStatus !== data.room.status) {
+                    this.routeByState();
                 }
             }
-            if (this.room?.status === 'WAITING') this.refreshLobbyOrLeaderboard();
-            this.flushPendingAnswers();
+            if (data.attempt) {
+                this.attempt = data.attempt;
+                if ((data.attempt.status === 'SUBMITTED' || data.attempt.status === 'FORCED') && document.getElementById('arena-exam-view')) {
+                    this.renderLeaderboardView();
+                }
+            }
+            if (this.room?.status === 'FINISHED') {
+                this.refreshLobbyOrLeaderboard();
+            }
+            await this.flushPendingAnswers();
         },
 
         routeByState() {
             if (!this.room || !this.attempt) return;
-            if (this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED' || this.room.status === 'FINISHED') {
-                this.unbindAntiCheat();
+            if (
+                this.attempt.status === 'SUBMITTED' ||
+                this.attempt.status === 'FORCED' ||
+                this.room.status === 'FINISHED' ||
+                this.room.status === 'CANCELLED'
+            ) {
                 this.renderLeaderboardView();
                 return;
             }
@@ -279,24 +361,7 @@
         async refreshLobbyOrLeaderboard() {
             const client = getClient();
             if (!client || !this.room?.id) return;
-            const { data } = await client
-                .from('match_attempts')
-                .select('id, player_name, status, correct_count, score, total_time_ms, violation_count')
-                .eq('room_id', this.room.id)
-                .order('correct_count', { ascending: false })
-                .order('score', { ascending: false })
-                .order('total_time_ms', { ascending: true })
-                .order('violation_count', { ascending: true });
-
-            const lobbyEl = document.getElementById('arena-lobby-players');
-            if (lobbyEl && Array.isArray(data)) {
-                lobbyEl.innerHTML = data.map((p) => `
-                    <div class="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/70 text-xs font-semibold flex items-center gap-2">
-                        <i class="fa-solid fa-user-check text-emerald-400"></i>
-                        <span class="truncate">${esc(p.player_name)}</span>
-                    </div>
-                `).join('');
-            }
+            const { data } = await client.rpc('arena_get_leaderboard', { p_room_id: this.room.id });
             const lbEl = document.getElementById('arena-lb-rows');
             if (lbEl && Array.isArray(data)) {
                 lbEl.innerHTML = this.buildLeaderboardRowsHtml(data);
@@ -317,6 +382,56 @@
             }
             const q = this.questions[this.currentIndex];
             const totalQ = this.questions.length;
+            const safeImgHtml = isSafeImageUrl(q.image_url)
+                ? `<div class="my-2"><img src="${esc(q.image_url)}" alt="Hình minh họa câu hỏi" class="max-h-56 w-auto mx-auto rounded-xl border border-slate-700 object-contain"></div>`
+                : '';
+
+            let answerAreaHtml = '';
+            if (q.qType === 'short_answer') {
+                answerAreaHtml = `
+                    <div class="space-y-2">
+                        <div class="flex gap-2">
+                            <input id="arena-short-input" type="text" placeholder="Nhập đáp án..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm select-text outline-none focus:border-indigo-400">
+                            <button id="arena-short-submit" type="button" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer">Gửi</button>
+                        </div>
+                        <p id="arena-short-hint" class="hidden text-xs text-amber-300 font-semibold"></p>
+                    </div>
+                `;
+            } else if (q.qType === 'tf_group') {
+                const stmts = Array.isArray(q.statements) ? q.statements : [];
+                const labels = ['a', 'b', 'c', 'd', 'e', 'f'];
+                answerAreaHtml = `
+                    <div class="space-y-2.5" id="arena-tf-group">
+                        ${stmts.map((st, idx) => `
+                            <div class="p-3 rounded-xl bg-slate-900 border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                <div class="text-sm text-slate-100 leading-relaxed flex-1">
+                                    <span class="font-extrabold text-amber-300 mr-1.5">${labels[idx] || (idx + 1)})</span>
+                                    <span>${esc(st?.text || '')}</span>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <button type="button" class="arena-tf-btn px-3.5 py-1.5 rounded-lg border border-slate-600 bg-slate-800 hover:border-emerald-400 text-xs font-bold text-slate-200 cursor-pointer transition" data-tf-idx="${idx}" data-tf-val="true">Đúng</button>
+                                    <button type="button" class="arena-tf-btn px-3.5 py-1.5 rounded-lg border border-slate-600 bg-slate-800 hover:border-rose-400 text-xs font-bold text-slate-200 cursor-pointer transition" data-tf-idx="${idx}" data-tf-val="false">Sai</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                        <p id="arena-tf-hint" class="hidden text-xs text-amber-300 font-semibold"></p>
+                        <button id="arena-tf-submit" type="button" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer transition">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> Gửi đáp án Đúng/Sai
+                        </button>
+                    </div>
+                `;
+            } else {
+                answerAreaHtml = `
+                    <div class="grid grid-cols-1 gap-2">
+                        ${(q.options || []).map((opt, idx) => `
+                            <button type="button" class="arena-opt-btn text-left px-4 py-3 rounded-xl bg-slate-900 hover:bg-indigo-600/25 border border-slate-700 hover:border-indigo-400 text-sm text-slate-100 flex items-center gap-3 cursor-pointer transition" data-opt-idx="${idx}">
+                                <span class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-bold text-xs shrink-0">${['A', 'B', 'C', 'D'][idx] || idx + 1}</span>
+                                <span>${esc(opt)}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+            }
 
             stage.innerHTML = `
                 <div id="arena-exam-view" class="space-y-4 select-none">
@@ -324,7 +439,7 @@
                         <span class="text-xs font-bold text-indigo-300">Câu ${this.currentIndex + 1} / ${totalQ}</span>
                         <div class="flex items-center gap-3 text-xs font-mono font-bold">
                             <span class="text-emerald-400">Điểm: <b id="arena-live-score">${this.attempt?.score || 0}</b></span>
-                            <span class="text-rose-400">Vi phạm: <b id="arena-live-violations">${this.attempt?.violation_count || 0}/${this.room?.max_violations || 0}</b></span>
+                            <span class="text-rose-400">Vi phạm: <b id="arena-live-violations">${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}</b></span>
                             <span class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30">
                                 <i class="fa-regular fa-clock mr-1"></i><span id="arena-match-timer">--:--</span>
                             </span>
@@ -344,27 +459,15 @@
                     <div id="arena-warning-banner" class="hidden p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold"></div>
                     <div class="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
                         <div class="text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
-                        ${q.qType === 'short_answer' ? `
-                            <div class="flex gap-2">
-                                <input id="arena-short-input" type="text" placeholder="Nhập đáp án..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm select-text outline-none focus:border-indigo-400">
-                                <button id="arena-short-submit" type="button" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer">Gửi</button>
-                            </div>
-                        ` : `
-                            <div class="grid grid-cols-1 gap-2">
-                                ${(q.options || []).map((opt, idx) => `
-                                    <button type="button" class="arena-opt-btn text-left px-4 py-3 rounded-xl bg-slate-900 hover:bg-indigo-600/25 border border-slate-700 hover:border-indigo-400 text-sm text-slate-100 flex items-center gap-3 cursor-pointer transition" data-opt-idx="${idx}">
-                                        <span class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-bold text-xs shrink-0">${['A', 'B', 'C', 'D'][idx] || idx + 1}</span>
-                                        <span>${esc(opt)}</span>
-                                    </button>
-                                `).join('')}
-                            </div>
-                        `}
+                        ${safeImgHtml}
+                        ${answerAreaHtml}
                     </div>
                 </div>
             `;
 
             const examEl = document.getElementById('arena-exam-view');
             if (examEl) {
+                renderMathSafe(examEl);
                 ['copy', 'cut', 'paste', 'contextmenu'].forEach((evt) => {
                     examEl.addEventListener(evt, (e) => {
                         if (e.target.id === 'arena-short-input' && evt === 'paste') return;
@@ -374,12 +477,62 @@
             }
 
             document.querySelectorAll('.arena-opt-btn').forEach((btn) => {
-                btn.addEventListener('click', () => this.submitAnswer(q.id, Number(btn.dataset.optIdx), null));
+                btn.addEventListener('click', () => this.submitAnswer(q.id, Number(btn.dataset.optIdx), null, null));
             });
-            document.getElementById('arena-short-submit')?.addEventListener('click', () => {
+
+            const submitShort = () => {
                 const val = document.getElementById('arena-short-input')?.value?.trim();
-                if (val) this.submitAnswer(q.id, null, val);
+                const hint = document.getElementById('arena-short-hint');
+                if (!val) {
+                    if (hint) {
+                        hint.textContent = 'Vui lòng nhập đáp án trước khi gửi.';
+                        hint.classList.remove('hidden');
+                    }
+                    return;
+                }
+                if (hint) hint.classList.add('hidden');
+                this.submitAnswer(q.id, null, val, null);
+            };
+            document.getElementById('arena-short-submit')?.addEventListener('click', submitShort);
+            document.getElementById('arena-short-input')?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitShort();
+                }
             });
+
+            if (q.qType === 'tf_group') {
+                const stmtsCount = Array.isArray(q.statements) ? q.statements.length : 0;
+                const tfSelections = new Array(stmtsCount).fill(null);
+                document.querySelectorAll('.arena-tf-btn').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const idx = Number(btn.dataset.tfIdx);
+                        const val = btn.dataset.tfVal === 'true';
+                        tfSelections[idx] = val;
+                        document.querySelectorAll(`.arena-tf-btn[data-tf-idx="${idx}"]`).forEach((b) => {
+                            const isSelected = (b.dataset.tfVal === 'true') === val;
+                            b.classList.remove('bg-emerald-600', 'border-emerald-400', 'bg-rose-600', 'border-rose-400', 'text-white');
+                            b.classList.add('bg-slate-800', 'border-slate-600', 'text-slate-200');
+                            if (isSelected) {
+                                b.classList.remove('bg-slate-800', 'border-slate-600', 'text-slate-200');
+                                b.classList.add(val ? 'bg-emerald-600' : 'bg-rose-600', val ? 'border-emerald-400' : 'border-rose-400', 'text-white');
+                            }
+                        });
+                        document.getElementById('arena-tf-hint')?.classList.add('hidden');
+                    });
+                });
+                document.getElementById('arena-tf-submit')?.addEventListener('click', () => {
+                    if (tfSelections.some((v) => v === null)) {
+                        const hint = document.getElementById('arena-tf-hint');
+                        if (hint) {
+                            hint.textContent = 'Vui lòng chọn Đúng hoặc Sai cho tất cả các ý.';
+                            hint.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    this.submitAnswer(q.id, null, null, tfSelections);
+                });
+            }
 
             this.startExamTimers(q.id);
         },
@@ -399,6 +552,7 @@
                     if (el) el.textContent = fmtClock(remainSec);
                     if (remainSec <= 0) {
                         clearInterval(this.tickTimer);
+                        this.tickTimer = null;
                         this.finishAttempt('TIME_UP');
                         return;
                     }
@@ -412,48 +566,84 @@
                     if (qBar) qBar.style.width = `${Math.max(0, Math.min(100, (qRemain / perQSec) * 100))}%`;
                     if (qRemain <= 0) {
                         clearInterval(this.tickTimer);
-                        this.submitAnswer(questionId, null, '');
+                        this.tickTimer = null;
+                        this.submitAnswer(questionId, null, '', null);
                     }
                 }
             }, 250);
         },
 
-        async submitAnswer(questionId, selectedDisplay, textAnswer) {
-            this.submissionSeq += 1;
-            const payload = {
-                p_attempt_id: this.attempt.id,
-                p_session_token: this.sessionToken,
-                p_question_id: questionId,
-                p_selected_display: selectedDisplay,
-                p_text_answer: textAnswer,
-                p_submission_seq: this.submissionSeq
-            };
+        setAnswerControlsDisabled(disabled) {
+            document.querySelectorAll('.arena-opt-btn, .arena-tf-btn, #arena-short-submit, #arena-tf-submit').forEach((el) => {
+                el.disabled = disabled;
+                el.classList.toggle('opacity-60', disabled);
+                el.classList.toggle('pointer-events-none', disabled);
+            });
+        },
 
-            const client = getClient();
-            if (!navigator.onLine || !client) {
-                this.enqueuePendingAnswer(payload);
-                this.currentIndex += 1;
+        async submitAnswer(questionId, selectedDisplay, textAnswer, tfAnswers = null) {
+            if (this.isSubmitting) return;
+            this.isSubmitting = true;
+            this.setAnswerControlsDisabled(true);
+
+            try {
+                this.submissionSeq += 1;
+                const qStartMs = this.attempt?.question_started_at
+                    ? new Date(this.attempt.question_started_at).getTime()
+                    : this.serverNowMs();
+                const clientElapsedMs = Math.max(0, Math.round(this.serverNowMs() - qStartMs));
+
+                const payload = {
+                    p_attempt_id: this.attempt.id,
+                    p_session_token: this.sessionToken,
+                    p_question_id: questionId,
+                    p_selected_display: selectedDisplay,
+                    p_text_answer: textAnswer,
+                    p_submission_seq: this.submissionSeq,
+                    p_tf_answers: tfAnswers
+                };
+
+                const client = getClient();
+                if (!navigator.onLine || !client) {
+                    this.enqueuePendingAnswer({
+                        ...payload,
+                        p_is_offline_sync: true,
+                        p_client_elapsed_ms: clientElapsedMs
+                    });
+                    if (this.attempt) {
+                        this.attempt.question_started_at = new Date(this.serverNowMs()).toISOString();
+                    }
+                    this.currentIndex += 1;
+                    this.renderExamView();
+                    return;
+                }
+
+                const { data, error } = await client.rpc('arena_submit_answer', payload);
+                if (error) {
+                    if (String(error.message || '').includes('SESSION_REPLACED')) return this.renderSessionReplaced();
+                    if (String(error.message || '').includes('MATCH_TIME_UP')) return this.renderLeaderboardView();
+                    this.enqueuePendingAnswer({
+                        ...payload,
+                        p_is_offline_sync: true,
+                        p_client_elapsed_ms: clientElapsedMs
+                    });
+                } else if (data?.attempt) {
+                    this.attempt = data.attempt;
+                }
+                this.currentIndex = Math.max(this.currentIndex + 1, Number(this.attempt?.current_index || 0));
                 this.renderExamView();
-                return;
+            } finally {
+                this.isSubmitting = false;
             }
-
-            const { data, error } = await client.rpc('arena_submit_answer', payload);
-            if (error) {
-                if (String(error.message || '').includes('SESSION_REPLACED')) return this.renderSessionReplaced();
-                if (String(error.message || '').includes('MATCH_TIME_UP')) return this.renderLeaderboardView();
-                this.enqueuePendingAnswer(payload);
-            } else if (data?.attempt) {
-                this.attempt = data.attempt;
-            }
-            this.currentIndex = Math.max(this.currentIndex + 1, Number(this.attempt?.current_index || 0));
-            this.renderExamView();
         },
 
         enqueuePendingAnswer(payload) {
             if (!this.pendingQueueKey) return;
             try {
                 const list = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]');
-                list.push(payload);
+                if (!list.some((x) => x.p_question_id === payload.p_question_id)) {
+                    list.push(payload);
+                }
                 localStorage.setItem(this.pendingQueueKey, JSON.stringify(list));
             } catch (e) {}
         },
@@ -463,20 +653,59 @@
             if (!client || !navigator.onLine || !this.pendingQueueKey || this.isFlushingQueue) return;
             let list = [];
             try { list = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]'); } catch (e) { list = []; }
-            if (!list.length) return;
+            let pendingFinishReason = '';
+            try { pendingFinishReason = this.pendingFinishKey ? (localStorage.getItem(this.pendingFinishKey) || '') : ''; } catch (e) {}
+
+            if (!list.length && !pendingFinishReason) return;
+
             this.isFlushingQueue = true;
-            const remaining = [];
-            for (const item of list) {
-                const { error } = await client.rpc('arena_submit_answer', item);
-                if (error && !/MATCH_TIME_UP|SESSION_REPLACED/i.test(String(error.message || ''))) {
-                    remaining.push(item);
-                }
-            }
             try {
-                if (remaining.length) localStorage.setItem(this.pendingQueueKey, JSON.stringify(remaining));
-                else localStorage.removeItem(this.pendingQueueKey);
-            } catch (e) {}
-            this.isFlushingQueue = false;
+                const remaining = [];
+                let sessionReplaced = false;
+                for (const item of list) {
+                    const { data, error } = await client.rpc('arena_submit_answer', item);
+                    if (error) {
+                        const msg = String(error.message || '');
+                        if (/SESSION_REPLACED/i.test(msg)) {
+                            sessionReplaced = true;
+                            break;
+                        }
+                        if (!/MATCH_TIME_UP/i.test(msg)) {
+                            remaining.push(item);
+                        }
+                    } else if (data?.attempt) {
+                        this.attempt = data.attempt;
+                    }
+                }
+                try {
+                    if (remaining.length) localStorage.setItem(this.pendingQueueKey, JSON.stringify(remaining));
+                    else localStorage.removeItem(this.pendingQueueKey);
+                } catch (e) {}
+
+                if (sessionReplaced) {
+                    this.renderSessionReplaced();
+                    return;
+                }
+
+                if (remaining.length === 0 && pendingFinishReason && this.attempt?.id) {
+                    const { data: finData, error: finErr } = await client.rpc('arena_finish_attempt', {
+                        p_attempt_id: this.attempt.id,
+                        p_session_token: this.sessionToken,
+                        p_reason: pendingFinishReason
+                    });
+                    if (finErr && String(finErr.message || '').includes('SESSION_REPLACED')) {
+                        this.renderSessionReplaced();
+                        return;
+                    }
+                    if (finData) this.attempt = finData;
+                    try { localStorage.removeItem(this.pendingFinishKey); } catch (e) {}
+                    if (document.getElementById('arena-lb-rows')) {
+                        this.renderLeaderboardView();
+                    }
+                }
+            } finally {
+                this.isFlushingQueue = false;
+            }
         },
 
         bindAntiCheat() {
@@ -522,13 +751,15 @@
             }
             if (data?.attempt) this.attempt = data.attempt;
             const vEl = document.getElementById('arena-live-violations');
-            if (vEl) vEl.textContent = `${this.attempt?.violation_count || 0}/${this.room?.max_violations || 0}`;
+            if (vEl) vEl.textContent = `${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}`;
             const warn = document.getElementById('arena-warning-banner');
             if (warn) {
-                warn.textContent = `Cảnh báo: Phát hiện ${eventType} (${this.attempt?.violation_count || 0}/${this.room?.max_violations || 0} lần).`;
+                warn.textContent = `Cảnh báo: Phát hiện ${eventType} (${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0} lần).`;
                 warn.classList.remove('hidden');
             }
             if (data?.forced) {
+                clearInterval(this.tickTimer);
+                this.tickTimer = null;
                 this.unbindAntiCheat();
                 this.renderLeaderboardView();
             }
@@ -537,14 +768,26 @@
         async finishAttempt(reason = 'USER_SUBMIT') {
             this.unbindAntiCheat();
             clearInterval(this.tickTimer);
+            this.tickTimer = null;
             await this.flushPendingAnswers();
             const client = getClient();
-            if (client && this.attempt?.id) {
-                const { data } = await client.rpc('arena_finish_attempt', {
+            if (!navigator.onLine || !client) {
+                if (this.pendingFinishKey) {
+                    try { localStorage.setItem(this.pendingFinishKey, reason); } catch (e) {}
+                }
+                this.renderLeaderboardView();
+                return;
+            }
+            if (this.attempt?.id) {
+                const { data, error } = await client.rpc('arena_finish_attempt', {
                     p_attempt_id: this.attempt.id,
                     p_session_token: this.sessionToken,
                     p_reason: reason
                 });
+                if (error && String(error.message || '').includes('SESSION_REPLACED')) {
+                    this.renderSessionReplaced();
+                    return;
+                }
                 if (data) this.attempt = data;
             }
             this.renderLeaderboardView();
@@ -552,7 +795,7 @@
 
         renderSessionReplaced() {
             this.unbindAntiCheat();
-            clearInterval(this.tickTimer);
+            this.cleanupTimers();
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
             stage.innerHTML = `
@@ -578,10 +821,26 @@
         },
 
         async renderLeaderboardView() {
+            this.unbindAntiCheat();
+            clearInterval(this.tickTimer);
+            this.tickTimer = null;
+
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
+            let hasPendingSync = false;
+            try {
+                const qLen = this.pendingQueueKey ? JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]').length : 0;
+                const fPending = this.pendingFinishKey ? Boolean(localStorage.getItem(this.pendingFinishKey)) : false;
+                hasPendingSync = qLen > 0 || fPending;
+            } catch (e) {}
+
             stage.innerHTML = `
                 <div class="space-y-4">
+                    ${hasPendingSync ? `
+                        <div class="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs font-semibold">
+                            <i class="fa-solid fa-wifi mr-1.5"></i> Đang ngoại tuyến hoặc chờ đồng bộ — đáp án của bạn đã được lưu tạm và sẽ tự động nộp khi có kết nối mạng.
+                        </div>
+                    ` : ''}
                     <div class="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <span class="text-[11px] font-bold uppercase text-emerald-400">Bảng xếp hạng trận đấu</span>
@@ -620,6 +879,7 @@
     const ArenaHost = {
         selectedRoomId: null,
         mounted: false,
+        pollTimer: null,
 
         mount(subjects = []) {
             const root = document.getElementById('arena-host-root');
@@ -666,8 +926,9 @@
                                     </label>
                                 </div>
                                 <label class="checkbox-label"><input id="arena-host-fs" type="checkbox"> Bắt buộc toàn màn hình</label>
+                                <div id="arena-host-feedback" class="hidden" style="font-size:12px;font-weight:600;"></div>
                                 <div class="form-actions">
-                                    <button type="submit" class="button button-primary"><i class="fa-solid fa-plus"></i> Tạo mã kiểm tra</button>
+                                    <button id="arena-create-submit" type="submit" class="button button-primary"><i class="fa-solid fa-plus"></i> Tạo mã kiểm tra</button>
                                 </div>
                             </form>
                         </section>
@@ -708,29 +969,50 @@
                 subjSel.innerHTML = subjects.map((s) => `<option value="${esc(s.key)}">${esc(s.name)} (${esc(s.key)})</option>`).join('');
             }
             this.loadRooms();
+            clearInterval(this.pollTimer);
+            this.pollTimer = setInterval(() => {
+                const pane = document.getElementById('arena-host-root');
+                if (!pane || pane.closest('.hidden')) return;
+                if (this.selectedRoomId) this.loadRoomDetail(this.selectedRoomId);
+            }, 8000);
         },
 
         async createRoom() {
             const client = getClient();
             if (!client) return;
-            const perQRaw = document.getElementById('arena-host-perq')?.value;
-            const { data, error } = await client.rpc('arena_create_room', {
-                p_title: document.getElementById('arena-host-title')?.value?.trim() || 'Bài kiểm tra',
-                p_subject_key: document.getElementById('arena-host-subject')?.value || 'history',
-                p_match_duration_sec: Number(document.getElementById('arena-host-duration')?.value || 600),
-                p_per_question_sec: perQRaw ? Number(perQRaw) : null,
-                p_max_violations: Number(document.getElementById('arena-host-maxv')?.value || 3),
-                p_concurrent_policy: document.getElementById('arena-host-concurrent')?.value || 'KICK_OLD',
-                p_require_fullscreen: Boolean(document.getElementById('arena-host-fs')?.checked)
-            });
-            if (error) {
-                alert(isMissingSchemaError(error)
-                    ? 'Vui lòng chạy file supabase_arena_setup.sql trong Supabase SQL Editor trước khi tạo phòng.'
-                    : `Không thể tạo phòng: ${error.message}`);
-                return;
+            const submitBtn = document.getElementById('arena-create-submit');
+            const feedbackEl = document.getElementById('arena-host-feedback');
+            if (submitBtn) submitBtn.disabled = true;
+            try {
+                const perQRaw = document.getElementById('arena-host-perq')?.value;
+                const rawDuration = Number(document.getElementById('arena-host-duration')?.value);
+                const rawMaxV = Number(document.getElementById('arena-host-maxv')?.value);
+
+                const { data, error } = await client.rpc('arena_create_room', {
+                    p_title: document.getElementById('arena-host-title')?.value?.trim() || 'Bài kiểm tra',
+                    p_subject_key: document.getElementById('arena-host-subject')?.value || 'history',
+                    p_match_duration_sec: Number.isFinite(rawDuration) && rawDuration >= 30 ? rawDuration : 600,
+                    p_per_question_sec: perQRaw ? Number(perQRaw) : null,
+                    p_max_violations: Number.isFinite(rawMaxV) && rawMaxV >= 0 ? rawMaxV : 3,
+                    p_concurrent_policy: document.getElementById('arena-host-concurrent')?.value || 'KICK_OLD',
+                    p_require_fullscreen: Boolean(document.getElementById('arena-host-fs')?.checked)
+                });
+                if (error) {
+                    alert(isMissingSchemaError(error)
+                        ? 'Vui lòng chạy file supabase_arena_setup.sql trong Supabase SQL Editor trước khi tạo phòng.'
+                        : `Không thể tạo phòng: ${error.message}`);
+                    return;
+                }
+                this.selectedRoomId = data?.id || null;
+                if (feedbackEl && data?.room_code) {
+                    feedbackEl.textContent = `Đã tạo phòng thành công! Mã phòng: ${data.room_code}`;
+                    feedbackEl.style.color = '#10b981';
+                    feedbackEl.classList.remove('hidden');
+                }
+                await this.loadRooms();
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
             }
-            this.selectedRoomId = data?.id || null;
-            this.loadRooms();
         },
 
         async loadRooms() {
@@ -763,25 +1045,32 @@
             `).join('');
 
             listEl.querySelectorAll('[data-arena-copy]').forEach((btn) => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', async () => {
                     const url = new URL('index.html', window.location.href);
                     url.searchParams.set('arena', btn.dataset.arenaCopy);
-                    navigator.clipboard?.writeText(url.toString());
-                    btn.innerHTML = '<i class="fa-solid fa-check"></i> Đã chép';
-                });
-            });
-            listEl.querySelectorAll('[data-arena-start]').forEach((btn) => {
-                btn.addEventListener('click', async () => {
-                    await client.rpc('arena_start_room', { p_room_id: btn.dataset.arenaStart });
-                    this.selectedRoomId = btn.dataset.arenaStart;
-                    this.loadRooms();
+                    try {
+                        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+                        await navigator.clipboard.writeText(url.toString());
+                        btn.innerHTML = '<i class="fa-solid fa-check"></i> Đã chép';
+                    } catch (e) {
+                        window.prompt('Sao chép liên kết phòng thi đấu:', url.toString());
+                        btn.innerHTML = '<i class="fa-solid fa-link"></i> Link';
+                    }
+                    setTimeout(() => {
+                        if (btn.isConnected) btn.innerHTML = '<i class="fa-solid fa-link"></i> Link';
+                    }, 2000);
                 });
             });
             listEl.querySelectorAll('[data-arena-end]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
-                    await client.rpc('arena_end_room', { p_room_id: btn.dataset.arenaEnd });
-                    this.selectedRoomId = btn.dataset.arenaEnd;
-                    this.loadRooms();
+                    btn.disabled = true;
+                    try {
+                        await client.rpc('arena_end_room', { p_room_id: btn.dataset.arenaEnd });
+                        this.selectedRoomId = btn.dataset.arenaEnd;
+                        await this.loadRooms();
+                    } finally {
+                        btn.disabled = false;
+                    }
                 });
             });
             listEl.querySelectorAll('[data-arena-inspect]').forEach((btn) => {
@@ -800,17 +1089,8 @@
             if (!client || !detailEl || !roomId) return;
 
             const [{ data: attempts }, { data: logs }] = await Promise.all([
-                client.from('match_attempts')
-                    .select('player_name, status, correct_count, score, total_time_ms, violation_count, finish_reason')
-                    .eq('room_id', roomId)
-                    .order('correct_count', { ascending: false })
-                    .order('score', { ascending: false })
-                    .order('total_time_ms', { ascending: true }),
-                client.from('match_audit_logs')
-                    .select('player_name, event_type, meta, created_at')
-                    .eq('room_id', roomId)
-                    .order('created_at', { ascending: false })
-                    .limit(40)
+                client.rpc('arena_get_leaderboard', { p_room_id: roomId }),
+                client.rpc('arena_get_audit_logs', { p_room_id: roomId })
             ]);
 
             detailEl.innerHTML = `

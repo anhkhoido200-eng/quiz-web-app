@@ -36,7 +36,9 @@
         return String(value ?? '')
             .replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)/g, '&amp;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function withInlineMath(value) {

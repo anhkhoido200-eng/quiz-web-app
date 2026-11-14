@@ -267,9 +267,9 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
 VALUES (
     '00000000-0000-0000-0000-000000000008',
-    '__ACCESS_TOKENS__',
+    '__ACCESS_TOKENS_CONFIG__',
     'SYSTEM',
-    'UNIFIED_TOKENS',
+    'TOKEN_AUTH',
     'ACTIVE',
     '[]',
     NOW(),

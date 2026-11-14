@@ -187,7 +187,7 @@
             </div>
 
             <!-- Nút đóng nhanh -->
-            <button onclick="app.hideStudentNotice()" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white p-1 text-sm cursor-pointer transition">
+            <button onclick="app.hideStudentNotice()" aria-label="Đóng thông báo" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white p-1 text-sm cursor-pointer transition">
                 <i class="fa-solid fa-xmark"></i>
             </button>
 
@@ -237,8 +237,14 @@
                 </button>
 
                 <!-- Nút bật/tắt âm thanh Ting/Bíp -->
-                <button id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng">
+                <button id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng" aria-label="Bật/Tắt âm thanh hiệu ứng">
                     <i id="header-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
+                </button>
+
+                <!-- Nút tham gia Đấu Trường (Arena) -->
+                <button id="header-arena-join-btn" onclick="window.ArenaClient && window.ArenaClient.openJoinModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Tham gia phòng thi Đấu Trường">
+                    <i class="fa-solid fa-bolt text-rose-400"></i>
+                    <span class="hidden sm:inline">Đấu Trường</span>
                 </button>
 
                 <!-- Nút Nhật ký Ôn tập cá nhân (10 bài gần nhất) -->
@@ -707,7 +713,7 @@
                     <i class="fa-solid fa-shield-halved text-amber-400"></i>
                     <span>Xác Thực Quyền Admin</span>
                 </h3>
-                <button onclick="app.closeAdminAuthModal()" class="text-slate-400 hover:text-white cursor-pointer">
+                <button onclick="app.closeAdminAuthModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -750,7 +756,7 @@
                     <button onclick="app.openSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer" title="Cấu hình Supabase Cloud">
                         <i class="fa-solid fa-gear text-sm"></i>
                     </button>
-                    <button onclick="app.closeAdminDashboard()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <button onclick="app.closeAdminDashboard()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -782,7 +788,7 @@
                     <!-- Toggle Switch Bật/Tắt Bảo Trì -->
                     <label class="relative inline-flex items-center cursor-pointer select-none">
                         <input type="checkbox" id="admin-maintenance-toggle" onchange="app.adminToggleMaintenance(this.checked)" class="sr-only peer">
-                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                        <span class="block w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></span>
                         <span class="ml-2 text-xs font-bold text-slate-300 peer-checked:text-rose-400" id="admin-maintenance-toggle-label">Khóa Web (Bảo Trì)</span>
                     </label>
                 </div>
@@ -970,7 +976,7 @@
                                 <span>Cơ Chế Phân Quyền Admin Tự Động Theo Địa Chỉ IP</span>
                             </h3>
                             <p class="text-slate-300 mt-1 leading-relaxed">
-                                Bất kỳ thiết bị nào có IP nằm trong danh sách dưới đây sẽ <strong>tự động có quyền Admin không cần mật khẩu</strong> và hiện nút <code>[👑 Mở Bảng Admin]</code>. Nếu đổi IP, chỉ cần nhập mật mã gốc <code>034569</code> một lần là IP mới tự động được thêm vào!
+                                Bất kỳ thiết bị nào có IP nằm trong danh sách dưới đây sẽ <strong>tự động có quyền Admin không cần mật khẩu</strong> và hiện nút <code>[👑 Mở Bảng Admin]</code>. Nếu đổi IP, chỉ cần nhập mật mã quản trị viên một lần là IP mới tự động được thêm vào!
                             </p>
                         </div>
                     </div>
@@ -1306,7 +1312,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <i class="fa-solid fa-layer-group text-emerald-400"></i>
                     <span id="subject-editor-title">Thêm Môn Học Mới</span>
                 </h3>
-                <button onclick="app.closeSubjectEditor()" class="text-slate-400 hover:text-white cursor-pointer">
+                <button onclick="app.closeSubjectEditor()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1346,6 +1352,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">Biểu Tượng (FontAwesome)</label>
                         <select id="edit-sub-icon" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none">
+                            <option value="fa-book">📚 Sách Giáo Khoa (fa-book)</option>
                             <option value="fa-landmark">🏛️ Lịch Sử (fa-landmark)</option>
                             <option value="fa-atom">⚛️ Vật Lí (fa-atom)</option>
                             <option value="fa-earth-americas">🌍 Địa Lí (fa-earth-americas)</option>
@@ -1425,7 +1432,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-amber-300/80">Xếp hạng theo điểm số cao nhất và thời gian hoàn thành sớm nhất</p>
                     </div>
                 </div>
-                <button onclick="app.closeLeaderboardModal()" class="text-slate-400 hover:text-white cursor-pointer p-1">
+                <button onclick="app.closeLeaderboardModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer p-1">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
@@ -1489,7 +1496,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <input type="text" id="edit-q-category" placeholder="Bài 1: Cân bằng hoá học" class="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs outline-none focus:border-emerald-500 transition">
                     <select id="edit-q-subject" class="hidden"></select>
                 </div>
-                <button onclick="app.closeQuestionEditor()" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button onclick="app.closeQuestionEditor()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
@@ -1549,7 +1556,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
                 <div>
                     <label class="block font-bold text-slate-300 text-xs mb-1.5">Lời giải chi tiết:</label>
-                    <textarea id="edit-q-explanation" rows="2.5" placeholder="Lời giải chi tiết..." class="w-full p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition leading-relaxed"></textarea>
+                    <textarea id="edit-q-explanation" rows="3" placeholder="Lời giải chi tiết..." class="w-full p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition leading-relaxed"></textarea>
                 </div>
             </div>
 
@@ -1575,7 +1582,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <h3 class="font-heading font-bold text-white text-base">Cấu Hình Supabase Cloud</h3>
                     <div id="supabase-modal-status-badge"></div>
                 </div>
-                <button onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-white cursor-pointer">
+                <button onclick="app.closeSettingsModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1612,7 +1619,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- ======================================================= -->
     <!-- MODAL 8: DÀN Ý TỰ LUẬN ĐỊA LÍ 11 (4 CÂU TRỌNG TÂM)      -->
     <!-- ======================================================= -->
-    <div id="modal-geography-essay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
+    <div id="modal-geography-essay" class="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
         <div class="bg-slate-900 border border-emerald-500/50 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
             <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
@@ -1624,7 +1631,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-emerald-400">4 câu tự luận trọng tâm - Giữa Kì 1 (Có thể học thuộc ngay)</p>
                     </div>
                 </div>
-                <button onclick="app.closeGeographyEssayModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition">
+                <button onclick="app.closeGeographyEssayModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1654,7 +1661,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-slate-400">Gửi mã xác thực cho Admin để mở khóa đề nâng cao</p>
                     </div>
                 </div>
-                <button onclick="app.closeTokenModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button onclick="app.closeTokenModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1740,7 +1747,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Cấp khóa API dùng chung cho toàn bộ học sinh</p>
                     </div>
                 </div>
-                <button onclick="app.closeAiSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button onclick="app.closeAiSettingsModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1818,7 +1825,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-cyan-300">Lưu lại tối đa 10 bài thi gần nhất trên thiết bị này</p>
                     </div>
                 </div>
-                <button onclick="app.closeMyHistoryModal()" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button onclick="app.closeMyHistoryModal()" aria-label="Đóng" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1913,61 +1920,6 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <span id="custom-confirm-ok-text">Đồng ý</span>
                     </button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================================== -->
-    <!-- MODAL THEO DÕI TIẾN TRÌNH LÀM BÀI LỚP 5 (NGƯỜI THEO DÕI)         -->
-    <!-- ============================================================== -->
-    <div id="modal-parent-progress" class="fixed inset-0 z-[100006] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-5 overflow-hidden">
-        <div class="relative w-full max-w-2xl bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-            <!-- Header Modal -->
-            <div class="p-4 sm:p-5 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border-b border-amber-500/30 flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center text-lg shrink-0 shadow-sm">
-                        <i class="fa-solid fa-eye"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <h2 class="font-heading font-extrabold text-base sm:text-lg text-white truncate">Tiến Trình Học Sinh Lớp 5</h2>
-                            <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-extrabold flex items-center gap-1">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> TRỰC TIẾP
-                            </span>
-                        </div>
-                        <p class="text-xs text-amber-200/70 truncate">Dành riêng cho Người theo dõi quan sát em học thời gian thực</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="btn-refresh-parent-progress" onclick="app.fetchAndRenderParentProgress()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Làm mới ngay">
-                        <i class="fa-solid fa-rotate"></i>
-                    </button>
-                    <button onclick="app.closeParentProgressModal()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-rose-900/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 flex items-center justify-center transition cursor-pointer" title="Đóng">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Hướng dẫn thân thiện cho Người theo dõi -->
-            <div class="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-200">
-                <i class="fa-solid fa-lightbulb text-amber-400 text-sm shrink-0"></i>
-                <span class="flex-1">Trang này tự động cập nhật khi em bắt đầu làm câu hỏi. Bạn có thể xem em đang làm đề nào, được bao nhiêu câu và câu đúng/sai!</span>
-            </div>
-
-            <!-- Danh sách tiến trình các em học sinh (Scrollable) -->
-            <div id="parent-progress-cards" class="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
-                <div class="text-center py-12 text-slate-400">
-                    <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-400 mb-2"></i>
-                    <p class="text-sm">Đang tải dữ liệu làm bài của các em...</p>
-                </div>
-            </div>
-
-            <!-- Footer Modal -->
-            <div class="p-3 sm:p-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                <span id="parent-progress-last-updated"><i class="fa-regular fa-clock"></i> Cập nhật vừa xong</span>
-                <button onclick="app.closeParentProgressModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition text-xs">
-                    Đóng
-                </button>
             </div>
         </div>
     </div>

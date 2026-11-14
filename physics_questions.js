@@ -548,20 +548,26 @@ const rawPhysicsShortAnswer = [
     }
 ];
 
+const stripQuestionPrefix = (text) => String(text || '').replace(/^Câu\s+\d+[a-z]?:\s*/i, '').trim();
+
 const PHYSICS_QUESTIONS = [
     ...rawPhysicsMCQ.map(q => ({
         id: q.id,
         qType: 'mcq',
         category: q.category,
-        question: q.question,
+        question: stripQuestionPrefix(q.question),
         options: q.options,
         correct: q.answer,
         isMultiple: false,
         explanation: q.explanation
     })),
-    ...rawPhysicsTrueFalse,
+    ...rawPhysicsTrueFalse.map(q => ({
+        ...q,
+        question: stripQuestionPrefix(q.question)
+    })),
     ...rawPhysicsShortAnswer.map(q => ({
         ...q,
+        question: stripQuestionPrefix(q.question),
         correct_value: String(q.correct_value ?? q.correctValue ?? ''),
         correctValue: String(q.correctValue ?? q.correct_value ?? '')
     }))

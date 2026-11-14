@@ -1889,6 +1889,7 @@ class QuizApp {
             const isCurrent = ip === this.clientIp;
             const card = document.createElement('div');
             card.className = "p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3 text-xs";
+            const safeIp = this.escapeHtml(ip);
             card.innerHTML = `
                 <div class="flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-lg ${isMaster ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-300'} flex items-center justify-center font-bold">
@@ -1896,7 +1897,7 @@ class QuizApp {
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="font-mono font-bold text-white text-xs sm:text-sm">${ip}</span>
+                            <span class="font-mono font-bold text-white text-xs sm:text-sm">${safeIp}</span>
                             ${isMaster ? '<span class="px-2 py-0.2 rounded bg-amber-500/20 text-amber-300 font-extrabold text-[10px]">MASTER ADMIN</span>' : ''}
                             ${isCurrent ? '<span class="px-2 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">Máy Hiện Tại</span>' : ''}
                         </div>
@@ -1904,12 +1905,14 @@ class QuizApp {
                 </div>
                 <div>
                     ${!isMaster ? `
-                        <button onclick="app.adminRevokeAdminIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-semibold transition cursor-pointer">
+                        <button type="button" class="js-revoke-admin-ip px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-semibold transition cursor-pointer">
                             <i class="fa-solid fa-user-xmark mr-1"></i> Thu hồi
                         </button>
                     ` : '<span class="text-[11px] text-amber-400/80 italic font-medium">Bảo vệ vĩnh viễn</span>'}
                 </div>
             `;
+            const revokeBtn = card.querySelector('.js-revoke-admin-ip');
+            if (revokeBtn) revokeBtn.addEventListener('click', () => this.adminRevokeAdminIp(ip));
             container.appendChild(card);
         });
     }
@@ -2092,6 +2095,8 @@ class QuizApp {
             const isCurrent = ip === this.clientIp;
             const card = document.createElement('div');
             card.className = "p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3 text-xs";
+            const safeIp = this.escapeHtml(ip);
+            const safeName = this.escapeHtml(name);
             card.innerHTML = `
                 <div class="flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold">
@@ -2099,16 +2104,18 @@ class QuizApp {
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="font-mono text-purple-300 font-bold">${ip}</span>
+                            <span class="font-mono text-purple-300 font-bold">${safeIp}</span>
                             ${isCurrent ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">Máy của bạn</span>' : ''}
                         </div>
-                        <p class="text-[11px] text-slate-400 font-medium">${name}</p>
+                        <p class="text-[11px] text-slate-400 font-medium">${safeName}</p>
                     </div>
                 </div>
-                <button onclick="app.adminRevokeAiIp('${ip}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
+                <button type="button" class="js-revoke-ai-ip px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer">
                     <i class="fa-solid fa-trash-can mr-1"></i> Thu hồi
                 </button>
             `;
+            const revokeAiBtn = card.querySelector('.js-revoke-ai-ip');
+            if (revokeAiBtn) revokeAiBtn.addEventListener('click', () => this.adminRevokeAiIp(ip));
             container.appendChild(card);
         });
     }
@@ -2330,7 +2337,7 @@ class QuizApp {
                 badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse";
             }
             if (indicator) indicator.className = "w-3 h-3 rounded-full bg-rose-500 shadow-md shadow-rose-500 animate-ping";
-            if (subtext) subtext.innerHTML = `<span class="text-rose-400 font-semibold">Hệ thống đang khóa. Lời nhắn: "${this.maintenanceMessage}"</span>`;
+            if (subtext) subtext.innerHTML = `<span class="text-rose-400 font-semibold">Hệ thống đang khóa. Lời nhắn: "${this.escapeHtml(this.maintenanceMessage)}"</span>`;
             if (toggleLabel) {
                 toggleLabel.textContent = "Đang Khóa Web";
                 toggleLabel.className = "ml-2 text-xs font-bold text-rose-400";
@@ -3468,7 +3475,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 <div class="flex items-center justify-between gap-3 flex-wrap">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px] border border-emerald-500/30">Câu ${idx + 1}</span>
-                        <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-medium text-[11px]">${q.category || 'Ôn tập'}</span>
+                        <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-medium text-[11px]">${this.escapeHtml(q.category || 'Ôn tập')}</span>
                         <span class="admin-q-badge-ans px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px] border border-emerald-500/30">Đáp án đúng: ${correctLetter}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -3582,15 +3589,19 @@ Giải thích: Biên độ A = 5 cm.`;
             const isPrivate = sub.visibility === 'PRIVATE';
             const card = document.createElement('div');
             card.className = "p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-md flex flex-col justify-between space-y-3";
+            const safeName = this.escapeHtml(sub.name);
+            const safeKey = this.escapeHtml(sub.key);
+            const safeIcon = this.escapeHtml(sub.icon || 'fa-book');
+            const safeSemester = this.escapeHtml(sub.semester || 'Học kỳ');
             card.innerHTML = `
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center text-lg">
-                            <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
+                            <i class="fa-solid ${safeIcon}"></i>
                         </div>
                         <div>
-                            <h4 class="font-bold text-white text-sm">${sub.name}</h4>
-                            <p class="text-[11px] text-slate-400 font-mono">key: ${sub.key}</p>
+                            <h4 class="font-bold text-white text-sm">${safeName}</h4>
+                            <p class="text-[11px] text-slate-400 font-mono">key: ${safeKey}</p>
                         </div>
                     </div>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isPrivate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
@@ -3598,31 +3609,36 @@ Giải thích: Biên độ A = 5 cm.`;
                     </span>
                 </div>
                 <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-700/60">
-                    <span>Thẻ: <strong class="text-slate-200">${sub.semester || 'Học kỳ'}</strong></span>
-                    <span>Đề: <strong class="text-indigo-400">${sub.count || 0} câu</strong></span>
+                    <span>Thẻ: <strong class="text-slate-200">${safeSemester}</strong></span>
+                    <span>Đề: <strong class="text-indigo-400">${Number(sub.count) || 0} câu</strong></span>
                 </div>
                 <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-700/60 flex-wrap">
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <button onclick="app.openImporterForSubject('${sub.key}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Nạp nhanh đề từ file Word/PDF/Excel vào môn này">
+                        <button type="button" class="js-sub-import px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Nạp nhanh đề từ file Word/PDF/Excel vào môn này">
                             <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề File
                         </button>
-                        <button onclick="app.openNewQuestionForSubject('${sub.key}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Tạo thêm câu hỏi mới cho môn này">
+                        <button type="button" class="js-sub-new-q px-2.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Tạo thêm câu hỏi mới cho môn này">
                             <i class="fa-solid fa-plus text-emerald-400"></i> Thêm Câu Hỏi
                         </button>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <button onclick="app.adminToggleSubjectVisibility('${sub.key}')" class="px-2.5 py-1.5 rounded-lg ${isPrivate ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white' : 'bg-amber-600/20 text-amber-300 border border-amber-500/40 hover:bg-amber-600 hover:text-white'} text-xs font-semibold transition cursor-pointer" title="Bấm để chuyển đổi Công khai / Riêng tư">
+                        <button type="button" class="js-sub-toggle-vis px-2.5 py-1.5 rounded-lg ${isPrivate ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white' : 'bg-amber-600/20 text-amber-300 border border-amber-500/40 hover:bg-amber-600 hover:text-white'} text-xs font-semibold transition cursor-pointer" title="Bấm để chuyển đổi Công khai / Riêng tư">
                             <i class="fa-solid ${isPrivate ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isPrivate ? 'Công khai' : 'Riêng tư'}
                         </button>
-                        <button onclick="app.openSubjectEditor('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer" title="Chỉnh sửa thông tin môn học">
+                        <button type="button" class="js-sub-edit px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition cursor-pointer" title="Chỉnh sửa thông tin môn học">
                             <i class="fa-solid fa-pen-to-square mr-1"></i> Sửa
                         </button>
-                        <button onclick="app.adminDeleteSubject('${sub.key}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer" title="Xóa môn học này">
+                        <button type="button" class="js-sub-delete px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition cursor-pointer" title="Xóa môn học này">
                             <i class="fa-solid fa-trash-can mr-1"></i> Xóa
                         </button>
                     </div>
                 </div>
             `;
+            card.querySelector('.js-sub-import')?.addEventListener('click', () => this.openImporterForSubject(sub.key));
+            card.querySelector('.js-sub-new-q')?.addEventListener('click', () => this.openNewQuestionForSubject(sub.key));
+            card.querySelector('.js-sub-toggle-vis')?.addEventListener('click', () => this.adminToggleSubjectVisibility(sub.key));
+            card.querySelector('.js-sub-edit')?.addEventListener('click', () => this.openSubjectEditor(sub.key));
+            card.querySelector('.js-sub-delete')?.addEventListener('click', () => this.adminDeleteSubject(sub.key));
             container.appendChild(card);
         });
     }
@@ -4054,11 +4070,6 @@ Giải thích: Biên độ A = 5 cm.`;
 
     setExamMode(isExam) {
         this.isExamMode = Boolean(isExam);
-        const ind = document.getElementById('exam-mode-indicator-text');
-        if (ind) {
-            ind.textContent = this.isExamMode ? "Chế độ Thi đấu (Ẩn đáp án)" : "Chế độ Luyện tập (Xem đáp án ngay)";
-            ind.className = this.isExamMode ? "text-[11px] font-bold text-amber-400" : "text-[11px] font-bold text-emerald-400";
-        }
         const badge = document.getElementById('quiz-mode-badge');
         if (badge) {
             badge.textContent = this.isExamMode ? 'Thi đấu' : 'Luyện tập';
@@ -4627,7 +4638,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!modal) {
             modal = document.createElement('div');
             modal.id = 'observer-detail-modal';
-            modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-5';
+            modal.className = 'fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-5';
             modal.innerHTML = `
                 <div class="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-4 sm:p-6 space-y-4 text-slate-100">
                     <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
@@ -4931,7 +4942,13 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         this.isRevengeMode = false;
+        this.isReviewingResult = false;
+        this.currentFilter = 'all';
         this.isFinishingQuiz = false;
+        const backToResultBtn = document.getElementById('btn-back-to-result');
+        if (backToResultBtn) backToResultBtn.classList.add('hidden');
+        const submitQuizBtn = document.getElementById('btn-submit-quiz');
+        if (submitQuizBtn) submitQuizBtn.classList.remove('hidden');
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
             this.allQuestions = [...this.fullQuestionsPool];
         }
@@ -5076,7 +5093,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 card.innerHTML = `
                     <div class="quiz-card-meta flex items-center justify-between gap-2">
                         <span class="quiz-number">${String(idx + 1).padStart(2, '0')} <span>/ ${questions.length}</span></span>
-                        <span class="quiz-category">${q.category || 'Trắc nghiệm'}</span>
+                        <span class="quiz-category">${this.escapeHtml(q.category || 'Trắc nghiệm')}</span>
                     </div>
                     <h3 class="quiz-question-title font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
@@ -5129,7 +5146,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <span class="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold text-xs">Câu ${idx + 1} (Đúng / Sai)</span>
-                        <span class="text-[11px] text-slate-400">${q.category || 'Đúng/Sai'}</span>
+                        <span class="text-[11px] text-slate-400">${this.escapeHtml(q.category || 'Đúng/Sai')}</span>
                     </div>
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
@@ -5195,13 +5212,13 @@ Giải thích: Biên độ A = 5 cm.`;
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs">Câu ${idx + 1} (Trả lời ngắn)</span>
-                        <span class="text-[11px] text-slate-400">${q.category || 'Điền số/chữ'}</span>
+                        <span class="text-[11px] text-slate-400">${this.escapeHtml(q.category || 'Điền số/chữ')}</span>
                     </div>
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${q.id}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
-                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, document.getElementById('short-input-${q.id}').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${this.escapeHtml(q.id)}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, this.parentElement.querySelector('.answer-text-input').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
                             <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
                         </button>
@@ -5398,6 +5415,7 @@ Giải thích: Biên độ A = 5 cm.`;
             const inputRow = inputEl?.closest('div');
             if (inputRow) inputRow.insertAdjacentHTML('afterend', feedbackHtml);
         }
+        this.renderMath(card);
     }
 
     isQuestionWrong(q) {
@@ -5837,7 +5855,7 @@ Giải thích: Biên độ A = 5 cm.`;
             totalCount: totalItems,
             timeSpent: timeStr,
             submittedAt: new Date().toISOString(),
-            mode: 'Luyện tập'
+            mode: this.isRevengeMode ? 'Ôn câu sai' : (this.isExamMode ? 'Thi thử' : 'Luyện tập')
         });
 
         // Phát âm thanh nhẹ khi hoàn tất, không dùng hiệu ứng gây rối mắt.
@@ -6075,8 +6093,6 @@ Giải thích: Biên độ A = 5 cm.`;
 
     updateHomeRevengeBanner() {
         // Tuyệt đối không hiển thị Đề Phục Thù ở màn hình chính (home) theo yêu cầu người dùng
-        const banner = document.getElementById('home-revenge-banner');
-        if (banner) banner.classList.add('hidden');
     }
 
     updateResultRevengeButton() {
@@ -6332,7 +6348,13 @@ Giải thích: Biên độ A = 5 cm.`;
 
         this.stopStopwatch();
         this.isRevengeMode = false;
+        this.isReviewingResult = false;
+        this.currentFilter = 'all';
         this.isFinishingQuiz = false;
+        const backToResultBtn = document.getElementById('btn-back-to-result');
+        if (backToResultBtn) backToResultBtn.classList.add('hidden');
+        const submitQuizBtn = document.getElementById('btn-submit-quiz');
+        if (submitQuizBtn) submitQuizBtn.classList.remove('hidden');
         if (this.fullQuestionsPool && this.fullQuestionsPool.length > 0) {
             this.allQuestions = [...this.fullQuestionsPool];
         }
@@ -6873,7 +6895,7 @@ Giải thích: Biên độ A = 5 cm.`;
             tbody.innerHTML = rowsHtml;
             this.renderAdminBannedIpsList();
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-400">Lỗi tải danh sách: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-400">Lỗi tải danh sách: ${this.escapeHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -7168,7 +7190,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
     openEditQuestionModal(qId, targetSubject) {
         const modal = document.getElementById('modal-question-editor');
-        const title = document.getElementById('editor-modal-title');
+        const title = document.getElementById('editor-modal-badge');
         const idInput = document.getElementById('edit-q-id');
         const subjSelect = document.getElementById('edit-q-subject');
         const catInput = document.getElementById('edit-q-category');
@@ -7394,8 +7416,8 @@ Giải thích: Biên độ A = 5 cm.`;
         if (content && Array.isArray(window.GEOGRAPHY_ESSAY_QUESTIONS)) {
             content.innerHTML = window.GEOGRAPHY_ESSAY_QUESTIONS.map(item => `
                 <div class="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-1.5">
-                    <h4 class="font-bold text-emerald-300 text-xs sm:text-sm">${item.title}</h4>
-                    <p class="text-slate-300 whitespace-pre-line text-xs leading-relaxed">${item.content}</p>
+                    <h4 class="font-bold text-emerald-300 text-xs sm:text-sm">${this.escapeHtml(item.title)}</h4>
+                    <p class="text-slate-300 whitespace-pre-line text-xs leading-relaxed">${this.escapeHtml(item.content)}</p>
                 </div>
             `).join('');
         }
@@ -7933,7 +7955,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                     <td class="py-2.5 px-3 font-bold text-white">${this.escapeHtml(item.subjectTitle || 'Chung')}</td>
                     <td class="py-2.5 px-3">
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                            ${item.mode || 'Luyện tập'}
+                            ${this.escapeHtml(item.mode || 'Luyện tập')}
                         </span>
                     </td>
                     <td class="py-2.5 px-3 text-center">
@@ -8013,7 +8035,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         icon.className = type === 'success' ? "fa-solid fa-circle-check text-emerald-200" : "fa-solid fa-info-circle text-indigo-300";
         text.textContent = msg;
         banner.classList.remove('hidden');
-        setTimeout(() => {
+        if (this.networkToastTimer) clearTimeout(this.networkToastTimer);
+        this.networkToastTimer = setTimeout(() => {
             banner.classList.add('hidden');
             banner.classList.remove('flex');
         }, 4000);

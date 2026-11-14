@@ -1599,6 +1599,7 @@
             const rowToInsert = {
                 id: targetId,
                 subject_key: item.subject_key || item.subjectKey || 'history',
+                grade: String(item.grade || state.subjects.find((s) => s.key === (item.subject_key || item.subjectKey))?.grade || '11'),
                 category: item.category || 'Ôn tập',
                 q_type: item.q_type || item.qType || 'mcq',
                 question: storageText(item.question),
@@ -1681,6 +1682,7 @@
                 return {
                     id: targetId,
                     subject_key: item.subject_key || item.subjectKey || 'history',
+                    grade: String(item.grade || state.subjects.find((s) => s.key === (item.subject_key || item.subjectKey))?.grade || '11'),
                     category: item.category || 'Ôn tập',
                     q_type: item.q_type || item.qType || 'mcq',
                     question: storageText(item.question),
@@ -2202,6 +2204,14 @@
         return file.text();
     }
 
+    function buildAppUrl(relativePath) {
+        const cleanPath = String(relativePath || '').replace(/^\/+/, '');
+        const baseHref = window.location.protocol.startsWith('http')
+            ? window.location.href
+            : 'https://quiz-web-app-rosy.vercel.app/';
+        return new URL(`./${cleanPath}`, baseHref).href;
+    }
+
     function openModal(id) { $(id)?.classList.remove('hidden'); }
     function closeModal(id) { $(id)?.classList.add('hidden'); }
 
@@ -2414,23 +2424,19 @@
             }
             const firstId = await nextQuestionId();
             const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
+            let verifiedCount = 0;
             for (let index = 0; index < records.length; index += 50) {
-                const { error } = await state.client.from('quiz_questions').insert(records.slice(index, index + 50));
+                const { data: insertedRows, error } = await state.client
+                    .from('quiz_questions')
+                    .insert(records.slice(index, index + 50))
+                    .select('id');
                 if (error) throw error;
+                verifiedCount += Array.isArray(insertedRows) ? insertedRows.length : 0;
             }
-            // Đọc lại ngay sau khi ghi để không báo thành công giả khi RLS,
-            // subject_key hoặc payload có vấn đề.
-            const { data: verified, error: verifyError } = await state.client
-                .from('quiz_questions')
-                .select('id, subject_key')
-                .eq('subject_key', selectedSubject)
-                .order('id', { ascending: true });
-            if (verifyError) throw verifyError;
-            const verifiedCount = Array.isArray(verified) ? verified.length : 0;
             if (verifiedCount < records.length) {
-                throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu ở môn ${selectedSubject}.`);
+                throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu vừa nhập ở môn ${selectedSubject}.`);
             }
-            console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, cloudCount: verifiedCount });
+            console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, verifiedCount });
             addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import');
             notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
              sessionStorage.removeItem('quiz_import_draft');
@@ -2570,6 +2576,17 @@
 
         if (view === 'overview') {
             requestAnimationFrame(() => replayOverviewMetrics());
+        }
+
+        if (view !== 'progress') {
+            clearInterval(state.progressMonitorTimer);
+            state.progressMonitorTimer = null;
+            clearTimeout(state.progressDebounceTimer);
+            state.progressDebounceTimer = null;
+            if (state.progressRealtimeChannel && state.client && typeof state.client.removeChannel === 'function') {
+                state.client.removeChannel(state.progressRealtimeChannel);
+                state.progressRealtimeChannel = null;
+            }
         }
 
         if (view === 'progress') {
@@ -3011,12 +3028,12 @@
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                                      <strong style="font-size:12px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</strong>
                                     <span style="font-size:10px;color:var(--emerald);background:rgba(16,185,129,0.15);padding:1px 5px;border-radius:4px;font-weight:600;">Xem Đề + AI</span>
-                                     <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code><button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
+                                     <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
                                     ${ipDisplay}
                                 </div>
                             </div>
                         </div>
-                        <div style="display:flex;align-items:center;gap:6px;shrink-0;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                              <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
                                  <i class="fa-solid fa-link"></i> Link
                              </button>
@@ -3098,10 +3115,7 @@
         renderUnifiedAccess();
         renderQuickObservers();
 
-        const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-            ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
-            : window.location.origin;
-        const observerLink = `${origin}/?token=${encodeURIComponent(combinedToken)}&view=progress`;
+        const observerLink = buildAppUrl(`?token=${encodeURIComponent(combinedToken)}&view=progress`);
         try {
             await navigator.clipboard.writeText(observerLink);
             notify(`✅ Đã cấp quyền người giám sát (kèm xem đề + AI): "${combinedToken}"!\n📋 Đã tự động sao chép Link Theo Dõi.`);
@@ -3671,10 +3685,7 @@
 
         renderAccess();
 
-        const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-            ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
-            : window.location.origin;
-        const adminLink = `${origin}/admin.html?token=${encodeURIComponent(combinedToken)}`;
+        const adminLink = buildAppUrl(`admin.html?token=${encodeURIComponent(combinedToken)}`);
         try {
             await navigator.clipboard.writeText(adminLink);
             notify(`✅ Đã cấp IP-Token Admin: "${combinedToken}"!\nĐã tự động sao chép Link Admin vào bộ nhớ tạm.`);
@@ -3930,21 +3941,28 @@
         } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
     }
     async function deleteSubject(key) {
-        if (!(await confirmDialog({ title: `Xóa môn ${key}?`, message: `Xóa môn ${key} và toàn bộ câu hỏi thuộc môn này khỏi hệ thống?`, confirmText: 'Xóa môn học', variant: 'danger' }))) return;
+        if (!(await confirmDialog({ title: `Xóa môn ${key}?`, message: `Xóa môn ${key} và chuyển toàn bộ câu hỏi thuộc môn này vào Thùng rác?`, confirmText: 'Xóa môn học', variant: 'danger' }))) return;
         const previousSubjects = state.subjects.slice();
         try {
-            // Xóa ngân hàng trước; nếu Cloud không xác minh được count=0 thì
-            // giữ nguyên môn để tránh tạo dữ liệu mồ côi.
-            const { error: deleteError } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
-            if (deleteError) throw deleteError;
+            const subjectQuestions = (state.questions || []).filter((item) => item.subject_key === key);
+            if (subjectQuestions.length > 0) {
+                await moveQuestionsToTrash(
+                    subjectQuestions,
+                    `Xóa môn học ${key}`,
+                    `Đã lưu trữ ${subjectQuestions.length} câu hỏi vào Thùng rác trước khi xóa môn`
+                );
+            } else {
+                const { error: deleteError } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
+                if (deleteError) throw deleteError;
+            }
             const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) throw new Error(`Còn ${count} câu hỏi chưa xóa được.`);
             state.subjects = previousSubjects.filter((item) => item.key !== key);
             await saveSubjects();
             try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
-            addActivityLog(`Xóa môn học ${key}`, 'Đã xóa môn học và toàn bộ câu hỏi liên quan', 'danger');
-            notify(`Đã xóa môn ${key} và toàn bộ ngân hàng câu hỏi.`);
+            addActivityLog(`Xóa môn học ${key}`, 'Đã xóa môn học và lưu trữ câu hỏi vào Thùng rác', 'danger');
+            notify(`Đã xóa môn ${key} và chuyển câu hỏi vào Thùng rác.`);
             await loadQuestions();
         } catch (error) {
             state.subjects = previousSubjects;
@@ -4095,6 +4113,7 @@
             error = page.error;
         } else if (Array.isArray(page.data)) {
             data.push(...page.data);
+            state.logins = data.slice();
         }
         if (error) {
             console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);
@@ -5284,7 +5303,7 @@
         const rows = filtered.slice(start, start + pageSize);
         $('leaderboard-summary').textContent = rows.length ? `Top ${rows.length} lượt thi, trang ${state.reportLeaderboardPage}/${pageCount}${subject ? ` môn ${subject}` : ''}; sắp xếp theo điểm /10.` : 'Chưa có kết quả phù hợp.';
         $('leaderboard-empty')?.classList.toggle('hidden', rows.length > 0);
-        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${(start + index) + 1}">#${(start + index) + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div><div class="leaderboard-pagination"><button class="button secondary" ${state.reportLeaderboardPage <= 1 ? 'disabled' : ''} data-report-page="prev">Trang trước</button><span>Trang ${state.reportLeaderboardPage}/${pageCount}</span><button class="button secondary" ${state.reportLeaderboardPage >= pageCount ? 'disabled' : ''} data-report-page="next">Trang sau</button></div>` : '';
+        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${(start + index) + 1}">#${(start + index) + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div><div class="leaderboard-pagination"><button class="button button-secondary" ${state.reportLeaderboardPage <= 1 ? 'disabled' : ''} data-report-page="prev">Trang trước</button><span>Trang ${state.reportLeaderboardPage}/${pageCount}</span><button class="button button-secondary" ${state.reportLeaderboardPage >= pageCount ? 'disabled' : ''} data-report-page="next">Trang sau</button></div>` : '';
     }
     async function fetchReportRows() {
         if (!state.client) throw new Error('Chưa kết nối Supabase.');
@@ -5686,6 +5705,19 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
+        const closableModals = ['import-modal', 'print-modal', 'trash-modal', 'delete-scope-modal'];
+        closableModals.forEach((modalId) => {
+            $(modalId)?.addEventListener('click', (event) => {
+                if (event.target === $(modalId)) closeModal(modalId);
+            });
+        });
+        window.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closableModals.forEach((modalId) => {
+                const el = $(modalId);
+                if (el && !el.classList.contains('hidden')) closeModal(modalId);
+            });
+        });
         $('maintenance-toggle')?.addEventListener('change', () => runAction(() => toggleMaintenance()));
         const openEditMaintenancePrompt = async () => {
             const currentMsg = (state.maintenance.message && state.maintenance.message !== 'Website đang mở công khai cho học sinh.' && state.maintenance.message !== 'Website đang mở.')
@@ -5707,22 +5739,10 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         };
         $('edit-maintenance')?.addEventListener('click', openEditMaintenancePrompt);
         $('maintenance-preview-box')?.addEventListener('click', openEditMaintenancePrompt);
-        $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true))); $('add-ai-ip')?.addEventListener('click', () => addAiIp().catch((error) => notify(error.message, true)));
-        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); $('ai-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-ai]'); if (button) removeAiIp(button.dataset.removeAi).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
+        $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true)));
+        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
         document.addEventListener('click', (event) => {
-            const geoMode = event.target.closest('[data-geo-mode]');
-            const addGeo = event.target.closest('#add-geo-ip');
-            const removeGeo = event.target.closest('[data-remove-geo]');
-            const addClass5 = event.target.closest('#add-class5-ip');
-            const addCurrentClass5 = event.target.closest('#add-current-class5-ip');
-            const removeClass5 = event.target.closest('[data-remove-class5]');
             const notice = event.target.closest('[data-notice]');
-            if (geoMode) { state.geo.mode = geoMode.dataset.geoMode; runAction(saveGeo); }
-            if (addGeo) { const input = $('geo-ip-input'); const ip = input?.value.trim(); if (ip && !state.geo.ips.includes(ip)) state.geo.ips.push(ip); if (input) input.value = ''; runAction(saveGeo); }
-            if (removeGeo) { state.geo.ips = state.geo.ips.filter((ip) => ip !== removeGeo.dataset.removeGeo); runAction(saveGeo); }
-            if (addClass5) { const input = $('class5-ip-input'); runAction(() => addClass5Ip(input?.value).then(() => { if (input) input.value = ''; })); }
-            if (addCurrentClass5) runAction(() => addClass5Ip(state.clientIp));
-            if (removeClass5) runAction(() => removeClass5Ip(removeClass5.dataset.removeClass5));
             if (notice && $('notice-input')) { $('notice-input').value = notice.dataset.notice; runAction(broadcastNotice); }
         });
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
@@ -5784,10 +5804,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('copy-parent-link-head')?.addEventListener('click', () => {
              const parentItem = (state.tokens || []).find(t => t.role === 'parent' || t.role === 'observer_grade5' || t.role === 'observer');
              const token = parentItem ? parentItem.token : '';
-             const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-                 ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
-                 : window.location.origin;
-             const link = token ? `${origin}/?token=${encodeURIComponent(token)}&view=progress` : `${origin}/?view=progress`;
+             const link = buildAppUrl(token ? `?token=${encodeURIComponent(token)}&view=progress` : '?view=progress');
              try {
                  navigator.clipboard.writeText(link);
                  notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
@@ -5796,7 +5813,6 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              }
          });
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
-         $('btn-create-token')?.addEventListener('click', () => runAction(addTokenFromForm));
          $('btn-grant-student-access')?.addEventListener('click', () => runAction(grantStudentAccess));
          $('btn-fill-current-ip')?.addEventListener('click', () => {
              if ($('student-access-ip')) {
@@ -5808,10 +5824,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              const copyAdminLinkBtn = event.target.closest('[data-copy-admin-link]');
              if (copyAdminLinkBtn) {
                  const token = copyAdminLinkBtn.dataset.copyAdminLink;
-                 const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-                     ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
-                     : window.location.origin;
-                 const link = `${origin}/admin.html?token=${encodeURIComponent(token)}`;
+                 const link = buildAppUrl(`admin.html?token=${encodeURIComponent(token)}`);
                  try {
                      navigator.clipboard.writeText(link).then(() => {
                          notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
@@ -5931,10 +5944,25 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
             await loadSubjects();
             await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
             await syncSubjectQuestionCounts();
-            setInterval(() => {
+            clearInterval(state.studentsRefreshTimer);
+            state.studentsRefreshTimer = setInterval(() => {
                 if (document.hidden) return;
                 loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error));
             }, 5000);
+            const cleanupAdminResources = () => {
+                clearInterval(state.studentsRefreshTimer);
+                state.studentsRefreshTimer = null;
+                clearInterval(state.progressMonitorTimer);
+                state.progressMonitorTimer = null;
+                clearTimeout(state.progressDebounceTimer);
+                state.progressDebounceTimer = null;
+                if (state.progressRealtimeChannel && state.client && typeof state.client.removeChannel === 'function') {
+                    state.client.removeChannel(state.progressRealtimeChannel);
+                    state.progressRealtimeChannel = null;
+                }
+            };
+            window.addEventListener('pagehide', cleanupAdminResources, { once: true });
+            window.addEventListener('beforeunload', cleanupAdminResources, { once: true });
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
             updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');

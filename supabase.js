@@ -83,10 +83,10 @@ class DatabaseService {
 
     async syncServerClock() {
         if (!this.url || !this.anonKey) return;
+        let timeoutId;
         try {
             const t0 = Date.now();
             let signal;
-            let timeoutId;
             if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
                 signal = AbortSignal.timeout(4000);
             } else if (typeof AbortController !== 'undefined') {
@@ -99,7 +99,6 @@ class DatabaseService {
                 headers: { apikey: this.anonKey },
                 signal
             });
-            if (timeoutId) clearTimeout(timeoutId);
             const dateHeader = res.headers?.get('date');
             if (dateHeader) {
                 const serverMs = new Date(dateHeader).getTime();
@@ -112,7 +111,10 @@ class DatabaseService {
                     this.serverClockOffsetMs = 0;
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+        }
     }
 
     getNowIso() {
@@ -522,7 +524,7 @@ class DatabaseService {
             queue.push({
                 type: actionType,
                 payload: payload,
-                queuedAt: new Date().toISOString()
+                queuedAt: this.getNowIso()
             });
             if (queue.length > 60) queue = queue.slice(-60);
             localStorage.setItem('quiz_offline_sync_queue', JSON.stringify(queue));
@@ -544,14 +546,16 @@ class DatabaseService {
 
             let syncedCount = 0;
             const remaining = [];
+            const resolvedLocalIds = new Map();
             for (const item of queue) {
                 let synced = false;
                 try {
                     if ((item.type === 'updateProgress' || item.type === 'updateStatus') && item.payload) {
-                        const { loginId } = item.payload;
+                        const rawLoginId = item.payload.loginId;
+                        const loginId = resolvedLocalIds.get(rawLoginId) || rawLoginId;
                         const statusVal = item.type === 'updateProgress' ? item.payload.statusText : item.payload.status;
                         const scoreVal = item.type === 'updateProgress' ? item.payload.scoreText : item.payload.scoreSummary;
-                        const lastActive = item.payload.last_active || new Date().toISOString();
+                        const lastActive = item.payload.last_active || this.getNowIso();
 
                         if (loginId && !String(loginId).startsWith('local_')) {
                             const { error } = await this.client.from('quiz_logins').update({
@@ -563,11 +567,12 @@ class DatabaseService {
                             syncedCount++;
                             synced = true;
                         } else if (loginId && String(loginId).startsWith('local_')) {
-                            // Resolve offline-only local login by inserting/updating a cloud record
-                            const localRow = this._getLocalLogins().find((r) => r.id === loginId);
+                            // Resolve offline-only local login once and reuse cloudId for subsequent queued updates
+                            const localLogins = this._getLocalLogins();
+                            const localRow = localLogins.find((r) => r.id === loginId);
                             if (localRow && localRow.player_name) {
                                 const cloudId = this.generateUUID();
-                                const { error } = await this.client.from('quiz_logins').insert([{
+                                const payload = {
                                     id: cloudId,
                                     player_name: localRow.player_name,
                                     ip_address: localRow.ip_address || 'Chưa xác định',
@@ -576,8 +581,23 @@ class DatabaseService {
                                     score_summary: scoreVal || localRow.score_summary || '',
                                     last_active: lastActive,
                                     created_at: localRow.created_at || lastActive
-                                }]);
+                                };
+                                if (!this._skipSessionIdColumn && localRow.session_id) {
+                                    payload.session_id = localRow.session_id;
+                                }
+                                let { error } = await this.client.from('quiz_logins').insert([payload]);
+                                if (error && (error.code === '42703' || error.code === 'PGRST204' || /session_id|column .* does not exist/i.test(error.message || ''))) {
+                                    this._skipSessionIdColumn = true;
+                                    const legacyPayload = { ...payload };
+                                    delete legacyPayload.session_id;
+                                    ({ error } = await this.client.from('quiz_logins').insert([legacyPayload]));
+                                }
                                 if (error) throw error;
+                                resolvedLocalIds.set(loginId, cloudId);
+                                localRow.id = cloudId;
+                                try {
+                                    localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localLogins));
+                                } catch (le) {}
                                 syncedCount++;
                             }
                             synced = true;
@@ -588,7 +608,12 @@ class DatabaseService {
                 } catch (err) {
                     console.warn("[OfflineSync] Lỗi sync item:", err);
                 }
-                if (!synced) remaining.push(item);
+                if (!synced) {
+                    if (item?.payload?.loginId && resolvedLocalIds.has(item.payload.loginId)) {
+                        item.payload.loginId = resolvedLocalIds.get(item.payload.loginId);
+                    }
+                    remaining.push(item);
+                }
             }
 
             if (remaining.length) localStorage.setItem('quiz_offline_sync_queue', JSON.stringify(remaining));
@@ -681,20 +706,11 @@ class DatabaseService {
         };
         if (this.isSupabaseActive && this.client) {
             try {
-                let { data, error } = await this.client
+                const { data, error } = await this.client
                     .from('quiz_logins')
                     .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
                     .order('last_active', { ascending: false })
                     .limit(limit);
-
-                // Keep compatibility with databases that still have older column names.
-                if (error && /column .* does not exist|session_id/i.test(error.message || '')) {
-                    ({ data, error } = await this.client
-                        .from('quiz_logins')
-                        .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
-                        .order('last_active', { ascending: false })
-                        .limit(limit));
-                }
 
                 if (!error && Array.isArray(data)) {
                     console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length });
@@ -842,8 +858,7 @@ class DatabaseService {
                 console.warn('[DatabaseService] Questions query failed:', { subjectKey, error: error?.message, code: error?.code, details: error?.details });
                 throw error;
             } catch (err) {
-                console.warn("[DatabaseService] Lỗi fetch questions từ Supabase:", err);
-                return null;
+                console.warn("[DatabaseService] Lỗi fetch questions từ Supabase, chuyển sang cache:", err);
             }
         }
 
@@ -910,23 +925,44 @@ class DatabaseService {
             return String(opt || '').replace(/^[A-D][\s.):-]\s*/i, '').trim();
         }) : [];
 
+        const targetSubject = qObj.subjectKey || qObj.subject_key || subjectKey || 'history';
+        const qType = qObj.qType || qObj.q_type || 'mcq';
+        const rawCorrectVal = qObj.correctValue !== undefined ? qObj.correctValue : qObj.correct_value;
+        const correctValueStr = (rawCorrectVal !== undefined && rawCorrectVal !== null)
+            ? String(rawCorrectVal)
+            : (qType === 'short_answer' ? String(qObj.correctAnswer || '') : '');
+
         const record = {
-            subject_key: qObj.subjectKey || qObj.subject_key || subjectKey || 'history',
+            subject_key: targetSubject,
             category: qObj.category || 'Bài học',
-            q_type: qObj.qType || qObj.q_type || 'mcq',
+            q_type: qType,
             question: qObj.question,
             options: cleanOptions,
             statements: qObj.statements || [],
             correct: correctInt,
             answer: correctInt,
-            correct_value: qObj.correctValue !== undefined ? String(qObj.correctValue) : String(qObj.correct_value || qObj.correctAnswer || qObj.answer || qObj.correct || ''),
+            correct_value: correctValueStr,
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
-            updated_at: new Date().toISOString()
+            updated_at: this.getNowIso()
         };
 
         if (qObj.id !== undefined && qObj.id !== null && qObj.id !== '' && Number.isInteger(Number(qObj.id))) {
-            record.id = Number(qObj.id);
+            const candidateId = Number(qObj.id);
+            let belongsToOtherSubject = false;
+            if (this.isSupabaseActive && this.client) {
+                try {
+                    const { data: existingIdRow } = await this.client
+                        .from('quiz_questions')
+                        .select('id, subject_key')
+                        .eq('id', candidateId)
+                        .limit(1);
+                    if (Array.isArray(existingIdRow) && existingIdRow.length > 0 && existingIdRow[0].subject_key !== targetSubject) {
+                        belongsToOtherSubject = true;
+                    }
+                } catch (e) {}
+            }
+            record.id = belongsToOtherSubject ? await this.getNextQuestionId() : candidateId;
         } else {
             record.id = await this.getNextQuestionId();
         }
@@ -982,15 +1018,24 @@ class DatabaseService {
         const otherSubjectIds = new Set();
         const usedIdsInBatch = new Set();
         if (this.isSupabaseActive && this.client && !replaceAll) {
+            const candidateIds = [...new Set(
+                questionsList
+                    .map(q => (q?.id !== undefined && q?.id !== null && q?.id !== '' && Number.isInteger(Number(q.id)) && Number(q.id) > 0) ? Number(q.id) : null)
+                    .filter(id => id !== null)
+            )];
             try {
-                const { data: existingRows } = await this.client
-                    .from('quiz_questions')
-                    .select('id, subject_key');
-                (existingRows || []).forEach(row => {
-                    if (row && row.id !== undefined && row.subject_key !== cleanSubject) {
-                        otherSubjectIds.add(Number(row.id));
-                    }
-                });
+                for (let offset = 0; offset < candidateIds.length; offset += 200) {
+                    const { data: existingRows } = await this.client
+                        .from('quiz_questions')
+                        .select('id, subject_key')
+                        .in('id', candidateIds.slice(offset, offset + 200))
+                        .neq('subject_key', cleanSubject);
+                    (existingRows || []).forEach(row => {
+                        if (row && row.id !== undefined) {
+                            otherSubjectIds.add(Number(row.id));
+                        }
+                    });
+                }
             } catch (e) { }
         }
 
@@ -1095,12 +1140,19 @@ class DatabaseService {
     }
 
     /**
-     * Xóa 1 câu hỏi theo ID
+     * Xóa 1 câu hỏi theo ID (ưu tiên soft-delete, fallback hard-delete cho schema cũ)
      */
     async deleteQuestion(qId) {
         if (this.isSupabaseActive && this.client && qId) {
             try {
-                const { error } = await this.client.from('quiz_questions').delete().eq('id', qId);
+                const nowIso = this.getNowIso();
+                let { error } = await this.client
+                    .from('quiz_questions')
+                    .update({ is_deleted: true, deleted_at: nowIso })
+                    .eq('id', qId);
+                if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
+                    ({ error } = await this.client.from('quiz_questions').delete().eq('id', qId));
+                }
                 if (error) throw error;
                 return true;
             } catch (e) {
@@ -1112,7 +1164,7 @@ class DatabaseService {
     }
 
     /**
-     * Xóa toàn bộ câu hỏi của một môn học
+     * Xóa toàn bộ câu hỏi của một môn học (ưu tiên soft-delete, fallback hard-delete cho schema cũ)
      */
     async clearQuestionsBySubject(subjectKey) {
         const cleanSubject = String(subjectKey || '').trim();
@@ -1122,18 +1174,33 @@ class DatabaseService {
         }
 
         try {
-            const { error: deleteError } = await this.client
+            const nowIso = this.getNowIso();
+            let usedSoftDelete = true;
+            let { error: deleteError } = await this.client
                 .from('quiz_questions')
-                .delete()
-                .eq('subject_key', cleanSubject);
+                .update({ is_deleted: true, deleted_at: nowIso })
+                .eq('subject_key', cleanSubject)
+                .eq('is_deleted', false);
+
+            if (deleteError && (deleteError.code === '42703' || deleteError.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(deleteError.message || ''))) {
+                usedSoftDelete = false;
+                ({ error: deleteError } = await this.client
+                    .from('quiz_questions')
+                    .delete()
+                    .eq('subject_key', cleanSubject));
+            }
             if (deleteError) throw deleteError;
 
-            // Không coi request DELETE thành công nếu RLS chặn silently hoặc
+            // Không coi request xóa thành công nếu RLS chặn silently hoặc
             // còn câu hỏi mồ côi. Chỉ trả success sau khi đọc xác minh count=0.
-            const { count, error: verifyError } = await this.client
+            let verifyQuery = this.client
                 .from('quiz_questions')
                 .select('id', { count: 'exact', head: true })
                 .eq('subject_key', cleanSubject);
+            if (usedSoftDelete) {
+                verifyQuery = verifyQuery.eq('is_deleted', false);
+            }
+            const { count, error: verifyError } = await verifyQuery;
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) {
                 throw new Error(`Còn ${count} câu hỏi thuộc môn ${cleanSubject} trên Cloud.`);
@@ -1181,10 +1248,11 @@ class DatabaseService {
                     .update({ status: banStatus, score_summary: reason, last_active: nowIso })
                     .eq('ip_address', cleanIp)
                     .select();
+                if (updateErr) throw updateErr;
 
                 // Nếu IP này chưa từng đăng nhập (0 dòng được update), INSERT một bản ghi __BANNED_IP__
-                if (!updateErr && (!updated || updated.length === 0)) {
-                    await this.client
+                if (!updated || updated.length === 0) {
+                    const { error: insertErr } = await this.client
                         .from('quiz_logins')
                         .insert([{
                             id: this.generateUUID(),
@@ -1196,9 +1264,11 @@ class DatabaseService {
                             last_active: nowIso,
                             created_at: nowIso
                         }]);
+                    if (insertErr) throw insertErr;
                 }
             } catch (err) {
                 console.error("[DatabaseService] Lỗi khi chặn IP trên Supabase:", err);
+                return { success: false, ip: cleanIp, error: err.message || 'Không thể đồng bộ chặn IP lên Cloud.' };
             }
         }
 
@@ -1211,7 +1281,7 @@ class DatabaseService {
     async unbanIp(ipAddress) {
         const cleanIp = (ipAddress || "").trim();
         if (!cleanIp) return { success: false };
-        const nowIso = new Date().toISOString();
+        const nowIso = this.getNowIso();
 
         // 1. Xóa trong LocalStorage
         try {
@@ -1227,19 +1297,24 @@ class DatabaseService {
         if (this.isSupabaseActive && this.client) {
             try {
                 // Phục hồi trạng thái bình thường
-                await this.client
+                const { error: updateErr } = await this.client
                     .from('quiz_logins')
                     .update({ status: "Đang ôn tập", last_active: nowIso })
                     .eq('ip_address', cleanIp)
                     .like('status', 'BANNED%');
+                if (updateErr) throw updateErr;
 
                 // Xóa bản ghi chặn thủ công nếu có
-                await this.client
+                const { error: deleteErr } = await this.client
                     .from('quiz_logins')
                     .delete()
                     .eq('ip_address', cleanIp)
                     .eq('player_name', '__BANNED_IP__');
-            } catch (err) {}
+                if (deleteErr) throw deleteErr;
+            } catch (err) {
+                console.error("[DatabaseService] Lỗi khi mở khóa IP trên Supabase:", err);
+                return { success: false, ip: cleanIp, error: err.message || 'Không thể mở khóa IP trên Cloud.' };
+            }
         }
 
         return { success: true, ip: cleanIp };
@@ -1581,7 +1656,7 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.GEO_CONFIG,
@@ -1590,10 +1665,12 @@ class DatabaseService {
                         device_info: cleanMode,
                         status: 'ACTIVE',
                         score_summary: JSON.stringify({ mode: cleanMode, ips: cleanList, grade5Ips: cleanGrade5Ips }),
-                        last_active: new Date().toISOString()
+                        last_active: this.getNowIso()
                     }], { onConflict: 'id' });
+                if (error) throw error;
             } catch (e) {
                 console.error("[DatabaseService] Lỗi lưu cấu hình môn Địa:", e);
+                throw e;
             }
         }
 
@@ -1602,7 +1679,7 @@ class DatabaseService {
 
     async setGeoMode(mode) {
         const config = await this.fetchGeoConfig();
-        return await this.saveGeoConfig(mode, config.ips);
+        return await this.saveGeoConfig(mode, config.ips, config.grade5Ips);
     }
 
     async fetchAllowedGeoIps() {
@@ -1612,7 +1689,7 @@ class DatabaseService {
 
     async saveAllowedGeoIps(ipList) {
         const config = await this.fetchGeoConfig();
-        const res = await this.saveGeoConfig(config.mode, ipList);
+        const res = await this.saveGeoConfig(config.mode, ipList, config.grade5Ips);
         return res.ips;
     }
 
@@ -1622,7 +1699,7 @@ class DatabaseService {
         const config = await this.fetchGeoConfig();
         if (!config.ips.includes(cleanIp)) {
             config.ips.push(cleanIp);
-            await this.saveGeoConfig(config.mode, config.ips);
+            await this.saveGeoConfig(config.mode, config.ips, config.grade5Ips);
         }
         return config.ips;
     }
@@ -1632,7 +1709,7 @@ class DatabaseService {
         if (!cleanIp) return false;
         const config = await this.fetchGeoConfig();
         config.ips = config.ips.filter(ip => ip !== cleanIp);
-        await this.saveGeoConfig(config.mode, config.ips);
+        await this.saveGeoConfig(config.mode, config.ips, config.grade5Ips);
         return config.ips;
     }
 
@@ -1652,7 +1729,7 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.MAINTENANCE,
@@ -1663,8 +1740,10 @@ class DatabaseService {
                         score_summary: cleanMsg,
                         last_active: nowIso
                     }], { onConflict: 'id' });
+                if (error) throw error;
             } catch (e) {
                 console.error("[DatabaseService] Lỗi cập nhật trạng thái bảo trì:", e);
+                throw e;
             }
         }
 
@@ -1789,7 +1868,7 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                await this.client
+                const { error } = await this.client
                     .from('quiz_logins')
                     .upsert([{
                         id: SYSTEM_RECORDS.ADMIN_IPS,
@@ -1800,8 +1879,10 @@ class DatabaseService {
                         score_summary: payloadStr,
                         last_active: nowIso
                     }], { onConflict: 'id' });
+                if (error) throw error;
             } catch (e) {
                 console.error("[DatabaseService] Lỗi lưu Admin IPs lên Supabase:", e);
+                throw e;
             }
         }
 
@@ -2034,9 +2115,9 @@ class DatabaseService {
             if (subjectKey) {
                 const combined = status + " " + summary;
                 if (dynamicSubjectName && combined.includes(dynamicSubjectName)) return true;
-                if (subjectKey === 'geography' && (combined.includes('địa') || combined.includes('/67'))) return true;
-                if (subjectKey === 'physics' && (combined.includes('lí') || combined.includes('vật') || combined.includes('/52') || combined.includes('/43'))) return true;
-                if (subjectKey === 'history' && (combined.includes('sử') || combined.includes('/101') || combined.includes('/74'))) return true;
+                if (subjectKey === 'geography' && combined.includes('địa')) return true;
+                if (subjectKey === 'physics' && (combined.includes('lí') || combined.includes('vật'))) return true;
+                if (subjectKey === 'history' && combined.includes('sử')) return true;
                 if (combined.includes(subjectKey.toLowerCase())) return true;
                 return false;
             }
@@ -2225,8 +2306,10 @@ class DatabaseService {
             if (selectError) throw new Error(`Không thể đọc dữ liệu trước khi dọn: ${selectError.message}`);
             const ids = (data || []).filter(item => !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
             if (ids.length > 0) {
-                const { error } = await this.client.from('quiz_logins').delete().in('id', ids);
-                if (error) throw new Error(`Không thể dọn dữ liệu trên Cloud: ${error.message}`);
+                for (let offset = 0; offset < ids.length; offset += 100) {
+                    const { error } = await this.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));
+                    if (error) throw new Error(`Không thể dọn dữ liệu trên Cloud: ${error.message}`);
+                }
             }
         }
 
@@ -2435,9 +2518,7 @@ class DatabaseService {
             // 2. Khớp chính xác theo chuỗi gửi lên (clean)
             if (clean) {
                 if (tokenVal === clean || (rawCodeVal && rawCodeVal === clean)) return true;
-                if (ipVal && (clean === ipVal || clean.startsWith(ipVal + '-') || clean.endsWith('-' + ipVal))) return true;
-                if (tokenVal && (tokenVal.endsWith('-' + clean) || clean.endsWith('-' + tokenVal))) return true;
-                if (rawCodeVal && (rawCodeVal.endsWith('-' + clean) || clean.endsWith('-' + rawCodeVal))) return true;
+                if (ipVal && clean === ipVal) return true;
             }
 
             // 3. Khớp theo hậu tố mã máy kết hợp (ví dụ: cùng kết thúc bằng -qm-xxxxxx khi đổi IP mạng/4G)
