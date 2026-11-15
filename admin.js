@@ -3958,6 +3958,23 @@
     }
     async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
 
+    function getAdminSubjectFolderInfo(sub) {
+        const grade = subjectGrade(sub);
+        const explicitFolder = String(sub?.folder || sub?.group || '').trim();
+        if (explicitFolder) {
+            return { folderKey: `${grade}::${explicitFolder.toLowerCase()}`, folderLabel: explicitFolder };
+        }
+        const rawName = String(sub?.name || sub?.title || sub?.key || '').trim();
+        const m = rawName.match(/^(.+?)(?:\s*[-–—:|]\s*|\s+)(?:đề|bài|chuyên\s*đề|test|tập|phần)\s*(?:số\s*)?(?:\d+|[ivx]+)\b.*$/i);
+        if (!m) return null;
+        const base = m[1].trim();
+        if (!base || base.length < 2) return null;
+        const cleanBase = base.replace(/^môn\s+/i, '').trim();
+        const titleBase = cleanBase.charAt(0).toUpperCase() + cleanBase.slice(1);
+        const folderLabel = /^môn\s+/i.test(base) ? titleBase : `Môn ${titleBase}`;
+        return { folderKey: `${grade}::${cleanBase.toLowerCase()}`, folderLabel };
+    }
+
     function renderSubjectCatalog() {
         const subjects = mergeSubjectCatalog(state.subjects);
         const questionCounts = (state.questions || []).reduce((counts, question) => {
@@ -3972,7 +3989,76 @@
             loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
         })));
         $('subject-count') && ($('subject-count').textContent = subjects.length);
-        $('subjects-list') && ($('subjects-list').innerHTML = subjects.map((subject) => { const key = subject.key || subject.subject_key; const count = questionCounts[subjectMatchKey(key)] || 0; const canAdoptLegacy = subjectMatchKey(key) !== 'history' && legacyCount > 0; return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`; }).join('') || '<div class="empty-state">Chưa có môn học.</div>');
+
+        const folderMap = new Map();
+        subjects.forEach((subject) => {
+            const info = getAdminSubjectFolderInfo(subject);
+            if (!info) return;
+            if (!folderMap.has(info.folderKey)) {
+                folderMap.set(info.folderKey, { key: info.folderKey, label: info.folderLabel, grade: subjectGrade(subject), items: [] });
+            }
+            folderMap.get(info.folderKey).items.push(subject);
+        });
+        const datalist = $('subject-folder-datalist');
+        if (datalist) {
+            const uniqueLabels = Array.from(new Set(Array.from(folderMap.values()).map((g) => g.label)));
+            datalist.innerHTML = uniqueLabels.map((lbl) => `<option value="${esc(lbl)}"></option>`).join('');
+        }
+        const activeFolders = new Map();
+        folderMap.forEach((group, key) => {
+            if (group.items.length >= 2) activeFolders.set(key, group);
+        });
+        if (state.adminOpenSubjectFolder && !activeFolders.has(state.adminOpenSubjectFolder)) {
+            state.adminOpenSubjectFolder = null;
+        }
+
+        const renderCardHtml = (subject) => {
+            const key = subject.key || subject.subject_key;
+            const count = questionCounts[subjectMatchKey(key)] || 0;
+            const canAdoptLegacy = subjectMatchKey(key) !== 'history' && legacyCount > 0;
+            return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`;
+        };
+
+        const listEl = $('subjects-list');
+        if (listEl) {
+            if (!subjects.length) {
+                listEl.innerHTML = '<div class="empty-state">Chưa có môn học.</div>';
+            } else if (state.adminOpenSubjectFolder && activeFolders.has(state.adminOpenSubjectFolder)) {
+                const group = activeFolders.get(state.adminOpenSubjectFolder);
+                listEl.innerHTML = `
+                    <div style="grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);">
+                        <button type="button" class="button button-secondary compact" data-close-subject-folder="true"><i class="fa-solid fa-arrow-left"></i> Quay lại danh sách</button>
+                        <b style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> ${esc(group.label)} (${group.items.length} đề · Lớp ${esc(group.grade)})</b>
+                    </div>
+                    ${group.items.map(renderCardHtml).join('')}
+                `;
+            } else {
+                const renderedFolders = new Set();
+                listEl.innerHTML = subjects.map((subject) => {
+                    const info = getAdminSubjectFolderInfo(subject);
+                    if (info && activeFolders.has(info.folderKey)) {
+                        if (renderedFolders.has(info.folderKey)) return '';
+                        renderedFolders.add(info.folderKey);
+                        const group = activeFolders.get(info.folderKey);
+                        const totalCount = group.items.reduce((sum, item) => sum + (questionCounts[subjectMatchKey(item.key || item.subject_key)] || 0), 0);
+                        const allPrivate = group.items.every((item) => item.visibility === 'PRIVATE');
+                        return `<article class="subject-card" data-open-subject-folder="${esc(group.key)}" style="cursor:pointer;border-color:rgba(245,158,11,0.35);">
+                            <div class="subject-card-head">
+                                <span class="subject-card-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);"><i class="fa-solid fa-folder-closed"></i></span>
+                                <span class="tag">Lớp ${esc(group.grade)} · ${group.items.length} đề</span>
+                            </div>
+                            <h3>${esc(group.label)}</h3>
+                            <p>Thư mục gom nhóm · <b>${totalCount} câu</b></p>
+                            <div class="subject-card-foot">
+                                <small>${allPrivate ? 'Riêng tư' : 'Công khai'}</small>
+                                <span style="font-size:11px;font-weight:700;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
+                            </div>
+                        </article>`;
+                    }
+                    return renderCardHtml(subject);
+                }).join('');
+            }
+        }
         renderSubjectPrivacy();
     }
 
@@ -4056,7 +4142,7 @@
         editor.remove();
     }
     function resetSubjectForm() {
-        ['subject-name-input', 'subject-key-input', 'subject-semester-input'].forEach((id) => { if ($(id)) $(id).value = ''; });
+        ['subject-name-input', 'subject-key-input', 'subject-semester-input', 'subject-folder-input'].forEach((id) => { if ($(id)) $(id).value = ''; });
         if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book';
         if ($('subject-gradient-input')) $('subject-gradient-input').value = 'indigo';
         if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC';
@@ -4080,6 +4166,7 @@
             $('subject-name-input').value = subject.name || subject.title || '';
             $('subject-key-input').value = state.subjectEditingKey || '';
             $('subject-semester-input').value = subject.semester || '';
+            if ($('subject-folder-input')) $('subject-folder-input').value = subject.folder || subject.group || '';
             $('subject-icon-input').value = subject.icon || 'fa-book';
             $('subject-gradient-input').value = subject.gradient || 'indigo';
             $('subject-visibility-input').value = subject.visibility || 'PUBLIC';
@@ -4097,7 +4184,7 @@
         const key = $('subject-key-input')?.value.trim();
         const name = $('subject-name-input')?.value.trim();
         if (!key || !name) return notify('Nhập tên và mã môn học.', true);
-        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
+        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', folder: $('subject-folder-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
         const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
         const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
         if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
@@ -6151,7 +6238,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
         $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
-         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
