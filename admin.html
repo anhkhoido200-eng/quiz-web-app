@@ -285,7 +285,21 @@
                             <label class="progress-sort-wrap" for="progress-sort"><span>Sắp xếp</span><select id="progress-sort"><option value="recent">Mới hoạt động gần nhất</option><option value="progress">Tiến độ cao nhất</option><option value="score">Điểm cao nhất</option><option value="score-asc">Điểm thấp nhất</option></select></label>
                         </div>
                         <div id="grade5-progress-cards" class="progress-cards-grid">
-                            <!-- Progress cards render here -->
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:120px;height:14px;"></div><div class="skeleton-block" style="width:76px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:110px;height:10px;"></div><div class="skeleton-block" style="width:80px;height:10px;"></div></div>
+                            </div>
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:136px;height:14px;"></div><div class="skeleton-block" style="width:82px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:100px;height:10px;"></div><div class="skeleton-block" style="width:88px;height:10px;"></div></div>
+                            </div>
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:108px;height:14px;"></div><div class="skeleton-block" style="width:70px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:118px;height:10px;"></div><div class="skeleton-block" style="width:76px;height:10px;"></div></div>
+                            </div>
                         </div>
                     </section>
                     </div>
@@ -970,7 +984,12 @@
                     <div><p class="eyebrow">LEADERBOARD</p><h2 id="leaderboard-title">Bảng xếp hạng kết quả</h2><p id="leaderboard-summary" class="muted-copy">Chưa tải bảng xếp hạng.</p></div>
                     <div class="report-filter-actions"><label class="report-filter-label" for="leaderboard-subject">Môn học<select id="leaderboard-subject"><option value="">Tất cả môn</option></select></label><button id="load-leaderboard" class="button button-warning" type="button"><i class="fa-solid fa-ranking-star"></i> Xem xếp hạng</button></div>
                 </div>
-                <div id="leaderboard-loading" class="report-inline-state hidden" role="status"><i class="fa-solid fa-circle-notch fa-spin"></i> Đang tải bảng xếp hạng...</div>
+                <div id="leaderboard-loading" class="hidden" role="status" aria-label="Đang tải bảng xếp hạng">
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                </div>
                 <div id="leaderboard-error" class="report-inline-state report-inline-error hidden" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><span id="leaderboard-error-text">Không thể tải bảng xếp hạng.</span></div>
                 <div id="leaderboard-empty" class="report-inline-state hidden" role="status"><i class="fa-solid fa-trophy"></i> Chưa có kết quả phù hợp.</div>
                 <div id="leaderboard-content" class="leaderboard-content" aria-live="polite"></div>

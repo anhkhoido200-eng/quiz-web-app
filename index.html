@@ -326,7 +326,21 @@
 
                     <!-- Lưới môn học gọn gàng cho học sinh -->
                     <div id="home-subjects-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <!-- Render bởi app.js qua renderHomeSubjects() -->
+                        <div class="skeleton-shimmer rounded-2xl p-3.5 min-h-[118px] flex flex-col justify-between" aria-hidden="true">
+                            <div class="flex items-center justify-between"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="skeleton-block w-14 h-5 rounded-full"></div></div>
+                            <div class="skeleton-block h-4 w-3/4 my-2"></div>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/40"><div class="skeleton-block h-3 w-16"></div><div class="skeleton-block h-3 w-12"></div></div>
+                        </div>
+                        <div class="skeleton-shimmer rounded-2xl p-3.5 min-h-[118px] flex flex-col justify-between" aria-hidden="true">
+                            <div class="flex items-center justify-between"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="skeleton-block w-14 h-5 rounded-full"></div></div>
+                            <div class="skeleton-block h-4 w-2/3 my-2"></div>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/40"><div class="skeleton-block h-3 w-16"></div><div class="skeleton-block h-3 w-12"></div></div>
+                        </div>
+                        <div class="skeleton-shimmer rounded-2xl p-3.5 min-h-[118px] flex flex-col justify-between" aria-hidden="true">
+                            <div class="flex items-center justify-between"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="skeleton-block w-14 h-5 rounded-full"></div></div>
+                            <div class="skeleton-block h-4 w-4/5 my-2"></div>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/40"><div class="skeleton-block h-3 w-16"></div><div class="skeleton-block h-3 w-12"></div></div>
+                        </div>
                     </div>
 
                     <!-- Bảng công cụ Admin nhanh: Thêm Môn, Thêm Câu Hỏi & Nạp Đề Trực Tiếp -->
@@ -689,7 +703,21 @@
 
                 <!-- Lưới danh sách thẻ học sinh -->
                 <div id="observer-progress-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-5">
-                    <!-- Render dynamic cards here -->
+                    <div class="obs-skeleton-card skeleton-shimmer rounded-2xl p-4 sm:p-5 min-h-[146px] flex flex-col justify-between gap-3" aria-hidden="true">
+                        <div class="flex items-center justify-between gap-3"><div class="flex items-center gap-2.5"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="space-y-1.5"><div class="skeleton-block h-3.5 w-28"></div><div class="skeleton-block h-2.5 w-20"></div></div></div><div class="skeleton-block h-5 w-20 rounded-full"></div></div>
+                        <div class="skeleton-block h-2.5 w-full rounded-full"></div>
+                        <div class="flex justify-between"><div class="skeleton-block h-3 w-24"></div><div class="skeleton-block h-3 w-16"></div></div>
+                    </div>
+                    <div class="obs-skeleton-card skeleton-shimmer rounded-2xl p-4 sm:p-5 min-h-[146px] flex flex-col justify-between gap-3" aria-hidden="true">
+                        <div class="flex items-center justify-between gap-3"><div class="flex items-center gap-2.5"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="space-y-1.5"><div class="skeleton-block h-3.5 w-32"></div><div class="skeleton-block h-2.5 w-16"></div></div></div><div class="skeleton-block h-5 w-20 rounded-full"></div></div>
+                        <div class="skeleton-block h-2.5 w-full rounded-full"></div>
+                        <div class="flex justify-between"><div class="skeleton-block h-3 w-24"></div><div class="skeleton-block h-3 w-16"></div></div>
+                    </div>
+                    <div class="obs-skeleton-card skeleton-shimmer rounded-2xl p-4 sm:p-5 min-h-[146px] flex flex-col justify-between gap-3" aria-hidden="true">
+                        <div class="flex items-center justify-between gap-3"><div class="flex items-center gap-2.5"><div class="skeleton-block w-10 h-10 rounded-xl"></div><div class="space-y-1.5"><div class="skeleton-block h-3.5 w-24"></div><div class="skeleton-block h-2.5 w-20"></div></div></div><div class="skeleton-block h-5 w-20 rounded-full"></div></div>
+                        <div class="skeleton-block h-2.5 w-full rounded-full"></div>
+                        <div class="flex justify-between"><div class="skeleton-block h-3 w-24"></div><div class="skeleton-block h-3 w-16"></div></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1677,7 +1705,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
                 <div class="flex items-center justify-between gap-3 bg-slate-900/90 p-2.5 rounded-xl border border-slate-700">
                     <code id="modal-combined-code-display" class="font-mono text-sm sm:text-base font-extrabold text-amber-300 tracking-wide break-all">Đang nhận diện...</code>
-                    <button type="button" onclick="app.copyCombinedAuthCode()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow shrink-0">
+                    <button type="button" onclick="app.copyCombinedAuthCode(this)" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow shrink-0">
                         <i class="fa-regular fa-copy"></i> Sao chép
                     </button>
                 </div>

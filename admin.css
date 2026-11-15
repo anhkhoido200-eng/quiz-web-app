@@ -2402,15 +2402,98 @@ body.dark .library-toolbar input[type="search"] {
 
 @media (prefers-reduced-motion: reduce) {
     .button-primary::after,
-    .button-purple::after {
+    .button-purple::after,
+    .skeleton-shimmer::after {
         display: none;
+        animation: none !important;
     }
     .library-subject-tabs .sliding-tab-indicator,
     .student-q-collapse,
-    .student-q-chevron {
+    .student-q-chevron,
+    .is-copied-feedback,
+    .is-copied-feedback i {
         transition: none !important;
         animation: none !important;
     }
+}
+
+/* ================================================================
+   SKELETON SHIMMER & COPY MORPHING FEEDBACK (ADMIN STUDIO)
+   ================================================================ */
+@keyframes adminSkeletonSweep {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+
+.skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.65) 50%,
+        transparent 100%
+    );
+    animation: adminSkeletonSweep 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    will-change: transform;
+}
+
+body.dark .skeleton-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.08) 50%,
+        transparent 100%
+    );
+}
+
+.skeleton-block {
+    border-radius: 7px;
+    background: rgba(148, 163, 184, 0.2);
+}
+
+body.dark .skeleton-block {
+    background: rgba(148, 163, 184, 0.14);
+}
+
+.admin-skeleton-card {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 152px;
+}
+
+.admin-skeleton-row {
+    height: 46px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+
+.is-copied-feedback {
+    border-color: rgba(16, 185, 129, 0.58) !important;
+    background: rgba(16, 185, 129, 0.14) !important;
+    color: var(--green) !important;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease !important;
+}
+
+.is-copied-feedback i {
+    display: inline-block;
+    transform: scale(1.15);
+    color: var(--green) !important;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .subject-grade-button[data-subject-mode="practice"].is-selected {

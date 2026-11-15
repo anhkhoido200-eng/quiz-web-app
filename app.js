@@ -369,15 +369,13 @@ class QuizApp {
                 if (copyLabel) copyLabel.textContent = opts.copyLabel || 'Địa chỉ IP hiện tại của bạn';
                 if (copyValue) copyValue.textContent = String(opts.copyValue);
                 if (inlineCopyBtn) {
+                    inlineCopyBtn.classList.remove('is-copied-feedback');
                     inlineCopyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy IP</span>';
                     inlineCopyBtn.onclick = async () => {
                         const copied = await this.copyTextToClipboard(opts.copyValue);
                         if (copied) {
-                            inlineCopyBtn.innerHTML = '<i class="fa-solid fa-check text-emerald-300"></i><span>Đã chép!</span>';
+                            this.triggerCopyButtonFeedback(inlineCopyBtn, 'Đã chép!', 1500);
                             this.showToastNotification(`✅ Đã sao chép IP: ${opts.copyValue}`, 'success');
-                            setTimeout(() => {
-                                if (inlineCopyBtn) inlineCopyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy IP</span>';
-                            }, 2000);
                         }
                     };
                 }
@@ -897,23 +895,13 @@ class QuizApp {
         return ip ? `${ip}-${code}` : code;
     }
 
-    async copyCombinedAuthCode() {
+    async copyCombinedAuthCode(btnEl = null) {
         const combinedKey = this.getCombinedDeviceKey();
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(combinedKey);
-            } else {
-                const ta = document.createElement('textarea');
-                ta.value = combinedKey;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-            }
+        const copied = await this.copyTextToClipboard(combinedKey);
+        if (copied) {
+            if (btnEl) this.triggerCopyButtonFeedback(btnEl, 'Đã chép!', 1500);
             this.showToastNotification(`📋 Đã chép mã: ${combinedKey}. Hãy gửi mã này cho Admin qua Zalo/Mess để kích hoạt!`, 'success');
-        } catch (e) {
+        } else {
             this.showToastNotification(`Mã xác thực của bạn: ${combinedKey}`, 'info');
         }
     }
@@ -1392,9 +1380,16 @@ class QuizApp {
         }
 
         const fragment = document.createDocumentFragment();
+        this._subjectCountCache = this._subjectCountCache || {};
         const renderSubjectCard = (sub) => {
             const isSelected = this.currentSubject === sub.key;
             const subName = sub.name || sub.title || sub.key || 'Môn học';
+            const subCount = Number(sub.count) || 0;
+            const cacheKey = `sub:${sub.key}`;
+            const prevSubCount = Object.prototype.hasOwnProperty.call(this._subjectCountCache, cacheKey)
+                ? this._subjectCountCache[cacheKey]
+                : 0;
+            this._subjectCountCache[cacheKey] = subCount;
             const card = document.createElement('button');
             card.type = 'button';
 
@@ -1423,7 +1418,7 @@ class QuizApp {
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
                     <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[80px]">${this.escapeHtml(sub.semester || 'Đề cương')}</span>
-                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${Number(sub.count) || 0}">0</span> câu</span>
+                    <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${subCount}" data-prev-value="${prevSubCount}">${prevSubCount}</span> câu</span>
                 </div>
             `;
             return card;
@@ -1457,6 +1452,11 @@ class QuizApp {
                     const group = activeFolders.get(info.folderKey);
                     const hasSelected = group.items.some((item) => item.key === this.currentSubject);
                     const totalCount = group.items.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+                    const folderCacheKey = `folder:${group.key}`;
+                    const prevFolderCount = Object.prototype.hasOwnProperty.call(this._subjectCountCache, folderCacheKey)
+                        ? this._subjectCountCache[folderCacheKey]
+                        : 0;
+                    this._subjectCountCache[folderCacheKey] = totalCount;
                     const firstSub = group.items[0] || sub;
                     const grad = firstSub.gradient || 'indigo';
                     const card = document.createElement('button');
@@ -1480,7 +1480,7 @@ class QuizApp {
                         </div>
                         <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
                             <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[100px]">Bấm mở thư mục</span>
-                            <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${totalCount}">0</span> câu</span>
+                            <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${totalCount}" data-prev-value="${prevFolderCount}">${prevFolderCount}</span> câu</span>
                         </div>
                     `;
                     fragment.appendChild(card);
@@ -1538,7 +1538,12 @@ class QuizApp {
         if (navTitle) navTitle.textContent = 'Ôn tập';
         if (navSub) navSub.textContent = `Hệ Thống Ôn Luyện Thông Minh • ${name}`;
         if (badge) {
-            badge.innerHTML = `${this.escapeHtml(name)} (<span id="home-subject-count" data-home-count="${count}">0</span> câu)`;
+            const existingHomeCountEl = document.getElementById('home-subject-count');
+            const prevBadgeCount = existingHomeCountEl?.dataset?.prevValue !== undefined
+                ? Number(existingHomeCountEl.dataset.prevValue) || 0
+                : (this._lastBadgeSubjectCount || 0);
+            this._lastBadgeSubjectCount = count;
+            badge.innerHTML = `${this.escapeHtml(name)} (<span id="home-subject-count" data-home-count="${count}" data-prev-value="${prevBadgeCount}">${prevBadgeCount}</span> câu)`;
             this.animateHomeCount('home-subject-count', count);
         }
         if (topTitle) topTitle.textContent = name;
@@ -1551,13 +1556,123 @@ class QuizApp {
         return s ? s.name : 'Ôn tập';
     }
 
-    animateHomeCount(target, value) {
+    animateHomeCount(target, value, duration = 400) {
         const element = typeof target === 'string' ? document.getElementById(target) : target;
         if (!element) return;
-        const nextValue = Math.max(0, Number(value) || 0);
-        // Cập nhật ngay lập tức để số lượng câu hỏi không bị hiển thị 0
-        // trong lúc animation hoặc khi trình duyệt đang tiết kiệm tài nguyên.
-        element.textContent = String(nextValue);
+        const nextValue = Math.max(0, Math.round(Number(value) || 0));
+        const rawPrev = element.dataset.prevValue !== undefined
+            ? Number(element.dataset.prevValue)
+            : Number(String(element.textContent || '').replace(/[^\d.-]/g, ''));
+        const startValue = Number.isFinite(rawPrev) ? Math.max(0, Math.round(rawPrev)) : 0;
+        element.dataset.prevValue = String(nextValue);
+
+        if (element._countRafId) {
+            cancelAnimationFrame(element._countRafId);
+            element._countRafId = null;
+        }
+
+        const prefersReduced = typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced || startValue === nextValue || duration <= 0) {
+            element.textContent = String(nextValue);
+            return;
+        }
+
+        const startTime = performance.now();
+        const delta = nextValue - startValue;
+        const step = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(1, elapsed / duration);
+            // Cubic ease-out: 1 - (1 - t)^3
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.textContent = String(Math.round(startValue + delta * eased));
+            if (progress < 1) {
+                element._countRafId = requestAnimationFrame(step);
+            } else {
+                element._countRafId = null;
+                element.textContent = String(nextValue);
+            }
+        };
+        element._countRafId = requestAnimationFrame(step);
+    }
+
+    renderSkeletonCards(count = 3, type = 'observer') {
+        const items = [];
+        for (let i = 0; i < count; i++) {
+            if (type === 'podium') {
+                items.push(`
+                    <div class="flex flex-col items-center ${i === 1 ? '-mt-3' : ''}" aria-hidden="true">
+                        <div class="skeleton-shimmer w-12 h-12 rounded-2xl mb-2"></div>
+                        <div class="skeleton-shimmer w-full rounded-2xl p-3 space-y-2">
+                            <div class="skeleton-block h-3 w-12 mx-auto"></div>
+                            <div class="skeleton-block h-3.5 w-3/4 mx-auto"></div>
+                            <div class="skeleton-block h-4 w-1/2 mx-auto"></div>
+                        </div>
+                    </div>
+                `);
+            } else if (type === 'leaderboard-row') {
+                items.push(`
+                    <tr aria-hidden="true">
+                        <td class="py-2.5 px-3 text-center"><div class="skeleton-shimmer skeleton-block h-4 w-6 mx-auto"></div></td>
+                        <td class="py-2.5 px-3"><div class="skeleton-shimmer skeleton-block h-4 w-32"></div></td>
+                        <td class="py-2.5 px-3 text-center"><div class="skeleton-shimmer skeleton-block h-4 w-12 mx-auto"></div></td>
+                        <td class="py-2.5 px-3 text-right"><div class="skeleton-shimmer skeleton-block h-4 w-14 ml-auto"></div></td>
+                    </tr>
+                `);
+            } else {
+                items.push(`
+                    <div class="obs-skeleton-card skeleton-shimmer rounded-2xl p-4 sm:p-5 min-h-[146px] flex flex-col justify-between gap-3" aria-hidden="true">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="skeleton-block w-10 h-10 rounded-xl"></div>
+                                <div class="space-y-1.5">
+                                    <div class="skeleton-block h-3.5 w-28"></div>
+                                    <div class="skeleton-block h-2.5 w-20"></div>
+                                </div>
+                            </div>
+                            <div class="skeleton-block h-5 w-20 rounded-full"></div>
+                        </div>
+                        <div class="skeleton-block h-2.5 w-full rounded-full"></div>
+                        <div class="flex justify-between">
+                            <div class="skeleton-block h-3 w-24"></div>
+                            <div class="skeleton-block h-3 w-16"></div>
+                        </div>
+                    </div>
+                `);
+            }
+        }
+        return items.join('');
+    }
+
+    triggerCopyButtonFeedback(btnEl, copiedLabel = null, duration = 1500) {
+        if (!btnEl) return;
+        if (btnEl._copyFeedbackTimer) {
+            clearTimeout(btnEl._copyFeedbackTimer);
+            btnEl._copyFeedbackTimer = null;
+        }
+        if (btnEl.dataset.origCopyHtml === undefined) {
+            btnEl.dataset.origCopyHtml = btnEl.innerHTML;
+        }
+        btnEl.classList.add('is-copied-feedback');
+        if (copiedLabel !== null) {
+            btnEl.innerHTML = `<i class="fa-solid fa-check copy-feedback-icon"></i> <span>${this.escapeHtml(copiedLabel)}</span>`;
+        } else {
+            const icon = btnEl.querySelector('i');
+            if (icon) {
+                if (icon.dataset.origClass === undefined) {
+                    icon.dataset.origClass = icon.className;
+                }
+                icon.className = 'fa-solid fa-check copy-feedback-icon';
+            }
+        }
+        btnEl._copyFeedbackTimer = window.setTimeout(() => {
+            btnEl._copyFeedbackTimer = null;
+            btnEl.classList.remove('is-copied-feedback');
+            if (btnEl.dataset.origCopyHtml !== undefined) {
+                btnEl.innerHTML = btnEl.dataset.origCopyHtml;
+                delete btnEl.dataset.origCopyHtml;
+            }
+        }, duration);
     }
 
     async selectSubject(subjKey) {
@@ -1866,9 +1981,11 @@ class QuizApp {
         const combinedKey = this.getCombinedDeviceKey();
 
         // Tự động sao chép mã kết hợp (IP-Mã máy) vào clipboard
+        let copiedOk = false;
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(combinedKey);
+                copiedOk = true;
             } else {
                 const ta = document.createElement('textarea');
                 ta.value = combinedKey;
@@ -1876,12 +1993,15 @@ class QuizApp {
                 ta.style.opacity = '0';
                 document.body.appendChild(ta);
                 ta.select();
-                document.execCommand('copy');
+                copiedOk = document.execCommand('copy');
                 document.body.removeChild(ta);
             }
         } catch (e) {}
+        if (copiedOk) {
+            this.triggerCopyButtonFeedback(document.getElementById('btn-show-ip'), null, 1500);
+        }
 
-        this.showToastNotification(`📋 Đã sao chép: ${combinedKey}. Hãy gửi mã này cho Admin để được mở Lớp 5!`, 'success');
+        this.showToastNotification(`📋 Đã sao chép: ${combinedKey}. Hãy gửi mã này cho admin để được mở thêm quyền hạn !`, 'success');
 
         await this.showConfirmModal({
             title: 'Mã xác thực thiết bị của bạn',
@@ -1889,7 +2009,7 @@ class QuizApp {
             copyValue: combinedKey,
             copyLabel: 'Mã thiết bị kết hợp (IP & Mã máy)',
             copyOnConfirm: true,
-            message: `Mã thiết bị của bạn là:\n\n${combinedKey}\n\n(Đã tự động sao chép vào bộ nhớ tạm!).\n\n📌 Mã này kết hợp IP hiện tại (${ip}) và Mã máy cố định (${code}), giúp hệ thống nhận diện bạn ngay cả khi bạn đổi Wi-Fi hay dùng 4G.\nHãy gửi mã này cho Admin qua Zalo/Mess để được mở khóa Lớp 5 & AI!`,
+            message: `Mã thiết bị của bạn là:\n\n${combinedKey}\n\n(Đã tự động sao chép vào bộ nhớ tạm!).\n\n📌 Mã này kết hợp IP hiện tại (${ip}) và Mã máy cố định (${code}), giúp hệ thống nhận diện bạn ngay cả khi bạn đổi Wi-Fi hay dùng 4G.\nHãy gửi mã này cho admin để được mở thêm quyền hạn !`,
             confirmText: 'Sao chép lại mã',
             cancelText: 'Đóng',
             okIcon: 'fa-regular fa-copy',
@@ -4277,8 +4397,8 @@ Giải thích: Biên độ A = 5 cm.`;
         const podiumContainer = document.getElementById('leaderboard-podium-container');
         const tbody = document.getElementById('leaderboard-list-tbody');
 
-        if (podiumContainer) podiumContainer.innerHTML = '<div class="col-span-3 text-center py-4 text-slate-400">Đang tải bảng xếp hạng...</div>';
-        if (tbody) tbody.innerHTML = '';
+        if (podiumContainer) podiumContainer.innerHTML = this.renderSkeletonCards(3, 'podium');
+        if (tbody) tbody.innerHTML = this.renderSkeletonCards(3, 'leaderboard-row');
 
         let leaderboard = [];
         try {
@@ -4291,6 +4411,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (!Array.isArray(leaderboard) || leaderboard.length === 0) {
             if (podiumContainer) podiumContainer.innerHTML = '<div class="col-span-3 text-center py-6 text-slate-500 italic">Chưa có thí sinh nào hoàn thành bài thi môn này. Hãy là người đầu tiên!</div>';
+            if (tbody) tbody.innerHTML = '';
             return;
         }
 
@@ -4924,6 +5045,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const emptyPlaceholder = container.querySelector('.col-span-1.md\\:col-span-2');
         if (emptyPlaceholder) emptyPlaceholder.remove();
+        container.querySelectorAll('.obs-skeleton-card, .skeleton-shimmer').forEach((el) => el.remove());
 
         const existingCards = new Map();
         container.querySelectorAll('[data-student-id]').forEach(el => {
@@ -5109,6 +5231,9 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
         this.observerProgressLoading = true;
+        if (!container.querySelector('.obs-student-card') && !container.querySelector('.obs-skeleton-card') && !container.querySelector('.col-span-1.md\\:col-span-2')) {
+            container.innerHTML = this.renderSkeletonCards(3, 'observer');
+        }
 
         try {
             let rows = [];
@@ -5156,12 +5281,9 @@ Giải thích: Biên độ A = 5 cm.`;
                 else if (!p.isWaiting) doingCount++;
             });
 
-            const elDoing = document.getElementById('obs-stat-doing');
-            const elSubmitted = document.getElementById('obs-stat-submitted');
-            const elTotal = document.getElementById('obs-stat-total');
-            if (elDoing) elDoing.textContent = doingCount;
-            if (elSubmitted) elSubmitted.textContent = submittedCount;
-            if (elTotal) elTotal.textContent = parsed.length;
+            this.animateHomeCount('obs-stat-doing', doingCount);
+            this.animateHomeCount('obs-stat-submitted', submittedCount);
+            this.animateHomeCount('obs-stat-total', parsed.length);
 
             // Ưu tiên đưa học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ
             const sorted = [...parsed].sort((a, b) => {
@@ -6095,21 +6217,29 @@ Giải thích: Biên độ A = 5 cm.`;
     startStopwatch() {
         clearInterval(this.timerInterval);
         const timerDisplay = document.getElementById('timer-display');
+        if (timerDisplay) timerDisplay.classList.remove('timer-critical-pulse');
 
         if (this.isExamMode) {
             this.examSecondsRemaining = this.examMinutes * 60;
-            if (timerDisplay) timerDisplay.textContent = `${String(this.examMinutes).padStart(2, '0')}:00`;
+            if (timerDisplay) {
+                timerDisplay.textContent = `${String(this.examMinutes).padStart(2, '0')}:00`;
+                timerDisplay.classList.toggle('timer-critical-pulse', this.examSecondsRemaining <= 10 && this.examSecondsRemaining > 0);
+            }
             this.timerInterval = setInterval(() => {
                 this.examSecondsRemaining--;
                 if (this.examSecondsRemaining <= 0) {
                     clearInterval(this.timerInterval);
+                    if (timerDisplay) timerDisplay.classList.remove('timer-critical-pulse');
                     this.showAlertModal("⏰ ĐÃ HẾT GIỜ LÀM BÀI! Hệ thống đang tự động nộp bài của bạn.");
                     this.finishQuiz('time-expired');
                     return;
                 }
                 const m = Math.floor(this.examSecondsRemaining / 60);
                 const s = this.examSecondsRemaining % 60;
-                if (timerDisplay) timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                if (timerDisplay) {
+                    timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                    timerDisplay.classList.toggle('timer-critical-pulse', this.examSecondsRemaining <= 10 && this.examSecondsRemaining > 0);
+                }
             }, 1000);
         } else {
             this.secondsElapsed = 0;
@@ -6190,6 +6320,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
     stopStopwatch() {
         clearInterval(this.timerInterval);
+        document.getElementById('timer-display')?.classList.remove('timer-critical-pulse');
         this.cancelAwayAutoSubmitTimer('stop stopwatch');
         this.cancelIdleAutoSubmitTimer('stop stopwatch');
     }
@@ -6899,6 +7030,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!ok) return;
         this.cancelAwayAutoSubmitTimer('quiz reset');
         this.cancelIdleAutoSubmitTimer('quiz reset');
+        document.getElementById('timer-display')?.classList.remove('timer-critical-pulse');
         this.quizAttemptId = 'attempt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
         this.currentLoginId = null;
         try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
@@ -8296,15 +8428,14 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         }
     }
 
-    copyAiText(btnEl) {
-        const body = btnEl.closest('.ai-explanation-box')?.querySelector('.ai-content-body');
+    async copyAiText(btnEl) {
+        const body = btnEl?.closest('.ai-explanation-box')?.querySelector('.ai-content-body');
         if (!body) return;
         const text = body.innerText;
-        navigator.clipboard.writeText(text).then(() => {
-            const original = btnEl.innerHTML;
-            btnEl.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Đã chép!';
-            setTimeout(() => { btnEl.innerHTML = original; }, 2000);
-        });
+        const copied = await this.copyTextToClipboard(text);
+        if (copied) {
+            this.triggerCopyButtonFeedback(btnEl, 'Đã chép!', 1500);
+        }
     }
 
     /* ============================================================== */

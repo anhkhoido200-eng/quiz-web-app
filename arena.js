@@ -257,6 +257,9 @@
             this.tickTimer = null;
             clearInterval(this.pollTimer);
             this.pollTimer = null;
+            this._lastAnimatedQuestionIndex = undefined;
+            document.getElementById('arena-match-timer')?.classList.remove('timer-critical-pulse');
+            document.getElementById('arena-q-timer')?.classList.remove('timer-critical-pulse');
             if (this._onOnline) {
                 window.removeEventListener('online', this._onOnline);
                 this._onOnline = null;
@@ -499,6 +502,9 @@
             }
             const q = this.questions[this.currentIndex];
             const totalQ = this.questions.length;
+            const shouldAnimateQuestion = this._lastAnimatedQuestionIndex !== undefined
+                && this._lastAnimatedQuestionIndex !== this.currentIndex;
+            this._lastAnimatedQuestionIndex = this.currentIndex;
             const safeImgHtml = isSafeImageUrl(q.image_url)
                 ? `<div class="my-2"><img src="${esc(q.image_url)}" alt="Hình minh họa câu hỏi" class="max-h-56 w-auto mx-auto rounded-xl border border-slate-700 object-contain"></div>`
                 : '';
@@ -550,61 +556,90 @@
                 `;
             }
 
-            stage.innerHTML = `
-                <div id="arena-exam-view" class="space-y-4 select-none">
-                    <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                        <span class="text-xs font-bold text-indigo-300">Câu ${this.currentIndex + 1} / ${totalQ}</span>
-                        <div class="flex items-center gap-3 text-xs font-mono font-bold">
-                            <span class="text-emerald-400">Điểm: <b id="arena-live-score">${this.attempt?.score || 0}</b></span>
-                            <span class="text-rose-400">Vi phạm: <b id="arena-live-violations">${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}</b></span>
-                            <span class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                <i class="fa-regular fa-clock mr-1"></i><span id="arena-match-timer">--:--</span>
-                            </span>
-                        </div>
+            const questionCardHtml = `
+                <div id="arena-question-card" class="${shouldAnimateQuestion ? 'arena-question-enter ' : ''}relative overflow-hidden p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div aria-hidden="true" class="pointer-events-none select-none absolute inset-0 flex flex-wrap items-center justify-center gap-8 -rotate-12 opacity-[0.06] text-[11px] font-mono font-bold text-slate-200 overflow-hidden">
+                        ${new Array(8).fill(0).map(() => `<span>${esc(this.attempt?.player_name || '')} • ${esc(this.room?.room_code || '')}</span>`).join('')}
                     </div>
-                    ${this.room?.per_question_sec ? `
-                        <div class="space-y-1">
-                            <div class="flex justify-between text-[11px] text-slate-400">
-                                <span>Thời gian câu hiện tại</span>
-                                <b id="arena-q-timer" class="text-cyan-300">${this.room.per_question_sec}s</b>
-                            </div>
-                            <div class="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
-                                <div id="arena-q-bar" class="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-200" style="width:100%"></div>
-                            </div>
-                        </div>
-                    ` : ''}
-                    <div id="arena-warning-banner" class="hidden p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold"></div>
-                    ${needFsPrompt ? `
-                        <div id="arena-fs-prompt" class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-between gap-2 text-xs text-amber-200">
-                            <span><i class="fa-solid fa-expand mr-1.5"></i> Phòng thi yêu cầu chế độ toàn màn hình.</span>
-                            <button type="button" id="arena-fs-btn" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer shrink-0">Bật toàn màn hình</button>
-                        </div>
-                    ` : ''}
-                    <div class="relative overflow-hidden p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
-                        <div aria-hidden="true" class="pointer-events-none select-none absolute inset-0 flex flex-wrap items-center justify-center gap-8 -rotate-12 opacity-[0.06] text-[11px] font-mono font-bold text-slate-200 overflow-hidden">
-                            ${new Array(8).fill(0).map(() => `<span>${esc(this.attempt?.player_name || '')} • ${esc(this.room?.room_code || '')}</span>`).join('')}
-                        </div>
-                        <div class="relative z-10 text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
-                        <div class="relative z-10">${safeImgHtml}</div>
-                        <div class="relative z-10">${answerAreaHtml}</div>
-                    </div>
+                    <div class="relative z-10 text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
+                    <div class="relative z-10">${safeImgHtml}</div>
+                    <div class="relative z-10">${answerAreaHtml}</div>
                 </div>
             `;
 
-            const examEl = document.getElementById('arena-exam-view');
-            document.getElementById('arena-fs-btn')?.addEventListener('click', () => {
-                document.documentElement.requestFullscreen?.().then(() => {
-                    document.getElementById('arena-fs-prompt')?.classList.add('hidden');
-                }).catch(() => {});
-            });
-            if (examEl) {
-                renderMathSafe(examEl);
-                ['copy', 'cut', 'paste', 'contextmenu'].forEach((evt) => {
-                    examEl.addEventListener(evt, (e) => {
-                        if (e.target.id === 'arena-short-input' && evt === 'paste') return;
-                        e.preventDefault();
-                    });
+            const existingExamEl = document.getElementById('arena-exam-view');
+            const existingCardEl = document.getElementById('arena-question-card');
+            if (existingExamEl && existingCardEl && shouldAnimateQuestion) {
+                const progressEl = document.getElementById('arena-q-progress-text');
+                if (progressEl) progressEl.textContent = `Câu ${this.currentIndex + 1} / ${totalQ}`;
+                const scoreEl = document.getElementById('arena-live-score');
+                if (scoreEl) scoreEl.textContent = String(this.attempt?.score || 0);
+                const violEl = document.getElementById('arena-live-violations');
+                if (violEl) violEl.textContent = `${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}`;
+                if (this.room?.per_question_sec) {
+                    const qTimerEl = document.getElementById('arena-q-timer');
+                    const qBarEl = document.getElementById('arena-q-bar');
+                    if (qTimerEl) {
+                        qTimerEl.textContent = `${this.room.per_question_sec}s`;
+                        qTimerEl.classList.remove('timer-critical-pulse');
+                    }
+                    if (qBarEl) qBarEl.style.width = '100%';
+                }
+                existingCardEl.outerHTML = questionCardHtml;
+            } else {
+                stage.innerHTML = `
+                    <div id="arena-exam-view" class="space-y-4 select-none">
+                        <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                            <span id="arena-q-progress-text" class="text-xs font-bold text-indigo-300">Câu ${this.currentIndex + 1} / ${totalQ}</span>
+                            <div class="flex items-center gap-3 text-xs font-mono font-bold">
+                                <span class="text-emerald-400">Điểm: <b id="arena-live-score">${this.attempt?.score || 0}</b></span>
+                                <span class="text-rose-400">Vi phạm: <b id="arena-live-violations">${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}</b></span>
+                                <span class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                    <i class="fa-regular fa-clock mr-1"></i><span id="arena-match-timer">--:--</span>
+                                </span>
+                            </div>
+                        </div>
+                        ${this.room?.per_question_sec ? `
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-[11px] text-slate-400">
+                                    <span>Thời gian câu hiện tại</span>
+                                    <b id="arena-q-timer" class="text-cyan-300">${this.room.per_question_sec}s</b>
+                                </div>
+                                <div class="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                                    <div id="arena-q-bar" class="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-200" style="width:100%"></div>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div id="arena-warning-banner" class="hidden p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold"></div>
+                        ${needFsPrompt ? `
+                            <div id="arena-fs-prompt" class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-between gap-2 text-xs text-amber-200">
+                                <span><i class="fa-solid fa-expand mr-1.5"></i> Phòng thi yêu cầu chế độ toàn màn hình.</span>
+                                <button type="button" id="arena-fs-btn" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer shrink-0">Bật toàn màn hình</button>
+                            </div>
+                        ` : ''}
+                        ${questionCardHtml}
+                    </div>
+                `;
+
+                const examEl = document.getElementById('arena-exam-view');
+                document.getElementById('arena-fs-btn')?.addEventListener('click', () => {
+                    document.documentElement.requestFullscreen?.().then(() => {
+                        document.getElementById('arena-fs-prompt')?.classList.add('hidden');
+                    }).catch(() => {});
                 });
+                if (examEl) {
+                    ['copy', 'cut', 'paste', 'contextmenu'].forEach((evt) => {
+                        examEl.addEventListener(evt, (e) => {
+                            if (e.target.id === 'arena-short-input' && evt === 'paste') return;
+                            e.preventDefault();
+                        });
+                    });
+                }
+            }
+
+            const activeCardEl = document.getElementById('arena-question-card');
+            if (activeCardEl) {
+                renderMathSafe(activeCardEl);
             }
 
             document.querySelectorAll('.arena-opt-btn').forEach((btn) => {
@@ -680,8 +715,12 @@
                 if (matchEndMs) {
                     const remainSec = Math.max(0, (matchEndMs - nowMs) / 1000);
                     const el = document.getElementById('arena-match-timer');
-                    if (el) el.textContent = fmtClock(remainSec);
+                    if (el) {
+                        el.textContent = fmtClock(remainSec);
+                        el.classList.toggle('timer-critical-pulse', remainSec <= 10 && remainSec > 0);
+                    }
                     if (remainSec <= 0) {
+                        el?.classList.remove('timer-critical-pulse');
                         clearInterval(this.tickTimer);
                         this.tickTimer = null;
                         this.finishAttempt('TIME_UP');
@@ -693,9 +732,13 @@
                     const qRemain = Math.max(0, perQSec - elapsedSec);
                     const qEl = document.getElementById('arena-q-timer');
                     const qBar = document.getElementById('arena-q-bar');
-                    if (qEl) qEl.textContent = `${Math.ceil(qRemain)}s`;
+                    if (qEl) {
+                        qEl.textContent = `${Math.ceil(qRemain)}s`;
+                        qEl.classList.toggle('timer-critical-pulse', qRemain <= 10 && qRemain > 0);
+                    }
                     if (qBar) qBar.style.width = `${Math.max(0, Math.min(100, (qRemain / perQSec) * 100))}%`;
                     if (qRemain <= 0) {
+                        qEl?.classList.remove('timer-critical-pulse');
                         clearInterval(this.tickTimer);
                         this.tickTimer = null;
                         this.submitAnswer(questionId, null, '', null);
@@ -990,6 +1033,9 @@
             this.unbindAntiCheat();
             clearInterval(this.tickTimer);
             this.tickTimer = null;
+            this._lastAnimatedQuestionIndex = undefined;
+            document.getElementById('arena-match-timer')?.classList.remove('timer-critical-pulse');
+            document.getElementById('arena-q-timer')?.classList.remove('timer-critical-pulse');
             await this.flushPendingAnswers();
             const client = getClient();
             if (!navigator.onLine || !client) {
@@ -1052,6 +1098,9 @@
             this.unbindAntiCheat();
             clearInterval(this.tickTimer);
             this.tickTimer = null;
+            this._lastAnimatedQuestionIndex = undefined;
+            document.getElementById('arena-match-timer')?.classList.remove('timer-critical-pulse');
+            document.getElementById('arena-q-timer')?.classList.remove('timer-critical-pulse');
             this.updateLockdownUI(false);
 
             const stage = document.getElementById('arena-stage');
@@ -1092,7 +1141,9 @@
                                 </tr>
                             </thead>
                             <tbody id="arena-lb-rows">
-                                <tr><td colspan="6" class="py-4 text-center text-slate-400">Đang tải bảng xếp hạng...</td></tr>
+                                <tr><td colspan="6" class="py-2"><div class="skeleton-shimmer h-8 w-full rounded-lg"></div></td></tr>
+                                <tr><td colspan="6" class="py-2"><div class="skeleton-shimmer h-8 w-full rounded-lg"></div></td></tr>
+                                <tr><td colspan="6" class="py-2"><div class="skeleton-shimmer h-8 w-full rounded-lg"></div></td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1280,14 +1331,19 @@
                     try {
                         if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
                         await navigator.clipboard.writeText(url.toString());
+                        btn.classList.add('is-copied-feedback');
                         btn.innerHTML = '<i class="fa-solid fa-check"></i> Đã chép';
                     } catch (e) {
                         window.prompt('Sao chép liên kết phòng thi đấu:', url.toString());
+                        btn.classList.remove('is-copied-feedback');
                         btn.innerHTML = '<i class="fa-solid fa-link"></i> Link';
                     }
                     setTimeout(() => {
-                        if (btn.isConnected) btn.innerHTML = '<i class="fa-solid fa-link"></i> Link';
-                    }, 2000);
+                        if (btn.isConnected) {
+                            btn.classList.remove('is-copied-feedback');
+                            btn.innerHTML = '<i class="fa-solid fa-link"></i> Link';
+                        }
+                    }, 1500);
                 });
             });
             listEl.querySelectorAll('[data-arena-end]').forEach((btn) => {

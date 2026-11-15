@@ -228,6 +228,94 @@
             return true;
         }
     };
+    const animateAdminCount = (target, value, duration = 400) => {
+        const element = typeof target === 'string' ? $(target) : target;
+        if (!element) return;
+        const nextValue = Math.max(0, Math.round(Number(value) || 0));
+        const rawPrev = element.dataset.prevValue !== undefined
+            ? Number(element.dataset.prevValue)
+            : Number(String(element.textContent || '').replace(/[^\d.-]/g, ''));
+        const startValue = Number.isFinite(rawPrev) ? Math.max(0, Math.round(rawPrev)) : 0;
+        element.dataset.prevValue = String(nextValue);
+
+        if (element._countRafId) {
+            cancelAnimationFrame(element._countRafId);
+            element._countRafId = null;
+        }
+
+        const prefersReduced = typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced || startValue === nextValue || duration <= 0) {
+            element.textContent = String(nextValue);
+            return;
+        }
+
+        const startTime = performance.now();
+        const delta = nextValue - startValue;
+        const step = (now) => {
+            const progress = Math.min(1, (now - startTime) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.textContent = String(Math.round(startValue + delta * eased));
+            if (progress < 1) {
+                element._countRafId = requestAnimationFrame(step);
+            } else {
+                element._countRafId = null;
+                element.textContent = String(nextValue);
+            }
+        };
+        element._countRafId = requestAnimationFrame(step);
+    };
+    const buildAdminSkeletonHtml = (type = 'progress', count = 3) => {
+        if (type === 'leaderboard') {
+            return Array.from({ length: count }, () => `
+                <div class="skeleton-shimmer admin-skeleton-row" aria-hidden="true"></div>
+            `).join('');
+        }
+        return Array.from({ length: count }, () => `
+            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div>
+                        <div style="display:grid;gap:6px;">
+                            <div class="skeleton-block" style="width:120px;height:14px;"></div>
+                            <div class="skeleton-block" style="width:76px;height:10px;"></div>
+                        </div>
+                    </div>
+                    <div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div>
+                </div>
+                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                <div style="display:flex;justify-content:space-between;">
+                    <div class="skeleton-block" style="width:110px;height:10px;"></div>
+                    <div class="skeleton-block" style="width:80px;height:10px;"></div>
+                </div>
+            </div>
+        `).join('');
+    };
+    const triggerAdminCopyFeedback = (btnEl, duration = 1500) => {
+        if (!btnEl) return;
+        if (btnEl._copyFeedbackTimer) {
+            clearTimeout(btnEl._copyFeedbackTimer);
+            btnEl._copyFeedbackTimer = null;
+        }
+        if (btnEl.dataset.origCopyHtml === undefined) {
+            btnEl.dataset.origCopyHtml = btnEl.innerHTML;
+        }
+        btnEl.classList.add('is-copied-feedback');
+        const icon = btnEl.querySelector('i');
+        if (icon) {
+            icon.className = 'fa-solid fa-check';
+        } else {
+            btnEl.innerHTML = `<i class="fa-solid fa-check"></i> ${btnEl.textContent.trim()}`;
+        }
+        btnEl._copyFeedbackTimer = window.setTimeout(() => {
+            btnEl._copyFeedbackTimer = null;
+            btnEl.classList.remove('is-copied-feedback');
+            if (btnEl.dataset.origCopyHtml !== undefined) {
+                btnEl.innerHTML = btnEl.dataset.origCopyHtml;
+                delete btnEl.dataset.origCopyHtml;
+            }
+        }, duration);
+    };
     const confirmDialog = (options = {}) => {
         const opts = typeof options === 'string' ? { message: options } : (options || {});
         const msg = String(opts.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?');
@@ -459,12 +547,11 @@
             const btn = $('copy-admin-ip');
             if (btn) {
                 btn.classList.add('is-copied');
-                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                triggerAdminCopyFeedback(btn, 1500);
                 clearTimeout(copyAdminIp.timer);
                 copyAdminIp.timer = setTimeout(() => {
                     btn.classList.remove('is-copied');
-                    btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
-                }, 1800);
+                }, 1500);
             }
             notify(`Đã sao chép IP đầy đủ (${fullIp}) vào clipboard.`);
         } catch (error) {
@@ -3229,9 +3316,10 @@
         return `${loc.origin}${cleanBase}index.html?token=${encodeURIComponent(token)}`;
     }
 
-    async function copyActivationLink(token, name = '') {
+    async function copyActivationLink(token, name = '', triggerBtn = null) {
         const link = getStudentActivationLink(token);
-        await copyToClipboard(link);
+        const copied = await copyToClipboard(link);
+        if (copied && triggerBtn) triggerAdminCopyFeedback(triggerBtn, 1500);
         notify(`Đã sao chép link kích hoạt${name ? ' cho ' + name : ''} vào bộ nhớ tạm!`);
     }
 
@@ -5339,6 +5427,12 @@
             return;
         }
         state.progressLoading = true;
+        const hasExistingCards = Boolean(container.querySelector('.grade5-live-card'));
+        const existingEmpty = container.querySelector('[data-progress-empty]');
+        const isShowingEmpty = Boolean(existingEmpty && !existingEmpty.hidden);
+        if (!hasExistingCards && !isShowingEmpty && !container.querySelector('.admin-skeleton-card')) {
+            container.innerHTML = buildAdminSkeletonHtml('progress', 3);
+        }
 
         try {
             let logins = [];
@@ -5395,7 +5489,7 @@
             const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
             renderProgressSubjectInfo(subjectList);
             if (loadError && gradeList.length === 0) {
-                container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+                container.querySelectorAll('.grade5-live-card, .admin-skeleton-card').forEach((card) => card.remove());
                 setProgressEmptyState(container, true, 'nào');
                 const title = container.querySelector('[data-progress-empty] h3');
                 if (title) title.textContent = 'Không thể tải dữ liệu';
@@ -5415,13 +5509,15 @@
                 else doingCount++;
             });
 
-            $('g5-stat-doing') && ($('g5-stat-doing').textContent = doingCount);
-            $('g5-stat-submitted') && ($('g5-stat-submitted').textContent = submittedCount);
-            $('g5-stat-waiting') && ($('g5-stat-waiting').textContent = waitingCount);
-            $('g5-stat-total') && ($('g5-stat-total').textContent = subjectList.length);
+            animateAdminCount('g5-stat-doing', doingCount);
+            animateAdminCount('g5-stat-submitted', submittedCount);
+            animateAdminCount('g5-stat-waiting', waitingCount);
+            animateAdminCount('g5-stat-total', subjectList.length);
             $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || subjectList.length));
 
             renderQuickObservers();
+
+            container.querySelectorAll('.admin-skeleton-card').forEach((card) => card.remove());
 
             if (parsedList.length === 0) {
                 const filterLabel = filter === 'all' ? '' : `Lớp ${filter}`;
@@ -5907,10 +6003,14 @@
             <details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>
         `;
 
-        $('btn-copy-parent-comment')?.addEventListener('click', async () => {
+        $('btn-copy-parent-comment')?.addEventListener('click', async (event) => {
+            const btn = event.currentTarget || $('btn-copy-parent-comment');
             const text = buildParentProgressComment(p);
-            await copyToClipboard(text);
-            notify('📋 Đã sao chép nhận xét học tập để gửi Zalo/Phụ huynh!');
+            const copied = await copyToClipboard(text);
+            if (copied) {
+                triggerAdminCopyFeedback(btn, 1500);
+                notify('📋 Đã sao chép nhận xét học tập để gửi Zalo/Phụ huynh!');
+            }
         });
 
         body.querySelectorAll('[data-detail-filter]').forEach((btn) => {
@@ -6244,6 +6344,9 @@
         state.reportLoading = true;
         setActionBusy('refresh-score-report', true, 'Đang tải');
         setReportState('loading');
+        if ($('leaderboard-content') && !$('leaderboard-content').querySelector('.leaderboard-table')) {
+            $('leaderboard-content').innerHTML = buildAdminSkeletonHtml('leaderboard', 4);
+        }
         try {
             state.reportRows = await fetchReportRows();
             populateLeaderboardSubjects();
@@ -6267,7 +6370,10 @@
         }
     }
     async function loadLeaderboard() {
-        if (!state.reportRows) await loadScoreReport();
+        if (!state.reportRows) {
+            if ($('leaderboard-content')) $('leaderboard-content').innerHTML = buildAdminSkeletonHtml('leaderboard', 4);
+            await loadScoreReport();
+        }
         if (!state.reportRows) return;
         setActionBusy('load-leaderboard', true, 'Đang tải');
         $('leaderboard-loading')?.classList.remove('hidden');
@@ -6634,9 +6740,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
             if (success) {
                 notify('Đã sao chép Prompt AI trích xuất đề thi vào bộ nhớ tạm!');
                 if (btn) {
-                    const prevHtml = btn.innerHTML;
-                    btn.innerHTML = '<i class="fa-solid fa-check" style="color: var(--green);"></i> Đã sao chép!';
-                    setTimeout(() => { btn.innerHTML = prevHtml; }, 2000);
+                    triggerAdminCopyFeedback(btn, 1500);
                 }
             } else {
                 notify('Không thể tự động sao chép prompt, vui lòng thử lại.', true);
@@ -6753,22 +6857,15 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
           $('student-progress-modal-close')?.addEventListener('click', closeStudentProgressDetail);
           $('student-progress-modal')?.addEventListener('click', (event) => { if (event.target.id === 'student-progress-modal') closeStudentProgressDetail(); });
           window.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeStudentProgressDetail(); });
-         $('copy-parent-link-head')?.addEventListener('click', () => {
+         $('copy-parent-link-head')?.addEventListener('click', async (event) => {
+             const btn = event.currentTarget || $('copy-parent-link-head');
              const parentItem = (state.tokens || []).find(t => t.role === 'parent' || t.role === 'observer_grade5' || t.role === 'observer');
              const token = parentItem ? parentItem.token : '';
              const link = buildAppUrl(token ? `?token=${encodeURIComponent(token)}&view=progress` : '?view=progress');
-             try {
-                 if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                     navigator.clipboard.writeText(link).then(() => {
-                         notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
-                     }).catch(() => {
-                         prompt('Sao chép đường dẫn gửi người theo dõi:', link);
-                     });
-                 } else {
-                     prompt('Sao chép đường dẫn gửi người theo dõi:', link);
-                 }
-             } catch (e) {
-                 prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+             const copied = await copyToClipboard(link);
+             if (copied) {
+                 triggerAdminCopyFeedback(btn, 1500);
+                 notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
              }
          });
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
@@ -6787,29 +6884,27 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              if (copyAdminLinkBtn) {
                  const token = copyAdminLinkBtn.dataset.copyAdminLink;
                  const link = buildAppUrl(`admin.html?token=${encodeURIComponent(token)}`);
-                 try {
-                     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                         navigator.clipboard.writeText(link).then(() => {
-                             notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
-                         }).catch(() => {
-                             prompt('Sao chép đường dẫn Admin:', link);
-                         });
-                     } else {
-                         prompt('Sao chép đường dẫn Admin:', link);
+                 copyToClipboard(link).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyAdminLinkBtn, 1500);
+                         notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
                      }
-                 } catch (e) {
-                     prompt('Sao chép đường dẫn Admin:', link);
-                 }
+                 });
                  return;
              }
              const copyLinkBtn = event.target.closest('[data-copy-token-link]');
              if (copyLinkBtn) {
-                 copyActivationLink(copyLinkBtn.dataset.copyTokenLink, copyLinkBtn.dataset.tokenName);
+                 copyActivationLink(copyLinkBtn.dataset.copyTokenLink, copyLinkBtn.dataset.tokenName, copyLinkBtn);
                  return;
              }
              const copyCodeBtn = event.target.closest('[data-copy-token-code]');
              if (copyCodeBtn) {
-                 copyToClipboard(copyCodeBtn.dataset.copyTokenCode).then(() => notify('Đã copy mã token ' + copyCodeBtn.dataset.copyTokenCode));
+                 copyToClipboard(copyCodeBtn.dataset.copyTokenCode).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyCodeBtn, 1500);
+                         notify('Đã copy mã token ' + copyCodeBtn.dataset.copyTokenCode);
+                     }
+                 });
                  return;
              }
              const toggleAiBtn = event.target.closest('[data-toggle-ai]');
@@ -6844,19 +6939,12 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                      ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
                      : window.location.origin;
                  const link = `${origin}/?token=${encodeURIComponent(token)}&view=progress`;
-                 try {
-                     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                         navigator.clipboard.writeText(link).then(() => {
-                             notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
-                         }).catch(() => {
-                             prompt('Sao chép đường dẫn gửi người theo dõi:', link);
-                         });
-                     } else {
-                         prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+                 copyToClipboard(link).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyParentLinkBtn, 1500);
+                         notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
                      }
-                 } catch (e) {
-                     prompt('Sao chép đường dẫn gửi người theo dõi:', link);
-                 }
+                 });
                  return;
              }
              const revokeParentBtn = event.target.closest('[data-revoke-parent]');

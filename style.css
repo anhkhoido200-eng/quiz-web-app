@@ -2272,13 +2272,18 @@ body.workspace-entering {
     .option-selected-correct,
     .option-selected-wrong,
     .tf-choice-button.is-selected-wrong,
-    .ui-accordion-wrap {
+    .ui-accordion-wrap,
+    .arena-question-enter,
+    .is-copied-feedback,
+    .is-copied-feedback i,
+    .timer-critical-pulse {
         animation: none !important;
         transition: none !important;
     }
 
     .option-selected-correct::after,
-    .tf-choice-button.is-selected-correct::after {
+    .tf-choice-button.is-selected-correct::after,
+    .skeleton-shimmer::after {
         display: none !important;
         animation: none !important;
     }
@@ -2286,6 +2291,139 @@ body.workspace-entering {
     .live-dot-pulse::after {
         animation: none;
     }
+}
+
+/* ================================================================
+   NÂNG CẤP UI/UX POLISH (4 HIỆU ỨNG ĐỒNG BỘ 60FPS)
+   ================================================================ */
+
+/* 2. Chuyển cảnh từng câu mượt mà trong Phòng Thi Đấu (Arena) */
+@keyframes arenaQuestionEnter {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.arena-question-enter {
+    animation: arenaQuestionEnter 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+}
+
+/* 3. Skeleton Loading Shimmer (Dark Mode & Light Mode) */
+@keyframes skeletonShimmerSweep {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.08) 50%,
+        transparent 100%
+    );
+    animation: skeletonShimmerSweep 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    will-change: transform;
+}
+
+.skeleton-block {
+    border-radius: 0.5rem;
+    background: rgba(148, 163, 184, 0.16);
+}
+
+body.light-theme .skeleton-shimmer {
+    background: rgba(241, 245, 249, 0.92);
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .skeleton-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.72) 50%,
+        transparent 100%
+    );
+}
+
+body.light-theme .skeleton-block {
+    background: rgba(148, 163, 184, 0.24);
+}
+
+/* 4A. Phản hồi nút Sao chép (Copy Morphing) */
+.is-copied-feedback {
+    border-color: rgba(16, 185, 129, 0.6) !important;
+    background-color: rgba(16, 185, 129, 0.16) !important;
+    color: #34d399 !important;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease !important;
+}
+
+.is-copied-feedback i,
+.is-copied-feedback .copy-feedback-icon {
+    display: inline-block;
+    transform: scale(1.15);
+    color: #34d399 !important;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.light-theme .is-copied-feedback {
+    color: #059669 !important;
+    background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+body.light-theme .is-copied-feedback i,
+body.light-theme .is-copied-feedback .copy-feedback-icon {
+    color: #059669 !important;
+}
+
+/* 4B. Cảnh báo 10 giây cuối giờ (Timer Critical Pulse) */
+@keyframes timerCriticalPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+        border-color: rgba(239, 68, 68, 0.85);
+    }
+    50% {
+        transform: scale(1.03);
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+        border-color: rgba(245, 158, 11, 0.95);
+    }
+}
+
+.timer-critical-pulse {
+    display: inline-flex;
+    align-items: center;
+    color: #f87171 !important;
+    border: 1px solid rgba(239, 68, 68, 0.75) !important;
+    background: rgba(239, 68, 68, 0.16) !important;
+    border-radius: 0.55rem;
+    padding: 0.08rem 0.42rem;
+    animation: timerCriticalPulse 1s infinite ease-in-out !important;
+    will-change: transform, box-shadow;
+}
+
+div:has(> .timer-critical-pulse),
+span:has(> .timer-critical-pulse) {
+    border-color: rgba(239, 68, 68, 0.75) !important;
+    background: rgba(239, 68, 68, 0.12) !important;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 /* Chống iOS Safari tự động zoom & lệch khung khi bấm ô nhập (trả lời ngắn, tên, AI) */
