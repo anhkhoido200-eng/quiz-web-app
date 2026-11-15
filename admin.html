@@ -565,7 +565,11 @@
                             <h1>Môn học</h1>
                             <p>Tạo môn học và gán môn vào đúng khối bằng hai lựa chọn cố định.</p>
                         </div>
-                        <button id="new-subject-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Thêm môn học</button>
+                        <div class="heading-actions">
+                            <button id="new-folder-button" class="button button-secondary" type="button"><i class="fa-solid fa-folder-plus" style="color:var(--amber,#f59e0b);"></i> Thêm thư mục</button>
+                            <button id="new-subject-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Thêm môn / đề</button>
+                            <button id="hub-add-question-button" class="button button-secondary" type="button"><i class="fa-solid fa-circle-plus"></i> Thêm câu hỏi</button>
+                        </div>
                     </div>
                     <section class="panel">
                         <div class="panel-title">
@@ -668,6 +672,37 @@
             <button id="subject-dialog-close" class="icon-button" type="button" aria-label="Đóng cửa sổ môn học"><i class="fa-solid fa-xmark"></i></button>
         </header>
         <div id="subject-dialog-content"></div>
+    </dialog>
+    <dialog id="folder-dialog" class="subject-dialog" aria-labelledby="folder-dialog-title">
+        <header class="subject-dialog-header">
+            <div>
+                <p class="eyebrow">FOLDER ORGANIZER</p>
+                <h2 id="folder-dialog-title">Tạo thư mục mới</h2>
+                <p class="muted-copy">Tạo thư mục riêng theo khối lớp và gom các đề vào chung một chỗ cho gọn.</p>
+            </div>
+            <button id="folder-dialog-close" class="icon-button" type="button" aria-label="Đóng cửa sổ thư mục"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <form id="folder-form" style="padding:0 4px 4px;display:flex;flex-direction:column;gap:14px;">
+            <label>Tên thư mục
+                <input id="folder-name-input" required placeholder="VD: Môn Toán, Môn Tiếng Việt, Ôn thi Giữa Kì">
+            </label>
+            <div>
+                <label class="grade-picker-label">Khối lớp <span>Chọn khối lớp cho thư mục</span></label>
+                <div id="folder-grade-picker" class="subject-grade-picker" role="group" aria-label="Chọn khối lớp thư mục">
+                    <button type="button" class="subject-grade-button is-selected" data-folder-grade="11"><i class="fa-solid fa-graduation-cap"></i> Lớp 11</button>
+                    <button type="button" class="subject-grade-button" data-folder-grade="5"><i class="fa-solid fa-seedling"></i> Lớp 5</button>
+                </div>
+                <input type="hidden" id="folder-grade-input" value="11">
+            </div>
+            <div>
+                <label class="grade-picker-label">Gom đề / môn có sẵn vào thư mục này <span class="muted-copy">(tùy chọn)</span></label>
+                <div id="folder-subjects-checklist" style="max-height:190px;overflow-y:auto;display:grid;gap:8px;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);"></div>
+            </div>
+            <div class="form-actions">
+                <button id="cancel-folder-dialog" class="button button-secondary" type="button">Hủy</button>
+                <button class="button button-primary" type="submit"><i class="fa-solid fa-folder-plus"></i> Lưu thư mục</button>
+            </div>
+        </form>
     </dialog>
     <div id="print-modal" class="modal-backdrop hidden">
         <section class="modal-card print-modal" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">

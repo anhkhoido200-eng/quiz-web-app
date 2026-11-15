@@ -12,7 +12,8 @@
         gemini: '00000000-0000-0000-0000-000000000005',
         aiIps: '00000000-0000-0000-0000-000000000006',
         trash: '00000000-0000-0000-0000-000000000007',
-        tokens: '00000000-0000-0000-0000-000000000008'
+        tokens: '00000000-0000-0000-0000-000000000008',
+        folders: '00000000-0000-0000-0000-000000000009'
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const state = {
@@ -23,7 +24,12 @@
         adminConfig: { masterIp: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
         tokens: [], reportRows: null, reportAllRows: [], reportLoading: false, reportLeaderboardPage: 1,
         progressFilter: 'all', progressSubject: 'all', progressSearch: '', progressSort: 'recent', progressRecords: [], progressRawLogins: [], progressLoading: false, progressRefreshQueued: false,
-        subjects: [], maintenance: { isActive: false, message: '' }, bound: false,
+        subjects: [], subjectFolders: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_subject_folders') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })(), maintenance: { isActive: false, message: '' }, bound: false,
         subjectDialogOpener: null, subjectEditingKey: null,
         importIntegrity: { valid: true, errors: [] },
         selectedQuestionIds: new Set(),
@@ -1624,8 +1630,78 @@
         }
     }
 
-    async function restoreQuestion(id) {
-        const item = state.trashQuestions.find((q) => String(q.id) === String(id));
+    function buildRestoreRow(item, targetId) {
+        const rawCorrect = Number(item.correct ?? item.answer ?? 0);
+        const safeCorrect = Number.isFinite(rawCorrect) ? Math.floor(rawCorrect) : 0;
+        const rawAnswer = Number(item.answer ?? item.correct ?? safeCorrect);
+        const safeAnswer = Number.isFinite(rawAnswer) ? Math.floor(rawAnswer) : safeCorrect;
+        const subjectKey = item.subject_key || item.subjectKey || 'history';
+        const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(subjectKey));
+
+        return {
+            id: targetId,
+            subject_key: subjectKey,
+            grade: String(item.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || '11'),
+            category: item.category || 'Ôn tập',
+            q_type: item.q_type || item.qType || 'mcq',
+            question: storageText(item.question ?? ''),
+            options: Array.isArray(item.options) ? item.options.map((opt) => storageText(opt ?? '')) : [],
+            statements: Array.isArray(item.statements)
+                ? item.statements.filter((s) => s && typeof s === 'object').map((s, index) => ({
+                    key: s.key || 'abcd'[index] || String(index + 1),
+                    label: s.label || s.key || 'abcd'[index] || String(index + 1),
+                    text: storageText(s.text ?? s.content ?? ''),
+                    answer: parseBool(s.answer ?? s.correctAnswer)
+                }))
+                : [],
+            correct: safeCorrect,
+            answer: safeAnswer,
+            correct_value: String(item.correct_value ?? item.correctValue ?? ''),
+            explanation: storageText(item.explanation || ''),
+            image_url: item.image_url || item.imageUrl || '',
+            is_deleted: false,
+            deleted_at: null,
+            updated_at: new Date().toISOString()
+        };
+    }
+
+    async function upsertRestoredRows(rows) {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const chunkSize = 50;
+        const stripOptionalCols = (list) => list.map(({ is_deleted, deleted_at, updated_at, image_url, ...rest }) => rest);
+
+        for (let i = 0; i < rows.length; i += chunkSize) {
+            let chunk = rows.slice(i, i + chunkSize);
+            let { error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' });
+
+            if (error && (error.code === 'PGRST204' || error.code === '42703' || /column|schema cache/i.test(error.message || ''))) {
+                chunk = stripOptionalCols(chunk);
+                ({ error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' }));
+            }
+
+            // Nếu trùng ID với bản ghi bị ẩn bởi RLS (is_deleted = true), cấp ID mới và insert trực tiếp
+            if (error && (error.code === '42501' || error.code === '23505' || /row-level security|duplicate key/i.test(error.message || ''))) {
+                const baseFreshId = Math.max(await nextQuestionId(), (Math.floor(Date.now() / 1000) % 1000000000) + i);
+                const rekeyed = chunk.map((row, idx) => ({ ...row, id: baseFreshId + idx }));
+                ({ error } = await state.client.from('quiz_questions').insert(rekeyed));
+                if (error && (error.code === 'PGRST204' || error.code === '42703' || /column|schema cache/i.test(error.message || ''))) {
+                    ({ error } = await state.client.from('quiz_questions').insert(stripOptionalCols(rekeyed)));
+                }
+                if (!error) {
+                    rekeyed.forEach((r, idx) => { rows[i + idx].id = r.id; });
+                }
+            }
+
+            if (error) throw error;
+        }
+    }
+
+    async function restoreQuestion(id, fallbackIndex = -1) {
+        let itemIndex = state.trashQuestions.findIndex((q) => String(q.id) === String(id));
+        if (itemIndex < 0 && fallbackIndex >= 0 && fallbackIndex < state.trashQuestions.length) {
+            itemIndex = fallbackIndex;
+        }
+        const item = itemIndex >= 0 ? state.trashQuestions[itemIndex] : null;
         if (!item) return notify('Không tìm thấy câu hỏi trong thùng rác.', true);
 
         try {
@@ -1657,34 +1733,10 @@
                 targetId = await nextQuestionId();
             }
 
-            const rowToInsert = {
-                id: targetId,
-                subject_key: item.subject_key || item.subjectKey || 'history',
-                grade: String(item.grade || state.subjects.find((s) => s.key === (item.subject_key || item.subjectKey))?.grade || '11'),
-                category: item.category || 'Ôn tập',
-                q_type: item.q_type || item.qType || 'mcq',
-                question: storageText(item.question),
-                options: Array.isArray(item.options) ? item.options.map(storageText) : [],
-                statements: Array.isArray(item.statements) ? item.statements.map((s, index) => ({
-                    key: s.key || 'abcd'[index],
-                    label: s.label || s.key || 'abcd'[index],
-                    text: storageText(s.text ?? s.content),
-                    answer: parseBool(s.answer ?? s.correctAnswer)
-                })) : [],
-                correct: Number(item.correct ?? item.answer ?? 0),
-                answer: Number(item.answer ?? item.correct ?? 0),
-                correct_value: String(item.correct_value ?? item.correctValue ?? ''),
-                explanation: storageText(item.explanation || ''),
-                image_url: item.image_url || item.imageUrl || '',
-                is_deleted: false,
-                deleted_at: null,
-                updated_at: new Date().toISOString()
-            };
+            const rowToInsert = buildRestoreRow(item, targetId);
+            await upsertRestoredRows([rowToInsert]);
 
-            const { error } = await state.client.from('quiz_questions').upsert(rowToInsert, { onConflict: 'id' });
-            if (error) throw error;
-
-            state.trashQuestions = state.trashQuestions.filter((q) => String(q.id) !== String(id));
+            state.trashQuestions = state.trashQuestions.filter((_, idx) => idx !== itemIndex);
             await saveTrash();
 
             addActivityLog(
@@ -1741,39 +1793,10 @@
                 }
                 targetId = Math.floor(targetId);
                 usedIds.add(targetId);
-
-                return {
-                    id: targetId,
-                    subject_key: item.subject_key || item.subjectKey || 'history',
-                    grade: String(item.grade || state.subjects.find((s) => s.key === (item.subject_key || item.subjectKey))?.grade || '11'),
-                    category: item.category || 'Ôn tập',
-                    q_type: item.q_type || item.qType || 'mcq',
-                    question: storageText(item.question),
-                    options: Array.isArray(item.options) ? item.options.map(storageText) : [],
-                    statements: Array.isArray(item.statements) ? item.statements.map((s, index) => ({
-                        key: s.key || 'abcd'[index],
-                        label: s.label || s.key || 'abcd'[index],
-                        text: storageText(s.text ?? s.content),
-                        answer: parseBool(s.answer ?? s.correctAnswer)
-                    })) : [],
-                    correct: Number(item.correct ?? item.answer ?? 0),
-                    answer: Number(item.answer ?? item.correct ?? 0),
-                    correct_value: String(item.correct_value ?? item.correctValue ?? ''),
-                    explanation: storageText(item.explanation || ''),
-                    image_url: item.image_url || item.imageUrl || '',
-                    is_deleted: false,
-                    deleted_at: null,
-                    updated_at: new Date().toISOString()
-                };
+                return buildRestoreRow(item, targetId);
             });
 
-            // Ghi theo từng chunk 50 câu để tránh quá tải
-            const chunkSize = 50;
-            for (let i = 0; i < rows.length; i += chunkSize) {
-                const chunk = rows.slice(i, i + chunkSize);
-                const { error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' });
-                if (error) throw error;
-            }
+            await upsertRestoredRows(rows);
 
             state.trashQuestions = [];
             await saveTrash();
@@ -1883,6 +1906,7 @@
         if (emptyEl) emptyEl.classList.add('hidden');
 
         container.innerHTML = filtered.map((q) => {
+            const trashIndex = list.indexOf(q);
             const grade = gradeOf(q);
             const deletedTime = q.deleted_at ? new Date(q.deleted_at).toLocaleString('vi-VN', {
                 hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
@@ -1910,10 +1934,10 @@
                     <div class="trash-question-title">${htmlText(q.question)}</div>
                     ${preview}
                     <div class="trash-item-footer">
-                        <button class="button button-primary compact" data-restore-id="${esc(q.id)}" type="button">
+                        <button class="button button-primary compact" data-restore-id="${esc(q.id ?? '')}" data-trash-index="${trashIndex}" type="button">
                             <i class="fa-solid fa-rotate-left"></i> Khôi phục
                         </button>
-                        <button class="button button-danger compact" data-hard-delete-id="${esc(q.id)}" type="button">
+                        <button class="button button-danger compact" data-hard-delete-id="${esc(q.id ?? '')}" data-trash-index="${trashIndex}" type="button">
                             <i class="fa-solid fa-trash-can"></i> Xóa vĩnh viễn
                         </button>
                     </div>
@@ -3991,11 +4015,25 @@
         $('subject-count') && ($('subject-count').textContent = subjects.length);
 
         const folderMap = new Map();
+        (state.subjectFolders || []).forEach((f) => {
+            const label = String(f?.name || f?.label || '').trim();
+            const grade = String(f?.grade || '11') === '5' ? '5' : '11';
+            if (!label) return;
+            const folderKey = `${grade}::${label.toLowerCase()}`;
+            if (!folderMap.has(folderKey)) {
+                folderMap.set(folderKey, { key: folderKey, label, grade, items: [], explicit: true });
+            } else {
+                folderMap.get(folderKey).explicit = true;
+            }
+        });
         subjects.forEach((subject) => {
             const info = getAdminSubjectFolderInfo(subject);
             if (!info) return;
+            const hasExplicit = Boolean(String(subject?.folder || subject?.group || '').trim());
             if (!folderMap.has(info.folderKey)) {
-                folderMap.set(info.folderKey, { key: info.folderKey, label: info.folderLabel, grade: subjectGrade(subject), items: [] });
+                folderMap.set(info.folderKey, { key: info.folderKey, label: info.folderLabel, grade: subjectGrade(subject), items: [], explicit: hasExplicit });
+            } else if (hasExplicit) {
+                folderMap.get(info.folderKey).explicit = true;
             }
             folderMap.get(info.folderKey).items.push(subject);
         });
@@ -4006,7 +4044,7 @@
         }
         const activeFolders = new Map();
         folderMap.forEach((group, key) => {
-            if (group.items.length >= 2) activeFolders.set(key, group);
+            if (group.explicit || group.items.length >= 2) activeFolders.set(key, group);
         });
         if (state.adminOpenSubjectFolder && !activeFolders.has(state.adminOpenSubjectFolder)) {
             state.adminOpenSubjectFolder = null;
@@ -4016,47 +4054,62 @@
             const key = subject.key || subject.subject_key;
             const count = questionCounts[subjectMatchKey(key)] || 0;
             const canAdoptLegacy = subjectMatchKey(key) !== 'history' && legacyCount > 0;
-            return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`;
+            return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-quick-add-question="${esc(subject.key)}" aria-label="Thêm câu hỏi vào ${esc(subject.name || subject.key)}" title="Thêm câu hỏi vào đề này"><i class="fa-solid fa-circle-plus"></i></button><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`;
+        };
+
+        const renderFolderCardHtml = (group) => {
+            const totalCount = group.items.reduce((sum, item) => sum + (questionCounts[subjectMatchKey(item.key || item.subject_key)] || 0), 0);
+            const allPrivate = group.items.length > 0 && group.items.every((item) => item.visibility === 'PRIVATE');
+            return `<article class="subject-card" data-open-subject-folder="${esc(group.key)}" style="cursor:pointer;border-color:rgba(245,158,11,0.35);">
+                <div class="subject-card-head">
+                    <span class="subject-card-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);"><i class="fa-solid fa-folder-closed"></i></span>
+                    <span class="tag">Lớp ${esc(group.grade)} · ${group.items.length} đề</span>
+                </div>
+                <h3>${esc(group.label)}</h3>
+                <p>Thư mục gom nhóm · <b>${totalCount} câu</b></p>
+                <div class="subject-card-foot">
+                    <small>${group.items.length ? (allPrivate ? 'Riêng tư' : 'Công khai') : 'Thư mục trống'}</small>
+                    <span style="font-size:11px;font-weight:700;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
+                </div>
+            </article>`;
         };
 
         const listEl = $('subjects-list');
         if (listEl) {
-            if (!subjects.length) {
-                listEl.innerHTML = '<div class="empty-state">Chưa có môn học.</div>';
+            if (!subjects.length && !activeFolders.size) {
+                listEl.innerHTML = '<div class="empty-state">Chưa có môn học hoặc thư mục.</div>';
             } else if (state.adminOpenSubjectFolder && activeFolders.has(state.adminOpenSubjectFolder)) {
                 const group = activeFolders.get(state.adminOpenSubjectFolder);
                 listEl.innerHTML = `
-                    <div style="grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);">
-                        <button type="button" class="button button-secondary compact" data-close-subject-folder="true"><i class="fa-solid fa-arrow-left"></i> Quay lại danh sách</button>
-                        <b style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> ${esc(group.label)} (${group.items.length} đề · Lớp ${esc(group.grade)})</b>
+                    <div style="grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <button type="button" class="button button-secondary compact" data-close-subject-folder="true"><i class="fa-solid fa-arrow-left"></i> Quay lại danh sách</button>
+                            <b style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> ${esc(group.label)} (${group.items.length} đề · Lớp ${esc(group.grade)})</b>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="button button-primary compact" data-add-subject-to-folder="${esc(group.label)}" data-folder-grade="${esc(group.grade)}"><i class="fa-solid fa-plus"></i> Thêm đề vào đây</button>
+                            ${group.items.length ? `<button type="button" class="button button-secondary compact" data-add-question-to-folder="${esc(group.key)}"><i class="fa-solid fa-circle-plus"></i> Thêm câu hỏi</button>` : ''}
+                            <button type="button" class="button button-secondary compact" data-delete-folder="${esc(group.key)}" title="Giải tán thư mục (không xóa đề hay câu hỏi)"><i class="fa-solid fa-folder-minus"></i> Bỏ thư mục</button>
+                        </div>
                     </div>
-                    ${group.items.map(renderCardHtml).join('')}
+                    ${group.items.length ? group.items.map(renderCardHtml).join('') : '<div class="empty-state" style="grid-column:1 / -1;">Thư mục này chưa có đề nào. Bấm <b>+ Thêm đề vào đây</b> ở trên để tạo đề mới vào thư mục!</div>'}
                 `;
             } else {
                 const renderedFolders = new Set();
-                listEl.innerHTML = subjects.map((subject) => {
+                const subjectHtml = subjects.map((subject) => {
                     const info = getAdminSubjectFolderInfo(subject);
                     if (info && activeFolders.has(info.folderKey)) {
                         if (renderedFolders.has(info.folderKey)) return '';
                         renderedFolders.add(info.folderKey);
-                        const group = activeFolders.get(info.folderKey);
-                        const totalCount = group.items.reduce((sum, item) => sum + (questionCounts[subjectMatchKey(item.key || item.subject_key)] || 0), 0);
-                        const allPrivate = group.items.every((item) => item.visibility === 'PRIVATE');
-                        return `<article class="subject-card" data-open-subject-folder="${esc(group.key)}" style="cursor:pointer;border-color:rgba(245,158,11,0.35);">
-                            <div class="subject-card-head">
-                                <span class="subject-card-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);"><i class="fa-solid fa-folder-closed"></i></span>
-                                <span class="tag">Lớp ${esc(group.grade)} · ${group.items.length} đề</span>
-                            </div>
-                            <h3>${esc(group.label)}</h3>
-                            <p>Thư mục gom nhóm · <b>${totalCount} câu</b></p>
-                            <div class="subject-card-foot">
-                                <small>${allPrivate ? 'Riêng tư' : 'Công khai'}</small>
-                                <span style="font-size:11px;font-weight:700;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
-                            </div>
-                        </article>`;
+                        return renderFolderCardHtml(activeFolders.get(info.folderKey));
                     }
                     return renderCardHtml(subject);
                 }).join('');
+                const emptyFolderHtml = Array.from(activeFolders.values())
+                    .filter((group) => !renderedFolders.has(group.key))
+                    .map(renderFolderCardHtml)
+                    .join('');
+                listEl.innerHTML = subjectHtml + emptyFolderHtml;
             }
         }
         renderSubjectPrivacy();
@@ -4065,6 +4118,16 @@
     async function loadSubjects() {
         const row = await systemRow(SYSTEM.subjects);
         if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
+        try {
+            const folderRow = await systemRow(SYSTEM.folders);
+            if (folderRow?.score_summary) {
+                const fData = JSON.parse(folderRow.score_summary);
+                if (Array.isArray(fData)) {
+                    state.subjectFolders = fData;
+                    localStorage.setItem('quiz_subject_folders', JSON.stringify(fData));
+                }
+            }
+        } catch (e) {}
         state.subjects = mergeSubjectCatalog(state.subjects);
         await syncSubjectQuestionCounts();
         fillSubjects($('grade-select')?.value || '11');
@@ -4156,7 +4219,7 @@
         if (dialog?.open) dialog.close();
         resetSubjectForm();
     }
-    function openSubjectDialog(subject = null, opener = null) {
+    function openSubjectDialog(subject = null, opener = null, preset = null) {
         moveSubjectFormToDialog();
         switchView('questions');
         state.subjectDialogOpener = opener || document.activeElement;
@@ -4173,11 +4236,159 @@
             setSubjectGrade(subjectGrade(subject));
             setSubjectMode(subject.mode || 'practice');
             $('subject-editor-title').textContent = `Sửa môn ${subject.name || state.subjectEditingKey}`;
+        } else if (preset) {
+            if (preset.folder && $('subject-folder-input')) $('subject-folder-input').value = preset.folder;
+            if (preset.grade) setSubjectGrade(preset.grade === '5' ? '5' : '11');
         }
         const dialog = $('subject-dialog');
         if (!dialog) return;
         if (!dialog.open) dialog.showModal();
         window.requestAnimationFrame(() => $('subject-name-input')?.focus());
+    }
+
+    async function saveSubjectFolders() {
+        try {
+            localStorage.setItem('quiz_subject_folders', JSON.stringify(state.subjectFolders || []));
+        } catch (e) {}
+        if (state.client) {
+            await upsertSystem(SYSTEM.folders, '__SYSTEM_FOLDERS__', JSON.stringify(state.subjectFolders || []));
+        }
+    }
+
+    function setFolderGrade(grade) {
+        const clean = grade === '5' ? '5' : '11';
+        if ($('folder-grade-input')) $('folder-grade-input').value = clean;
+        $('folder-grade-picker')?.querySelectorAll('[data-folder-grade]').forEach((btn) => {
+            btn.classList.toggle('is-selected', btn.dataset.folderGrade === clean);
+        });
+        renderFolderChecklist();
+    }
+
+    function renderFolderChecklist() {
+        const box = $('folder-subjects-checklist');
+        if (!box) return;
+        const grade = $('folder-grade-input')?.value === '5' ? '5' : '11';
+        const matching = mergeSubjectCatalog(state.subjects).filter((s) => subjectGrade(s) === grade);
+        if (!matching.length) {
+            box.innerHTML = `<div class="muted-copy" style="font-size:12px;">Chưa có đề nào thuộc Lớp ${grade}. Bạn vẫn có thể tạo thư mục trống trước!</div>`;
+            return;
+        }
+        box.innerHTML = matching.map((s) => {
+            const key = s.key || s.subject_key;
+            const currentFolder = String(s.folder || s.group || '').trim();
+            return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:4px 6px;border-radius:8px;background:var(--surface-3);">
+                <input type="checkbox" value="${esc(key)}" data-folder-subject-check="true">
+                <span style="flex:1;"><b>${esc(s.name || s.title || key)}</b> <small class="muted-copy">(${esc(key)})</small></span>
+                ${currentFolder ? `<small class="tag">${esc(currentFolder)}</small>` : ''}
+            </label>`;
+        }).join('');
+    }
+
+    function openFolderDialog() {
+        const form = $('folder-form');
+        if (form) form.reset();
+        if ($('folder-name-input')) $('folder-name-input').value = '';
+        setFolderGrade('11');
+        const dialog = $('folder-dialog');
+        if (!dialog) return;
+        if (!dialog.open) dialog.showModal();
+        window.requestAnimationFrame(() => $('folder-name-input')?.focus());
+    }
+
+    function closeFolderDialog() {
+        const dialog = $('folder-dialog');
+        if (dialog?.open) dialog.close();
+    }
+
+    async function saveFolder(event) {
+        event.preventDefault();
+        const name = $('folder-name-input')?.value.trim();
+        const grade = $('folder-grade-input')?.value === '5' ? '5' : '11';
+        if (!name) return notify('Hãy nhập tên thư mục.', true);
+
+        const folderKey = `${grade}::${name.toLowerCase()}`;
+        const existingIndex = (state.subjectFolders || []).findIndex(
+            (f) => `${String(f.grade || '11') === '5' ? '5' : '11'}::${String(f.name || f.label || '').trim().toLowerCase()}` === folderKey
+        );
+        if (existingIndex < 0) {
+            state.subjectFolders.push({ name, grade, createdAt: new Date().toISOString() });
+        } else {
+            state.subjectFolders[existingIndex] = { ...state.subjectFolders[existingIndex], name, grade };
+        }
+
+        const checkedKeys = new Set(
+            Array.from(document.querySelectorAll('#folder-subjects-checklist [data-folder-subject-check]:checked'))
+                .map((cb) => cb.value)
+        );
+
+        let movedCount = 0;
+        if (checkedKeys.size > 0) {
+            state.subjects = mergeSubjectCatalog(state.subjects).map((s) => {
+                const k = s.key || s.subject_key;
+                if (checkedKeys.has(k)) {
+                    movedCount++;
+                    return { ...s, folder: name, grade };
+                }
+                return s;
+            });
+        }
+
+        try {
+            await saveSubjectFolders();
+            if (movedCount > 0) await saveSubjects();
+            else renderSubjectCatalog();
+            state.adminOpenSubjectFolder = folderKey;
+            renderSubjectCatalog();
+            closeFolderDialog();
+            addActivityLog(`Tạo thư mục: ${name}`, `Khối Lớp ${grade}${movedCount ? ` · Gom ${movedCount} đề` : ''}`, 'subject');
+            notify(`Đã tạo thư mục "${name}" (Lớp ${grade})${movedCount ? ` và gom ${movedCount} đề vào trong` : ''}.`);
+        } catch (error) {
+            notify(`Không thể lưu thư mục: ${error.message}`, true);
+        }
+    }
+
+    async function deleteFolderOnly(folderKey) {
+        if (!(await confirmDialog({
+            title: 'Bỏ thư mục này?',
+            message: 'Các đề và câu hỏi bên trong vẫn được giữ nguyên, chỉ đưa ra ngoài danh sách chung.',
+            confirmText: 'Bỏ thư mục',
+            variant: 'warning'
+        }))) return;
+        const [gradePart, namePart] = String(folderKey || '').split('::');
+        state.subjectFolders = (state.subjectFolders || []).filter(
+            (f) => `${String(f.grade || '11') === '5' ? '5' : '11'}::${String(f.name || f.label || '').trim().toLowerCase()}` !== folderKey
+        );
+        let changed = false;
+        state.subjects = (state.subjects || []).map((s) => {
+            const info = getAdminSubjectFolderInfo(s);
+            if (info && info.folderKey === folderKey && s.folder) {
+                changed = true;
+                return { ...s, folder: '' };
+            }
+            return s;
+        });
+        await saveSubjectFolders();
+        if (changed) await saveSubjects();
+        state.adminOpenSubjectFolder = null;
+        renderSubjectCatalog();
+        notify(`Đã bỏ thư mục (Lớp ${gradePart || '11'} · ${namePart || ''}).`);
+    }
+
+    function jumpToAddQuestion(subjectKey = '') {
+        switchView('questions');
+        const target = subjectKey
+            ? mergeSubjectCatalog(state.subjects).find((s) => (s.key || s.subject_key) === subjectKey)
+            : null;
+        if (target) {
+            const g = subjectGrade(target);
+            if ($('grade-select')) $('grade-select').value = g;
+            fillSubjects(g);
+            if ($('subject-select')) $('subject-select').value = target.key || target.subject_key;
+        }
+        window.requestAnimationFrame(() => {
+            $('question-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $('question-input')?.focus();
+        });
     }
     async function saveSubject(event) {
         event.preventDefault();
@@ -5897,7 +6108,10 @@
         $('trash-list')?.addEventListener('click', (event) => {
             const restore = event.target.closest('[data-restore-id]');
             const hardDelete = event.target.closest('[data-hard-delete-id]');
-            if (restore) runAction(() => restoreQuestion(restore.dataset.restoreId));
+            if (restore) {
+                const idx = Number(restore.dataset.trashIndex);
+                runAction(() => restoreQuestion(restore.dataset.restoreId, Number.isFinite(idx) ? idx : -1));
+            }
             if (hardDelete) runAction(() => hardDeleteQuestion(hardDelete.dataset.hardDeleteId));
         });
         $('print-subject-select')?.addEventListener('change', updatePrintQuestionsPreview);
@@ -6235,10 +6449,16 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
          $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
           reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
+         $('new-folder-button')?.addEventListener('click', openFolderDialog);
+         $('hub-add-question-button')?.addEventListener('click', () => jumpToAddQuestion());
+         $('folder-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-folder-grade]'); if (button) setFolderGrade(button.dataset.folderGrade); });
+         $('folder-form')?.addEventListener('submit', (event) => runAction(() => saveFolder(event)));
+         $('folder-dialog-close')?.addEventListener('click', closeFolderDialog);
+         $('cancel-folder-dialog')?.addEventListener('click', closeFolderDialog);
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
         $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
-         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
