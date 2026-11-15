@@ -1328,8 +1328,7 @@
             const isEditing = Boolean(state.editingId);
             const recordId = state.editingId || await nextQuestionId();
             const record = toRecord(q, q.subject_key, recordId);
-            const { error } = await state.client.from('quiz_questions').upsert(record, { onConflict: 'id' }).select();
-            if (error) throw error;
+            await upsertRestoredRows([record]);
             addActivityLog(
                 isEditing ? `Cập nhật câu hỏi #${recordId}` : `Thêm câu hỏi mới #${recordId}`,
                 `${subjectName(q.subject_key)} · ${TYPE_LABELS[q.q_type] || q.q_type}`,
@@ -1665,9 +1664,10 @@
         };
     }
 
-    async function upsertRestoredRows(rows) {
+    async function upsertRestoredRows(rows, { returnIds = false } = {}) {
         if (!state.client) throw new Error('Chưa kết nối Supabase.');
         const chunkSize = 50;
+        let verifiedCount = 0;
         const extractMissingColumn = (err) => {
             const msg = String(err?.message || '');
             const m = msg.match(/Could not find the '([^']+)' column/i)
@@ -1686,11 +1686,13 @@
         const execWithSchemaAdapt = async (initialChunk, mode) => {
             let current = initialChunk;
             for (let attempt = 0; attempt < 8; attempt++) {
-                const res = mode === 'insert'
-                    ? await state.client.from('quiz_questions').insert(current)
-                    : await state.client.from('quiz_questions').upsert(current, { onConflict: 'id' });
+                let query = mode === 'insert'
+                    ? state.client.from('quiz_questions').insert(current)
+                    : state.client.from('quiz_questions').upsert(current, { onConflict: 'id' });
+                if (returnIds) query = query.select('id');
+                const res = await query;
                 if (!res.error || !isMissingColError(res.error)) {
-                    return { error: res.error, usedChunk: current };
+                    return { error: res.error, data: res.data, usedChunk: current };
                 }
                 const missingCol = extractMissingColumn(res.error);
                 if (missingCol && Object.prototype.hasOwnProperty.call(current[0] || {}, missingCol)) {
@@ -1699,12 +1701,12 @@
                     current = stripKnownOptional(current);
                 }
             }
-            return { error: new Error('Không thể khớp cấu trúc cột của quiz_questions.'), usedChunk: current };
+            return { error: new Error('Không thể khớp cấu trúc cột của quiz_questions.'), data: null, usedChunk: current };
         };
 
         for (let i = 0; i < rows.length; i += chunkSize) {
             const chunk = rows.slice(i, i + chunkSize);
-            let { error, usedChunk } = await execWithSchemaAdapt(chunk, 'upsert');
+            let { error, data, usedChunk } = await execWithSchemaAdapt(chunk, 'upsert');
 
             // Nếu trùng ID với bản ghi bị ẩn bởi RLS (is_deleted = true), cấp ID mới và insert trực tiếp
             if (error && (error.code === '42501' || error.code === '23505' || /row-level security|duplicate key/i.test(error.message || ''))) {
@@ -1712,13 +1714,18 @@
                 const rekeyed = usedChunk.map((row, idx) => ({ ...row, id: baseFreshId + idx }));
                 const insertRes = await execWithSchemaAdapt(rekeyed, 'insert');
                 error = insertRes.error;
+                data = insertRes.data;
                 if (!error) {
                     rekeyed.forEach((r, idx) => { rows[i + idx].id = r.id; });
                 }
             }
 
             if (error) throw error;
+            if (returnIds) {
+                verifiedCount += Array.isArray(data) ? data.length : chunk.length;
+            }
         }
+        return verifiedCount;
     }
 
     async function restoreQuestion(id, fallbackIndex = -1) {
@@ -2541,15 +2548,7 @@
             }
             const firstId = await nextQuestionId();
             const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
-            let verifiedCount = 0;
-            for (let index = 0; index < records.length; index += 50) {
-                const { data: insertedRows, error } = await state.client
-                    .from('quiz_questions')
-                    .upsert(records.slice(index, index + 50), { onConflict: 'id' })
-                    .select('id');
-                if (error) throw error;
-                verifiedCount += Array.isArray(insertedRows) ? insertedRows.length : 0;
-            }
+            const verifiedCount = await upsertRestoredRows(records, { returnIds: true });
             if (verifiedCount < records.length) {
                 throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu vừa nhập ở môn ${selectedSubject}.`);
             }
@@ -4276,7 +4275,16 @@
             localStorage.setItem('quiz_subject_folders', JSON.stringify(state.subjectFolders || []));
         } catch (e) {}
         if (state.client) {
-            await upsertSystem(SYSTEM.folders, '__SYSTEM_FOLDERS__', JSON.stringify(state.subjectFolders || []));
+            const { error } = await state.client.from('quiz_logins').upsert({
+                id: SYSTEM.folders,
+                player_name: '__SYSTEM_FOLDERS__',
+                ip_address: 'SYSTEM',
+                device_info: 'FOLDER_HUB',
+                status: 'ACTIVE',
+                score_summary: JSON.stringify(state.subjectFolders || []),
+                last_active: new Date().toISOString()
+            }, { onConflict: 'id' });
+            if (error) throw error;
         }
     }
 
@@ -4301,10 +4309,10 @@
         box.innerHTML = matching.map((s) => {
             const key = s.key || s.subject_key;
             const currentFolder = String(s.folder || s.group || '').trim();
-            return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:4px 6px;border-radius:8px;background:var(--surface-3);">
-                <input type="checkbox" value="${esc(key)}" data-folder-subject-check="true">
-                <span style="flex:1;"><b>${esc(s.name || s.title || key)}</b> <small class="muted-copy">(${esc(key)})</small></span>
-                ${currentFolder ? `<small class="tag">${esc(currentFolder)}</small>` : ''}
+            return `<label style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;font-size:13px;cursor:pointer;padding:8px 10px;border-radius:8px;background:var(--surface-3);margin:0;">
+                <input type="checkbox" value="${esc(key)}" data-folder-subject-check="true" style="width:16px;height:16px;flex:0 0 auto;margin:0;">
+                <span style="flex:1;text-align:left;line-height:1.35;"><b>${esc(s.name || s.title || key)}</b> <small class="muted-copy">(${esc(key)})</small></span>
+                ${currentFolder ? `<small class="tag" style="flex:0 0 auto;">${esc(currentFolder)}</small>` : ''}
             </label>`;
         }).join('');
     }
