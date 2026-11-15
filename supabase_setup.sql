@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_questions (
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFAULT 'history';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS accepted_values JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS grade TEXT DEFAULT '11';
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;

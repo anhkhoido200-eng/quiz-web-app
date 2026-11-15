@@ -773,6 +773,13 @@
                 }
             }
         }
+        if ($('wrong-stats-subject')) {
+            const prevWrongSub = $('wrong-stats-subject').value || '';
+            $('wrong-stats-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+            if (prevWrongSub && allSubjects().some((item) => item.key === prevWrongSub)) {
+                $('wrong-stats-subject').value = prevWrongSub;
+            }
+        }
     }
 
     function ensureTypeEditor(type = state.type) {
@@ -1428,6 +1435,57 @@
         renderRecentActivity();
         renderSubjectCatalog();
         await syncSubjectQuestionCounts();
+    }
+
+    function normalizeQuestionForDuplicateCheck(text) {
+        return String(text || '')
+            .replace(/<[^>]+>/g, ' ')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    async function scanAndResolveDuplicates() {
+        const subjectFilter = $('library-subject-filter')?.value || 'all';
+        const pool = (state.questions || []).filter((q) => {
+            if (subjectFilter === 'all') return true;
+            return subjectMatchKey(q.subject_key || q.subjectKey) === subjectMatchKey(subjectFilter);
+        });
+        const groups = new Map();
+        pool.forEach((q) => {
+            const normText = normalizeQuestionForDuplicateCheck(q.question);
+            if (!normText) return;
+            const key = `${subjectMatchKey(q.subject_key || q.subjectKey)}::${normText}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(q);
+        });
+        const dupGroups = Array.from(groups.values()).filter((list) => list.length > 1);
+        if (dupGroups.length === 0) {
+            return notify('Không phát hiện câu hỏi trùng lặp nào trong phạm vi đang chọn.');
+        }
+        const toDelete = [];
+        const previewLines = dupGroups.slice(0, 5).map((list, idx) => {
+            list.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            toDelete.push(...list.slice(1));
+            const snippet = String(list[0].question || '').replace(/\s+/g, ' ').slice(0, 70);
+            return `${idx + 1}. "${snippet}${snippet.length >= 70 ? '...' : ''}" (${list.length} bản)`;
+        });
+        dupGroups.slice(5).forEach((list) => {
+            list.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            toDelete.push(...list.slice(1));
+        });
+        const ok = await confirmDialog({
+            eyebrow: 'QUÉT TRÙNG LẶP',
+            title: `Phát hiện ${dupGroups.length} nhóm câu hỏi trùng (${toDelete.length} bản dư)`,
+            message: `Hệ thống sẽ giữ lại 1 bản gốc (ID nhỏ nhất) cho mỗi nhóm và chuyển ${toDelete.length} bản trùng vào Thùng rác:\n\n${previewLines.join('\n')}${dupGroups.length > 5 ? `\n... và ${dupGroups.length - 5} nhóm khác.` : ''}`,
+            confirmText: `Xóa ${toDelete.length} bản trùng`,
+            cancelText: 'Đóng',
+            variant: 'danger',
+            icon: 'fa-clone'
+        });
+        if (!ok) return;
+        await moveQuestionsToTrash(toDelete, 'Dọn câu hỏi trùng lặp', `Xóa ${toDelete.length} bản trùng trong ${dupGroups.length} nhóm`);
+        notify(`Đã chuyển ${toDelete.length} câu hỏi trùng vào Thùng rác.`);
     }
 
     async function deleteQuestion(id) {
@@ -2834,9 +2892,92 @@
         renderTokens();
     }
 
+    function renderStudentAccessSubjectCheckboxes() {
+        const container = $('student-access-subjects-list');
+        if (!container) return;
+        const subjects = allSubjects();
+        const prevChecked = new Set(Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value));
+        container.innerHTML = subjects.map((sub) => {
+            const key = String(sub.key || sub.subject_key || '');
+            const checked = prevChecked.has(key) ? 'checked' : '';
+            return `<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">
+                <input type="checkbox" value="${esc(key)}" ${checked}>
+                <span>${esc(sub.name || key)}</span>
+                <small style="color:var(--muted);font-weight:500;">(L${subjectGrade(sub)})</small>
+            </label>`;
+        }).join('');
+    }
+
+    function buildAllowedSubjectsBadge(item) {
+        const list = Array.isArray(item?.allowedSubjects) ? item.allowedSubjects.filter(Boolean) : [];
+        if (!list.length) {
+            return `<span class="muted-copy" style="font-size:10px;">Môn: Tất cả theo quyền lớp</span>`;
+        }
+        const names = list.map((k) => {
+            const found = allSubjects().find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(k));
+            return found ? (found.name || k) : k;
+        });
+        return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);padding:1px 6px;border-radius:6px;">Chỉ ${list.length} môn: ${esc(names.join(', '))}</span>`;
+    }
+
+    async function editTokenSubjects(tokenStr) {
+        const idx = (state.tokens || []).findIndex((t) => String(t.token || '') === String(tokenStr || ''));
+        if (idx === -1) return;
+        const item = state.tokens[idx];
+        const current = new Set(Array.isArray(item.allowedSubjects) ? item.allowedSubjects : []);
+        const subjects = allSubjects();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.75);padding:16px;';
+        overlay.innerHTML = `
+            <div class="panel" style="width:100%;max-width:520px;max-height:85vh;overflow-y:auto;margin:0;">
+                <div class="panel-title">
+                    <div>
+                        <p class="eyebrow">SUBJECT ACCESS</p>
+                        <h2>Phân chia môn cho ${esc(item.name || item.token)}</h2>
+                        <p class="muted-copy" style="font-size:12px;">Chọn các môn học sinh này được nhìn thấy (bỏ chọn hết = hiện tất cả theo quyền lớp).</p>
+                    </div>
+                </div>
+                <div id="modal-assign-subjects-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;">
+                    ${subjects.map((sub) => {
+                        const key = String(sub.key || sub.subject_key || '');
+                        return `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;">
+                            <input type="checkbox" value="${esc(key)}" ${current.has(key) ? 'checked' : ''}>
+                            <span>${esc(sub.name || key)} (Lớp ${subjectGrade(sub)})</span>
+                        </label>`;
+                    }).join('')}
+                </div>
+                <div class="form-actions" style="justify-content:space-between;">
+                    <button type="button" id="modal-assign-clear" class="button button-secondary compact">Bỏ chọn hết</button>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" id="modal-assign-cancel" class="button button-secondary compact">Hủy</button>
+                        <button type="button" id="modal-assign-save" class="button button-primary compact"><i class="fa-solid fa-check"></i> Lưu phân môn</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        const close = () => overlay.remove();
+        overlay.querySelector('#modal-assign-cancel')?.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        overlay.querySelector('#modal-assign-clear')?.addEventListener('click', () => {
+            overlay.querySelectorAll('#modal-assign-subjects-grid input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+        });
+        overlay.querySelector('#modal-assign-save')?.addEventListener('click', async () => {
+            const selected = Array.from(overlay.querySelectorAll('#modal-assign-subjects-grid input[type="checkbox"]:checked')).map((cb) => cb.value);
+            state.tokens[idx] = { ...state.tokens[idx], allowedSubjects: selected, updatedAt: new Date().toISOString() };
+            await saveTokens();
+            renderUnifiedAccess();
+            close();
+            notify(selected.length ? `Đã giới hạn ${selected.length} môn cho ${item.name || item.token}.` : `Đã mở mặc định tất cả môn theo quyền lớp cho ${item.name || item.token}.`);
+        });
+    }
+
     function renderUnifiedAccess() {
+        renderStudentAccessSubjectCheckboxes();
         const list = state.tokens || [];
-        const class5List = list.filter(item => item.role === 'grade5' || item.role === 'all');
+        const class5List = list.filter(item => item.role === 'grade5' || item.role === 'all' || item.role === 'student');
         const aiList = list.filter(item => item.role === 'ai' || item.role === 'all');
 
         $('class5-student-count') && ($('class5-student-count').textContent = class5List.length);
@@ -2881,7 +3022,10 @@
                                     <span class="stack-item-icon" style="color:var(--emerald);background:var(--surface-3);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
                                         <i class="fa-solid fa-user-graduate"></i>
                                     </span>
-                                    <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Học sinh')}</b>
+                                    <div>
+                                        <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Học sinh')}</b>
+                                        <div style="margin-top:2px;">${buildAllowedSubjectsBadge(item)}</div>
+                                    </div>
                                 </div>
                             </td>
                             <td>
@@ -2895,7 +3039,10 @@
                             <td>${ipDisplay}</td>
                             <td>${aiStatusHtml}</td>
                             <td><small style="color:var(--muted);font-size:11px;">${esc(dateStr)}</small></td>
-                            <td style="text-align:right;">
+                            <td style="text-align:right;white-space:nowrap;">
+                                <button type="button" class="button button-sm button-secondary compact" data-assign-subjects="${esc(item.token)}" style="font-size:11px;padding:4px 8px;margin-right:4px;" title="Phân chia môn học được xem">
+                                    <i class="fa-solid fa-layer-group"></i> Phân môn
+                                </button>
                                 <button type="button" class="button button-sm button-danger compact" data-revoke-grade5="${esc(item.token)}" style="font-size:11px;padding:4px 10px;" title="Thu hồi quyền Lớp 5">
                                     <i class="fa-solid fa-trash-can"></i> Thu hồi
                                 </button>
@@ -3343,17 +3490,25 @@
                    (ip && tIp === ip);
         });
 
+        const allowedSubjects = Array.from(document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]:checked')).map((cb) => cb.value).filter(Boolean);
         const record = {
             token: combinedToken,
             rawCode: rawCode,
             role,
             name: studentName,
             ip: ip || null,
+            allowedSubjects,
             createdAt: new Date().toISOString()
         };
 
         if (existingIdx !== -1) {
-            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...record, updatedAt: new Date().toISOString() };
+            const prevAllowed = Array.isArray(state.tokens[existingIdx].allowedSubjects) ? state.tokens[existingIdx].allowedSubjects : [];
+            state.tokens[existingIdx] = {
+                ...state.tokens[existingIdx],
+                ...record,
+                allowedSubjects: allowedSubjects.length ? allowedSubjects : prevAllowed,
+                updatedAt: new Date().toISOString()
+            };
         } else {
             state.tokens.unshift(record);
         }
@@ -3395,10 +3550,11 @@
         if ($('student-access-name')) $('student-access-name').value = '';
         if ($('student-access-code')) $('student-access-code').value = '';
         if ($('student-access-ip')) $('student-access-ip').value = '';
+        document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
 
         renderUnifiedAccess();
 
-        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Kèm Xem Đề + AI)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5')));
+        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'student' ? 'Phân môn riêng' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Kèm Xem Đề + AI)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5'))));
         notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
     }
 
@@ -4369,7 +4525,9 @@
     }
 
     function buildProgressDeleteButton(p) {
-        return `<button type="button" class="progress-card-delete" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(p.name)}"><i class="fa-solid fa-trash-can"></i></button>`;
+        const noticeBtn = `<button type="button" class="progress-card-delete" style="color:#60a5fa;border-color:rgba(59,130,246,0.3);background:rgba(59,130,246,0.12);" data-private-notice="${esc(p.ip || '')}" data-private-name="${esc(p.name || 'Học sinh')}" title="Gửi thông báo riêng tới ${esc(p.name || 'Học sinh')}" aria-label="Nhắn riêng cho ${esc(p.name || 'Học sinh')}"><i class="fa-solid fa-comment-dots"></i></button>`;
+        const deleteBtn = `<button type="button" class="progress-card-delete" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(p.name)}"><i class="fa-solid fa-trash-can"></i></button>`;
+        return `${noticeBtn}${deleteBtn}`;
     }
 
     function setProgressEmptyState(container, visible, filterLabel = 'nào') {
@@ -5403,6 +5561,54 @@
         try { renderLeaderboard(); } catch (error) { $('leaderboard-error')?.classList.remove('hidden'); $('leaderboard-error-text').textContent = error.message || 'Không thể tải bảng xếp hạng.'; }
         finally { $('leaderboard-loading')?.classList.add('hidden'); setActionBusy('load-leaderboard', false); }
     }
+    async function loadWrongQuestionStats() {
+        const contentEl = $('wrong-stats-content');
+        const summaryEl = $('wrong-stats-summary');
+        if (!contentEl || !state.client) return;
+        const subjectKey = $('wrong-stats-subject')?.value || '';
+        setActionBusy('load-wrong-stats', true, 'Đang tải');
+        try {
+            const { data, error } = await state.client.rpc('arena_get_wrong_question_stats', {
+                p_subject_key: subjectKey || null,
+                p_limit: 15
+            });
+            if (error) {
+                const msg = String(error.message || '');
+                contentEl.innerHTML = /arena_get_wrong_question_stats|PGRST202|does not exist/i.test(msg)
+                    ? '<p class="muted-copy">Chưa cài đặt RPC thống kê câu sai. Vui lòng chạy lại <code>supabase_arena_setup.sql</code> trong Supabase SQL Editor.</p>'
+                    : `<p class="muted-copy">${esc(msg)}</p>`;
+                return;
+            }
+            const rows = Array.isArray(data) ? data : [];
+            if (summaryEl) summaryEl.textContent = rows.length ? `Tìm thấy ${rows.length} câu hỏi có lượt trả lời sai.` : 'Chưa có dữ liệu câu sai từ Đấu trường.';
+            if (!rows.length) {
+                contentEl.innerHTML = '<p class="muted-copy">Chưa có câu hỏi nào bị trả lời sai trong Đấu trường.</p>';
+                return;
+            }
+            contentEl.innerHTML = `
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>#</th><th>Môn / Chuyên đề</th><th>Nội dung câu hỏi</th><th>Sai / Tổng</th><th>Tỷ lệ sai</th></tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map((r, idx) => `
+                                <tr>
+                                    <td><b>#${idx + 1}</b></td>
+                                    <td><b>${esc(r.subject_key)}</b><br><small class="muted-copy">${esc(r.category || '')}</small></td>
+                                    <td style="max-width:420px;">${esc(String(r.question || '').slice(0, 140))}${String(r.question || '').length > 140 ? '...' : ''}</td>
+                                    <td><b style="color:var(--red,#ef4444);">${Number(r.wrong_attempts || 0)}</b> / ${Number(r.total_attempts || 0)}</td>
+                                    <td><span class="status-badge danger">${Number(r.wrong_rate || 0)}%</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } finally {
+            setActionBusy('load-wrong-stats', false);
+        }
+    }
     function exportScoreReport() {
         if (!state.reportRows) return notify('Hãy tải báo cáo điểm trước khi xuất file.', true);
         const scores = state.reportRows.map((row) => row.score10);
@@ -5766,6 +5972,13 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
           $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
         $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
           $('grade5-progress-cards')?.addEventListener('click', async (event) => {
+              const noticeBtn = event.target.closest('[data-private-notice]');
+              if (noticeBtn) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  runAction(() => sendPrivateNotice(noticeBtn.dataset.privateNotice, noticeBtn.dataset.privateName));
+                  return;
+              }
               const button = event.target.closest('[data-delete-progress-id]');
               if (button) {
                   event.preventDefault();
@@ -5829,6 +6042,9 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          });
          $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
          $('btn-grant-student-access')?.addEventListener('click', () => runAction(grantStudentAccess));
+         $('btn-clear-access-subjects')?.addEventListener('click', () => {
+             document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+         });
          $('btn-fill-current-ip')?.addEventListener('click', () => {
              if ($('student-access-ip')) {
                  $('student-access-ip').value = state.clientIp || '';
@@ -5867,6 +6083,11 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              const toggleG5Btn = event.target.closest('[data-toggle-grade5]');
              if (toggleG5Btn) {
                  runAction(() => toggleStudentGrade5(toggleG5Btn.dataset.toggleGrade5));
+                 return;
+             }
+             const assignBtn = event.target.closest('[data-assign-subjects]');
+             if (assignBtn) {
+                 runAction(() => editTokenSubjects(assignBtn.dataset.assignSubjects));
                  return;
              }
              const revokeG5Btn = event.target.closest('[data-revoke-grade5]');
@@ -5924,7 +6145,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
          reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
-         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
+         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
          $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
           reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));

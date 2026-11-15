@@ -108,6 +108,8 @@ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS accepted_values JSONB DEFAULT '[]'::jsonb;
+
 -- Helper: trả về thông tin attempt an toàn (không lộ active_session_token, question_order, option_map)
 CREATE OR REPLACE FUNCTION public.arena_safe_attempt(p_attempt public.match_attempts)
 RETURNS JSONB
@@ -594,7 +596,14 @@ BEGIN
         END IF;
         v_is_correct := COALESCE(v_orig_idx = COALESCE(v_q.correct, v_q.answer, 0), false);
     ELSIF v_q.q_type = 'short_answer' THEN
-        v_is_correct := LOWER(TRIM(COALESCE(p_text_answer, ''))) = LOWER(TRIM(COALESCE(v_q.correct_value, '')));
+        v_is_correct := (
+            (TRIM(COALESCE(v_q.correct_value, '')) <> '' AND LOWER(TRIM(COALESCE(p_text_answer, ''))) = LOWER(TRIM(COALESCE(v_q.correct_value, ''))))
+            OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(COALESCE(v_q.accepted_values, '[]'::jsonb)) AS av
+                WHERE TRIM(av) <> '' AND LOWER(TRIM(av)) = LOWER(TRIM(COALESCE(p_text_answer, '')))
+            )
+        );
     ELSIF v_q.q_type = 'tf_group' THEN
         v_total_stmts := jsonb_array_length(COALESCE(v_q.statements, '[]'::jsonb));
         IF p_tf_answers IS NOT NULL THEN
@@ -621,7 +630,10 @@ BEGIN
     END IF;
 
     IF v_is_correct THEN
-        IF v_room.per_question_sec IS NOT NULL THEN
+        IF COALESCE(p_is_offline_sync, false) THEN
+            -- Không cộng speed bonus cho bài đồng bộ offline để tránh sửa p_client_elapsed_ms trong localStorage
+            v_speed_bonus := 0;
+        ELSIF v_room.per_question_sec IS NOT NULL THEN
             v_speed_bonus := GREATEST(0, LEAST(20, ROUND(20.0 * (1.0 - (v_resp_ms / (v_room.per_question_sec * 1000.0))))::INTEGER));
         ELSE
             v_speed_bonus := GREATEST(0, LEAST(20, 20 - FLOOR(v_resp_ms / 3000.0)::INTEGER));
@@ -780,4 +792,43 @@ BEGIN
 
     RETURN v_room;
 END;
+$$;
+
+-- =========================================================================
+-- RPC 8: THỐNG KÊ TOP CÂU HỎI HAY SAI NHẤT (THEO LỊCH SỬ ĐẤU TRƯỜNG)
+-- =========================================================================
+CREATE OR REPLACE FUNCTION public.arena_get_wrong_question_stats(
+    p_subject_key TEXT DEFAULT NULL,
+    p_limit INTEGER DEFAULT 15
+)
+RETURNS TABLE (
+    question_id INTEGER,
+    subject_key TEXT,
+    category TEXT,
+    question TEXT,
+    total_attempts BIGINT,
+    wrong_attempts BIGINT,
+    wrong_rate NUMERIC
+)
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        q.id AS question_id,
+        q.subject_key,
+        COALESCE(q.category, 'Bài học') AS category,
+        q.question,
+        COUNT(*)::BIGINT AS total_attempts,
+        COUNT(*) FILTER (WHERE NOT a.is_correct)::BIGINT AS wrong_attempts,
+        ROUND((COUNT(*) FILTER (WHERE NOT a.is_correct)::NUMERIC * 100.0) / GREATEST(1, COUNT(*)), 1) AS wrong_rate
+    FROM public.match_answers a
+    JOIN public.quiz_questions q ON q.id = a.question_id
+    WHERE COALESCE(q.is_deleted, false) = false
+      AND (p_subject_key IS NULL OR TRIM(p_subject_key) = '' OR q.subject_key = TRIM(p_subject_key))
+    GROUP BY q.id, q.subject_key, q.category, q.question
+    HAVING COUNT(*) FILTER (WHERE NOT a.is_correct) > 0
+    ORDER BY wrong_attempts DESC, wrong_rate DESC, total_attempts DESC
+    LIMIT GREATEST(1, LEAST(50, COALESCE(p_limit, 15)));
 $$;

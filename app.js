@@ -59,11 +59,23 @@ class QuizApp {
         this.allowedAiIps = [];
 
         // Phân quyền kết hợp Token (Token-based Auth)
-        this.userToken = (localStorage.getItem('quiz_access_token') || '').trim();
+        this.localTestIpOverride = (() => {
+            try {
+                return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(String(window.location.hostname || '').toLowerCase())
+                    && String(window.location.port || '') === '4173';
+            } catch (e) {
+                return false;
+            }
+        })();
+        this.userToken = this.localTestIpOverride ? '' : (localStorage.getItem('quiz_access_token') || '').trim();
         this.tokenInfo = null;
         try {
-            const cachedToken = localStorage.getItem('quiz_token_info');
+            const cachedToken = this.localTestIpOverride ? '' : localStorage.getItem('quiz_token_info');
             if (cachedToken) this.tokenInfo = JSON.parse(cachedToken);
+            if (this.localTestIpOverride) {
+                ['quiz_admin_token', 'quiz_access_token', 'quiz_token_info', 'quiz_is_admin', 'quiz_admin_authenticated', 'quiz_admin_saved_ip']
+                    .forEach((key) => localStorage.removeItem(key));
+            }
         } catch (e) {}
 
         // Danh sách các IP đang bị chặn (Banned IPs)
@@ -660,6 +672,7 @@ class QuizApp {
     /* ============================================================== */
 
     hasTokenRole(role) {
+        if (this.localTestIpOverride) return false;
         const info = this.tokenInfo || this.getCachedTokenInfo();
         if (!info || !info.role) return false;
         const r = String(info.role).trim().toLowerCase();
@@ -759,6 +772,9 @@ class QuizApp {
 
         let matched = null;
         try {
+            if (this.localTestIpOverride) {
+                console.debug('[QuizApp] Local test mode: bỏ qua xác thực token/Admin cloud.');
+            } else {
             if (window.dbService && typeof window.dbService.verifyAccessToken === 'function') {
                 // Ưu tiên số 1: Kiểm tra theo IP của thiết bị hiện tại
                 if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') {
@@ -776,6 +792,7 @@ class QuizApp {
                 if (!matched && this.userToken) {
                     matched = await window.dbService.verifyAccessToken(this.userToken, this.clientIp);
                 }
+            }
             }
         } catch (e) {
             console.warn('[QuizApp] Không thể xác thực token qua Cloud:', e);
@@ -975,6 +992,7 @@ class QuizApp {
     }
 
     canViewGrade5() {
+        if (this.localTestIpOverride) return false;
         // 1. Admin luôn có toàn quyền xem toàn bộ nội dung Lớp 5
         if (this.isAdminAuthenticated || this.hasAdminIpAccess()) {
             return true;
@@ -1010,11 +1028,39 @@ class QuizApp {
         return (canViewGrade5 ? ['all', '5', '11'] : ['all', '11']).includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
     }
 
+    getMatchedAllowedSubjects() {
+        if (this.isAdminAuthenticated || this.hasAdminIpAccess()) return null;
+        const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const currentIp = normalizeIp(this.clientIp);
+        const tokens = Array.isArray(this.accessTokens) ? this.accessTokens : [];
+
+        let matched = null;
+        if (this.tokenInfo && this.tokenInfo.token) {
+            matched = tokens.find(t => String(t.token || '').toUpperCase() === String(this.tokenInfo.token || '').toUpperCase()) || this.tokenInfo;
+        }
+        if (!matched && currentIp && !currentIp.startsWith('đang') && currentIp !== 'chưa xác định') {
+            matched = tokens.find(t => t.ip && normalizeIp(t.ip) === currentIp) || null;
+        }
+        if (!matched) {
+            const cached = this.getCachedTokenInfo();
+            if (cached && Array.isArray(cached.allowedSubjects) && cached.allowedSubjects.length > 0) {
+                matched = cached;
+            }
+        }
+        const list = Array.isArray(matched?.allowedSubjects) ? matched.allowedSubjects.map(k => String(k || '').trim().toLowerCase()).filter(Boolean) : [];
+        return list.length > 0 ? new Set(list) : null;
+    }
+
     getHomeVisibleSubjects() {
+        const assignedSet = this.getMatchedAllowedSubjects();
         const canViewGrade5 = this.canViewGrade5();
         const currentIp = String(this.clientIp || '').trim();
         const canViewPrivateByIp = this.allowedGeoIps.includes(currentIp);
         const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
+            const subKey = String(sub.key || sub.subject_key || '').trim().toLowerCase();
+            if (assignedSet) {
+                return assignedSet.has(subKey);
+            }
             const grade = this.getSubjectGrade(sub);
             const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
             const visibility = String(sub.visibility || '').toUpperCase();
@@ -1051,6 +1097,7 @@ class QuizApp {
             if (window.dbService && typeof window.dbService.fetchAccessTokens === 'function') {
                 const tokens = await window.dbService.fetchAccessTokens();
                 if (Array.isArray(tokens)) {
+                    this.accessTokens = tokens;
                     tokens.forEach(t => {
                         const r = String(t.role || '').toLowerCase();
                         if ((r === 'grade5' || r === 'all' || r === 'class5') && t.ip) {
@@ -1088,8 +1135,9 @@ class QuizApp {
         const activeGrade = this.getHomeGradeFilter();
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
-            const canViewGrade5 = this.canViewGrade5();
-            const hasG11 = (this.dynamicSubjects || []).some(s => this.getSubjectGrade(s) === '11');
+            const assignedSet = this.getMatchedAllowedSubjects();
+            const canViewGrade5 = this.canViewGrade5() || (assignedSet && (this.dynamicSubjects || []).some(s => assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase()) && this.getSubjectGrade(s) === '5'));
+            const hasG11 = (this.dynamicSubjects || []).some(s => (!assignedSet || assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase())) && this.getSubjectGrade(s) === '11');
             const grades = ['all'];
             if (canViewGrade5) grades.push('5');
             if (hasG11) grades.push('11');
@@ -1444,8 +1492,43 @@ class QuizApp {
     /* ============================================================== */
 
     async fetchClientIp(forceRefresh = false) {
+        // Chế độ giả lập IP chỉ dành cho test local trong VS Code.
+        // Không cho phép query override trên domain triển khai thật.
+        let localTestIp = '';
+        try {
+            const isLocalHost = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(String(window.location.hostname || '').toLowerCase());
+            const requestedIp = new URLSearchParams(window.location.search).get('test_ip') || '';
+            if (isLocalHost && /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(requestedIp.trim())) {
+                localTestIp = requestedIp.trim();
+            }
+        } catch (e) {}
+
+        if (localTestIp) {
+            this.clientIp = localTestIp;
+            this.localTestIpOverride = true;
+            // Local test luôn bắt đầu như thiết bị học sinh mới, không kế thừa
+            // token/quyền Admin đã lưu trong profile VS Code.
+            try {
+                [
+                    'quiz_admin_token',
+                    'quiz_access_token',
+                    'quiz_token_info',
+                    'quiz_is_admin',
+                    'quiz_admin_authenticated',
+                    'quiz_admin_saved_ip'
+                ].forEach((key) => localStorage.removeItem(key));
+            } catch (e) {}
+            this.userToken = '';
+            this.tokenInfo = null;
+            this.isAdminAuthenticated = false;
+            try { sessionStorage.setItem('quiz_stable_client_ip', localTestIp); } catch (e) {}
+            console.debug('[QuizApp] Local test IP override:', localTestIp);
+        }
+
         const cachedIp = !forceRefresh ? sessionStorage.getItem('quiz_stable_client_ip') : '';
-        if (cachedIp && cachedIp !== 'Chưa xác định' && !cachedIp.startsWith('Đang')) {
+        if (localTestIp) {
+            // Đã gán IP test ở trên; không gọi dịch vụ nhận diện IP thật.
+        } else if (cachedIp && cachedIp !== 'Chưa xác định' && !cachedIp.startsWith('Đang')) {
             this.clientIp = cachedIp;
         } else {
             const endpoints = [
@@ -1601,6 +1684,7 @@ class QuizApp {
     }
 
     hasAdminIpAccess() {
+        if (this.localTestIpOverride) return false;
         // CHỈ chấp nhận role admin (TUYỆT ĐỐI KHÔNG chấp nhận role 'all' vì role 'all' là gói VIP Lớp 5 + AI của học sinh)
         if (this.hasTokenRole('admin')) return true;
 
@@ -1952,6 +2036,7 @@ class QuizApp {
             if (window.dbService && typeof window.dbService.fetchAccessTokens === 'function') {
                 const tokens = await window.dbService.fetchAccessTokens();
                 if (Array.isArray(tokens)) {
+                    this.accessTokens = tokens;
                     tokens.forEach(t => {
                         const r = String(t.role || '').toLowerCase();
                         if ((r === 'ai' || r === 'all') && t.ip) {
