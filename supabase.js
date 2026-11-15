@@ -452,7 +452,7 @@ class DatabaseService {
                     .from('quiz_logins')
                     .select('player_name, last_active, device_info')
                     .eq('ip_address', cleanIp)
-                    .not('player_name', 'like', '__%')
+                    .not('player_name', 'like', '\\_\\_%')
                     .order('last_active', { ascending: false })
                     .limit(1);
 
@@ -944,6 +944,8 @@ class DatabaseService {
             correct_value: correctValueStr,
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
+            is_deleted: false,
+            deleted_at: null,
             updated_at: this.getNowIso()
         };
 
@@ -969,10 +971,20 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data, error } = await this.client
+                let { data, error } = await this.client
                     .from('quiz_questions')
                     .upsert([record], { onConflict: 'id' })
                     .select();
+
+                if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
+                    const legacyRecord = { ...record };
+                    delete legacyRecord.is_deleted;
+                    delete legacyRecord.deleted_at;
+                    ({ data, error } = await this.client
+                        .from('quiz_questions')
+                        .upsert([legacyRecord], { onConflict: 'id' })
+                        .select());
+                }
 
                 if (!error) {
                     const item = data?.[0] || record;
@@ -1080,7 +1092,7 @@ class DatabaseService {
                 id,
                 subject_key: cleanSubject,
                 category: q.category || 'Bài tập',
-                q_type: q.qType || q.type || 'mcq',
+                q_type: q.qType || q.q_type || q.type || 'mcq',
                 question: q.question,
                 options: cleanOptions,
                 statements: q.statements || [],
@@ -1089,6 +1101,8 @@ class DatabaseService {
                 correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
                 explanation: q.explanation || '',
                 image_url: q.image_url || q.imageUrl || '',
+                is_deleted: false,
+                deleted_at: null,
                 updated_at: new Date().toISOString()
             };
         });
@@ -1105,10 +1119,17 @@ class DatabaseService {
                 let insertedCount = 0;
                 for (let i = 0; i < records.length; i += chunkSize) {
                     const chunk = records.slice(i, i + chunkSize);
-                    const { data, error } = await this.client
+                    let { data, error } = await this.client
                         .from('quiz_questions')
                         .upsert(chunk, { onConflict: 'id' })
                         .select('id');
+                    if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
+                        const legacyChunk = chunk.map(({ is_deleted, deleted_at, ...rest }) => rest);
+                        ({ data, error } = await this.client
+                            .from('quiz_questions')
+                            .upsert(legacyChunk, { onConflict: 'id' })
+                            .select('id'));
+                    }
                     if (error) throw error;
                     (data || []).forEach((row, rowIndex) => {
                         if (questionsList[i + rowIndex] && row?.id !== undefined) questionsList[i + rowIndex].id = row.id;
@@ -2302,9 +2323,10 @@ class DatabaseService {
                 ...(Array.isArray(adminConfig?.ips) ? adminConfig.ips : []),
                 ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
             ].map(ip => String(ip || '').trim()).filter(Boolean));
+            const systemIds = Object.values(SYSTEM_RECORDS);
             const { data, error: selectError } = await this.client.from('quiz_logins').select('id, player_name, ip_address');
             if (selectError) throw new Error(`Không thể đọc dữ liệu trước khi dọn: ${selectError.message}`);
-            const ids = (data || []).filter(item => !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
+            const ids = (data || []).filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
             if (ids.length > 0) {
                 for (let offset = 0; offset < ids.length; offset += 100) {
                     const { error } = await this.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));

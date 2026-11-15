@@ -4740,71 +4740,74 @@ Giải thích: Biên độ A = 5 cm.`;
         }
         this.observerProgressLoading = true;
 
-        let rows = [];
         try {
-            if (window.dbService && typeof window.dbService.getLoginHistory === 'function') {
-                rows = await window.dbService.getLoginHistory(150);
+            let rows = [];
+            try {
+                if (window.dbService && typeof window.dbService.getLoginHistory === 'function') {
+                    rows = await window.dbService.getLoginHistory(150);
+                }
+            } catch (e) {
+                console.warn('Lỗi tải tiến trình:', e);
             }
-        } catch (e) {
-            console.warn('Lỗi tải tiến trình:', e);
-        }
 
-        const systemIds = [
-            '00000000-0000-0000-0000-000000000001',
-            '00000000-0000-0000-0000-000000000002',
-            '00000000-0000-0000-0000-000000000003',
-            '00000000-0000-0000-0000-000000000004',
-            '00000000-0000-0000-0000-000000000005',
-            '00000000-0000-0000-0000-000000000006',
-            '00000000-0000-0000-0000-000000000007',
-            '00000000-0000-0000-0000-000000000008'
-        ];
-        const studentRows = (rows || []).filter(r => {
-            const name = String(r.player_name || '').trim().toLowerCase();
-            const status = String(r.status || '').toLowerCase();
-            return !systemIds.includes(r.id) && !name.startsWith('__') &&
-                name !== 'khách truy cập' && name !== 'visitor' &&
-                !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
-        });
-        const latestByStudent = new Map();
-        for (const row of studentRows) {
-            const name = String(row.player_name || '').trim().toLowerCase();
-            const ip = String(row.ip_address || '').trim().toLowerCase();
-            const device = String(row.device_info || '').trim().toLowerCase();
-            const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
-            const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
-            const old = latestByStudent.get(key);
-            if (!old || time > old.time) latestByStudent.set(key, { row, time });
-        }
-        const parsed = Array.from(latestByStudent.values()).map(item => this.parseStudentProgressRecord(item.row)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
+            const systemIds = [
+                '00000000-0000-0000-0000-000000000001',
+                '00000000-0000-0000-0000-000000000002',
+                '00000000-0000-0000-0000-000000000003',
+                '00000000-0000-0000-0000-000000000004',
+                '00000000-0000-0000-0000-000000000005',
+                '00000000-0000-0000-0000-000000000006',
+                '00000000-0000-0000-0000-000000000007',
+                '00000000-0000-0000-0000-000000000008'
+            ];
+            const studentRows = (rows || []).filter(r => {
+                const name = String(r.player_name || '').trim().toLowerCase();
+                const status = String(r.status || '').toLowerCase();
+                return !systemIds.includes(r.id) && !name.startsWith('__') &&
+                    name !== 'khách truy cập' && name !== 'visitor' &&
+                    !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
+            });
+            const latestByStudent = new Map();
+            for (const row of studentRows) {
+                const name = String(row.player_name || '').trim().toLowerCase();
+                const ip = String(row.ip_address || '').trim().toLowerCase();
+                const device = String(row.device_info || '').trim().toLowerCase();
+                const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
+                const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
+                const old = latestByStudent.get(key);
+                if (!old || time > old.time) latestByStudent.set(key, { row, time });
+            }
+            const parsed = Array.from(latestByStudent.values()).map(item => this.parseStudentProgressRecord(item.row)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
 
-        let doingCount = 0;
-        let submittedCount = 0;
-        parsed.forEach(p => {
-            if (p.isCompleted) submittedCount++;
-            else if (!p.isWaiting) doingCount++;
-        });
+            let doingCount = 0;
+            let submittedCount = 0;
+            parsed.forEach(p => {
+                if (p.isCompleted) submittedCount++;
+                else if (!p.isWaiting) doingCount++;
+            });
 
-        const elDoing = document.getElementById('obs-stat-doing');
-        const elSubmitted = document.getElementById('obs-stat-submitted');
-        const elTotal = document.getElementById('obs-stat-total');
-        if (elDoing) elDoing.textContent = doingCount;
-        if (elSubmitted) elSubmitted.textContent = submittedCount;
-        if (elTotal) elTotal.textContent = parsed.length;
+            const elDoing = document.getElementById('obs-stat-doing');
+            const elSubmitted = document.getElementById('obs-stat-submitted');
+            const elTotal = document.getElementById('obs-stat-total');
+            if (elDoing) elDoing.textContent = doingCount;
+            if (elSubmitted) elSubmitted.textContent = submittedCount;
+            if (elTotal) elTotal.textContent = parsed.length;
 
-        // Ưu tiên đưa học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ
-        const sorted = [...parsed].sort((a, b) => {
-            const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
-            const bScore = (!b.isCompleted && !b.isWaiting) ? 2 : (b.isCompleted ? 1 : 0);
-            if (bScore !== aScore) return bScore - aScore;
-            return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
-        });
+            // Ưu tiên đưa học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ
+            const sorted = [...parsed].sort((a, b) => {
+                const aScore = (!a.isCompleted && !a.isWaiting) ? 2 : (a.isCompleted ? 1 : 0);
+                const bScore = (!b.isCompleted && !b.isWaiting) ? 2 : (b.isCompleted ? 1 : 0);
+                if (bScore !== aScore) return bScore - aScore;
+                return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
+            });
 
-        this.renderObserverCardsSmoothly(container, sorted);
-        this.observerProgressLoading = false;
-        if (this.observerProgressRefreshQueued) {
-            this.observerProgressRefreshQueued = false;
-            setTimeout(() => this.fetchAndRenderObserverFullscreen(), 500);
+            this.renderObserverCardsSmoothly(container, sorted);
+        } finally {
+            this.observerProgressLoading = false;
+            if (this.observerProgressRefreshQueued) {
+                this.observerProgressRefreshQueued = false;
+                setTimeout(() => this.fetchAndRenderObserverFullscreen(), 500);
+            }
         }
     }
 
@@ -5088,7 +5091,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 const optChars = ['A', 'B', 'C', 'D'];
                 const selected = this.userAnswers[q.id];
                 const isAnswered = selected !== undefined;
-                const correctIdx = q.correct !== undefined ? q.correct : q.answer;
+                const rawCorrectIdx = q.correct !== undefined ? q.correct : q.answer;
+                const correctIdx = (rawCorrectIdx !== undefined && rawCorrectIdx !== null && rawCorrectIdx !== '') ? Number(rawCorrectIdx) : NaN;
 
                 card.innerHTML = `
                     <div class="quiz-card-meta flex items-center justify-between gap-2">
@@ -5261,7 +5265,8 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         if (card && !this.isExamMode) {
-            const correctIdx = q.correct !== undefined ? q.correct : q.answer;
+            const rawCorrectIdx = q.correct !== undefined ? q.correct : q.answer;
+            const correctIdx = (rawCorrectIdx !== undefined && rawCorrectIdx !== null && rawCorrectIdx !== '') ? Number(rawCorrectIdx) : NaN;
             const optButtons = card.querySelectorAll('.quiz-option-tile');
             optButtons.forEach((btn, idx) => {
                 btn.disabled = true;
@@ -5277,7 +5282,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 }
             });
             if (q.explanation && !card.querySelector('.practice-explanation-box')) {
-                const aiAnchor = card.querySelector(`#ai-btn-${qId}`)?.closest('div');
+                const aiAnchor = document.getElementById(`ai-btn-${qId}`)?.closest('div');
                 const expHtml = `<div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed"><p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p><p>${this.formatScientificNotation(q.explanation)}</p></div>`;
                 if (aiAnchor) {
                     aiAnchor.insertAdjacentHTML('beforebegin', expHtml);
@@ -5379,7 +5384,27 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         const normalizedValue = String(val ?? '').trim();
-        if (!normalizedValue) return;
+        if (!normalizedValue) {
+            if (!this.isExamMode) return;
+            delete this.userAnswers[qId];
+            this.saveAutoSaveProgress();
+            this.updateLiveStats();
+            const card = document.getElementById(`q-card-${qId}`);
+            if (card) {
+                const inputEl = card.querySelector('.answer-text-input');
+                const submitBtn = card.querySelector('.answer-submit-button');
+                if (inputEl) {
+                    inputEl.value = '';
+                    inputEl.classList.remove('is-submitted');
+                }
+                if (submitBtn) {
+                    submitBtn.classList.remove('is-submitted');
+                    submitBtn.innerHTML = '<i class="fa-solid fa-arrow-right"></i><span>Ghi nhận</span>';
+                }
+                card.querySelector('.short-answer-feedback')?.remove();
+            }
+            return;
+        }
         this.userAnswers[qId] = normalizedValue;
         console.debug('[QuizApp] Đã ghi nhận trả lời ngắn:', { qId, answered: true });
         this.saveAutoSaveProgress();
@@ -5422,9 +5447,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (q.qType === 'short_answer') {
             const val = this.userAnswers[q.id];
             if (val === undefined) return false;
-            const isMatch = (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
-                String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
-            return !isMatch;
+            return !this.isShortAnswerCorrect(q, val);
         } else if (q.qType === 'tf_group') {
             const ansObj = this.userAnswers[q.id] || {};
             return (q.statements || []).some((st, idx) => ansObj[idx] !== undefined && Boolean(ansObj[idx]) !== Boolean(st.answer));
@@ -5785,10 +5808,8 @@ Giải thích: Biên độ A = 5 cm.`;
             if (q.qType === 'short_answer') {
                 totalItems++;
                 const val = this.userAnswers[q.id];
-                if (val !== undefined) {
-                    const isMatch = (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
-                        String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
-                    if (isMatch) correctCount++;
+                if (val !== undefined && this.isShortAnswerCorrect(q, val)) {
+                    correctCount++;
                 }
             } else if (q.qType === 'tf_group') {
                 const ansObj = this.userAnswers[q.id] || {};
@@ -5931,10 +5952,7 @@ Giải thích: Biên độ A = 5 cm.`;
             let ansReview = '';
             if (q.qType === 'short_answer') {
                 const userVal = this.userAnswers[q.id];
-                const isMatch = userVal !== undefined && (
-                    (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(userVal).trim().toLowerCase())) ||
-                    String(q.correctValue).trim().toLowerCase() === String(userVal).trim().toLowerCase()
-                );
+                const isMatch = userVal !== undefined && this.isShortAnswerCorrect(q, userVal);
                 const correctVal = String(q.correctValue ?? q.acceptedValues?.[0] ?? '').trim();
                 ansReview = `
                     <div class="p-2.5 rounded-xl ${isMatch ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'} font-bold">
@@ -6203,7 +6221,11 @@ Giải thích: Biên độ A = 5 cm.`;
         // Kích hoạt chế độ Phục Thù
         this.isRevengeMode = true;
         this.isMistakeMode = true;
+        this.isReviewingResult = false;
         this.isFinishingQuiz = false;
+        document.getElementById('btn-back-to-result')?.classList.add('hidden');
+        document.getElementById('btn-submit-quiz')?.classList.remove('hidden');
+        this.setExamMode(false);
         this.allQuestions = [...mistakeQuestions];
         this.userAnswers = {};
         this.currentFilter = 'all';

@@ -108,6 +108,31 @@ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Helper: trả về thông tin attempt an toàn (không lộ active_session_token, question_order, option_map)
+CREATE OR REPLACE FUNCTION public.arena_safe_attempt(p_attempt public.match_attempts)
+RETURNS JSONB
+LANGUAGE SQL
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+    SELECT jsonb_build_object(
+        'id', p_attempt.id,
+        'room_id', p_attempt.room_id,
+        'player_name', p_attempt.player_name,
+        'current_index', p_attempt.current_index,
+        'question_started_at', p_attempt.question_started_at,
+        'status', p_attempt.status,
+        'correct_count', p_attempt.correct_count,
+        'wrong_count', p_attempt.wrong_count,
+        'score', p_attempt.score,
+        'total_time_ms', p_attempt.total_time_ms,
+        'violation_count', p_attempt.violation_count,
+        'started_at', p_attempt.started_at,
+        'submitted_at', p_attempt.submitted_at,
+        'finish_reason', p_attempt.finish_reason
+    );
+$$;
+
 -- =========================================================================
 -- RPC 1: ĐỒNG BỘ ĐỒNG HỒ MÁY CHỦ
 -- =========================================================================
@@ -501,7 +526,7 @@ BEGIN
         RAISE EXCEPTION 'SESSION_REPLACED';
     END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
-        RETURN jsonb_build_object('already_submitted', true, 'attempt', to_jsonb(v_attempt));
+        RETURN jsonb_build_object('already_submitted', true, 'attempt', public.arena_safe_attempt(v_attempt));
     END IF;
 
     SELECT * INTO v_room FROM public.match_rooms WHERE id = v_attempt.room_id;
@@ -517,14 +542,22 @@ BEGIN
     -- Idempotency check
     SELECT * INTO v_existing FROM public.match_answers WHERE attempt_id = p_attempt_id AND question_id = p_question_id;
     IF v_existing.id IS NOT NULL THEN
-        RETURN jsonb_build_object('duplicate', true, 'attempt', to_jsonb(v_attempt), 'answer', to_jsonb(v_existing));
+        RETURN jsonb_build_object('duplicate', true, 'attempt', public.arena_safe_attempt(v_attempt), 'answer', to_jsonb(v_existing));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(COALESCE(v_attempt.question_order, '[]'::jsonb)) AS qid
+        WHERE qid = p_question_id::TEXT
+    ) THEN
+        RAISE EXCEPTION 'Câu hỏi không thuộc phiên thi này';
     END IF;
 
     v_ref_start := COALESCE(v_attempt.question_started_at, v_attempt.started_at, v_room.started_at, v_now);
     v_resp_ms := GREATEST(0, ROUND(EXTRACT(EPOCH FROM (v_now - v_ref_start)) * 1000)::INTEGER);
 
-    IF COALESCE(p_is_offline_sync, false) AND p_client_elapsed_ms IS NOT NULL AND p_client_elapsed_ms >= 0 THEN
-        v_resp_ms := LEAST(v_resp_ms, p_client_elapsed_ms);
+    IF COALESCE(p_is_offline_sync, false) AND p_client_elapsed_ms IS NOT NULL THEN
+        v_resp_ms := GREATEST(0, LEAST(p_client_elapsed_ms, v_room.match_duration_sec * 1000));
     END IF;
 
     IF v_room.per_question_sec IS NOT NULL THEN
@@ -546,28 +579,35 @@ BEGIN
         WHERE id = p_attempt_id
         RETURNING * INTO v_attempt;
 
-        RETURN jsonb_build_object('question_timeout', true, 'attempt', to_jsonb(v_attempt));
+        RETURN jsonb_build_object('question_timeout', true, 'attempt', public.arena_safe_attempt(v_attempt));
     END IF;
 
     SELECT * INTO v_q FROM public.quiz_questions WHERE id = p_question_id;
+    IF v_q.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy câu hỏi';
+    END IF;
     IF COALESCE(v_q.q_type, 'mcq') = 'mcq' AND p_selected_display IS NOT NULL THEN
         IF v_attempt.option_map ? p_question_id::TEXT THEN
             v_orig_idx := (v_attempt.option_map->(p_question_id::TEXT)->>p_selected_display)::INTEGER;
         ELSE
             v_orig_idx := p_selected_display;
         END IF;
-        v_is_correct := (v_orig_idx = COALESCE(v_q.correct, v_q.answer, 0));
+        v_is_correct := COALESCE(v_orig_idx = COALESCE(v_q.correct, v_q.answer, 0), false);
     ELSIF v_q.q_type = 'short_answer' THEN
         v_is_correct := LOWER(TRIM(COALESCE(p_text_answer, ''))) = LOWER(TRIM(COALESCE(v_q.correct_value, '')));
     ELSIF v_q.q_type = 'tf_group' THEN
         v_total_stmts := jsonb_array_length(COALESCE(v_q.statements, '[]'::jsonb));
-        v_tf_arr := COALESCE(
-            p_tf_answers,
-            CASE
-                WHEN p_text_answer IS NOT NULL AND LEFT(TRIM(p_text_answer), 1) = '[' THEN p_text_answer::jsonb
-                ELSE '[]'::jsonb
-            END
-        );
+        IF p_tf_answers IS NOT NULL THEN
+            v_tf_arr := p_tf_answers;
+        ELSIF p_text_answer IS NOT NULL AND LEFT(TRIM(p_text_answer), 1) = '[' THEN
+            BEGIN
+                v_tf_arr := p_text_answer::jsonb;
+            EXCEPTION WHEN OTHERS THEN
+                v_tf_arr := '[]'::jsonb;
+            END;
+        ELSE
+            v_tf_arr := '[]'::jsonb;
+        END IF;
         IF v_total_stmts > 0 AND jsonb_typeof(v_tf_arr) = 'array' THEN
             FOR v_idx IN 0 .. (v_total_stmts - 1) LOOP
                 v_user_val := LOWER(TRIM(COALESCE(v_tf_arr->>v_idx, '')));
@@ -612,7 +652,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'recorded', true,
-        'attempt', to_jsonb(v_attempt),
+        'attempt', public.arena_safe_attempt(v_attempt),
         'server_now', v_now
     );
 END;
@@ -641,7 +681,7 @@ BEGIN
     IF v_attempt.id IS NULL THEN RAISE EXCEPTION 'Không tìm thấy phiên thi'; END IF;
     IF v_attempt.active_session_token <> p_session_token THEN RAISE EXCEPTION 'SESSION_REPLACED'; END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
-        RETURN jsonb_build_object('forced', v_attempt.status = 'FORCED', 'attempt', to_jsonb(v_attempt));
+        RETURN jsonb_build_object('forced', v_attempt.status = 'FORCED', 'attempt', public.arena_safe_attempt(v_attempt));
     END IF;
 
     SELECT * INTO v_room FROM public.match_rooms WHERE id = v_attempt.room_id;
@@ -667,19 +707,20 @@ BEGIN
         VALUES (v_room.id, v_attempt.id, v_attempt.player_name, 'FORCED_SUBMIT', jsonb_build_object('violation_count', v_attempt.violation_count));
     END IF;
 
-    RETURN jsonb_build_object('forced', v_forced, 'attempt', to_jsonb(v_attempt));
+    RETURN jsonb_build_object('forced', v_forced, 'attempt', public.arena_safe_attempt(v_attempt));
 END;
 $$;
 
 -- =========================================================================
 -- RPC 7: NỘP BÀI / KẾT THÚC PHIÊN / KẾT THÚC PHÒNG
 -- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_finish_attempt(UUID, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.arena_finish_attempt(
     p_attempt_id UUID,
     p_session_token TEXT,
     p_reason TEXT DEFAULT 'USER_SUBMIT'
 )
-RETURNS public.match_attempts
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
@@ -695,7 +736,7 @@ BEGIN
         RAISE EXCEPTION 'SESSION_REPLACED';
     END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
-        RETURN v_attempt;
+        RETURN public.arena_safe_attempt(v_attempt);
     END IF;
 
     UPDATE public.match_attempts
@@ -708,7 +749,7 @@ BEGIN
     INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
     VALUES (v_attempt.room_id, v_attempt.id, v_attempt.player_name, 'ATTEMPT_SUBMITTED', jsonb_build_object('reason', p_reason, 'score', v_attempt.score, 'correct_count', v_attempt.correct_count));
 
-    RETURN v_attempt;
+    RETURN public.arena_safe_attempt(v_attempt);
 END;
 $$;
 

@@ -627,11 +627,12 @@
                 const clean = val.toLowerCase();
                 const cleanCode = normalizeAdminCode(clean);
                 isMatch = allowed.some(it => {
+                    if (!clean || clean.length < 6) return false;
                     if (typeof it === 'string') return it.toLowerCase() === clean || normalizeAdminCode(it) === cleanCode;
                     const itTok = String(it.token || '').toLowerCase();
                     const itRaw = String(it.rawCode || '').toLowerCase();
                     if (itTok && itTok === clean) return true;
-                    if (itRaw && itRaw === clean && itRaw.length >= 6) return true;
+                    if (itRaw && itRaw === clean) return true;
                     if (cleanCode && normalizeAdminCode(itTok) === cleanCode) return true;
                     if (cleanCode && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
                     return false;
@@ -648,11 +649,11 @@
                     const cleanCode = normalizeAdminCode(clean);
                     isMatch = tokens.some(t => {
                         // CHỈ ROLE ADMIN ĐƯỢC MỞ KHÓA ADMIN
-                        if (t.role !== 'admin') return false;
+                        if (t.role !== 'admin' || !clean || clean.length < 6) return false;
                         const tTok = String(t.token || '').toLowerCase();
                         const tRaw = String(t.rawCode || '').toLowerCase();
                         if (tTok && tTok === clean) return true;
-                        if (tRaw && tRaw === clean && tRaw.length >= 6) return true;
+                        if (tRaw && tRaw === clean) return true;
                         if (cleanCode && normalizeAdminCode(tTok) === cleanCode) return true;
                         if (cleanCode && tRaw && normalizeAdminCode(tRaw) === cleanCode) return true;
                         return false;
@@ -1257,15 +1258,17 @@
 
     function toRecord(q, subjectKey, id) {
         const normalized = normalizeAiQuestion(q);
-        const resolvedGrade = String(normalized.grade || $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'));
+        const targetSubjectKey = subjectKey || normalized.subject_key || 'history';
+        const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(targetSubjectKey));
+        const resolvedGrade = String(normalized.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'));
         const record = {
-            ...(id ? { id: Number(id) } : {}), subject_key: subjectKey || normalized.subject_key || 'history', grade: resolvedGrade, category: normalized.category || 'Bài tập',
+            ...(id ? { id: Number(id) } : {}), subject_key: targetSubjectKey, grade: resolvedGrade, category: normalized.category || 'Bài tập',
             q_type: normalized.qType, question: storageText(normalized.question), options: normalized.qType === 'mcq' ? normalized.options.map(storageText) : [],
             statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: storageText(item.text ?? item.content), answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
             correct: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             answer: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? '') : '',
-            explanation: normalized.explanation ?? '', image_url: normalized.image_url || normalized.imageUrl || '', updated_at: new Date().toISOString()
+            explanation: normalized.explanation ?? '', image_url: normalized.image_url || normalized.imageUrl || '', is_deleted: false, deleted_at: null, updated_at: new Date().toISOString()
         };
         return record;
     }
@@ -1615,6 +1618,8 @@
                 correct_value: String(item.correct_value ?? item.correctValue ?? ''),
                 explanation: storageText(item.explanation || ''),
                 image_url: item.image_url || item.imageUrl || '',
+                is_deleted: false,
+                deleted_at: null,
                 updated_at: new Date().toISOString()
             };
 
@@ -1698,6 +1703,8 @@
                     correct_value: String(item.correct_value ?? item.correctValue ?? ''),
                     explanation: storageText(item.explanation || ''),
                     image_url: item.image_url || item.imageUrl || '',
+                    is_deleted: false,
+                    deleted_at: null,
                     updated_at: new Date().toISOString()
                 };
             });
@@ -2406,12 +2413,15 @@
     }
 
     async function saveImportQuestions() {
+        if (state.importSaving) return;
         if (!state.importQuestions.length) {
             if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi. Bấm Lưu vào ngân hàng để tiếp tục.');
             return notify(state.importError || 'Chưa có câu hỏi để lưu. Hãy dán JSON hợp lệ rồi bấm Đọc JSON.', true);
         }
         if (!state.importIntegrity.valid && !(await confirmDialog({ title: 'Tiếp tục lưu câu hỏi?', message: 'Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?', confirmText: 'Vẫn tiếp tục lưu', variant: 'warning' }))) return;
         if ($('import-replace')?.checked && !(await confirmDialog({ title: 'Ghi đè câu hỏi cũ?', message: 'Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp bộ đề mới?', confirmText: 'Xóa cũ & Nạp mới', variant: 'danger' }))) return;
+        state.importSaving = true;
+        setActionBusy('save-import', true, 'Đang lưu...');
         try {
             const selectedSubject = String($('import-subject-select')?.value || state.importSubject || '').trim();
             if (!selectedSubject) throw new Error('Chưa chọn môn đích cho bộ câu hỏi.');
@@ -2428,7 +2438,7 @@
             for (let index = 0; index < records.length; index += 50) {
                 const { data: insertedRows, error } = await state.client
                     .from('quiz_questions')
-                    .insert(records.slice(index, index + 50))
+                    .upsert(records.slice(index, index + 50), { onConflict: 'id' })
                     .select('id');
                 if (error) throw error;
                 verifiedCount += Array.isArray(insertedRows) ? insertedRows.length : 0;
@@ -2441,7 +2451,12 @@
             notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
              sessionStorage.removeItem('quiz_import_draft');
              closeModal('import-modal'); await loadQuestions();
-        } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); }
+        } catch (error) {
+            notify(`Không thể lưu danh sách: ${error.message}`, true);
+        } finally {
+            state.importSaving = false;
+            setActionBusy('save-import', false);
+        }
     }
 
     async function handleImportFile(file) {
@@ -2984,7 +2999,7 @@
                                         <i class="fa-solid fa-user-shield"></i>
                                     </span>
                                      <b style="font-size:13px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</b>
-                                     <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>Kèm Đề + AI</span>
+                                     <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;">Kèm Đề + AI</span>
                                 </div>
                             </td>
                             <td>
@@ -4454,105 +4469,105 @@
         }
         state.progressLoading = true;
 
-        let logins = [];
-        let loadError = '';
         try {
-            if (state.client) {
-                const { data, error } = await state.client
-                    .from('quiz_logins')
-                    .select('*')
-                    .order('last_active', { ascending: false })
-                    .limit(100);
-                if (error) loadError = error.message || 'Không thể tải dữ liệu tiến trình.';
-                else if (data) logins = data;
+            let logins = [];
+            let loadError = '';
+            try {
+                if (state.client) {
+                    const { data, error } = await state.client
+                        .from('quiz_logins')
+                        .select('*')
+                        .order('last_active', { ascending: false })
+                        .limit(100);
+                    if (error) loadError = error.message || 'Không thể tải dữ liệu tiến trình.';
+                    else if (data) logins = data;
+                }
+            } catch (e) {
+                loadError = e?.message || 'Không thể tải dữ liệu tiến trình.';
+                console.warn('Lỗi tải tiến trình:', e);
             }
-        } catch (e) {
-            loadError = e?.message || 'Không thể tải dữ liệu tiến trình.';
-            console.warn('Lỗi tải tiến trình:', e);
-        }
 
-        if (!logins || logins.length === 0) logins = state.logins || [];
+            if (!logins || logins.length === 0) logins = state.logins || [];
 
-        const systemIds = Object.values(SYSTEM || {});
-        const studentRows = (logins || []).filter(r => {
-            const name = String(r.player_name || '').trim().toLowerCase();
-            const status = String(r.status || '').toLowerCase();
-            return !systemIds.includes(r.id) && !name.startsWith('__') &&
-                name !== 'khách truy cập' && name !== 'visitor' &&
-                !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
-        });
-        // Chỉ giữ phiên mới nhất của mỗi học sinh/IP/thiết bị. Realtime heartbeat
-        // có thể tạo nhiều attempt, nhưng không được làm phình bộ đếm tổng học sinh.
-        const latestByStudent = new Map();
-        for (const row of studentRows) {
-            const name = String(row.player_name || '').trim().toLowerCase();
-            const ip = String(row.ip_address || '').trim().toLowerCase();
-            const device = String(row.device_info || '').trim().toLowerCase();
-            const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
-            const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
-            const old = latestByStudent.get(key);
-            if (!old || time > old.time) latestByStudent.set(key, { row, time });
-        }
-        const allParsed = Array.from(latestByStudent.values()).map(item => parseStudentProgress(item.row));
-        const filter = state.progressFilter || 'all';
-        const gradeList = filter === 'all'
-            ? allParsed
-            : (filter === '5' ? allParsed.filter(p => p.isGrade5) : allParsed.filter(p => !p.isGrade5));
-        state.progressRecords = allParsed;
-        state.progressRawLogins = logins;
-        renderProgressSubjectOptions(allParsed);
-        const subjectList = state.progressSubject === 'all'
-            ? gradeList
-            : gradeList.filter((p) => subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject));
-        const keyword = String(state.progressSearch || '').trim().toLowerCase();
-        const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
-        renderProgressSubjectInfo(subjectList);
-        if (loadError && gradeList.length === 0) {
-            container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
-            setProgressEmptyState(container, true, 'nào');
-            const title = container.querySelector('[data-progress-empty] h3');
-            if (title) title.textContent = 'Không thể tải dữ liệu';
-            const message = container.querySelector('[data-progress-empty] p');
-            if (message) message.textContent = loadError;
-            state.progressLoading = false;
-            return;
-        }
+            const systemIds = Object.values(SYSTEM || {});
+            const studentRows = (logins || []).filter(r => {
+                const name = String(r.player_name || '').trim().toLowerCase();
+                const status = String(r.status || '').toLowerCase();
+                return !systemIds.includes(r.id) && !name.startsWith('__') &&
+                    name !== 'khách truy cập' && name !== 'visitor' &&
+                    !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
+            });
+            // Chỉ giữ phiên mới nhất của mỗi học sinh/IP/thiết bị. Realtime heartbeat
+            // có thể tạo nhiều attempt, nhưng không được làm phình bộ đếm tổng học sinh.
+            const latestByStudent = new Map();
+            for (const row of studentRows) {
+                const name = String(row.player_name || '').trim().toLowerCase();
+                const ip = String(row.ip_address || '').trim().toLowerCase();
+                const device = String(row.device_info || '').trim().toLowerCase();
+                const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
+                const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
+                const old = latestByStudent.get(key);
+                if (!old || time > old.time) latestByStudent.set(key, { row, time });
+            }
+            const allParsed = Array.from(latestByStudent.values()).map(item => parseStudentProgress(item.row));
+            const filter = state.progressFilter || 'all';
+            const gradeList = filter === 'all'
+                ? allParsed
+                : (filter === '5' ? allParsed.filter(p => p.isGrade5) : allParsed.filter(p => !p.isGrade5));
+            state.progressRecords = allParsed;
+            state.progressRawLogins = logins;
+            renderProgressSubjectOptions(allParsed);
+            const subjectList = state.progressSubject === 'all'
+                ? gradeList
+                : gradeList.filter((p) => subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject));
+            const keyword = String(state.progressSearch || '').trim().toLowerCase();
+            const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
+            renderProgressSubjectInfo(subjectList);
+            if (loadError && gradeList.length === 0) {
+                container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+                setProgressEmptyState(container, true, 'nào');
+                const title = container.querySelector('[data-progress-empty] h3');
+                if (title) title.textContent = 'Không thể tải dữ liệu';
+                const message = container.querySelector('[data-progress-empty] p');
+                if (message) message.textContent = loadError;
+                return;
+            }
 
-        const nowMs = Date.now();
-        let doingCount = 0;
-        let submittedCount = 0;
-        let waitingCount = 0;
+            const nowMs = Date.now() + (window.dbService?.serverClockOffsetMs || 0);
+            let doingCount = 0;
+            let submittedCount = 0;
+            let waitingCount = 0;
 
-        subjectList.forEach(p => {
-            if (p.isCompleted) submittedCount++;
-            else if (p.isWaiting) waitingCount++;
-            else doingCount++;
-        });
+            subjectList.forEach(p => {
+                if (p.isCompleted) submittedCount++;
+                else if (p.isWaiting) waitingCount++;
+                else doingCount++;
+            });
 
-        $('g5-stat-doing') && ($('g5-stat-doing').textContent = doingCount);
-        $('g5-stat-submitted') && ($('g5-stat-submitted').textContent = submittedCount);
-        $('g5-stat-waiting') && ($('g5-stat-waiting').textContent = waitingCount);
-        $('g5-stat-total') && ($('g5-stat-total').textContent = subjectList.length);
-        $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || subjectList.length));
+            $('g5-stat-doing') && ($('g5-stat-doing').textContent = doingCount);
+            $('g5-stat-submitted') && ($('g5-stat-submitted').textContent = submittedCount);
+            $('g5-stat-waiting') && ($('g5-stat-waiting').textContent = waitingCount);
+            $('g5-stat-total') && ($('g5-stat-total').textContent = subjectList.length);
+            $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || subjectList.length));
 
-        renderQuickObservers();
+            renderQuickObservers();
 
-        if (parsedList.length === 0) {
-            const filterLabel = filter === 'all' ? '' : `Lớp ${filter}`;
-            container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
-            setProgressEmptyState(container, true, filterLabel);
+            if (parsedList.length === 0) {
+                const filterLabel = filter === 'all' ? '' : `Lớp ${filter}`;
+                container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+                setProgressEmptyState(container, true, filterLabel);
+                return;
+            }
+
+            // Ưu tiên hiển thị: Học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ ở trang chủ
+            const sortedList = progressSortRecords(parsedList);
+
+            setProgressEmptyState(container, false);
+            renderGrade5CardsSmoothly(container, sortedList, nowMs);
+        } finally {
             state.progressLoading = false;
             if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
-            return;
         }
-
-        // Ưu tiên hiển thị: Học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ ở trang chủ
-        const sortedList = progressSortRecords(parsedList);
-
-        setProgressEmptyState(container, false);
-        renderGrade5CardsSmoothly(container, sortedList, nowMs);
-        state.progressLoading = false;
-        if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
     }
 
     function buildProgressBarInnerHtml(p, percent) {
@@ -5192,7 +5207,7 @@
                 : localRows.filter((row) => String(row.ip_address || '').trim() !== cleanIp);
             localStorage.setItem(localKey, JSON.stringify(filteredLocal));
         } catch (e) { /* Local cache is optional. */ }
-        state.lastStudentsHtml = '';
+        state.lastMonitorStatsHtml = '';
         state.lastStudentsBodyHtml = '';
         notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
         await loadStudents();
@@ -5701,7 +5716,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         $('copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
         $('modal-copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
         $('do-print-btn')?.addEventListener('click', () => runAction(executePrintExam));
-         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', saveImportQuestions);
+         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', () => runAction(saveImportQuestions));
          $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
@@ -5760,7 +5775,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                       eyebrow: 'XÓA PHIÊN THEO DÕI',
                       title: `Xóa thông tin của ${studentName}?`,
                       message: `Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`,
-                      okText: 'Xóa khỏi bảng',
+                      confirmText: 'Xóa khỏi bảng',
                       cancelText: 'Hủy bỏ',
                       variant: 'danger'
                   });

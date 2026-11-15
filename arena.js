@@ -151,8 +151,12 @@
                 this.room?.status === 'IN_PROGRESS' &&
                 document.getElementById('arena-exam-view');
             if (inActiveExam) {
+                this.unbindAntiCheat();
                 const ok = window.confirm('Bạn đang trong giờ làm bài. Bạn có chắc muốn đóng cửa sổ thi đấu? Đồng hồ máy chủ vẫn tiếp tục chạy.');
-                if (!ok) return;
+                if (!ok) {
+                    this.bindAntiCheat();
+                    return;
+                }
             }
             if (document.fullscreenElement && document.exitFullscreen) {
                 document.exitFullscreen().catch(() => {});
@@ -246,8 +250,10 @@
                 const clientId = getOrCreateClientId();
                 const playerKey = `${normalizedName}::${clientId}`;
                 const tokenKey = `arena_session_${code.toUpperCase()}_${playerKey}`;
-                this.sessionToken = localStorage.getItem(tokenKey) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-                localStorage.setItem(tokenKey, this.sessionToken);
+                let savedToken = '';
+                try { savedToken = sessionStorage.getItem(tokenKey) || ''; } catch (e) {}
+                this.sessionToken = savedToken || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                try { sessionStorage.setItem(tokenKey, this.sessionToken); } catch (e) {}
 
                 await this.syncClock();
                 const { data, error } = await client.rpc('arena_join_room', {
@@ -361,9 +367,14 @@
         async refreshLobbyOrLeaderboard() {
             const client = getClient();
             if (!client || !this.room?.id) return;
-            const { data } = await client.rpc('arena_get_leaderboard', { p_room_id: this.room.id });
+            const { data, error } = await client.rpc('arena_get_leaderboard', { p_room_id: this.room.id });
             const lbEl = document.getElementById('arena-lb-rows');
-            if (lbEl && Array.isArray(data)) {
+            if (!lbEl) return;
+            if (error) {
+                lbEl.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-400">Không thể tải bảng xếp hạng: ${esc(error.message)}</td></tr>`;
+                return;
+            }
+            if (Array.isArray(data)) {
                 lbEl.innerHTML = this.buildLeaderboardRowsHtml(data);
             }
         },
@@ -371,7 +382,8 @@
         renderExamView() {
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
-            if (this.room?.require_fullscreen && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+            const needFsPrompt = Boolean(this.room?.require_fullscreen && document.documentElement.requestFullscreen && !document.fullscreenElement);
+            if (needFsPrompt) {
                 document.documentElement.requestFullscreen().catch(() => {});
             }
             this.bindAntiCheat();
@@ -457,6 +469,12 @@
                         </div>
                     ` : ''}
                     <div id="arena-warning-banner" class="hidden p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold"></div>
+                    ${needFsPrompt ? `
+                        <div id="arena-fs-prompt" class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-between gap-2 text-xs text-amber-200">
+                            <span><i class="fa-solid fa-expand mr-1.5"></i> Phòng thi yêu cầu chế độ toàn màn hình.</span>
+                            <button type="button" id="arena-fs-btn" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer shrink-0">Bật toàn màn hình</button>
+                        </div>
+                    ` : ''}
                     <div class="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
                         <div class="text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
                         ${safeImgHtml}
@@ -466,6 +484,11 @@
             `;
 
             const examEl = document.getElementById('arena-exam-view');
+            document.getElementById('arena-fs-btn')?.addEventListener('click', () => {
+                document.documentElement.requestFullscreen?.().then(() => {
+                    document.getElementById('arena-fs-prompt')?.classList.add('hidden');
+                }).catch(() => {});
+            });
             if (examEl) {
                 renderMathSafe(examEl);
                 ['copy', 'cut', 'paste', 'contextmenu'].forEach((evt) => {
@@ -627,8 +650,15 @@
                         p_is_offline_sync: true,
                         p_client_elapsed_ms: clientElapsedMs
                     });
+                    if (this.attempt) {
+                        this.attempt.question_started_at = new Date(this.serverNowMs()).toISOString();
+                    }
                 } else if (data?.attempt) {
                     this.attempt = data.attempt;
+                }
+                if (data?.already_submitted || this.attempt?.status === 'SUBMITTED' || this.attempt?.status === 'FORCED') {
+                    this.routeByState();
+                    return;
                 }
                 this.currentIndex = Math.max(this.currentIndex + 1, Number(this.attempt?.current_index || 0));
                 this.renderExamView();
@@ -784,11 +814,17 @@
                     p_session_token: this.sessionToken,
                     p_reason: reason
                 });
-                if (error && String(error.message || '').includes('SESSION_REPLACED')) {
-                    this.renderSessionReplaced();
-                    return;
+                if (error) {
+                    if (String(error.message || '').includes('SESSION_REPLACED')) {
+                        this.renderSessionReplaced();
+                        return;
+                    }
+                    if (this.pendingFinishKey) {
+                        try { localStorage.setItem(this.pendingFinishKey, reason); } catch (e) {}
+                    }
+                } else if (data) {
+                    this.attempt = data;
                 }
-                if (data) this.attempt = data;
             }
             this.renderLeaderboardView();
         },
@@ -1065,7 +1101,11 @@
                 btn.addEventListener('click', async () => {
                     btn.disabled = true;
                     try {
-                        await client.rpc('arena_end_room', { p_room_id: btn.dataset.arenaEnd });
+                        const { error } = await client.rpc('arena_end_room', { p_room_id: btn.dataset.arenaEnd });
+                        if (error) {
+                            alert(`Không thể đóng phòng: ${error.message}`);
+                            return;
+                        }
                         this.selectedRoomId = btn.dataset.arenaEnd;
                         await this.loadRooms();
                     } finally {
@@ -1088,10 +1128,14 @@
             const detailEl = document.getElementById('arena-host-detail');
             if (!client || !detailEl || !roomId) return;
 
-            const [{ data: attempts }, { data: logs }] = await Promise.all([
+            const [{ data: attempts, error: lbErr }, { data: logs, error: logErr }] = await Promise.all([
                 client.rpc('arena_get_leaderboard', { p_room_id: roomId }),
                 client.rpc('arena_get_audit_logs', { p_room_id: roomId })
             ]);
+            if (lbErr || logErr) {
+                detailEl.innerHTML = `<p class="muted-copy">Không thể tải dữ liệu phòng: ${esc(lbErr?.message || logErr?.message || 'Lỗi không xác định')}</p>`;
+                return;
+            }
 
             detailEl.innerHTML = `
                 <div class="table-wrap" style="margin-bottom:16px;">
