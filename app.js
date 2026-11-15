@@ -5122,6 +5122,376 @@ Giải thích: Biên độ A = 5 cm.`;
         });
     }
 
+    resolveObserverSubjectKey(subjectName) {
+        const raw = String(subjectName || '').trim();
+        if (!raw) return '';
+        const norm = raw.toLowerCase().replace(/\s+/g, ' ');
+        const matched = (this.dynamicSubjects || []).find((sub) => {
+            const key = String(sub?.key || sub?.subject_key || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const name = String(sub?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const title = String(sub?.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return norm === key || norm === name || norm === title;
+        });
+        if (matched) return String(matched.key || matched.subject_key || '').trim();
+        return raw;
+    }
+
+    async getObserverQuestionsForSubject(subjectName) {
+        if (!this._observerQuestionsCache) this._observerQuestionsCache = new Map();
+        if (!this._observerQuestionsPending) this._observerQuestionsPending = new Map();
+
+        const subjKey = this.resolveObserverSubjectKey(subjectName);
+        const cacheKey = String(subjKey || subjectName || '').trim().toLowerCase();
+        if (!cacheKey) return [];
+
+        const currentNorm = String(this.currentSubject || '').trim().toLowerCase();
+        if (currentNorm && cacheKey === currentNorm && Array.isArray(this.allQuestions) && this.allQuestions.length > 0) {
+            this._observerQuestionsCache.set(cacheKey, this.allQuestions);
+            return this.allQuestions;
+        }
+
+        if (this._observerQuestionsCache.has(cacheKey)) {
+            return this._observerQuestionsCache.get(cacheKey);
+        }
+
+        if (this._observerQuestionsPending.has(cacheKey)) {
+            return this._observerQuestionsPending.get(cacheKey);
+        }
+
+        const promise = (async () => {
+            let questions = [];
+            if (subjKey && navigator.onLine && window.dbService && typeof window.dbService.fetchQuestionsBySubject === 'function') {
+                try {
+                    const cloudQuestions = await window.dbService.fetchQuestionsBySubject(subjKey);
+                    if (Array.isArray(cloudQuestions)) {
+                        questions = cloudQuestions.filter((question) => question?.is_deleted !== true);
+                        if (questions.length > 0) {
+                            try {
+                                localStorage.setItem(`quiz_cache_${subjKey}`, JSON.stringify(questions));
+                            } catch (e) {}
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Không thể tải câu hỏi môn học để xem chi tiết:', e);
+                }
+            }
+
+            if (questions.length === 0 && subjKey) {
+                try {
+                    const cachedRaw = localStorage.getItem(`quiz_cache_${subjKey}`);
+                    if (cachedRaw) {
+                        const parsed = JSON.parse(cachedRaw);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            questions = parsed.filter((question) => question?.is_deleted !== true);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (questions.length === 0 && subjKey) {
+                if (subjKey === 'history' && Array.isArray(window.QUIZ_QUESTIONS)) {
+                    questions = window.QUIZ_QUESTIONS.filter((question) => question?.is_deleted !== true);
+                } else if (subjKey === 'physics' && Array.isArray(window.PHYSICS_QUESTIONS)) {
+                    questions = window.PHYSICS_QUESTIONS.filter((question) => question?.is_deleted !== true);
+                } else if (subjKey === 'geography' && Array.isArray(window.GEOGRAPHY_QUESTIONS)) {
+                    questions = window.GEOGRAPHY_QUESTIONS.filter((question) => question?.is_deleted !== true);
+                }
+            }
+
+            const normalized = questions.length > 0 ? this.normalizeQuestions(questions) : [];
+            if (normalized.length > 0) {
+                this._observerQuestionsCache.set(cacheKey, normalized);
+            }
+            return normalized;
+        })().finally(() => {
+            this._observerQuestionsPending?.delete(cacheKey);
+        });
+
+        this._observerQuestionsPending.set(cacheKey, promise);
+        return promise;
+    }
+
+    renderObserverQuestionExpandedHtml(it, idx, qObj, opts = {}) {
+        const { showNav = false, totalItems = 0, isLoadingQuestions = false } = opts;
+        const statusBadge = it?.ok === true
+            ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">✓ Làm đúng</span>'
+            : (it?.ok === false
+                ? '<span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold">✗ Làm sai</span>'
+                : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-bold">Chưa hoàn thành</span>');
+
+        const isTf = it?.t === 'tf' || qObj?.qType === 'tf_group' || qObj?.q_type === 'tf_group';
+        const isSa = it?.t === 'sa' || qObj?.qType === 'short_answer' || qObj?.q_type === 'short_answer';
+        const typeLabel = isTf ? 'Đúng / Sai' : (isSa ? 'Trả lời ngắn' : 'Trắc nghiệm');
+        const catLabel = String(it?.cat || qObj?.category || '').trim();
+
+        const questionStemHtml = qObj?.question
+            ? `<div class="text-sm font-semibold text-white leading-relaxed break-words">${this.formatScientificNotation(qObj.question)}</div>`
+            : `<div class="text-xs text-slate-400 italic">${isLoadingQuestions ? '<i class="fa-solid fa-circle-notch fa-spin mr-1.5 text-indigo-400"></i>Đang tải nội dung đề bài...' : `Câu hỏi số ${idx + 1}${catLabel ? ` (${this.escapeHtml(catLabel)})` : ''} — xem lựa chọn và đáp án đúng bên dưới.`}</div>`;
+
+        const safeImgUrl = this.sanitizeMediaUrl(qObj?.image_url);
+        const imgHtml = safeImgUrl ? `
+            <div class="rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950/70 p-2 flex justify-center">
+                <img src="${this.escapeHtml(safeImgUrl)}" alt="Hình minh họa câu ${idx + 1}" class="max-h-52 w-auto object-contain rounded-lg" loading="lazy">
+            </div>
+        ` : '';
+
+        let detailBodyHtml = '';
+        if (isTf) {
+            const stmts = Array.isArray(qObj?.statements) ? qObj.statements : [];
+            const uaArr = Array.isArray(it?.ua) ? it.ua : [];
+            const caArr = Array.isArray(it?.ca)
+                ? it.ca.map(v => this._parseBoolAnswer(v))
+                : stmts.map(s => this._parseBoolAnswer(s?.answer));
+            const count = Math.max(stmts.length, uaArr.length, caArr.length);
+
+            detailBodyHtml = count > 0 ? `
+                <div class="space-y-1.5">
+                    ${Array.from({ length: count }).map((_, sIdx) => {
+                        const st = stmts[sIdx];
+                        const rawUa = uaArr[sIdx];
+                        const hasPick = rawUa !== null && rawUa !== undefined;
+                        const userBool = hasPick ? this._parseBoolAnswer(rawUa) : null;
+                        const hasCa = sIdx < caArr.length && caArr[sIdx] !== null && caArr[sIdx] !== undefined;
+                        const correctBool = hasCa ? Boolean(caArr[sIdx]) : false;
+                        const isRight = hasPick && hasCa && userBool === correctBool;
+
+                        const rowCls = !hasPick
+                            ? 'bg-slate-900/70 border-slate-800'
+                            : (isRight
+                                ? 'bg-emerald-500/10 border-emerald-500/40'
+                                : 'bg-rose-500/10 border-rose-500/40');
+                        const userPickCls = !hasPick
+                            ? 'bg-slate-800 text-slate-400 border-slate-700'
+                            : (isRight
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-rose-500/20 text-rose-300 border-rose-500/40');
+
+                        return `
+                            <div class="p-2.5 rounded-xl border ${rowCls} flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                <div class="text-slate-200 leading-relaxed break-words">
+                                    <b class="text-indigo-300 mr-1">${String.fromCharCode(97 + sIdx)})</b>
+                                    ${st?.text ? this.formatScientificNotation(st.text) : `<span class="text-slate-400">Ý ${String.fromCharCode(97 + sIdx)}</span>`}
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                    <span class="px-2 py-0.5 rounded-lg border text-[11px] font-bold ${userPickCls}">
+                                        ${!hasPick ? 'Chưa chọn' : (isRight ? `✓ Chọn: ${userBool ? 'Đúng' : 'Sai'}` : `✗ Chọn: ${userBool ? 'Đúng' : 'Sai'}`)}
+                                    </span>
+                                    ${hasCa ? `<span class="px-2 py-0.5 rounded-lg border bg-emerald-500/15 text-emerald-300 border-emerald-500/35 text-[11px] font-bold">Đúng: ${correctBool ? 'Đúng' : 'Sai'}</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : `<p class="text-xs text-slate-400 italic">Chưa có dữ liệu chi tiết các ý Đúng/Sai.</p>`;
+        } else if (isSa) {
+            const rawUa = it?.ua !== null && it?.ua !== undefined ? String(it.ua).trim() : '';
+            const hasPick = rawUa !== '';
+            const rawCa = String(it?.ca ?? qObj?.correctValue ?? qObj?.correct_value ?? qObj?.acceptedValues?.[0] ?? qObj?.answer ?? '').trim();
+
+            detailBodyHtml = `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div class="p-3 rounded-xl border ${!hasPick ? 'bg-slate-900/70 border-slate-800' : (it?.ok ? 'bg-emerald-500/15 border-emerald-500/40' : 'bg-rose-500/15 border-rose-500/40')}">
+                        <div class="text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1">Học sinh trả lời</div>
+                        <div class="font-bold text-sm break-words ${!hasPick ? 'text-slate-400 italic' : (it?.ok ? 'text-emerald-300' : 'text-rose-300')}">
+                            ${hasPick ? `${it?.ok ? '✓ ' : '✗ '}${this.escapeHtml(rawUa)}` : 'Chưa trả lời'}
+                        </div>
+                    </div>
+                    <div class="p-3 rounded-xl border bg-emerald-500/10 border-emerald-500/35">
+                        <div class="text-[11px] uppercase tracking-wider font-bold text-emerald-400/90 mb-1">Đáp án đúng</div>
+                        <div class="font-bold text-sm text-emerald-300 break-words">
+                            ${rawCa ? `✓ ${this.formatScientificNotation(rawCa)}` : 'Chưa thiết lập'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
+            const hasUa = it?.ua !== null && it?.ua !== undefined && it?.ua !== '' && !Number.isNaN(Number(it.ua));
+            const uaIdx = hasUa ? Number(it.ua) : -1;
+            const rawCa = (it?.ca !== null && it?.ca !== undefined && it?.ca !== '')
+                ? it.ca
+                : (qObj?.correct !== undefined ? qObj.correct : qObj?.answer);
+            const hasCa = rawCa !== null && rawCa !== undefined && rawCa !== '' && !Number.isNaN(Number(rawCa));
+            const caIdx = hasCa ? Number(rawCa) : -1;
+
+            const uaLabel = hasUa ? (optChars[uaIdx] || String(uaIdx + 1)) : 'Chưa chọn';
+            const caLabel = hasCa ? (optChars[caIdx] || String(caIdx + 1)) : '—';
+            const options = Array.isArray(qObj?.options) ? qObj.options : [];
+
+            const summaryStrip = `
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="p-2.5 rounded-xl border ${!hasUa ? 'bg-slate-900/70 border-slate-800 text-slate-400' : (it?.ok ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-rose-500/15 border-rose-500/40 text-rose-300')}">
+                        <span class="block text-[10px] uppercase tracking-wider opacity-80 font-bold">Học sinh chọn</span>
+                        <span class="font-extrabold text-sm">${hasUa ? `${it?.ok ? '✓' : '✗'} Đáp án ${this.escapeHtml(uaLabel)}` : 'Chưa chọn'}</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl border bg-emerald-500/10 border-emerald-500/35 text-emerald-300">
+                        <span class="block text-[10px] uppercase tracking-wider opacity-80 font-bold">Đáp án đúng</span>
+                        <span class="font-extrabold text-sm">${hasCa ? `✓ Đáp án ${this.escapeHtml(caLabel)}` : '—'}</span>
+                    </div>
+                </div>
+            `;
+
+            const optionsListHtml = options.length > 0 ? `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    ${options.map((opt, oIdx) => {
+                        const isPicked = hasUa && oIdx === uaIdx;
+                        const isCorrectOpt = hasCa && oIdx === caIdx;
+                        let boxCls = 'bg-slate-900/75 border-slate-800 text-slate-300';
+                        let letterCls = 'bg-slate-800 text-slate-300 border-slate-700';
+                        let tagHtml = '';
+
+                        if (isPicked && isCorrectOpt) {
+                            boxCls = 'bg-emerald-500/15 border-emerald-500/60 text-emerald-100';
+                            letterCls = 'bg-emerald-500 text-slate-950 border-emerald-400';
+                            tagHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 shrink-0">✓ Học sinh chọn (Đúng)</span>';
+                        } else if (isPicked && !isCorrectOpt) {
+                            boxCls = 'bg-rose-500/15 border-rose-500/60 text-rose-100';
+                            letterCls = 'bg-rose-500 text-white border-rose-400';
+                            tagHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 shrink-0">✗ Học sinh chọn (Sai)</span>';
+                        } else if (isCorrectOpt) {
+                            boxCls = 'bg-emerald-500/10 border-emerald-500/50 text-emerald-100';
+                            letterCls = 'bg-emerald-500/30 text-emerald-200 border-emerald-400/60';
+                            tagHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">✓ Đáp án đúng</span>';
+                        }
+
+                        return `
+                            <div class="p-2.5 rounded-xl border ${boxCls} flex flex-col gap-1.5 text-xs">
+                                <div class="flex items-start gap-2">
+                                    <span class="w-6 h-6 rounded-lg border ${letterCls} flex items-center justify-center font-extrabold text-[11px] shrink-0">${optChars[oIdx] || oIdx + 1}</span>
+                                    <span class="flex-1 leading-relaxed break-words pt-0.5">${this.formatScientificNotation(opt)}</span>
+                                </div>
+                                ${tagHtml ? `<div class="pl-8">${tagHtml}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : '';
+
+            detailBodyHtml = `${summaryStrip}${optionsListHtml}`;
+        }
+
+        const explanationHtml = qObj?.explanation ? `
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-200 leading-relaxed">
+                <p class="font-bold text-amber-300 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
+                <div class="break-words">${this.formatScientificNotation(qObj.explanation)}</div>
+            </div>
+        ` : '';
+
+        const navHtml = showNav ? `
+            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/90 text-xs">
+                <button type="button" data-obs-nav="-1" ${idx <= 0 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-bold flex items-center gap-1.5 cursor-pointer transition">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i> Câu trước
+                </button>
+                <span class="text-slate-400 font-semibold">Câu ${idx + 1} / ${totalItems}</span>
+                <button type="button" data-obs-nav="1" ${idx >= totalItems - 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-bold flex items-center gap-1.5 cursor-pointer transition">
+                    Câu tiếp <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                </button>
+            </div>
+        ` : '';
+
+        return `
+            <div class="rounded-2xl bg-slate-950/75 border border-slate-800 p-3.5 sm:p-4 space-y-3">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-extrabold">Câu ${idx + 1}</span>
+                        <span class="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-semibold">${typeLabel}</span>
+                        ${catLabel ? `<span class="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-400 border border-slate-800 text-[11px]">${this.escapeHtml(catLabel)}</span>` : ''}
+                    </div>
+                    ${statusBadge}
+                </div>
+                ${questionStemHtml}
+                ${imgHtml}
+                ${detailBodyHtml}
+                ${explanationHtml}
+                ${navHtml}
+            </div>
+        `;
+    }
+
+    renderObserverDetailInspector(shouldScroll = false) {
+        const state = this._obsDetailState;
+        const body = document.getElementById('obs-modal-body');
+        if (!state || !body) return;
+
+        const items = state.items || [];
+        const qList = Array.isArray(state.questions) ? state.questions : [];
+        const qById = new Map(qList.map(q => [String(q.id), q]));
+
+        // Cập nhật trạng thái active trên các nút câu hỏi
+        body.querySelectorAll('[data-obs-q-idx]').forEach((btn) => {
+            const idx = Number(btn.dataset.obsQIdx);
+            const isActive = state.viewMode === 'single' && state.selectedIdx === idx;
+            btn.classList.toggle('ring-2', isActive);
+            btn.classList.toggle('ring-indigo-400', isActive);
+            btn.classList.toggle('shadow-md', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+
+        // Cập nhật nút chế độ "Xem tất cả câu sai"
+        const wrongModeBtn = body.querySelector('[data-obs-view-mode]');
+        if (wrongModeBtn) {
+            const isWrongMode = state.viewMode === 'wrong';
+            wrongModeBtn.classList.toggle('bg-rose-500/25', isWrongMode);
+            wrongModeBtn.classList.toggle('border-rose-400', isWrongMode);
+            wrongModeBtn.classList.toggle('text-rose-200', isWrongMode);
+        }
+
+        const inspectorWrap = document.getElementById('obs-question-inspector-wrap');
+        const inspector = document.getElementById('obs-question-inspector');
+        if (!inspectorWrap || !inspector) return;
+
+        const wasOpen = inspectorWrap.classList.contains('is-open');
+        const scrollToInspector = () => {
+            if (!shouldScroll) return;
+            window.setTimeout(() => {
+                if (inspectorWrap.isConnected && inspectorWrap.classList.contains('is-open')) {
+                    inspectorWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }, wasOpen ? 16 : 240);
+        };
+
+        if (state.viewMode === 'wrong') {
+            const wrongIndices = items.map((it, idx) => (it?.ok === false ? idx : -1)).filter((idx) => idx >= 0);
+            if (wrongIndices.length === 0) {
+                inspector.innerHTML = `<div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 font-semibold text-center">Học sinh chưa có câu làm sai nào trong bài này.</div>`;
+            } else {
+                inspector.innerHTML = `<div class="space-y-3">${wrongIndices.map((idx) => {
+                    const it = items[idx];
+                    const qObj = qById.get(String(it?.id)) || qList[idx] || null;
+                    return this.renderObserverQuestionExpandedHtml(it, idx, qObj, {
+                        showNav: false,
+                        totalItems: items.length,
+                        isLoadingQuestions: state.isLoadingQuestions
+                    });
+                }).join('')}</div>`;
+            }
+            inspectorWrap.classList.add('is-open');
+            inspectorWrap.setAttribute('aria-hidden', 'false');
+            this.renderMath(inspector);
+            scrollToInspector();
+            return;
+        }
+
+        if (state.selectedIdx === null || state.selectedIdx < 0 || state.selectedIdx >= items.length) {
+            inspectorWrap.classList.remove('is-open');
+            inspectorWrap.setAttribute('aria-hidden', 'true');
+            return;
+        }
+
+        const idx = state.selectedIdx;
+        const it = items[idx];
+        const qObj = qById.get(String(it?.id)) || qList[idx] || null;
+        inspector.innerHTML = this.renderObserverQuestionExpandedHtml(it, idx, qObj, {
+            showNav: true,
+            totalItems: items.length,
+            isLoadingQuestions: state.isLoadingQuestions
+        });
+        inspectorWrap.classList.add('is-open');
+        inspectorWrap.setAttribute('aria-hidden', 'false');
+        this.renderMath(inspector);
+        scrollToInspector();
+    }
+
     openObserverStudentDetail(studentId) {
         const p = this.observerRecordsMap?.get(String(studentId));
         if (!p) return;
@@ -5151,6 +5521,47 @@ Giải thích: Biên độ A = 5 cm.`;
                 if (e.target === modal || e.target.closest('#obs-modal-close')) {
                     modal.classList.add('hidden');
                     modal.classList.remove('flex');
+                    return;
+                }
+
+                const state = this._obsDetailState;
+                if (!state) return;
+
+                const qBtn = e.target.closest('[data-obs-q-idx]');
+                if (qBtn) {
+                    const idx = Number(qBtn.dataset.obsQIdx);
+                    if (Number.isFinite(idx)) {
+                        if (state.viewMode === 'single' && state.selectedIdx === idx) {
+                            state.selectedIdx = null;
+                        } else {
+                            state.viewMode = 'single';
+                            state.selectedIdx = idx;
+                        }
+                        this.renderObserverDetailInspector(true);
+                    }
+                    return;
+                }
+
+                const viewBtn = e.target.closest('[data-obs-view-mode]');
+                if (viewBtn) {
+                    const nextMode = viewBtn.dataset.obsViewMode;
+                    state.viewMode = state.viewMode === nextMode ? 'single' : nextMode;
+                    if (state.viewMode === 'single' && (state.selectedIdx === null || state.selectedIdx < 0)) {
+                        const firstWrong = state.items.findIndex(it => it?.ok === false);
+                        state.selectedIdx = firstWrong >= 0 ? firstWrong : (state.items.length > 0 ? 0 : null);
+                    }
+                    this.renderObserverDetailInspector(true);
+                    return;
+                }
+
+                const navBtn = e.target.closest('[data-obs-nav]');
+                if (navBtn && state.items.length > 0) {
+                    const step = Number(navBtn.dataset.obsNav || 0);
+                    const cur = typeof state.selectedIdx === 'number' ? state.selectedIdx : 0;
+                    const nextIdx = Math.max(0, Math.min(state.items.length - 1, cur + step));
+                    state.viewMode = 'single';
+                    state.selectedIdx = nextIdx;
+                    this.renderObserverDetailInspector(false);
                 }
             });
         }
@@ -5159,7 +5570,41 @@ Giải thích: Biên độ A = 5 cm.`;
         const wrongCount = p.isCompleted ? (p.wrong || Math.max(0, totalQ - p.correct)) : p.wrong;
         const unansweredCount = Math.max(0, totalQ - p.correct - wrongCount);
         const items = Array.isArray(p.detail?.items) ? p.detail.items : [];
-        const cats = Array.isArray(p.detail?.cats) ? p.detail.cats : [];
+        const rawCats = p.detail?.cats;
+        let cats = [];
+        if (Array.isArray(rawCats)) {
+            cats = rawCats.map(c => ({ n: c?.n || 'Chuyên đề', c: Number(c?.c || 0), t: Number(c?.t || 0) }));
+        } else if (rawCats && typeof rawCats === 'object') {
+            cats = Object.entries(rawCats).map(([catName, arr]) => ({
+                n: catName,
+                c: Number(arr?.[0] || 0),
+                t: Number(arr?.[2] || arr?.[1] || 0)
+            }));
+        }
+
+        const sameStudent = this._obsDetailState && this._obsDetailState.studentId === String(studentId);
+        const firstWrongIdx = items.findIndex(it => it?.ok === false);
+        const defaultIdx = firstWrongIdx >= 0 ? firstWrongIdx : (items.length > 0 ? 0 : null);
+        const selectedIdx = (sameStudent && typeof this._obsDetailState.selectedIdx === 'number' && this._obsDetailState.selectedIdx < items.length)
+            ? this._obsDetailState.selectedIdx
+            : defaultIdx;
+
+        const subjKey = this.resolveObserverSubjectKey(p.subject);
+        const cacheKey = String(subjKey || p.subject || '').trim().toLowerCase();
+        const currentNorm = String(this.currentSubject || '').trim().toLowerCase();
+        const cachedQuestions = (currentNorm && cacheKey === currentNorm && Array.isArray(this.allQuestions) && this.allQuestions.length > 0)
+            ? this.allQuestions
+            : (this._observerQuestionsCache?.get(cacheKey) || null);
+
+        this._obsDetailState = {
+            studentId: String(studentId),
+            subject: p.subject,
+            items,
+            viewMode: sameStudent ? this._obsDetailState.viewMode : 'single',
+            selectedIdx,
+            questions: cachedQuestions,
+            isLoadingQuestions: !cachedQuestions && items.length > 0
+        };
 
         document.getElementById('obs-modal-title').textContent = `${p.name} — ${p.subject}`;
         document.getElementById('obs-modal-subtitle').textContent = `${p.isCompleted ? 'Đã nộp bài' : 'Đang làm bài'} • Thời gian làm: ${p.durationLabel || '—'} • Điểm: ${p.score10.toFixed(1)}/10`;
@@ -5180,19 +5625,43 @@ Giải thích: Biên độ A = 5 cm.`;
             </div>
         ` : '';
 
+        const wrongItemCount = items.filter(it => it?.ok === false).length;
+        const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
+
         const itemsHtml = items.length > 0 ? `
-            <div class="space-y-2">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Chi tiết từng câu (${items.length} câu)</h4>
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Chi tiết từng câu (${items.length} câu)</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Ấn vào từng câu để xem đề, đáp án học sinh chọn &amp; đáp án đúng</p>
+                    </div>
+                    ${wrongItemCount > 0 ? `
+                        <button type="button" data-obs-view-mode="wrong" class="px-2.5 py-1 rounded-lg border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-[11px] font-bold cursor-pointer transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>
+                            <span>Xem tất cả câu sai (${wrongItemCount})</span>
+                        </button>
+                    ` : ''}
+                </div>
                 <div class="flex flex-wrap gap-1.5">
                     ${items.map((it, idx) => {
                         const cls = it.ok === true
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
                             : (it.ok === false
-                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                                : 'bg-slate-800 text-slate-400 border-slate-700');
-                        const ansNote = it.ans ? ` — Chọn: ${this.escapeHtml(String(it.ans))}` : '';
-                        return `<span class="px-2 py-1 rounded-lg border text-[11px] font-bold ${cls}" title="Câu ${idx + 1}${ansNote}">Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Trống')}${it.ans ? ` (${this.escapeHtml(String(it.ans))})` : ''}</span>`;
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700/80');
+                        let ansTooltip = '';
+                        if (it.t === 'mcq' && it.ua !== null && it.ua !== undefined && it.ua !== '') {
+                            ansTooltip = ` — Chọn: ${optChars[Number(it.ua)] || it.ua}`;
+                        } else if (it.t === 'sa' && it.ua) {
+                            ansTooltip = ` — Nhập: ${String(it.ua)}`;
+                        }
+                        return `<button type="button" data-obs-q-idx="${idx}" class="px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition ${cls}" title="Câu ${idx + 1}${this.escapeHtml(ansTooltip)} — Bấm để xem chi tiết">Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Trống')}</button>`;
                     }).join('')}
+                </div>
+                <div id="obs-question-inspector-wrap" class="ui-accordion-wrap" aria-hidden="true">
+                    <div class="ui-accordion-inner">
+                        <div id="obs-question-inspector" class="pt-1"></div>
+                    </div>
                 </div>
             </div>
         ` : `<p class="text-xs text-slate-400 italic">Phiên làm bài này chưa có dữ liệu chi tiết từng câu.</p>`;
@@ -5221,6 +5690,20 @@ Giải thích: Biên độ A = 5 cm.`;
 
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+
+        if (items.length > 0) {
+            this.renderObserverDetailInspector(false);
+            if (!cachedQuestions) {
+                this.getObserverQuestionsForSubject(p.subject).then((questions) => {
+                    if (!this._obsDetailState || this._obsDetailState.studentId !== String(studentId)) return;
+                    this._obsDetailState.questions = questions;
+                    this._obsDetailState.isLoadingQuestions = false;
+                    if (!modal.classList.contains('hidden')) {
+                        this.renderObserverDetailInspector(false);
+                    }
+                });
+            }
+        }
     }
 
     async fetchAndRenderObserverFullscreen() {
