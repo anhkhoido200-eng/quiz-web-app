@@ -684,9 +684,10 @@ class DatabaseService {
     }
 
     /**
-     * Lấy danh sách máy & người đăng nhập cho Admin (Mặc định tải 300 lượt)
+     * Lấy danh sách máy & lượt làm bài cho Admin / Giám sát (Mặc định giữ toàn bộ lượt để xem lịch sử từng đề)
      */
-    async getLoginHistory(limit = 300) {
+    async getLoginHistory(limit = 300, options = {}) {
+        const dedupeByStudent = Boolean(options && options.dedupeByStudent);
         const systemIds = Object.values(SYSTEM_RECORDS);
         let adminIps = new Set();
         try {
@@ -706,6 +707,38 @@ class DatabaseService {
             if ((!playerName || playerName.toLowerCase() === 'khách truy cập') && adminIps.has(ip)) return false;
             return true;
         };
+        const normalizeRows = (list) => {
+            const seenIds = new Set();
+            const seenKeys = new Set();
+            const out = [];
+            for (const item of list) {
+                if (!isStudentLogin(item)) continue;
+                const row = {
+                    ...item,
+                    ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
+                    client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
+                    player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
+                    device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
+                };
+                if (row.id !== undefined && row.id !== null) {
+                    const idKey = String(row.id);
+                    if (seenIds.has(idKey)) continue;
+                    seenIds.add(idKey);
+                }
+                if (dedupeByStudent) {
+                    const normName = String(row.player_name || '').trim().toLowerCase();
+                    const normIp = String(row.ip_address || '').trim().toLowerCase();
+                    const normDev = String(row.device_info || '').trim().toLowerCase();
+                    const key = (normName && normName !== 'khách truy cập')
+                        ? `name:${normName}___dev:${normDev}`
+                        : `ip:${normIp}___dev:${normDev}`;
+                    if (seenKeys.has(key)) continue;
+                    seenKeys.add(key);
+                }
+                out.push(row);
+            }
+            return out;
+        };
         if (this.isSupabaseActive && this.client) {
             try {
                 const { data, error } = await this.client
@@ -715,32 +748,8 @@ class DatabaseService {
                     .limit(limit);
 
                 if (!error && Array.isArray(data)) {
-                    console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length });
-                    // Lọc bỏ toàn bộ các bản ghi hệ thống nội bộ (__...) và systemIds
-                    const realLogins = data
-                        .filter(isStudentLogin)
-                        .map(item => ({
-                            ...item,
-                            ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
-                            client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
-                            player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
-                            device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
-                        }));
-                    const seenKeys = new Set();
-                    const deduped = [];
-                    for (const row of realLogins) {
-                        const normName = String(row.player_name || '').trim().toLowerCase();
-                        const normIp = String(row.ip_address || '').trim().toLowerCase();
-                        const normDev = String(row.device_info || '').trim().toLowerCase();
-                        const key = (normName && normName !== 'khách truy cập') 
-                            ? `name:${normName}___dev:${normDev}` 
-                            : `ip:${normIp}___dev:${normDev}`;
-                        if (!seenKeys.has(key)) {
-                            seenKeys.add(key);
-                            deduped.push(row);
-                        }
-                    }
-                    return deduped;
+                    console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length, dedupeByStudent });
+                    return normalizeRows(data);
                 } else if (error) {
                     console.warn('[DatabaseService] Student monitor query failed:', { message: error.message, code: error.code });
                 }
@@ -748,22 +757,19 @@ class DatabaseService {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);
             }
         }
-        return this._getLocalLogins()
-            .filter(isStudentLogin)
-            .map(item => ({
-                ...item,
-                ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
-                client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
-                player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
-                device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
-            }));
+        const localSorted = [...this._getLocalLogins()].sort((a, b) => {
+            const ta = new Date(a?.last_active || a?.created_at || 0).getTime() || 0;
+            const tb = new Date(b?.last_active || b?.created_at || 0).getTime() || 0;
+            return tb - ta;
+        });
+        return normalizeRows(localSorted).slice(0, limit);
     }
 
     /**
-     * Alias cho fetchActiveLogins (tương thích toàn bộ lời gọi hàm trong Admin)
+     * Alias cho fetchActiveLogins (giữ 1 dòng đại diện mới nhất cho mỗi học sinh/thiết bị trong bảng Admin)
      */
     async fetchActiveLogins(limit = 300) {
-        return await this.getLoginHistory(limit);
+        return await this.getLoginHistory(limit, { dedupeByStudent: true });
     }
 
     /**

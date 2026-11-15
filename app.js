@@ -4902,6 +4902,42 @@ Giải thích: Biên độ A = 5 cm.`;
         </div>`;
     }
 
+    buildObserverCardHistoryStripHtml(p) {
+        const history = Array.isArray(p?.history) ? p.history : [];
+        if (history.length <= 1) return '';
+        const shown = history.slice(0, 6);
+        const hiddenCount = Math.max(0, history.length - shown.length);
+        return `
+            <div class="pt-2 border-t border-slate-800/70 space-y-1.5">
+                <div class="flex items-center justify-between text-[11px] text-slate-400">
+                    <span class="font-semibold flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-400 text-[10px]"></i>
+                        Lịch sử làm bài (${history.length} đề)
+                    </span>
+                    ${hiddenCount > 0 ? `<span class="text-slate-500">+${hiddenCount} đề cũ</span>` : ''}
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    ${shown.map((att) => {
+                        const isCurrent = String(att.id) === String(p.id);
+                        const scoreText = att.isCompleted
+                            ? `${att.score10.toFixed(1)}đ`
+                            : `${att.answered}/${att.total || '?'} câu`;
+                        const chipCls = isCurrent
+                            ? 'bg-indigo-500/20 border-indigo-400/60 text-indigo-200'
+                            : (att.isCompleted
+                                ? 'bg-slate-950/80 border-slate-700/80 text-slate-300 hover:border-indigo-500/60 hover:text-white'
+                                : 'bg-amber-500/10 border-amber-500/35 text-amber-300 hover:border-amber-400');
+                        return `<button type="button" data-obs-history-id="${this.escapeHtml(att.id)}" class="px-2 py-1 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer transition max-w-full ${chipCls}" title="Xem bài làm ${this.escapeHtml(att.subject)}">
+                            <span class="${att.isCompleted ? 'text-emerald-400' : 'text-amber-400'}">${att.isCompleted ? '✓' : '•'}</span>
+                            <span class="truncate max-w-[115px]">${this.escapeHtml(att.subject)}</span>
+                            <span class="font-extrabold ${att.isCompleted ? 'text-amber-300' : 'text-cyan-300'} shrink-0">${scoreText}</span>
+                        </button>`;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     buildObserverCardInnerHtml(p, cardType, percent, timeAgo) {
         // 1. Trường hợp ĐANG CHỜ Ở TRANG CHỦ
         if (cardType === 'waiting') {
@@ -4927,6 +4963,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     </span>
                     <span class="text-slate-500 italic">Chưa chọn đề thi</span>
                 </div>
+
+                <div class="obs-card-history-slot">${this.buildObserverCardHistoryStripHtml(p)}</div>
 
                 <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                     <span class="flex items-center gap-1.5"><i class="fa-solid fa-network-wired text-slate-500"></i> IP: <code class="text-slate-300 font-mono text-[10px]">${this.escapeHtml(p.ip || '—')}</code></span>
@@ -4971,6 +5009,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     </div>
                 </div>
 
+                <div class="obs-card-history-slot">${this.buildObserverCardHistoryStripHtml(p)}</div>
+
                 <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                     <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
                     <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
@@ -5013,6 +5053,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 </div>
             </div>
 
+            <div class="obs-card-history-slot">${this.buildObserverCardHistoryStripHtml(p)}</div>
+
             <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                 <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
                 <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
@@ -5021,12 +5063,27 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     renderObserverCardsSmoothly(container, sorted) {
-        this.observerRecordsMap = new Map((sorted || []).map(item => [String(item.id), item]));
+        this.observerRecordsMap = new Map();
+        (sorted || []).forEach((item) => {
+            this.observerRecordsMap.set(String(item.id), item);
+            (item.history || []).forEach((att) => {
+                if (att && att.id !== undefined && att.id !== null) {
+                    this.observerRecordsMap.set(String(att.id), item);
+                }
+            });
+        });
         if (!container.dataset.obsDetailBound) {
             container.dataset.obsDetailBound = 'true';
             container.addEventListener('click', (event) => {
+                const histBtn = event.target.closest('[data-obs-history-id]');
                 const card = event.target.closest('.obs-student-card[data-student-id]');
-                if (!card || card.dataset.cardType === 'waiting') return;
+                if (!card) return;
+                if (histBtn) {
+                    event.stopPropagation();
+                    this.openObserverStudentDetail(card.dataset.studentId, histBtn.dataset.obsHistoryId);
+                    return;
+                }
+                if (card.dataset.cardType === 'waiting') return;
                 this.openObserverStudentDetail(card.dataset.studentId);
             });
         }
@@ -5084,9 +5141,18 @@ Giải thích: Biên độ A = 5 cm.`;
                     const elTime = card.querySelector('.obs-card-time');
                     if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
 
+                    const elSubj = card.querySelector('.obs-card-subject');
+                    if (elSubj && elSubj.textContent !== p.subject) elSubj.textContent = p.subject;
+
                     const elDur = card.querySelector('.obs-card-duration');
                     const durText = `Đã làm: ${p.durationLabel || '—'}`;
                     if (elDur && elDur.textContent !== durText) elDur.textContent = durText;
+
+                    const histSlot = card.querySelector('.obs-card-history-slot');
+                    if (histSlot) {
+                        const nextHistHtml = this.buildObserverCardHistoryStripHtml(p);
+                        if (histSlot.innerHTML !== nextHistHtml) histSlot.innerHTML = nextHistHtml;
+                    }
 
                     if (cardType === 'doing') {
                         const elCount = card.querySelector('.obs-card-count');
@@ -5492,9 +5558,18 @@ Giải thích: Biên độ A = 5 cm.`;
         scrollToInspector();
     }
 
-    openObserverStudentDetail(studentId) {
-        const p = this.observerRecordsMap?.get(String(studentId));
-        if (!p) return;
+    openObserverStudentDetail(studentId, preferredAttemptId = null) {
+        const rootRecord = this.observerRecordsMap?.get(String(studentId));
+        if (!rootRecord) return;
+
+        const history = (Array.isArray(rootRecord.history) && rootRecord.history.length > 0)
+            ? rootRecord.history
+            : [rootRecord];
+        const p = preferredAttemptId
+            ? (history.find(h => String(h.id) === String(preferredAttemptId)) || rootRecord)
+            : (String(rootRecord.id) === String(studentId)
+                ? rootRecord
+                : (history.find(h => String(h.id) === String(studentId)) || rootRecord));
 
         let modal = document.getElementById('observer-detail-modal');
         if (!modal) {
@@ -5526,6 +5601,13 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 const state = this._obsDetailState;
                 if (!state) return;
+
+                const attBtn = e.target.closest('[data-obs-attempt-id]');
+                if (attBtn) {
+                    const attemptId = attBtn.dataset.obsAttemptId;
+                    this.openObserverStudentDetail(state.rootStudentId || state.studentId, attemptId);
+                    return;
+                }
 
                 const qBtn = e.target.closest('[data-obs-q-idx]');
                 if (qBtn) {
@@ -5582,10 +5664,10 @@ Giải thích: Biên độ A = 5 cm.`;
             }));
         }
 
-        const sameStudent = this._obsDetailState && this._obsDetailState.studentId === String(studentId);
+        const sameAttempt = this._obsDetailState && String(this._obsDetailState.studentId) === String(p.id);
         const firstWrongIdx = items.findIndex(it => it?.ok === false);
         const defaultIdx = firstWrongIdx >= 0 ? firstWrongIdx : (items.length > 0 ? 0 : null);
-        const selectedIdx = (sameStudent && typeof this._obsDetailState.selectedIdx === 'number' && this._obsDetailState.selectedIdx < items.length)
+        const selectedIdx = (sameAttempt && typeof this._obsDetailState.selectedIdx === 'number' && this._obsDetailState.selectedIdx < items.length)
             ? this._obsDetailState.selectedIdx
             : defaultIdx;
 
@@ -5597,10 +5679,11 @@ Giải thích: Biên độ A = 5 cm.`;
             : (this._observerQuestionsCache?.get(cacheKey) || null);
 
         this._obsDetailState = {
-            studentId: String(studentId),
+            rootStudentId: String(rootRecord.id),
+            studentId: String(p.id),
             subject: p.subject,
             items,
-            viewMode: sameStudent ? this._obsDetailState.viewMode : 'single',
+            viewMode: sameAttempt ? this._obsDetailState.viewMode : 'single',
             selectedIdx,
             questions: cachedQuestions,
             isLoadingQuestions: !cachedQuestions && items.length > 0
@@ -5608,6 +5691,32 @@ Giải thích: Biên độ A = 5 cm.`;
 
         document.getElementById('obs-modal-title').textContent = `${p.name} — ${p.subject}`;
         document.getElementById('obs-modal-subtitle').textContent = `${p.isCompleted ? 'Đã nộp bài' : 'Đang làm bài'} • Thời gian làm: ${p.durationLabel || '—'} • Điểm: ${p.score10.toFixed(1)}/10`;
+
+        const historyBarHtml = history.length > 1 ? `
+            <div class="p-3 rounded-2xl bg-slate-950/75 border border-slate-800 space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+                        Lịch sử bài đã làm (${history.length} đề)
+                    </h4>
+                    <span class="text-[11px] text-slate-400">Ấn để xem lại từng đề</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    ${history.map((att) => {
+                        const isSelected = String(att.id) === String(p.id);
+                        const statusText = att.isCompleted
+                            ? `${att.score10.toFixed(1)}/10đ`
+                            : `${att.answered}/${att.total || '?'} câu`;
+                        return `<button type="button" data-obs-attempt-id="${this.escapeHtml(att.id)}" class="px-2.5 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 text-xs ${isSelected ? 'bg-indigo-600/30 border-indigo-400 text-white ring-2 ring-indigo-500/40' : 'bg-slate-900/90 border-slate-700/80 hover:border-indigo-500/50 text-slate-300'}">
+                            <span class="${att.isCompleted ? 'text-emerald-400' : 'text-amber-400'} font-bold">${att.isCompleted ? '✓' : '•'}</span>
+                            <span class="font-bold truncate max-w-[140px]">${this.escapeHtml(att.subject)}</span>
+                            <span class="font-extrabold ${att.isCompleted ? 'text-amber-300' : 'text-cyan-300'} shrink-0">${statusText}</span>
+                            <span class="text-[10px] text-slate-400 shrink-0">${this.escapeHtml(this.formatRelativeTime(att.lastActive))}</span>
+                        </button>`;
+                    }).join('')}
+                </div>
+            </div>
+        ` : '';
 
         const catsHtml = cats.length > 0 ? `
             <div class="space-y-2">
@@ -5667,6 +5776,7 @@ Giải thích: Biên độ A = 5 cm.`;
         ` : `<p class="text-xs text-slate-400 italic">Phiên làm bài này chưa có dữ liệu chi tiết từng câu.</p>`;
 
         document.getElementById('obs-modal-body').innerHTML = `
+            ${historyBarHtml}
             <div class="grid grid-cols-3 gap-2 text-center">
                 <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
                     <div class="text-lg font-extrabold text-emerald-400">${p.correct}</div>
@@ -5694,8 +5804,9 @@ Giải thích: Biên độ A = 5 cm.`;
         if (items.length > 0) {
             this.renderObserverDetailInspector(false);
             if (!cachedQuestions) {
+                const targetAttemptId = String(p.id);
                 this.getObserverQuestionsForSubject(p.subject).then((questions) => {
-                    if (!this._obsDetailState || this._obsDetailState.studentId !== String(studentId)) return;
+                    if (!this._obsDetailState || String(this._obsDetailState.studentId) !== targetAttemptId) return;
                     this._obsDetailState.questions = questions;
                     this._obsDetailState.isLoadingQuestions = false;
                     if (!modal.classList.contains('hidden')) {
@@ -5722,7 +5833,7 @@ Giải thích: Biên độ A = 5 cm.`;
             let rows = [];
             try {
                 if (window.dbService && typeof window.dbService.getLoginHistory === 'function') {
-                    rows = await window.dbService.getLoginHistory(150);
+                    rows = await window.dbService.getLoginHistory(300);
                 }
             } catch (e) {
                 console.warn('Lỗi tải tiến trình:', e);
@@ -5745,17 +5856,42 @@ Giải thích: Biên độ A = 5 cm.`;
                     name !== 'khách truy cập' && name !== 'visitor' &&
                     !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
             });
-            const latestByStudent = new Map();
+            const groupedByStudent = new Map();
             for (const row of studentRows) {
                 const name = String(row.player_name || '').trim().toLowerCase();
                 const ip = String(row.ip_address || '').trim().toLowerCase();
                 const device = String(row.device_info || '').trim().toLowerCase();
                 const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
                 const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
-                const old = latestByStudent.get(key);
-                if (!old || time > old.time) latestByStudent.set(key, { row, time });
+                if (!groupedByStudent.has(key)) groupedByStudent.set(key, []);
+                groupedByStudent.get(key).push({ row, time });
             }
-            const parsed = Array.from(latestByStudent.values()).map(item => this.parseStudentProgressRecord(item.row)).filter(p => p.isGrade5 || p.answered > 0 || p.subject.toLowerCase().includes('toán') || p.subject.toLowerCase().includes('lớp 5'));
+
+            const matchesObserverFilter = (item) => Boolean(
+                item && (item.isGrade5 || item.answered > 0 || item.subject.toLowerCase().includes('toán') || item.subject.toLowerCase().includes('lớp 5'))
+            );
+
+            const parsed = [];
+            groupedByStudent.forEach((entries, studentKey) => {
+                entries.sort((a, b) => b.time - a.time);
+                const records = entries.map(e => this.parseStudentProgressRecord(e.row));
+                const seenIds = new Set();
+                const realAttempts = records.filter((r) => {
+                    const idKey = String(r.id);
+                    if (seenIds.has(idKey)) return false;
+                    seenIds.add(idKey);
+                    return !r.isWaiting || r.isCompleted || r.answered > 0 || (Array.isArray(r.detail?.items) && r.detail.items.length > 0);
+                });
+                const inProgress = realAttempts.find(r => !r.isCompleted && !r.isWaiting);
+                const latestCompleted = realAttempts.find(r => r.isCompleted);
+                const primary = inProgress || latestCompleted || realAttempts[0] || records[0];
+                if (!primary) return;
+                primary.history = realAttempts.length > 0 ? realAttempts : [primary];
+                primary.studentKey = studentKey;
+                if (matchesObserverFilter(primary) || primary.history.some(matchesObserverFilter)) {
+                    parsed.push(primary);
+                }
+            });
 
             let doingCount = 0;
             let submittedCount = 0;

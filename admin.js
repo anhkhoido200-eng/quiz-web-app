@@ -5443,7 +5443,7 @@
                         .from('quiz_logins')
                         .select('*')
                         .order('last_active', { ascending: false })
-                        .limit(100);
+                        .limit(300);
                     if (error) loadError = error.message || 'Không thể tải dữ liệu tiến trình.';
                     else if (data) logins = data;
                 }
@@ -5462,29 +5462,54 @@
                     name !== 'khách truy cập' && name !== 'visitor' &&
                     !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
             });
-            // Chỉ giữ phiên mới nhất của mỗi học sinh/IP/thiết bị. Realtime heartbeat
-            // có thể tạo nhiều attempt, nhưng không được làm phình bộ đếm tổng học sinh.
-            const latestByStudent = new Map();
+            // Nhóm theo từng học sinh/thiết bị để giữ trọn lịch sử các đề đã làm,
+            // nhưng chỉ hiển thị 1 thẻ đại diện cho mỗi học sinh trên bảng tổng quan.
+            const groupedByStudent = new Map();
             for (const row of studentRows) {
                 const name = String(row.player_name || '').trim().toLowerCase();
                 const ip = String(row.ip_address || '').trim().toLowerCase();
                 const device = String(row.device_info || '').trim().toLowerCase();
                 const key = name && name !== 'học sinh' ? `name:${name}` : (ip ? `ip:${ip}::device:${device}` : `row:${row.id}`);
                 const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
-                const old = latestByStudent.get(key);
-                if (!old || time > old.time) latestByStudent.set(key, { row, time });
+                if (!groupedByStudent.has(key)) groupedByStudent.set(key, []);
+                groupedByStudent.get(key).push({ row, time });
             }
-            const allParsed = Array.from(latestByStudent.values()).map(item => parseStudentProgress(item.row));
+            const allParsed = [];
+            groupedByStudent.forEach((entries, studentKey) => {
+                entries.sort((a, b) => b.time - a.time);
+                const records = entries.map(item => parseStudentProgress(item.row));
+                const seenIds = new Set();
+                const realAttempts = records.filter((r) => {
+                    const idKey = String(r.id);
+                    if (seenIds.has(idKey)) return false;
+                    seenIds.add(idKey);
+                    return !r.isWaiting || r.isCompleted || r.answered > 0 || (Array.isArray(r.detail?.items) && r.detail.items.length > 0);
+                });
+                const inProgress = realAttempts.find(r => !r.isCompleted && !r.isWaiting);
+                const latestCompleted = realAttempts.find(r => r.isCompleted);
+                const primary = inProgress || latestCompleted || realAttempts[0] || records[0];
+                if (!primary) return;
+                primary.history = realAttempts.length > 0 ? realAttempts : [primary];
+                primary.studentKey = studentKey;
+                allParsed.push(primary);
+            });
             const filter = state.progressFilter || 'all';
             const gradeList = filter === 'all'
                 ? allParsed
                 : (filter === '5' ? allParsed.filter(p => p.isGrade5) : allParsed.filter(p => !p.isGrade5));
             state.progressRecords = allParsed;
             state.progressRawLogins = logins;
-            renderProgressSubjectOptions(allParsed);
+            renderProgressSubjectOptions(allParsed.flatMap(p => (Array.isArray(p.history) && p.history.length ? p.history : [p])));
             const subjectList = state.progressSubject === 'all'
                 ? gradeList
-                : gradeList.filter((p) => subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject));
+                : gradeList
+                    .map((p) => {
+                        if (subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject)) return p;
+                        const matchedAttempt = (p.history || []).find((h) => subjectMatchKey(h.subject) === subjectMatchKey(state.progressSubject));
+                        if (!matchedAttempt) return null;
+                        return { ...matchedAttempt, history: p.history, studentKey: p.studentKey };
+                    })
+                    .filter(Boolean);
             const keyword = String(state.progressSearch || '').trim().toLowerCase();
             const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
             renderProgressSubjectInfo(subjectList);
@@ -5557,6 +5582,34 @@
         </div>`;
     }
 
+    function buildGrade5HistoryStripHtml(p) {
+        const history = Array.isArray(p?.history) ? p.history : [];
+        if (history.length <= 1) return '';
+        const shown = history.slice(0, 6);
+        const hiddenCount = Math.max(0, history.length - shown.length);
+        return `
+            <div style="border-top:1px dashed var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);">
+                    <span style="font-weight:600;display:inline-flex;align-items:center;gap:5px;"><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary);font-size:10px;"></i> Lịch sử các đề (${history.length} lượt)</span>
+                    ${hiddenCount > 0 ? `<span>+${hiddenCount} đề cũ</span>` : ''}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    ${shown.map((att) => {
+                        const isCur = String(att.id) === String(p.id);
+                        const scoreLabel = att.isCompleted ? `${att.score10.toFixed(1)}đ` : `${att.answered}/${att.total || '?'} câu`;
+                        const borderCol = isCur ? 'rgba(99,102,241,0.75)' : 'var(--border)';
+                        const bgCol = isCur ? 'rgba(99,102,241,0.16)' : 'var(--surface-3)';
+                        return `<button type="button" data-g5-attempt-id="${esc(att.id)}" style="padding:4px 8px;border-radius:8px;border:1px solid ${borderCol};background:${bgCol};color:var(--text);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;max-width:100%;" title="Xem chi tiết bài làm ${esc(att.subject)}">
+                            <span style="color:${att.isCompleted ? 'var(--emerald)' : '#f59e0b'};">${att.isCompleted ? '✓' : '•'}</span>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">${esc(att.subject)}</span>
+                            <strong style="color:${att.isCompleted ? '#f59e0b' : 'var(--primary)'};">${scoreLabel}</strong>
+                        </button>`;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
         const status = getProgressCardStatus(p);
         const statusColors = {
@@ -5588,6 +5641,8 @@
                     <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
                     <span style="font-size:11px;color:var(--muted);font-style:italic;">Chưa chọn đề thi</span>
                 </div>
+
+                <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
 
                 <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                     <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
@@ -5628,6 +5683,8 @@
                     </div>
                 </div>
 
+                <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
+
                 <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                     <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
                     <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
@@ -5666,6 +5723,8 @@
                     <span class="g5-card-score">Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
                 </div>
             </div>
+
+            <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
 
             <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
                 <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
@@ -5724,6 +5783,19 @@
                     const durationEl = card.querySelector('.g5-card-duration');
                     if (durationEl) durationEl.innerHTML = `<i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}`;
 
+                    const elSubject = card.querySelector('.g5-card-subject');
+                    if (elSubject && p.subject && elSubject.textContent !== p.subject) {
+                        elSubject.textContent = p.subject;
+                    }
+
+                    const historySlot = card.querySelector('.g5-card-history-slot');
+                    if (historySlot) {
+                        const nextHistoryHtml = buildGrade5HistoryStripHtml(p);
+                        if (historySlot.innerHTML !== nextHistoryHtml) {
+                            historySlot.innerHTML = nextHistoryHtml;
+                        }
+                    }
+
                     if (cardType === 'doing' || cardType === 'ready') {
                         const elCount = card.querySelector('.g5-card-count');
                         const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
@@ -5780,10 +5852,15 @@
         return lines.join('\n');
     }
 
-    function renderStudentProgressDetail(p) {
+    function renderStudentProgressDetail(studentRecord, selectedAttemptId = null) {
         const modal = $('student-progress-modal');
         const body = $('student-progress-modal-body');
-        if (!modal || !body || !p) return;
+        if (!modal || !body || !studentRecord) return;
+        const history = Array.isArray(studentRecord.history) && studentRecord.history.length > 0 ? studentRecord.history : [studentRecord];
+        const p = (selectedAttemptId ? history.find((item) => String(item.id) === String(selectedAttemptId)) : null)
+            || history.find((item) => String(item.id) === String(studentRecord.id))
+            || history[0]
+            || studentRecord;
         const status = getProgressCardStatus(p);
         const detail = p.detail && typeof p.detail === 'object' ? p.detail : null;
         const subjectQuestions = state.questions.filter((question) => subjectMatchKey(subjectName(question.subject_key)) === subjectMatchKey(p.subject));
@@ -5973,6 +6050,31 @@
             questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi (bấm vào câu để xem chi tiết)</h4>${fallbackRows ? `<ul class="student-detail-questions" id="student-detail-questions-list">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
         }
 
+        const historySwitcherHtml = history.length > 1
+            ? `
+                <div class="student-detail-section" style="margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <h4 style="margin:0;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary);"></i> Lịch sử bài đã làm (${history.length} đề)</h4>
+                        <span style="font-size:11px;color:var(--muted);">Chọn đề để xem lại chi tiết từng câu</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        ${history.map((att) => {
+                            const isCurrent = String(att.id) === String(p.id);
+                            const attScore = att.isCompleted ? `${att.score10.toFixed(1)}/10 đ` : `${att.answered}/${att.total || '?'} câu`;
+                            const borderCol = isCurrent ? 'var(--primary)' : 'var(--border)';
+                            const bgCol = isCurrent ? 'rgba(99,102,241,0.18)' : 'var(--surface-3)';
+                            return `<button type="button" data-admin-attempt-id="${esc(att.id)}" style="padding:7px 11px;border-radius:10px;border:1px solid ${borderCol};background:${bgCol};color:var(--text);font-size:12px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;${isCurrent ? 'box-shadow:0 0 0 1px rgba(99,102,241,0.35);font-weight:700;' : 'font-weight:500;'}">
+                                <span style="color:${att.isCompleted ? 'var(--emerald)' : '#f59e0b'};font-weight:700;">${att.isCompleted ? '✓' : '•'}</span>
+                                <span>${esc(att.subject)}</span>
+                                <span style="font-size:11px;font-weight:700;color:${att.isCompleted ? 'var(--amber,#f59e0b)' : 'var(--primary)'};">${esc(attScore)}</span>
+                                <span style="font-size:10px;color:var(--muted);">${esc(formatTimeAgo(att.lastActive))}</span>
+                            </button>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `
+            : '';
+
         body.innerHTML = `
             <div class="student-detail-summary">
                 <div>
@@ -5987,6 +6089,7 @@
                     <button type="button" id="btn-copy-parent-comment" class="button button-secondary compact student-copy-report-btn"><i class="fa-regular fa-copy"></i> Copy nhận xét Zalo</button>
                 </div>
             </div>
+            ${historySwitcherHtml}
             <div class="student-detail-metrics">
                 <span><b>Tiến độ</b>${p.answered}/${p.total || '—'} ý (${p.percent}%)</span>
                 <span><b>Thời gian thực tế</b>${esc(p.durationLabel)}</span>
@@ -6002,6 +6105,12 @@
             ${questionsHtml}
             <details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>
         `;
+
+        body.querySelectorAll('[data-admin-attempt-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                renderStudentProgressDetail(studentRecord, btn.dataset.adminAttemptId);
+            });
+        });
 
         $('btn-copy-parent-comment')?.addEventListener('click', async (event) => {
             const btn = event.currentTarget || $('btn-copy-parent-comment');
@@ -6825,8 +6934,16 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
               }
               const card = event.target.closest('[data-student-id]');
               if (card) {
-                  const record = state.progressRecords.find((item) => String(item.id) === String(card.dataset.studentId));
-                  if (record) renderStudentProgressDetail(record);
+                  const attemptBtn = event.target.closest('[data-g5-attempt-id]');
+                  const studentId = card.dataset.studentId;
+                  const record = state.progressRecords.find((item) =>
+                      String(item.id) === String(studentId)
+                      || (Array.isArray(item.history) && item.history.some((h) => String(h.id) === String(studentId)))
+                  );
+                  if (record) {
+                      const targetAttemptId = attemptBtn ? attemptBtn.dataset.g5AttemptId : studentId;
+                      renderStudentProgressDetail(record, targetAttemptId);
+                  }
               }
           });
           $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
