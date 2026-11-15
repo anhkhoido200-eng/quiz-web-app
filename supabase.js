@@ -194,7 +194,8 @@ class DatabaseService {
             scoreSummary = data.scoreSummary || (data.subjectTitle ? `Môn: ${data.subjectTitle}` : "");
             targetLoginId = data.loginId || data.id || existingLoginId || null;
             attemptId = String(data.attemptId || data.sessionId || recordOptions.attemptId || recordOptions.sessionId || '').trim();
-            forceNewAttempt = forceNewAttempt || data.newAttempt === true || Boolean(attemptId);
+            const isVisitorSessionId = /^visitor_/i.test(attemptId);
+            forceNewAttempt = forceNewAttempt || data.newAttempt === true || (Boolean(attemptId) && !isVisitorSessionId);
         } else {
             cleanName = String(data || "").trim();
             cleanIp = String(ipAddress || "").trim();
@@ -208,7 +209,8 @@ class DatabaseService {
                 targetLoginId = existingLoginId;
             }
             attemptId = String(recordOptions.attemptId || recordOptions.sessionId || '').trim();
-            forceNewAttempt = forceNewAttempt || Boolean(attemptId);
+            const isVisitorSessionId = /^visitor_/i.test(attemptId);
+            forceNewAttempt = forceNewAttempt || (Boolean(attemptId) && !isVisitorSessionId);
         }
 
         if (forceNewAttempt) targetLoginId = null;
@@ -241,6 +243,9 @@ class DatabaseService {
             created_at: nowIso
         };
         const isVisitorAttempt = String(record.session_id || '').startsWith('visitor_');
+        const isExamAttemptRow = (r) => /^\[/.test(String(r?.status || ''))
+            || /điểm|__DETAIL__|tiến độ|chờ nộp bài|đã nộp bài/i.test(`${r?.status || ''} ${r?.score_summary || ''}`);
+        const isIncomingExam = isExamAttemptRow(record);
 
         // 1. Lưu LocalStorage tức thì
         try {
@@ -254,6 +259,7 @@ class DatabaseService {
             record.id = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
             const normName = cleanName.toLowerCase();
             const existingLocal = forceNewAttempt ? null : localLogs.find((item) => {
+                if ((isVisitorAttempt || !isIncomingExam) && isExamAttemptRow(item)) return false;
                 if (isVisitorAttempt) return item.session_id === record.session_id;
                 const itemName = String(item.player_name || '').trim().toLowerCase();
                 if (normName && normName !== 'khách truy cập' && itemName === normName) return true;
@@ -284,23 +290,27 @@ class DatabaseService {
                         .eq('id', targetLoginId)
                         .limit(1);
                     if (Array.isArray(byId) && byId.length > 0) {
-                        existingRows = byId;
+                        existingRows = (isVisitorAttempt || !isIncomingExam)
+                            ? byId.filter((r) => !isExamAttemptRow(r))
+                            : byId;
                     }
                 }
 
-                // 2. Visitor records use their own loginId. Do not query the optional
-                // session_id column here because older deployments do not have it.
-                // This also avoids a visitor presence request racing with a quiz attempt.
-                if (!forceNewAttempt && existingRows.length === 0 && !isVisitorAttempt) {
+                // 2. Tìm lại bản ghi hiện diện/chờ cùng tên hoặc cùng IP chưa đăng nhập (chỉ tái sử dụng dòng non-exam).
+                if (!forceNewAttempt && existingRows.length === 0) {
                     if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
                         const { data: byName } = await this.client
                             .from('quiz_logins')
                              .select('id, player_name, ip_address, device_info, status, score_summary, last_active')
                             .ilike('player_name', cleanName)
                             .order('last_active', { ascending: false })
-                            .limit(20);
+                            .limit(30);
                         if (Array.isArray(byName)) {
-                            existingRows = byName.filter((r) => !systemIds.includes(r.id) && !String(r.player_name || '').startsWith('__'));
+                            existingRows = byName.filter((r) =>
+                                !systemIds.includes(r.id)
+                                && !String(r.player_name || '').startsWith('__')
+                                && (!(isVisitorAttempt || !isIncomingExam) || !isExamAttemptRow(r))
+                            );
                         }
                     } else if (cleanIp && cleanIp !== 'Chưa xác định') {
                         const { data: byIp } = await this.client
@@ -309,21 +319,27 @@ class DatabaseService {
                             .eq('ip_address', cleanIp)
                             .eq('player_name', 'Khách truy cập')
                             .order('last_active', { ascending: false })
-                            .limit(10);
+                            .limit(20);
                         if (Array.isArray(byIp)) {
-                            existingRows = byIp.filter((r) => !systemIds.includes(r.id));
+                            existingRows = byIp.filter((r) =>
+                                !systemIds.includes(r.id)
+                                && (!(isVisitorAttempt || !isIncomingExam) || !isExamAttemptRow(r))
+                            );
                         }
                     }
                 }
 
                 // Lọc đúng thiết bị này (cleanDevice) để cập nhật, bảo toàn thiết bị khác khi mở cùng lúc
                 const normDev = String(cleanDevice || '').trim().toLowerCase();
-                const sameDeviceRows = (!forceNewAttempt && targetLoginId && existingRows.length > 0 && existingRows[0].id === targetLoginId)
+                const deviceMatchedRows = (!forceNewAttempt && targetLoginId && existingRows.length > 0 && existingRows[0].id === targetLoginId)
                     ? existingRows
                     : existingRows.filter((r) => {
                         const rDev = String(r.device_info || '').trim().toLowerCase();
                         return rDev === normDev;
                     });
+                const sameDeviceRows = (isVisitorAttempt || !isIncomingExam)
+                    ? deviceMatchedRows.filter((r) => !isExamAttemptRow(r))
+                    : deviceMatchedRows;
 
                 if (!forceNewAttempt && sameDeviceRows.length > 0) {
                     const targetRow = sameDeviceRows[0];
@@ -345,11 +361,15 @@ class DatabaseService {
                         })
                         .eq('id', targetRow.id);
 
-                    // Chỉ xóa các dòng trùng lặp cũ hơn CỦA CHÍNH THIẾT BỊ NÀY để không xóa nhầm máy khác
+                    // Chỉ xóa các dòng hiện diện trùng lặp (không phải bài thi) của thiết bị này
                     if (sameDeviceRows.length > 1) {
-                        const duplicateIds = sameDeviceRows.slice(1).map((r) => r.id).filter(Boolean);
+                        const duplicateIds = sameDeviceRows
+                            .slice(1)
+                            .filter((r) => !isExamAttemptRow(r))
+                            .map((r) => r.id)
+                            .filter(Boolean);
                         if (duplicateIds.length) {
-                            this.client.from('quiz_logins').delete().in('id', duplicateIds).then(() => {}, () => {});
+                            this.client.from('quiz_logins').delete().in('id', duplicateIds.slice(0, 50)).then(() => {}, () => {});
                         }
                     }
 
@@ -791,23 +811,32 @@ class DatabaseService {
     async clearAllLogins() {
         const systemIds = Object.values(SYSTEM_RECORDS);
         if (this.isSupabaseActive && this.client) {
-            const { data, error: selectError } = await this.client
-                .from('quiz_logins')
-                .select('id, player_name, ip_address');
-            if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập trước khi xóa: ${selectError.message}`);
+            const pageSize = 500;
+            const rows = [];
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error: selectError } = await this.client
+                    .from('quiz_logins')
+                    .select('id, player_name, ip_address')
+                    .order('created_at', { ascending: true })
+                    .range(offset, offset + pageSize - 1);
+                if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập trước khi xóa: ${selectError.message}`);
+                if (!Array.isArray(data) || data.length === 0) break;
+                rows.push(...data);
+                if (data.length < pageSize) break;
+            }
 
-            const ids = (data || [])
+            const ids = rows
                 .filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__'))
                 .map(item => item.id)
-                .filter(Boolean);
-            if (ids.length > 0) {
-                for (let offset = 0; offset < ids.length; offset += 100) {
-                    const { error: deleteError } = await this.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));
-                    if (deleteError) throw new Error(`Không thể xóa lịch sử đăng nhập: ${deleteError.message}`);
-                }
-                const { data: remaining, error: verifyError } = await this.client.from('quiz_logins').select('id').in('id', ids);
+                .filter(id => id && !String(id).startsWith('local_'));
+            const chunkSize = 50;
+            for (let offset = 0; offset < ids.length; offset += chunkSize) {
+                const chunk = ids.slice(offset, offset + chunkSize);
+                const { error: deleteError } = await this.client.from('quiz_logins').delete().in('id', chunk);
+                if (deleteError) throw new Error(`Không thể xóa lịch sử đăng nhập: ${deleteError.message}`);
+                const { data: remaining, error: verifyError } = await this.client.from('quiz_logins').select('id').in('id', chunk);
                 if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
-                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`);
+                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`);
             }
         }
         localStorage.removeItem(STORAGE_KEYS.LOCAL_LOGINS);

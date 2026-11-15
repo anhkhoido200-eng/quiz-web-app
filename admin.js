@@ -5796,6 +5796,14 @@
                         }
                     }
 
+                    const deleteBtn = card.querySelector('[data-delete-progress-id]');
+                    if (deleteBtn) {
+                        deleteBtn.dataset.deleteProgressId = p.id || '';
+                        deleteBtn.dataset.deleteProgressName = p.name || '';
+                        deleteBtn.dataset.deleteProgressIp = p.ip || '';
+                        deleteBtn.dataset.deleteProgressDevice = p.device || '';
+                    }
+
                     if (cardType === 'doing' || cardType === 'ready') {
                         const elCount = card.querySelector('.g5-card-count');
                         const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
@@ -6213,28 +6221,33 @@
         state.isClearingStudents = true;
         try {
             const systemIds = Object.values(SYSTEM);
-            const { data, error: selectError } = await state.client.from('quiz_logins').select('id, player_name, ip_address, status');
-            if (selectError) throw new Error(`Không thể đọc lịch sử đăng nhập: ${selectError.message}`);
+            const data = await fetchAllLoginRows();
             const ids = (data || []).filter((row) => {
                 const playerName = String(row.player_name || '').trim();
                 const isBanned = String(row.status || '').startsWith('BANNED') || playerName === '__BANNED_IP__';
                 return !systemIds.includes(row.id) && !isBanned && !playerName.startsWith('__');
-            }).map((row) => row.id).filter(Boolean);
-            if (ids.length) {
-                const { error } = await state.client.from('quiz_logins').delete().in('id', ids);
+            }).map((row) => row.id).filter((id) => id && !String(id).startsWith('local_'));
+            const chunkSize = 50;
+            for (let offset = 0; offset < ids.length; offset += chunkSize) {
+                const chunk = ids.slice(offset, offset + chunkSize);
+                const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
                 if (error) throw new Error(`Không thể xóa lịch sử học sinh: ${error.message}`);
-                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', ids);
+                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', chunk);
                 if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
-                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${ids.length} bản ghi chưa xóa.`);
+                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`);
             }
             try { localStorage.removeItem('quiz_local_logins_history'); } catch (e) {}
             state.studentPulseMap?.clear();
             state.lastStudentsBodyHtml = '';
             state.lastMonitorStatsHtml = '';
+            state.progressRecords = [];
+            state.progressRawLogins = [];
+            state.logins = [];
             notify('Đã xóa sạch toàn bộ lịch sử phiên truy cập học sinh.');
         } finally {
             state.isClearingStudents = false;
             await loadStudents();
+            await renderGrade5ProgressMonitor();
         }
     }
     async function deleteStudentSession(name, ip, device = '', loginId = '', alreadyConfirmed = false) {
@@ -6242,37 +6255,115 @@
         const cleanIp = String(ip || '').trim();
         const cleanDev = String(device || '').trim();
         const cleanLoginId = String(loginId || '').trim();
-        const systemIds = Object.values(SYSTEM);
-        let lookup = state.client.from('quiz_logins').select('id, player_name, ip_address, device_info');
-        if (cleanLoginId) lookup = lookup.eq('id', cleanLoginId);
-        const { data, error: selectError } = await lookup;
-        if (selectError) return notify(`Không thể xóa phiên: ${selectError.message}`, true);
-        const candidateRows = (data || []).filter((row) => !systemIds.includes(row.id) && !String(row.player_name || '').startsWith('__'));
-        const ids = cleanLoginId
-            ? candidateRows.filter((row) => String(row.id) === cleanLoginId).map((row) => row.id).filter(Boolean)
-            : (data || []).filter((row) => {
-            if (systemIds.includes(row.id) || String(row.player_name || '').startsWith('__')) return false;
+        const normCleanName = cleanName.toLowerCase();
+        const normCleanDev = cleanDev.toLowerCase();
+        const systemIds = new Set(Object.values(SYSTEM));
+        const isSystemRow = (row) => !row || systemIds.has(row.id) || String(row.player_name || '').trim().startsWith('__');
+        const hasSpecificName = Boolean(cleanName && normCleanName !== 'khách truy cập' && normCleanName !== 'học sinh');
+        const hasValidIp = Boolean(cleanIp && cleanIp !== 'Chưa xác định' && cleanIp !== '—');
+
+        const idSet = new Set();
+        const addId = (id) => {
+            const idStr = String(id || '').trim();
+            if (idStr && !systemIds.has(idStr)) idSet.add(idStr);
+        };
+
+        if (cleanLoginId) addId(cleanLoginId);
+        (state.progressRecords || []).forEach((item) => {
+            const matchesId = cleanLoginId && (
+                String(item.id) === cleanLoginId
+                || (Array.isArray(item.history) && item.history.some((h) => String(h.id) === cleanLoginId))
+            );
+            const matchesName = hasSpecificName && String(item.name || '').trim().toLowerCase() === normCleanName;
+            if (matchesId || matchesName) {
+                addId(item.id);
+                (item.history || []).forEach((h) => addId(h.id));
+            }
+        });
+
+        const fetchMatchingRows = async (buildQuery) => {
+            const collected = [];
+            const pageSize = 1000;
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                if (!Array.isArray(data) || data.length === 0) break;
+                collected.push(...data);
+                if (data.length < pageSize) break;
+            }
+            return collected;
+        };
+
+        try {
+            if (state.client) {
+                if (hasSpecificName) {
+                    const rowsByName = await fetchMatchingRows(() =>
+                        state.client.from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info')
+                            .ilike('player_name', cleanName)
+                    );
+                    rowsByName.forEach((row) => {
+                        if (!isSystemRow(row) && String(row.player_name || '').trim().toLowerCase() === normCleanName) {
+                            addId(row.id);
+                        }
+                    });
+                } else if (hasValidIp) {
+                    const rowsByIp = await fetchMatchingRows(() =>
+                        state.client.from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info')
+                            .eq('ip_address', cleanIp)
+                    );
+                    rowsByIp.forEach((row) => {
+                        if (isSystemRow(row)) return;
+                        const rowName = String(row.player_name || '').trim().toLowerCase();
+                        const rowDev = String(row.device_info || '').trim().toLowerCase();
+                        if ((!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName)) {
+                            addId(row.id);
+                        }
+                    });
+                }
+
+                if (cleanLoginId && !cleanLoginId.startsWith('local_') && !systemIds.has(cleanLoginId)) {
+                    const { data: exactRows, error: exactError } = await state.client
+                        .from('quiz_logins')
+                        .select('id, player_name, ip_address, device_info')
+                        .eq('id', cleanLoginId)
+                        .limit(1);
+                    if (exactError) throw exactError;
+                    (exactRows || []).forEach((row) => {
+                        if (!isSystemRow(row)) addId(row.id);
+                    });
+                }
+            }
+        } catch (selectError) {
+            return notify(`Không thể xóa phiên: ${selectError.message}`, true);
+        }
+
+        [...(state.logins || []), ...(state.progressRawLogins || [])].forEach((row) => {
+            if (isSystemRow(row)) return;
             const rowName = String(row.player_name || '').trim().toLowerCase();
             const rowIp = String(row.ip_address || '').trim();
-            const rowDev = String(row.device_info || '').trim();
-            if (cleanName && cleanName.toLowerCase() !== 'khách truy cập') {
-                // Xóa toàn bộ dữ liệu của đúng tên, không giới hạn theo thiết bị.
-                // Một học sinh có thể tạo nhiều phiên/thiết bị và tất cả phải biến mất.
-                return rowName === cleanName.toLowerCase();
+            const rowDev = String(row.device_info || '').trim().toLowerCase();
+            if (hasSpecificName) {
+                if (rowName === normCleanName) addId(row.id);
+            } else if (hasValidIp && rowIp === cleanIp) {
+                if ((!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName)) {
+                    addId(row.id);
+                }
             }
-            if (cleanIp && rowIp === cleanIp) {
-                return !cleanDev || rowDev === cleanDev;
-            }
-            return false;
-        }).map((row) => row.id).filter(Boolean);
-        if (!ids.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
-        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa toàn bộ thông tin học sinh?', message: cleanLoginId ? `Xóa thông tin phiên đang hiển thị của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nQuyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.` : `Xóa toàn bộ ${ids.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nTất cả phiên mang tên này sẽ bị xóa. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
-        if (ids.length) {
+        });
+
+        const allIds = Array.from(idSet);
+        if (!allIds.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
+        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa toàn bộ thông tin học sinh?', message: `Xóa toàn bộ ${allIds.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nTất cả phiên mang tên này sẽ bị xóa. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
+
+        const cloudIds = allIds.filter((id) => !String(id).startsWith('local_'));
+        if (cloudIds.length) {
             // Xóa theo lô nhỏ để URL query của Supabase không vượt giới hạn khi
             // một học sinh có nhiều phiên cũ trùng tên.
             const chunkSize = 50;
-            for (let offset = 0; offset < ids.length; offset += chunkSize) {
-                const chunk = ids.slice(offset, offset + chunkSize);
+            for (let offset = 0; offset < cloudIds.length; offset += chunkSize) {
+                const chunk = cloudIds.slice(offset, offset + chunkSize);
                 const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
                 if (error) return notify(`Không thể xóa phiên: ${error.message}`, true);
                 const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', chunk);
@@ -6280,15 +6371,49 @@
                 if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`, true);
             }
         }
-        // Xóa bản ghi cục bộ cùng tên để dữ liệu không quay lại khi tải fallback.
+        // Xóa bản ghi cục bộ cùng tên hoặc ID để dữ liệu không quay lại khi tải fallback.
         try {
             const localKey = 'quiz_local_logins_history';
             const localRows = JSON.parse(localStorage.getItem(localKey) || '[]');
-            const filteredLocal = cleanName && cleanName.toLowerCase() !== 'khách truy cập'
-                ? localRows.filter((row) => String(row.player_name || '').trim().toLowerCase() !== cleanName.toLowerCase())
-                : localRows.filter((row) => String(row.ip_address || '').trim() !== cleanIp);
+            const filteredLocal = localRows.filter((row) => {
+                if (row?.id && idSet.has(String(row.id))) return false;
+                if (hasSpecificName) return String(row.player_name || '').trim().toLowerCase() !== normCleanName;
+                if (hasValidIp) return String(row.ip_address || '').trim() !== cleanIp;
+                return true;
+            });
             localStorage.setItem(localKey, JSON.stringify(filteredLocal));
         } catch (e) { /* Local cache is optional. */ }
+
+        const matchesRemovedRow = (row) => {
+            if (!row) return false;
+            if (row.id != null && idSet.has(String(row.id))) return true;
+            const rowName = String(row.player_name || '').trim().toLowerCase();
+            const rowIp = String(row.ip_address || '').trim();
+            const rowDev = String(row.device_info || '').trim().toLowerCase();
+            if (hasSpecificName) return rowName === normCleanName;
+            if (hasValidIp && rowIp === cleanIp) return (!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName);
+            return false;
+        };
+        state.logins = (state.logins || []).filter((row) => !matchesRemovedRow(row));
+        state.progressRawLogins = (state.progressRawLogins || []).filter((row) => !matchesRemovedRow(row));
+        state.progressRecords = (state.progressRecords || []).filter((item) => {
+            if (idSet.has(String(item.id))) return false;
+            if (Array.isArray(item.history) && item.history.some((h) => idSet.has(String(h.id)))) return false;
+            if (hasSpecificName && String(item.name || '').trim().toLowerCase() === normCleanName) return false;
+            return true;
+        });
+        const progressContainer = $('grade5-progress-cards');
+        if (progressContainer) {
+            progressContainer.querySelectorAll('.grade5-live-card').forEach((card) => {
+                const cardId = String(card.dataset.studentId || '').trim();
+                const cardDelId = String(card.querySelector('[data-delete-progress-id]')?.dataset.deleteProgressId || '').trim();
+                const cardName = String(card.querySelector('h3')?.textContent || '').trim().toLowerCase();
+                if ((cardId && idSet.has(cardId)) || (cardDelId && idSet.has(cardDelId)) || (hasSpecificName && cardName === normCleanName)) {
+                    card.remove();
+                }
+            });
+        }
+
         state.lastMonitorStatsHtml = '';
         state.lastStudentsBodyHtml = '';
         notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
@@ -6929,7 +7054,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                       cancelText: 'Hủy bỏ',
                       variant: 'danger'
                   });
-                  if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, '', true));
+                  if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId || '', true));
                   return;
               }
               const card = event.target.closest('[data-student-id]');

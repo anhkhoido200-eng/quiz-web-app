@@ -7769,27 +7769,39 @@ Giải thích: Biên độ A = 5 cm.`;
     async recordVisitorPresence(statusText = 'Đang xem trang chủ') {
         if (!window.dbService || typeof window.dbService.recordLogin !== 'function') return;
         if (this.currentScreen === 'quiz' || this.isFinishingQuiz || this.quizAttemptId) return;
-        if (!this.clientIp || this.clientIp.startsWith('Đang')) {
-            await this.fetchClientIp();
-        }
-        const name = this.playerName || (document.getElementById('player-name-input')?.value || '').trim() || 'Khách truy cập';
-        try {
-            if (this.currentScreen === 'quiz' || this.isFinishingQuiz || this.quizAttemptId) return;
-            const res = await window.dbService.recordLogin({
-                playerName: name,
-                clientIp: this.clientIp,
-                deviceInfo: this.deviceInfo,
-                subjectTitle: statusText,
-                scoreSummary: '',
-                sessionId: this.visitorSessionId || (this.visitorSessionId = `visitor_${this.clientIp}_${this.deviceInfo}`),
-                loginId: this.visitorLoginId || null
-            });
-            const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
-            if (loginId) {
-                this.visitorLoginId = loginId;
-                try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
+        if (this._visitorPresenceInFlight) return this._visitorPresenceInFlight;
+        this.presenceHeartbeatAt = Date.now();
+        this._visitorPresenceInFlight = (async () => {
+            try {
+                if (!this.clientIp || this.clientIp.startsWith('Đang')) {
+                    await this.fetchClientIp();
+                }
+                if (this.currentScreen === 'quiz' || this.isFinishingQuiz || this.quizAttemptId) return;
+                let savedName = '';
+                try {
+                    savedName = localStorage.getItem('quiz_user_name') || localStorage.getItem('quiz_saved_player_name') || '';
+                } catch (e) {}
+                const name = String(this.playerName || savedName || 'Khách truy cập').trim() || 'Khách truy cập';
+                const res = await window.dbService.recordLogin({
+                    playerName: name,
+                    clientIp: this.clientIp,
+                    deviceInfo: this.deviceInfo,
+                    subjectTitle: statusText,
+                    scoreSummary: '',
+                    sessionId: this.visitorSessionId || (this.visitorSessionId = `visitor_${this.clientIp}_${this.deviceInfo}`),
+                    loginId: this.visitorLoginId || null
+                });
+                const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
+                if (loginId) {
+                    this.visitorLoginId = loginId;
+                    try { sessionStorage.setItem('quiz_visitor_login_id', loginId); } catch (e) {}
+                }
+            } catch (e) {
+            } finally {
+                this._visitorPresenceInFlight = null;
             }
-        } catch (e) { }
+        })();
+        return this._visitorPresenceInFlight;
     }
 
     updateTotalQuestionDisplay() {
@@ -7889,18 +7901,20 @@ Giải thích: Biên độ A = 5 cm.`;
         // Tự động pulse heartbeat ngay khi chuyển tab hoặc mở lại màn hình
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                if (this.currentLoginId && window.dbService?.heartbeat) {
+                const activeLoginId = this.currentLoginId || this.visitorLoginId;
+                if (activeLoginId && window.dbService?.heartbeat) {
                     this.presenceHeartbeatAt = Date.now();
-                    window.dbService.heartbeat(this.currentLoginId).catch(() => {});
+                    window.dbService.heartbeat(activeLoginId).catch(() => {});
                 } else {
                     this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
                 }
             }
         });
         window.addEventListener('focus', () => {
-            if (this.currentLoginId && window.dbService?.heartbeat) {
+            const activeLoginId = this.currentLoginId || this.visitorLoginId;
+            if (activeLoginId && window.dbService?.heartbeat) {
                 this.presenceHeartbeatAt = Date.now();
-                window.dbService.heartbeat(this.currentLoginId).catch(() => {});
+                window.dbService.heartbeat(activeLoginId).catch(() => {});
             }
         });
 
@@ -7930,11 +7944,14 @@ Giải thích: Biên độ A = 5 cm.`;
             if (this._heartbeatRunning) return;
             this._heartbeatRunning = true;
             try {
-                if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 20000) {
+                const activeLoginId = this.currentLoginId || this.visitorLoginId;
+                if (Date.now() - (this.presenceHeartbeatAt || 0) >= 20000) {
                     this.presenceHeartbeatAt = Date.now();
-                    await window.dbService.heartbeat?.(this.currentLoginId);
-                } else if (!this.currentLoginId) {
-                    this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
+                    if (activeLoginId) {
+                        await window.dbService.heartbeat?.(activeLoginId);
+                    } else {
+                        await this.recordVisitorPresence('Đang xem trang chủ');
+                    }
                 }
 
                 // 1. Kiểm tra trạng thái Bảo trì
