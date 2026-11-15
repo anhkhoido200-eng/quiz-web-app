@@ -17,7 +17,7 @@
     };
     const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
     const state = {
-        client: null, clientIp: '', questions: [], grade: 'all', subject: 'all', typeFilter: 'all',
+        client: null, clientIp: '', questions: [], questionsLoaded: false, grade: 'all', subject: 'all', typeFilter: 'all',
         type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
         page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
@@ -254,7 +254,8 @@
         return Boolean(key && (/^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/i.test(key) || key.length >= 20));
     };
     const subjectName = (key) => {
-        const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key);
+        const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key)
+            || state.subjects.find((item) => subjectMatchKey(item.key || item.subject_key) === subjectMatchKey(key));
         return dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
     };
     // Mã môn có thể được tạo từ JSON cũ với dấu cách/gạch nối/Unicode khác
@@ -271,9 +272,12 @@
     const builtinSubjects = () => [];
     const mergeSubjectCatalog = (configured) => {
         const merged = [];
+        const seenMatchKeys = new Set();
         (Array.isArray(configured) ? configured : []).forEach((item) => {
-            const key = item?.key || item?.subject_key;
-            if (key && !merged.some((subject) => subject.key === key)) {
+            const key = String(item?.key || item?.subject_key || '').trim();
+            const matchKey = subjectMatchKey(key) || key;
+            if (key && !seenMatchKeys.has(matchKey)) {
+                seenMatchKeys.add(matchKey);
                 merged.push({ ...item, key, name: item.name || item.title || key });
             }
         });
@@ -890,12 +894,13 @@
             const { data, error } = await state.client.from('quiz_questions').select('*').order('id', { ascending: true });
             if (error) throw error;
             state.questions = (data || []).filter((r) => !r.is_deleted).map(normalizeRow);
+            state.questionsLoaded = true;
             setConnection(true, 'Đã kết nối');
             $('last-sync') && ($('last-sync').textContent = `Đồng bộ lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
+            await syncSubjectQuestionCounts();
             renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
             updateHealthStatus('db', 'safe', 'Đã kết nối', 'Supabase đang hoạt động ổn định');
             updateHealthStatus('content', 'safe', 'Đã đồng bộ', `${state.questions.length} câu hỏi · ${state.subjects.length} môn học`);
-            await syncSubjectQuestionCounts();
         } catch (error) {
             setConnection(false, 'Mất kết nối');
             updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
@@ -905,6 +910,7 @@
     }
 
     async function syncSubjectQuestionCounts() {
+        if (!state.questionsLoaded) return;
         const questionCounts = (state.questions || []).reduce((counts, question) => {
             const key = subjectMatchKey(question.subject_key || question.subjectKey);
             if (key) counts[key] = (counts[key] || 0) + 1;
@@ -2318,6 +2324,100 @@
         } catch (error) {
             notify(`Không thể đồng bộ câu hỏi vào môn ${name}: ${error.message}`, true);
         }
+    }
+
+    function getOrphanQuestionGroups(subjects = mergeSubjectCatalog(state.subjects)) {
+        const knownKeys = new Set((subjects || []).map((s) => subjectMatchKey(s.key || s.subject_key)).filter(Boolean));
+        const groups = new Map();
+        (state.questions || []).forEach((q) => {
+            const rawKey = String(q.subject_key || q.subjectKey || '').trim();
+            const matchKey = subjectMatchKey(rawKey);
+            if (matchKey && knownKeys.has(matchKey)) return;
+            const groupKey = matchKey || '__empty__';
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, {
+                    groupKey,
+                    sampleRawKey: rawKey,
+                    rawKeys: new Set(),
+                    questions: [],
+                    count: 0,
+                    gradeCounts: { '5': 0, '11': 0 }
+                });
+            }
+            const g = groups.get(groupKey);
+            g.rawKeys.add(rawKey);
+            if (!g.sampleRawKey && rawKey) g.sampleRawKey = rawKey;
+            g.questions.push(q);
+            g.count += 1;
+            const gr = String(q.grade || '11') === '5' ? '5' : '11';
+            g.gradeCounts[gr] = (g.gradeCounts[gr] || 0) + 1;
+        });
+        return Array.from(groups.values()).sort((a, b) => b.count - a.count);
+    }
+
+    async function assignOrphanQuestions(orphanGroupKey, targetKey) {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const target = subjects.find((s) => (s.key || s.subject_key) === targetKey);
+        if (!target) return notify('Hãy chọn môn đích hợp lệ để gán câu hỏi.', true);
+        const orphan = getOrphanQuestionGroups(subjects).find((g) => g.groupKey === orphanGroupKey);
+        if (!orphan || !orphan.questions.length) return notify('Không còn câu hỏi chưa gán ở nhóm này.', true);
+        const targetGrade = subjectGrade(target);
+        if (!(await confirmDialog({
+            title: 'Gán câu hỏi vào môn học?',
+            message: `Chuyển ${orphan.count} câu hỏi (mã "${orphan.sampleRawKey || 'trống'}") sang môn "${target.name}" (mã: ${target.key}, Lớp ${targetGrade})?`,
+            confirmText: 'Gán ngay',
+            variant: 'primary',
+            icon: 'fa-link'
+        }))) return;
+        try {
+            const ids = orphan.questions.map((q) => q.id).filter(Boolean);
+            for (let i = 0; i < ids.length; i += 50) {
+                const chunk = ids.slice(i, i + 50);
+                const { error } = await state.client
+                    .from('quiz_questions')
+                    .update({ subject_key: target.key, grade: targetGrade, updated_at: new Date().toISOString() })
+                    .in('id', chunk);
+                if (error) throw error;
+            }
+            addActivityLog('Đồng bộ câu hỏi chưa khớp môn', `Đã gán ${orphan.count} câu (${orphan.sampleRawKey || 'trống'}) vào môn ${target.name}`, 'question');
+            notify(`Đã gán ${orphan.count} câu hỏi vào môn ${target.name}.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể gán câu hỏi: ${error.message}`, true);
+        }
+    }
+
+    async function createSubjectFromOrphan(orphanGroupKey) {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const orphan = getOrphanQuestionGroups(subjects).find((g) => g.groupKey === orphanGroupKey);
+        if (!orphan || !orphan.questions.length) return notify('Không còn câu hỏi chưa gán ở nhóm này.', true);
+        const rawKey = orphan.sampleRawKey || `mon_${Date.now().toString(36)}`;
+        const inferredGrade = orphan.gradeCounts['5'] > orphan.gradeCounts['11'] ? '5' : '11';
+        const defaultName = rawKey === 'history' ? 'Lịch Sử' : rawKey;
+        const newSubject = {
+            key: rawKey,
+            name: defaultName,
+            grade: inferredGrade,
+            semester: '',
+            icon: 'fa-book',
+            visibility: 'PUBLIC',
+            mode: 'practice',
+            count: orphan.count
+        };
+        if (!orphan.sampleRawKey) {
+            const ids = orphan.questions.map((q) => q.id).filter(Boolean);
+            for (let i = 0; i < ids.length; i += 50) {
+                const { error } = await state.client
+                    .from('quiz_questions')
+                    .update({ subject_key: rawKey, grade: inferredGrade, updated_at: new Date().toISOString() })
+                    .in('id', ids.slice(i, i + 50));
+                if (error) return notify(`Không thể cập nhật mã môn cho câu hỏi trống: ${error.message}`, true);
+            }
+        }
+        state.subjects = [...state.subjects, newSubject];
+        await saveSubjects();
+        await loadQuestions();
+        notify(`Đã tạo thẻ môn "${defaultName}" (${orphan.count} câu). Bạn có thể bấm Sửa để đổi tên hiển thị.`);
     }
 
     async function extractFile(file) {
@@ -4100,11 +4200,35 @@
 
         const listEl = $('subjects-list');
         if (listEl) {
-            if (!subjects.length && !activeFolders.size) {
+            const orphanGroups = getOrphanQuestionGroups(subjects);
+            const totalOrphans = orphanGroups.reduce((sum, g) => sum + g.count, 0);
+            const targetOptionsHtml = subjects.map((s) => `<option value="${esc(s.key)}">${esc(s.name)} (Lớp ${subjectGrade(s)} · ${esc(s.key)})</option>`).join('');
+            const orphanBannerHtml = orphanGroups.length ? `
+                <div class="orphan-subjects-banner" style="grid-column:1 / -1;padding:12px 14px;border-radius:12px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);display:grid;gap:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                        <strong style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-triangle-exclamation"></i> Phát hiện ${totalOrphans} câu hỏi trong Ngân hàng chưa khớp thẻ môn nào</strong>
+                        <small class="muted-copy">Chọn môn đích để gán hoặc tạo thẻ môn mới để không bị thất lạc câu hỏi.</small>
+                    </div>
+                    <div style="display:grid;gap:8px;">
+                        ${orphanGroups.map((g) => `
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:9px;background:var(--surface-2);border:1px solid var(--border);">
+                                <span style="font-size:12px;">Mã môn: <code>${esc(g.sampleRawKey || '(trống)')}</code> · <b>${g.count} câu</b></span>
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    ${subjects.length ? `<select data-orphan-target="${esc(g.groupKey)}" style="font-size:12px;padding:5px 8px;border-radius:8px;">${targetOptionsHtml}</select><button type="button" class="button button-primary compact" data-assign-orphan="${esc(g.groupKey)}"><i class="fa-solid fa-link"></i> Gán vào môn</button>` : ''}
+                                    <button type="button" class="button button-secondary compact" data-create-orphan-subject="${esc(g.groupKey)}"><i class="fa-solid fa-plus"></i> Tạo thẻ môn</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '';
+
+            if (!subjects.length && !activeFolders.size && !orphanGroups.length) {
                 listEl.innerHTML = '<div class="empty-state">Chưa có môn học hoặc thư mục.</div>';
             } else if (state.adminOpenSubjectFolder && activeFolders.has(state.adminOpenSubjectFolder)) {
                 const group = activeFolders.get(state.adminOpenSubjectFolder);
                 listEl.innerHTML = `
+                    ${orphanBannerHtml}
                     <div style="grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);">
                         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                             <button type="button" class="button button-secondary compact" data-close-subject-folder="true"><i class="fa-solid fa-arrow-left"></i> Quay lại danh sách</button>
@@ -4133,7 +4257,7 @@
                     .filter((group) => !renderedFolders.has(group.key))
                     .map(renderFolderCardHtml)
                     .join('');
-                listEl.innerHTML = subjectHtml + emptyFolderHtml;
+                listEl.innerHTML = orphanBannerHtml + subjectHtml + emptyFolderHtml;
             }
         }
         renderSubjectPrivacy();
@@ -6491,7 +6615,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
         $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
-         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const assignOrphan = event.target.closest('[data-assign-orphan]'); if (assignOrphan) { const gk = assignOrphan.dataset.assignOrphan; const sel = $('subjects-list')?.querySelector(`[data-orphan-target="${CSS.escape(gk)}"]`); runAction(() => assignOrphanQuestions(gk, sel?.value || '')); return; } const createOrphan = event.target.closest('[data-create-orphan-subject]'); if (createOrphan) { runAction(() => createSubjectFromOrphan(createOrphan.dataset.createOrphanSubject)); return; } const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
