@@ -1466,7 +1466,11 @@
         pool.forEach((q) => {
             const normText = normalizeQuestionForDuplicateCheck(q.question);
             if (!normText) return;
-            const key = `${subjectMatchKey(q.subject_key || q.subjectKey)}::${normText}`;
+            const qType = q.q_type || q.qType || 'mcq';
+            const normOpts = Array.isArray(q.options) ? q.options.map((o) => normalizeQuestionForDuplicateCheck(storageText(o))).join('|') : '';
+            const normStmts = Array.isArray(q.statements) ? q.statements.map((s) => `${normalizeQuestionForDuplicateCheck(storageText(s?.text ?? s?.content))}:${Boolean(s?.answer ?? s?.correctAnswer)}`).join('|') : '';
+            const normVal = normalizeQuestionForDuplicateCheck(q.correct_value ?? q.correctValue ?? '');
+            const key = `${subjectMatchKey(q.subject_key || q.subjectKey)}::${qType}::${normText}::${normOpts}::${normStmts}::${normVal}`;
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(q);
         });
@@ -2293,9 +2297,19 @@
                 await saveTrash();
             }
 
-            const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
+            const rawKeys = Array.from(new Set([
+                key,
+                ...subjectQuestions.map((q) => String(q.subject_key || q.subjectKey || '').trim()).filter(Boolean)
+            ]));
+            const delQuery = rawKeys.length > 1
+                ? state.client.from('quiz_questions').delete().in('subject_key', rawKeys)
+                : state.client.from('quiz_questions').delete().eq('subject_key', key);
+            const { error } = await delQuery;
             if (error) throw error;
-            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            const verifyQuery = rawKeys.length > 1
+                ? state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).in('subject_key', rawKeys)
+                : state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            const { count, error: verifyError } = await verifyQuery;
             if (verifyError) throw verifyError;
             if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu hỏi chưa xóa được.`);
             try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
@@ -2355,6 +2369,27 @@
         return Array.from(groups.values()).sort((a, b) => b.count - a.count);
     }
 
+    async function updateQuestionSubjectChunk(chunkIds, subjectKey, grade) {
+        const payload = { subject_key: subjectKey, grade, updated_at: new Date().toISOString() };
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const { error } = await state.client.from('quiz_questions').update(payload).in('id', chunkIds);
+            if (!error) return null;
+            const msg = String(error.message || '');
+            if (error.code === 'PGRST204' || error.code === '42703' || /column .* does not exist|could not find the .* column/i.test(msg)) {
+                let stripped = false;
+                if ('grade' in payload && /grade/i.test(msg)) { delete payload.grade; stripped = true; }
+                if ('updated_at' in payload && /updated_at/i.test(msg)) { delete payload.updated_at; stripped = true; }
+                if (!stripped) {
+                    if ('grade' in payload) { delete payload.grade; stripped = true; }
+                    else if ('updated_at' in payload) { delete payload.updated_at; stripped = true; }
+                }
+                if (stripped) continue;
+            }
+            return error;
+        }
+        return null;
+    }
+
     async function assignOrphanQuestions(orphanGroupKey, targetKey) {
         const subjects = mergeSubjectCatalog(state.subjects);
         const target = subjects.find((s) => (s.key || s.subject_key) === targetKey);
@@ -2373,10 +2408,7 @@
             const ids = orphan.questions.map((q) => q.id).filter(Boolean);
             for (let i = 0; i < ids.length; i += 50) {
                 const chunk = ids.slice(i, i + 50);
-                const { error } = await state.client
-                    .from('quiz_questions')
-                    .update({ subject_key: target.key, grade: targetGrade, updated_at: new Date().toISOString() })
-                    .in('id', chunk);
+                const error = await updateQuestionSubjectChunk(chunk, target.key, targetGrade);
                 if (error) throw error;
             }
             addActivityLog('Đồng bộ câu hỏi chưa khớp môn', `Đã gán ${orphan.count} câu (${orphan.sampleRawKey || 'trống'}) vào môn ${target.name}`, 'question');
@@ -2407,10 +2439,7 @@
         if (!orphan.sampleRawKey) {
             const ids = orphan.questions.map((q) => q.id).filter(Boolean);
             for (let i = 0; i < ids.length; i += 50) {
-                const { error } = await state.client
-                    .from('quiz_questions')
-                    .update({ subject_key: rawKey, grade: inferredGrade, updated_at: new Date().toISOString() })
-                    .in('id', ids.slice(i, i + 50));
+                const error = await updateQuestionSubjectChunk(ids.slice(i, i + 50), rawKey, inferredGrade);
                 if (error) return notify(`Không thể cập nhật mã môn cho câu hỏi trống: ${error.message}`, true);
             }
         }
@@ -2643,7 +2672,17 @@
             // state cũ còn sót lại từ lần import trước.
             state.importSubject = selectedSubject;
             if ($('import-replace')?.checked) {
-                const { error } = await state.client.from('quiz_questions').delete().eq('subject_key', selectedSubject);
+                const rawKeys = Array.from(new Set([
+                    selectedSubject,
+                    ...(state.questions || [])
+                        .filter((q) => subjectMatchKey(q.subject_key || q.subjectKey) === subjectMatchKey(selectedSubject))
+                        .map((q) => String(q.subject_key || q.subjectKey || '').trim())
+                        .filter(Boolean)
+                ]));
+                const replaceQuery = rawKeys.length > 1
+                    ? state.client.from('quiz_questions').delete().in('subject_key', rawKeys)
+                    : state.client.from('quiz_questions').delete().eq('subject_key', selectedSubject);
+                const { error } = await replaceQuery;
                 if (error) throw error;
             }
             const firstId = await nextQuestionId();
@@ -3072,7 +3111,7 @@
         const idx = (state.tokens || []).findIndex((t) => String(t.token || '') === String(tokenStr || ''));
         if (idx === -1) return;
         const item = state.tokens[idx];
-        const current = new Set(Array.isArray(item.allowedSubjects) ? item.allowedSubjects : []);
+        const current = new Set((Array.isArray(item.allowedSubjects) ? item.allowedSubjects : []).map((k) => subjectMatchKey(k)).filter(Boolean));
         const subjects = allSubjects();
 
         const overlay = document.createElement('div');
@@ -3091,7 +3130,7 @@
                     ${subjects.map((sub) => {
                         const key = String(sub.key || sub.subject_key || '');
                         return `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;">
-                            <input type="checkbox" value="${esc(key)}" ${current.has(key) ? 'checked' : ''}>
+                            <input type="checkbox" value="${esc(key)}" ${current.has(subjectMatchKey(key)) ? 'checked' : ''}>
                             <span>${esc(sub.name || key)} (Lớp ${subjectGrade(sub)})</span>
                         </label>`;
                     }).join('')}

@@ -261,7 +261,7 @@
         renderJoinForm(prefillCode = '') {
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
-            const savedName = localStorage.getItem('quiz_player_name') || document.getElementById('player-name-input')?.value?.trim() || '';
+            const savedName = localStorage.getItem('quiz_player_name') || localStorage.getItem('quiz_user_name') || document.getElementById('player-name-input')?.value?.trim() || '';
             stage.innerHTML = `
                 <form id="arena-join-form" class="space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

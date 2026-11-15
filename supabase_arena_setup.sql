@@ -797,17 +797,17 @@ $$;
 -- =========================================================================
 -- RPC 8: THỐNG KÊ TOP CÂU HỎI HAY SAI NHẤT (THEO LỊCH SỬ ĐẤU TRƯỜNG)
 -- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_get_wrong_question_stats(TEXT, INTEGER);
 CREATE OR REPLACE FUNCTION public.arena_get_wrong_question_stats(
     p_subject_key TEXT DEFAULT NULL,
     p_limit INTEGER DEFAULT 15
 )
 RETURNS TABLE (
-    question_id INTEGER,
     subject_key TEXT,
     category TEXT,
     question TEXT,
-    total_attempts BIGINT,
     wrong_attempts BIGINT,
+    total_attempts BIGINT,
     wrong_rate NUMERIC
 )
 LANGUAGE SQL
@@ -816,19 +816,20 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
     SELECT
-        q.id AS question_id,
         q.subject_key,
         COALESCE(q.category, 'Bài học') AS category,
         q.question,
-        COUNT(*)::BIGINT AS total_attempts,
         COUNT(*) FILTER (WHERE NOT a.is_correct)::BIGINT AS wrong_attempts,
+        COUNT(*)::BIGINT AS total_attempts,
         ROUND((COUNT(*) FILTER (WHERE NOT a.is_correct)::NUMERIC * 100.0) / GREATEST(1, COUNT(*)), 1) AS wrong_rate
     FROM public.match_answers a
     JOIN public.quiz_questions q ON q.id = a.question_id
     WHERE COALESCE(q.is_deleted, false) = false
-      AND (p_subject_key IS NULL OR TRIM(p_subject_key) = '' OR q.subject_key = TRIM(p_subject_key))
+      AND (p_subject_key IS NULL OR TRIM(p_subject_key) = '' OR LOWER(TRIM(q.subject_key)) = LOWER(TRIM(p_subject_key)))
     GROUP BY q.id, q.subject_key, q.category, q.question
     HAVING COUNT(*) FILTER (WHERE NOT a.is_correct) > 0
     ORDER BY wrong_attempts DESC, wrong_rate DESC, total_attempts DESC
     LIMIT GREATEST(1, LEAST(50, COALESCE(p_limit, 15)));
 $$;
+
+GRANT EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER) TO anon, authenticated;

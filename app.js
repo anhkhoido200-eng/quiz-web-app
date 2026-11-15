@@ -1054,8 +1054,9 @@ class QuizApp {
     getHomeVisibleSubjects() {
         const assignedSet = this.getMatchedAllowedSubjects();
         const canViewGrade5 = this.canViewGrade5();
-        const currentIp = String(this.clientIp || '').trim();
-        const canViewPrivateByIp = this.allowedGeoIps.includes(currentIp);
+        const currentIp = String(this.clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const normalizedGeoIps = new Set((this.allowedGeoIps || []).map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean));
+        const canViewPrivateByIp = Boolean(currentIp) && normalizedGeoIps.has(currentIp);
         const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
             const subKey = String(sub.key || sub.subject_key || '').trim().toLowerCase();
             if (assignedSet) {
@@ -1180,7 +1181,8 @@ class QuizApp {
         }
 
         // Nếu môn đang chọn hiện tại bị ẩn, tự động chuyển sang môn công khai đầu tiên
-        if (visibleSubjects.length > 0 && !visibleSubjects.some(s => s.key === this.currentSubject)) {
+        const currentSubjNorm = String(this.currentSubject || '').trim().toLowerCase();
+        if (visibleSubjects.length > 0 && !visibleSubjects.some(s => String(s.key || '').trim().toLowerCase() === currentSubjNorm)) {
             this.currentSubject = visibleSubjects[0].key;
             localStorage.setItem('quiz_last_selected_subject', this.currentSubject);
             this.loadQuestionsForCurrentSubject();
@@ -1391,16 +1393,17 @@ class QuizApp {
     }
 
     async selectSubject(subjKey) {
-        const selected = (this.dynamicSubjects || []).find((subject) => subject.key === subjKey);
-        console.debug('[QuizApp] Subject selection requested:', { subjKey, selected, currentSubject: this.currentSubject, visible: this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey) });
-        if (!selected || !this.getHomeVisibleSubjects().some((subject) => subject.key === subjKey)) {
+        const targetNorm = String(subjKey || '').trim().toLowerCase();
+        const selected = (this.dynamicSubjects || []).find((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm);
+        console.debug('[QuizApp] Subject selection requested:', { subjKey, selected, currentSubject: this.currentSubject, visible: this.getHomeVisibleSubjects().some((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm) });
+        if (!selected || !this.getHomeVisibleSubjects().some((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm)) {
             this.showToastNotification('Môn học này không thuộc khu vực được cấp quyền trên thiết bị hiện tại.');
             return;
         }
-        if (subjKey === this.currentSubject) return;
-        this.currentSubject = subjKey;
+        if (targetNorm === String(this.currentSubject || '').trim().toLowerCase()) return;
+        this.currentSubject = selected.key;
         this.setExamMode(selected?.mode === 'exam');
-        localStorage.setItem('quiz_last_selected_subject', subjKey);
+        localStorage.setItem('quiz_last_selected_subject', selected.key);
         this.renderHomeSubjects();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
