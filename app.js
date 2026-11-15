@@ -1127,6 +1127,29 @@ class QuizApp {
         this.updateTokenStatusUi();
     }
 
+    getSubjectFolderInfo(sub) {
+        const grade = this.getSubjectGrade(sub);
+        const explicitFolder = String(sub?.folder || sub?.group || '').trim();
+        if (explicitFolder) {
+            return {
+                folderKey: `${grade}::${explicitFolder.toLowerCase()}`,
+                folderLabel: explicitFolder
+            };
+        }
+        const rawName = String(sub?.name || sub?.title || sub?.key || '').trim();
+        const m = rawName.match(/^(.+?)(?:\s*[-–—:|]\s*|\s+)(?:đề|bài|chuyên\s*đề|test|tập|phần)\s*(?:số\s*)?(?:\d+|[ivx]+)\b.*$/i);
+        if (!m) return null;
+        const base = m[1].trim();
+        if (!base || base.length < 2) return null;
+        const cleanBase = base.replace(/^môn\s+/i, '').trim();
+        const titleBase = cleanBase.charAt(0).toUpperCase() + cleanBase.slice(1);
+        const folderLabel = /^môn\s+/i.test(base) ? titleBase : `Môn ${titleBase}`;
+        return {
+            folderKey: `${grade}::${cleanBase.toLowerCase()}`,
+            folderLabel
+        };
+    }
+
     renderHomeSubjects() {
         const grid = document.getElementById('home-subjects-grid');
         if (!grid) return;
@@ -1150,6 +1173,7 @@ class QuizApp {
             tabs.querySelectorAll('[data-grade-filter]:not(:disabled)').forEach((button) => {
                 button.addEventListener('click', () => {
                     this.homeGradeFilter = button.dataset.gradeFilter;
+                    this.homeOpenFolder = null;
                     this.renderHomeSubjects();
                 });
             });
@@ -1180,14 +1204,30 @@ class QuizApp {
             return;
         }
 
-        const fragment = document.createDocumentFragment();
+        // Gom nhóm các đề cùng môn (VD: toán đề 1..4 -> thư mục "Môn Toán") nếu có >= 2 đề
+        const folderMap = new Map();
+        visibleSubjects.forEach((sub) => {
+            const info = this.getSubjectFolderInfo(sub);
+            if (!info) return;
+            if (!folderMap.has(info.folderKey)) {
+                folderMap.set(info.folderKey, { key: info.folderKey, label: info.folderLabel, items: [] });
+            }
+            folderMap.get(info.folderKey).items.push(sub);
+        });
+        const activeFolders = new Map();
+        folderMap.forEach((group, key) => {
+            if (group.items.length >= 2) activeFolders.set(key, group);
+        });
+        if (this.homeOpenFolder && !activeFolders.has(this.homeOpenFolder)) {
+            this.homeOpenFolder = null;
+        }
 
-        visibleSubjects.forEach(sub => {
+        const fragment = document.createDocumentFragment();
+        const renderSubjectCard = (sub) => {
             const isSelected = this.currentSubject === sub.key;
             const subName = sub.name || sub.title || sub.key || 'Môn học';
             const card = document.createElement('button');
             card.type = 'button';
-            card.onclick = () => this.selectSubject(sub.key);
 
             let grad = sub.gradient || 'indigo';
             let iconColorClass = "bg-indigo-600/30 text-indigo-300 border-indigo-500/30";
@@ -1216,8 +1256,69 @@ class QuizApp {
                     <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${Number(sub.count) || 0}">0</span> câu</span>
                 </div>
             `;
-            fragment.appendChild(card);
-        });
+            return card;
+        };
+
+        if (this.homeOpenFolder && activeFolders.has(this.homeOpenFolder)) {
+            const group = activeFolders.get(this.homeOpenFolder);
+            const bar = document.createElement('div');
+            bar.className = 'col-span-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700/80';
+            bar.innerHTML = `
+                <button type="button" id="btn-home-folder-back" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition">
+                    <i class="fa-solid fa-arrow-left"></i> Quay lại
+                </button>
+                <span class="text-xs sm:text-sm font-extrabold text-amber-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-folder-open"></i> ${this.escapeHtml(group.label)} (${group.items.length} đề)
+                </span>
+            `;
+            bar.querySelector('#btn-home-folder-back')?.addEventListener('click', () => {
+                this.homeOpenFolder = null;
+                this.renderHomeSubjects();
+            });
+            fragment.appendChild(bar);
+            group.items.forEach((sub) => fragment.appendChild(renderSubjectCard(sub)));
+        } else {
+            const renderedFolders = new Set();
+            visibleSubjects.forEach((sub) => {
+                const info = this.getSubjectFolderInfo(sub);
+                if (info && activeFolders.has(info.folderKey)) {
+                    if (renderedFolders.has(info.folderKey)) return;
+                    renderedFolders.add(info.folderKey);
+                    const group = activeFolders.get(info.folderKey);
+                    const hasSelected = group.items.some((item) => item.key === this.currentSubject);
+                    const totalCount = group.items.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+                    const firstSub = group.items[0] || sub;
+                    const grad = firstSub.gradient || 'indigo';
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = `p-3.5 rounded-2xl text-left flex flex-col justify-between cursor-pointer subject-card-interactive transition-all relative min-h-[118px] ${hasSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
+                    card.onclick = () => {
+                        this.homeOpenFolder = group.key;
+                        this.renderHomeSubjects();
+                    };
+                    card.innerHTML = `
+                        <div class="flex items-center justify-between gap-2 mb-2 w-full">
+                            <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/35 flex items-center justify-center text-lg shrink-0 shadow-md">
+                                <i class="fa-solid fa-folder-closed"></i>
+                            </div>
+                            <span class="text-[10px] px-2.5 py-1 rounded-full ${hasSelected ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/50' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'} font-bold flex items-center gap-1 shrink-0 shadow-sm">
+                                <i class="fa-solid fa-layer-group text-[9px]"></i> ${group.items.length} đề
+                            </span>
+                        </div>
+                        <div class="w-full mb-2">
+                            <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(group.label)}</p>
+                        </div>
+                        <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
+                            <span class="px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 font-medium text-[10px] truncate max-w-[100px]">Bấm mở thư mục</span>
+                            <span class="text-amber-400 font-bold text-xs shrink-0 whitespace-nowrap"><i class="fa-solid fa-bolt text-[10px] mr-1"></i><span data-home-count="${totalCount}">0</span> câu</span>
+                        </div>
+                    `;
+                    fragment.appendChild(card);
+                } else {
+                    fragment.appendChild(renderSubjectCard(sub));
+                }
+            });
+        }
 
         grid.innerHTML = '';
         grid.appendChild(fragment);
