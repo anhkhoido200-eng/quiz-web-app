@@ -1668,25 +1668,50 @@
     async function upsertRestoredRows(rows) {
         if (!state.client) throw new Error('Chưa kết nối Supabase.');
         const chunkSize = 50;
-        const stripOptionalCols = (list) => list.map(({ is_deleted, deleted_at, updated_at, image_url, ...rest }) => rest);
+        const extractMissingColumn = (err) => {
+            const msg = String(err?.message || '');
+            const m = msg.match(/Could not find the '([^']+)' column/i)
+                || msg.match(/column "([^"]+)" of relation/i)
+                || msg.match(/column '([^']+)'/i);
+            return m ? m[1] : '';
+        };
+        const isMissingColError = (err) => Boolean(err && (err.code === 'PGRST204' || err.code === '42703' || /column|schema cache/i.test(err.message || '')));
+        const stripCol = (list, col) => list.map((row) => {
+            const copy = { ...row };
+            delete copy[col];
+            return copy;
+        });
+        const stripKnownOptional = (list) => list.map(({ grade, is_deleted, deleted_at, updated_at, image_url, ...rest }) => rest);
+
+        const execWithSchemaAdapt = async (initialChunk, mode) => {
+            let current = initialChunk;
+            for (let attempt = 0; attempt < 8; attempt++) {
+                const res = mode === 'insert'
+                    ? await state.client.from('quiz_questions').insert(current)
+                    : await state.client.from('quiz_questions').upsert(current, { onConflict: 'id' });
+                if (!res.error || !isMissingColError(res.error)) {
+                    return { error: res.error, usedChunk: current };
+                }
+                const missingCol = extractMissingColumn(res.error);
+                if (missingCol && Object.prototype.hasOwnProperty.call(current[0] || {}, missingCol)) {
+                    current = stripCol(current, missingCol);
+                } else {
+                    current = stripKnownOptional(current);
+                }
+            }
+            return { error: new Error('Không thể khớp cấu trúc cột của quiz_questions.'), usedChunk: current };
+        };
 
         for (let i = 0; i < rows.length; i += chunkSize) {
-            let chunk = rows.slice(i, i + chunkSize);
-            let { error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' });
-
-            if (error && (error.code === 'PGRST204' || error.code === '42703' || /column|schema cache/i.test(error.message || ''))) {
-                chunk = stripOptionalCols(chunk);
-                ({ error } = await state.client.from('quiz_questions').upsert(chunk, { onConflict: 'id' }));
-            }
+            const chunk = rows.slice(i, i + chunkSize);
+            let { error, usedChunk } = await execWithSchemaAdapt(chunk, 'upsert');
 
             // Nếu trùng ID với bản ghi bị ẩn bởi RLS (is_deleted = true), cấp ID mới và insert trực tiếp
             if (error && (error.code === '42501' || error.code === '23505' || /row-level security|duplicate key/i.test(error.message || ''))) {
                 const baseFreshId = Math.max(await nextQuestionId(), (Math.floor(Date.now() / 1000) % 1000000000) + i);
-                const rekeyed = chunk.map((row, idx) => ({ ...row, id: baseFreshId + idx }));
-                ({ error } = await state.client.from('quiz_questions').insert(rekeyed));
-                if (error && (error.code === 'PGRST204' || error.code === '42703' || /column|schema cache/i.test(error.message || ''))) {
-                    ({ error } = await state.client.from('quiz_questions').insert(stripOptionalCols(rekeyed)));
-                }
+                const rekeyed = usedChunk.map((row, idx) => ({ ...row, id: baseFreshId + idx }));
+                const insertRes = await execWithSchemaAdapt(rekeyed, 'insert');
+                error = insertRes.error;
                 if (!error) {
                     rekeyed.forEach((r, idx) => { rows[i + idx].id = r.id; });
                 }
