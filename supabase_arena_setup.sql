@@ -167,7 +167,25 @@ AS $$
 DECLARE
     v_code TEXT;
     v_room public.match_rooms;
+    v_title TEXT := COALESCE(NULLIF(TRIM(p_title), ''), 'Bài kiểm tra');
+    v_subject_key TEXT := NULLIF(TRIM(COALESCE(p_subject_key, '')), '');
 BEGIN
+    IF v_subject_key IS NULL OR LENGTH(v_subject_key) > 64 THEN
+        RAISE EXCEPTION 'Mã môn học không hợp lệ';
+    END IF;
+    IF LENGTH(v_title) > 200 THEN
+        RAISE EXCEPTION 'Tên bài kiểm tra quá dài (tối đa 200 ký tự)';
+    END IF;
+    IF p_match_duration_sec IS NOT NULL AND (p_match_duration_sec < 30 OR p_match_duration_sec > 14400) THEN
+        RAISE EXCEPTION 'Thời gian làm bài phải từ 30 đến 14400 giây';
+    END IF;
+    IF p_per_question_sec IS NOT NULL AND (p_per_question_sec < 5 OR p_per_question_sec > 3600) THEN
+        RAISE EXCEPTION 'Thời gian mỗi câu phải từ 5 đến 3600 giây';
+    END IF;
+    IF p_max_violations IS NOT NULL AND (p_max_violations < 0 OR p_max_violations > 100) THEN
+        RAISE EXCEPTION 'Số lần vi phạm tối đa không hợp lệ';
+    END IF;
+
     LOOP
         v_code := UPPER(SUBSTRING(REPLACE(gen_random_uuid()::TEXT, '-', '') FROM 1 FOR 6));
         EXIT WHEN NOT EXISTS (SELECT 1 FROM public.match_rooms WHERE room_code = v_code);
@@ -181,11 +199,11 @@ BEGIN
     )
     VALUES (
         v_code,
-        COALESCE(NULLIF(TRIM(p_title), ''), 'Bài kiểm tra'),
-        COALESCE(NULLIF(TRIM(p_subject_key), ''), 'history'),
-        GREATEST(30, COALESCE(p_match_duration_sec, 600)),
-        CASE WHEN p_per_question_sec IS NOT NULL AND p_per_question_sec >= 5 THEN p_per_question_sec ELSE NULL END,
-        GREATEST(0, COALESCE(p_max_violations, 3)),
+        v_title,
+        v_subject_key,
+        GREATEST(30, LEAST(14400, COALESCE(p_match_duration_sec, 600))),
+        CASE WHEN p_per_question_sec IS NOT NULL AND p_per_question_sec >= 5 THEN LEAST(3600, p_per_question_sec) ELSE NULL END,
+        GREATEST(0, LEAST(100, COALESCE(p_max_violations, 3))),
         CASE WHEN p_concurrent_policy = 'BLOCK_NEW' THEN 'BLOCK_NEW' ELSE 'KICK_OLD' END,
         COALESCE(p_require_fullscreen, false),
         'IN_PROGRESS',
@@ -365,10 +383,20 @@ BEGIN
            AND v_now > (v_attempt.started_at + (v_room.match_duration_sec * INTERVAL '1 second') + INTERVAL '3 seconds') THEN
             UPDATE public.match_attempts
             SET status = 'SUBMITTED',
-                submitted_at = v_now,
+                submitted_at = COALESCE(submitted_at, v_now),
                 finish_reason = 'TIME_UP'
-            WHERE id = v_attempt.id;
-            RAISE EXCEPTION 'Hết thời gian làm bài';
+            WHERE id = v_attempt.id
+            RETURNING * INTO v_attempt;
+
+            RETURN jsonb_build_object(
+                'error', 'MATCH_TIME_UP',
+                'match_time_up', true,
+                'message', 'Hết thời gian làm bài',
+                'server_now', v_now,
+                'room', to_jsonb(v_room),
+                'attempt', public.arena_safe_attempt(v_attempt),
+                'questions', '[]'::jsonb
+            );
         END IF;
 
         IF v_attempt.active_session_token <> p_session_token THEN
@@ -535,10 +563,17 @@ BEGIN
     IF v_room.status IN ('FINISHED', 'CANCELLED')
        OR (NOT COALESCE(p_is_offline_sync, false) AND v_attempt.started_at IS NOT NULL AND v_now > (v_attempt.started_at + (v_room.match_duration_sec * INTERVAL '1 second') + INTERVAL '3 seconds')) THEN
         UPDATE public.match_attempts
-        SET status = 'SUBMITTED', submitted_at = v_now, finish_reason = 'TIME_UP'
+        SET status = 'SUBMITTED',
+            submitted_at = COALESCE(submitted_at, v_now),
+            finish_reason = 'TIME_UP'
         WHERE id = v_attempt.id
         RETURNING * INTO v_attempt;
-        RAISE EXCEPTION 'MATCH_TIME_UP';
+        RETURN jsonb_build_object(
+            'error', 'MATCH_TIME_UP',
+            'match_time_up', true,
+            'message', 'Hết thời gian làm bài',
+            'attempt', public.arena_safe_attempt(v_attempt)
+        );
     END IF;
 
     -- Idempotency check
@@ -577,7 +612,8 @@ BEGIN
         UPDATE public.match_attempts
         SET current_index = current_index + 1,
             question_started_at = v_now,
-            wrong_count = wrong_count + 1
+            wrong_count = wrong_count + 1,
+            total_time_ms = total_time_ms + v_resp_ms
         WHERE id = p_attempt_id
         RETURNING * INTO v_attempt;
 
@@ -774,12 +810,20 @@ AS $$
 DECLARE
     v_room public.match_rooms;
 BEGIN
+    IF p_room_id IS NULL THEN
+        RAISE EXCEPTION 'Thiếu mã định danh phòng thi (p_room_id)';
+    END IF;
+
     UPDATE public.match_rooms
     SET status = 'FINISHED',
         is_locked = true,
-        ended_at = NOW()
+        ended_at = COALESCE(ended_at, NOW())
     WHERE id = p_room_id
     RETURNING * INTO v_room;
+
+    IF v_room.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy phòng thi cần đóng';
+    END IF;
 
     UPDATE public.match_attempts
     SET status = 'SUBMITTED',

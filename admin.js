@@ -45,7 +45,11 @@
                 const saved = JSON.parse(localStorage.getItem('quiz_trash_questions') || '[]');
                 return Array.isArray(saved) ? saved : [];
             } catch (e) { return []; }
-        })()
+        })(),
+        isLeavingWorkspace: false,
+        workspaceTransitionsBound: false,
+        libraryTabIndicatorRect: null,
+        libraryIndicatorResizeBound: false
     };
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
@@ -101,6 +105,103 @@
         }
     };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    function ensureAdminWorkspaceOverlay() {
+        let overlay = $('workspace-transition-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'workspace-transition-overlay';
+            overlay.className = 'workspace-transition-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = `
+                <div class="workspace-transition-badge">
+                    <span class="workspace-transition-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    <span id="workspace-transition-text" class="workspace-transition-text">Đang mở Control Center...</span>
+                </div>
+            `;
+            document.body?.appendChild(overlay);
+        }
+        return overlay;
+    }
+
+    function navigateToStudentWithTransition(targetUrl = 'index.html') {
+        if (state.isLeavingWorkspace) return;
+        state.isLeavingWorkspace = true;
+        const cleanUrl = targetUrl || 'index.html';
+        try {
+            sessionStorage.setItem('quiz_workspace_transition', 'to-student');
+        } catch (e) {}
+        const overlay = ensureAdminWorkspaceOverlay();
+        const textEl = $('workspace-transition-text');
+        if (textEl) textEl.textContent = 'Đang quay về Trang học sinh...';
+        if (overlay) {
+            overlay.classList.add('is-active');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        document.body?.classList.remove('workspace-entering');
+        document.body?.classList.add('workspace-leaving');
+        const reducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        const delay = reducedMotion ? 0 : 220;
+        window.setTimeout(() => {
+            window.location.href = cleanUrl;
+        }, delay);
+    }
+
+    function initAdminWorkspaceTransitions() {
+        let transitionFlag = '';
+        try {
+            transitionFlag = sessionStorage.getItem('quiz_workspace_transition') || '';
+        } catch (e) {}
+
+        if (transitionFlag === 'to-admin') {
+            try {
+                sessionStorage.removeItem('quiz_workspace_transition');
+            } catch (e) {}
+            const overlay = ensureAdminWorkspaceOverlay();
+            const textEl = $('workspace-transition-text');
+            if (textEl) textEl.textContent = 'Đang mở Control Center...';
+            if (overlay) {
+                overlay.classList.add('is-active');
+                overlay.setAttribute('aria-hidden', 'false');
+                void overlay.offsetWidth;
+            }
+            document.body?.classList.remove('workspace-leaving');
+            document.body?.classList.add('workspace-entering');
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (overlay) {
+                        overlay.classList.remove('is-active');
+                        overlay.setAttribute('aria-hidden', 'true');
+                    }
+                });
+            });
+            window.setTimeout(() => {
+                document.body?.classList.remove('workspace-entering');
+            }, 380);
+        }
+
+        if (!state.workspaceTransitionsBound) {
+            state.workspaceTransitionsBound = true;
+            window.addEventListener('pageshow', () => {
+                state.isLeavingWorkspace = false;
+                const overlay = $('workspace-transition-overlay');
+                if (overlay) {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                document.body?.classList.remove('workspace-leaving', 'workspace-entering');
+            });
+        }
+
+        document.querySelectorAll('a[href="index.html"], a.side-home, a.brand').forEach((link) => {
+            if (link.dataset.workspaceTransitionBound === '1') return;
+            link.dataset.workspaceTransitionBound = '1';
+            link.addEventListener('click', (event) => {
+                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                event.preventDefault();
+                navigateToStudentWithTransition(link.getAttribute('href') || 'index.html');
+            });
+        });
+    }
     const copyToClipboard = async (text) => {
         const cleanText = String(text ?? '').trim();
         if (!cleanText) return false;
@@ -528,21 +629,28 @@
             if (state.clientIp && ips.includes(state.clientIp)) return true;
 
             // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
+            const isPlainIpAddress = (value) => {
+                const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+                return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
+            };
             if (currentToken) {
                 const tok = currentToken.toLowerCase();
                 const tokCode = normalizeAdminCode(tok);
                 const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
+                    if (!tok || tok.length < 6 || isPlainIpAddress(tok)) return false;
                     if (typeof item === 'string') {
-                        const str = item.toLowerCase();
-                        return tok && (str === tok || normalizeAdminCode(str) === tokCode);
+                        const str = item.trim().toLowerCase();
+                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
+                        const strCode = normalizeAdminCode(str);
+                        return str === tok || (Boolean(tokCode) && tokCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === tokCode);
                     }
                     const itemToken = String(item.token || '').toLowerCase();
                     const itemRaw = String(item.rawCode || '').toLowerCase();
                     if (tok && tok.length >= 6) {
-                        if (itemToken && itemToken === tok) return true;
-                        if (itemRaw && itemRaw === tok) return true;
-                        if (tokCode && normalizeAdminCode(itemToken) === tokCode) return true;
-                        if (tokCode && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
+                        if (itemToken && !isPlainIpAddress(itemToken) && itemToken === tok) return true;
+                        if (itemRaw && !isPlainIpAddress(itemRaw) && itemRaw === tok) return true;
+                        if (tokCode && !isPlainIpAddress(tokCode) && normalizeAdminCode(itemToken) === tokCode) return true;
+                        if (tokCode && !isPlainIpAddress(tokCode) && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
                     }
                     return false;
                 });
@@ -592,6 +700,30 @@
         if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
     }
 
+    const BOOTSTRAP_PASSWORD_SHA256 = '2c6c59eb3f31265a50f43c2814e47c4a945a6a31d43bc32cf751dbc1a954be60';
+    const BOOTSTRAP_PASSWORD_FALLBACK = '6:a2bcaee6:df5161c8';
+
+    async function verifyBootstrapPassword(input) {
+        const clean = String(input ?? '');
+        try {
+            if (window.crypto?.subtle?.digest && typeof TextEncoder !== 'undefined') {
+                const bytes = new TextEncoder().encode(clean);
+                const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+                const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+                return hex === BOOTSTRAP_PASSWORD_SHA256;
+            }
+        } catch (e) {}
+        let h1 = 0x811c9dc5;
+        let h2 = 5381;
+        for (let i = 0; i < clean.length; i++) {
+            const c = clean.charCodeAt(i);
+            h1 ^= c;
+            h1 = Math.imul(h1, 0x01000193) >>> 0;
+            h2 = (Math.imul(h2, 33) ^ c) >>> 0;
+        }
+        return `${clean.length}:${h1.toString(16).padStart(8, '0')}:${h2.toString(16).padStart(8, '0')}` === BOOTSTRAP_PASSWORD_FALLBACK;
+    }
+
     async function bootstrapAdmin() {
         if (!state.client) state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
         if (!state.clientIp) state.clientIp = await getClientIp();
@@ -605,7 +737,7 @@
         if (masterIp || allowed.length) return notify('Hệ thống đã có whitelist Admin. Hãy dùng tài khoản/IP được cấp.', true);
         const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để thiết lập quyền Master lần đầu cho thiết bị này:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
         if (password === null) return;
-        if (password !== '034569') return notify('Mật khẩu Admin không đúng.', true);
+        if (!(await verifyBootstrapPassword(password))) return notify('Mật khẩu Admin không đúng.', true);
         const payload = { masterIp: state.clientIp, allowedIps: [{ ip: state.clientIp, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
@@ -1012,6 +1144,56 @@
         }
     }
 
+    function updateLibrarySlidingIndicator(animate = true) {
+        const container = $('library-subject-tabs');
+        if (!container) return;
+        container.classList.add('has-sliding-indicator');
+
+        let indicator = container.querySelector('.sliding-tab-indicator');
+        if (!indicator) {
+            indicator = document.createElement('span');
+            indicator.className = 'sliding-tab-indicator';
+            indicator.setAttribute('aria-hidden', 'true');
+            container.prepend(indicator);
+        }
+
+        const activePill = container.querySelector('.subject-tab-pill.is-active');
+        if (!activePill || !activePill.offsetWidth) {
+            indicator.style.opacity = '0';
+            if (!activePill) state.libraryTabIndicatorRect = null;
+            return;
+        }
+
+        const targetLeft = activePill.offsetLeft;
+        const targetWidth = activePill.offsetWidth;
+        const prevRect = state.libraryTabIndicatorRect;
+        const reducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+        if (animate && !reducedMotion && prevRect && prevRect.width > 0 && (prevRect.left !== targetLeft || prevRect.width !== targetWidth)) {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${prevRect.left}px)`;
+            indicator.style.width = `${prevRect.width}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+            requestAnimationFrame(() => {
+                if (!indicator.isConnected) return;
+                indicator.style.transform = `translateX(${targetLeft}px)`;
+                indicator.style.width = `${targetWidth}px`;
+                indicator.style.opacity = '1';
+            });
+        } else {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${targetLeft}px)`;
+            indicator.style.width = `${targetWidth}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+        }
+
+        state.libraryTabIndicatorRect = { left: targetLeft, width: targetWidth };
+    }
+
     function renderLibrarySubjectTabs() {
         const container = $('library-subject-tabs');
         if (!container) return;
@@ -1048,7 +1230,8 @@
             `;
         }).join('');
 
-        container.innerHTML = allPill + subjectPills;
+        container.innerHTML = '<span class="sliding-tab-indicator" aria-hidden="true"></span>' + allPill + subjectPills;
+        updateLibrarySlidingIndicator(true);
     }
 
     function renderPagination(total, totalPages) {
@@ -2836,6 +3019,8 @@
 
         if (view === 'overview') {
             requestAnimationFrame(() => replayOverviewMetrics());
+        } else if (view === 'questions') {
+            updateLibrarySlidingIndicator(false);
         }
 
         if (view !== 'progress') {
@@ -4554,12 +4739,19 @@
         state.subjectFolders = (state.subjectFolders || []).filter(
             (f) => `${String(f.grade || '11') === '5' ? '5' : '11'}::${String(f.name || f.label || '').trim().toLowerCase()}` !== folderKey
         );
+        const targetFolderName = String(namePart || '').trim().toLowerCase();
         let changed = false;
         state.subjects = (state.subjects || []).map((s) => {
             const info = getAdminSubjectFolderInfo(s);
-            if (info && info.folderKey === folderKey && s.folder) {
+            const hasFolderOrGroup = Boolean(String(s.folder || s.group || '').trim());
+            const folderMatches = (info && info.folderKey === folderKey) ||
+                (targetFolderName && (
+                    String(s.folder || '').trim().toLowerCase() === targetFolderName ||
+                    String(s.group || '').trim().toLowerCase() === targetFolderName
+                ));
+            if (folderMatches && hasFolderOrGroup) {
                 changed = true;
-                return { ...s, folder: '' };
+                return { ...s, folder: '', group: '' };
             }
             return s;
         });
@@ -4595,6 +4787,7 @@
         const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
         const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
         if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
+        const previousSubjects = (state.subjects || []).map((item) => ({ ...item }));
         if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject };
         else state.subjects.push(subject);
         try {
@@ -4603,7 +4796,11 @@
             closeSubjectDialog();
             addActivityLog(isEditingSub ? `Cập nhật môn ${name}` : `Tạo môn học mới: ${name}`, `Mã: ${key} · Khối Lớp ${subject.grade}`, 'subject');
             notify('Đã lưu môn học.');
-        } catch (error) { notify(`Không thể lưu môn học: ${error.message}`, true); }
+        } catch (error) {
+            state.subjects = previousSubjects;
+            renderSubjectCatalog();
+            notify(`Không thể lưu môn học: ${error.message}`, true);
+        }
     }
     async function deleteSubject(key) {
         if (!(await confirmDialog({ title: `Xóa môn ${key}?`, message: `Xóa môn ${key} và chuyển toàn bộ câu hỏi thuộc môn này vào Thùng rác?`, confirmText: 'Xóa môn học', variant: 'danger' }))) return;
@@ -4767,17 +4964,39 @@
         ].map((ip) => String(ip || '').trim()).filter(Boolean));
         const data = [];
         let error = null;
-        // Giới hạn 300 phiên hoạt động mới nhất để chống tràn API Supabase định kỳ 5s
-        const page = await state.client
-            .from('quiz_logins')
-            .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
-            .neq('player_name', '__TRASH_BIN__')
-            .order('last_active', { ascending: false })
-            .limit(300);
+        // Giới hạn 300 phiên hoạt động mới nhất để chống tràn API Supabase định kỳ 5s,
+        // đồng thời truy vấn bổ sung các bản ghi IP bị chặn để không bị đẩy mất khi có >300 phiên mới
+        const [page, bannedPage] = await Promise.all([
+            state.client
+                .from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .neq('player_name', '__TRASH_BIN__')
+                .order('last_active', { ascending: false })
+                .limit(300),
+            state.client
+                .from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .or('player_name.eq.__BANNED_IP__,status.like.BANNED%')
+                .order('last_active', { ascending: false })
+        ]);
         if (page.error) {
             error = page.error;
-        } else if (Array.isArray(page.data)) {
-            data.push(...page.data);
+        } else {
+            const seenRowKeys = new Set();
+            const appendUniqueRows = (rowsList) => {
+                if (!Array.isArray(rowsList)) return;
+                for (const r of rowsList) {
+                    if (!r) continue;
+                    const rowKey = r.id != null ? `id:${r.id}` : `${r.ip_address || ''}|${r.player_name || ''}|${r.device_info || ''}|${r.last_active || ''}`;
+                    if (seenRowKeys.has(rowKey)) continue;
+                    seenRowKeys.add(rowKey);
+                    data.push(r);
+                }
+            };
+            appendUniqueRows(page.data);
+            if (!bannedPage?.error) {
+                appendUniqueRows(bannedPage?.data);
+            }
             state.logins = data.slice();
         }
         if (error) {
@@ -5621,7 +5840,7 @@
                             </div>
                             <i class="fa-solid fa-chevron-down student-q-chevron"></i>
                         </button>
-                        <div class="student-q-collapse hidden">${renderExpandedBody(qObj, it, idx)}</div>
+                        <div class="student-q-collapse" aria-hidden="true"><div class="student-q-collapse-inner">${renderExpandedBody(qObj, it, idx)}</div></div>
                     </li>
                 `;
             }).join('');
@@ -5652,7 +5871,7 @@
                         </div>
                         <i class="fa-solid fa-chevron-down student-q-chevron"></i>
                     </button>
-                    <div class="student-q-collapse hidden">${renderExpandedBody(question, null, index)}</div>
+                    <div class="student-q-collapse" aria-hidden="true"><div class="student-q-collapse-inner">${renderExpandedBody(question, null, index)}</div></div>
                 </li>
             `).join('');
             questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi (bấm vào câu để xem chi tiết)</h4>${fallbackRows ? `<ul class="student-detail-questions" id="student-detail-questions-list">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
@@ -5710,9 +5929,10 @@
                 const li = toggleBtn.closest('li');
                 const panel = li?.querySelector('.student-q-collapse');
                 if (!li || !panel) return;
-                const willOpen = panel.classList.contains('hidden');
-                panel.classList.toggle('hidden', !willOpen);
+                const willOpen = !li.classList.contains('is-open');
                 li.classList.toggle('is-open', willOpen);
+                panel.classList.toggle('is-open', willOpen);
+                panel.setAttribute('aria-hidden', String(!willOpen));
                 toggleBtn.setAttribute('aria-expanded', String(willOpen));
                 if (willOpen) renderMath(panel);
             });
@@ -5726,9 +5946,10 @@
                 targetLi.classList.remove('hidden');
                 const panel = targetLi.querySelector('.student-q-collapse');
                 const toggleBtn = targetLi.querySelector('.student-q-toggle');
-                if (panel && panel.classList.contains('hidden')) {
-                    panel.classList.remove('hidden');
+                if (panel && !targetLi.classList.contains('is-open')) {
                     targetLi.classList.add('is-open');
+                    panel.classList.add('is-open');
+                    panel.setAttribute('aria-hidden', 'false');
                     toggleBtn?.setAttribute('aria-expanded', 'true');
                     renderMath(panel);
                 }
@@ -6251,6 +6472,12 @@
             }
             renderLibrary();
         });
+        if (!state.libraryIndicatorResizeBound) {
+            state.libraryIndicatorResizeBound = true;
+            window.addEventListener('resize', () => {
+                updateLibrarySlidingIndicator(false);
+            }, { passive: true });
+        }
         $('library-pagination')?.addEventListener('click', (event) => {
             const pageBtn = event.target.closest('.page-btn:not(:disabled)');
             if (!pageBtn) return;
@@ -6531,8 +6758,15 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              const token = parentItem ? parentItem.token : '';
              const link = buildAppUrl(token ? `?token=${encodeURIComponent(token)}&view=progress` : '?view=progress');
              try {
-                 navigator.clipboard.writeText(link);
-                 notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
+                 if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                     navigator.clipboard.writeText(link).then(() => {
+                         notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
+                     }).catch(() => {
+                         prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+                     });
+                 } else {
+                     prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+                 }
              } catch (e) {
                  prompt('Sao chép đường dẫn gửi người theo dõi:', link);
              }
@@ -6554,9 +6788,15 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                  const token = copyAdminLinkBtn.dataset.copyAdminLink;
                  const link = buildAppUrl(`admin.html?token=${encodeURIComponent(token)}`);
                  try {
-                     navigator.clipboard.writeText(link).then(() => {
-                         notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
-                     });
+                     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                         navigator.clipboard.writeText(link).then(() => {
+                             notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
+                         }).catch(() => {
+                             prompt('Sao chép đường dẫn Admin:', link);
+                         });
+                     } else {
+                         prompt('Sao chép đường dẫn Admin:', link);
+                     }
                  } catch (e) {
                      prompt('Sao chép đường dẫn Admin:', link);
                  }
@@ -6605,9 +6845,15 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                      : window.location.origin;
                  const link = `${origin}/?token=${encodeURIComponent(token)}&view=progress`;
                  try {
-                     navigator.clipboard.writeText(link).then(() => {
-                         notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
-                     });
+                     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                         navigator.clipboard.writeText(link).then(() => {
+                             notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
+                         }).catch(() => {
+                             prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+                         });
+                     } else {
+                         prompt('Sao chép đường dẫn gửi người theo dõi:', link);
+                     }
                  } catch (e) {
                      prompt('Sao chép đường dẫn gửi người theo dõi:', link);
                  }
@@ -6659,6 +6905,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
     }
 
     async function init() {
+        initAdminWorkspaceTransitions();
         if (localStorage.getItem('quiz_admin_dark') === 'false') {
             document.body.classList.remove('dark');
         } else {

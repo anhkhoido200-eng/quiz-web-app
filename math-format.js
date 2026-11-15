@@ -101,7 +101,7 @@
 
         // Geometry, chemistry, implication, comparison, and sign symbols.
         source = source.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 $\\parallel$ $2');
-        source = source.replace(/\s*(?:\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
+        source = source.replace(/\s*(?:(?<!:)\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
         source = source.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' $\\rightarrow$ ');
         source = source.replace(/\s*=>\s*/g, ' $\\Rightarrow$ ');
         source = source.replace(/\s*>=\s*/g, ' $\\ge$ ');
@@ -122,7 +122,6 @@
         // Units and common chemical formulas. Use a real fraction for rates.
         source = source.replace(/(\d+(?:[.,]\d+)?)\s*(?:°C|\^oC|\*C)/g, (_, number) => `$${number}^{\\circ}\\text{C}$`);
         source = source.replace(/(?<![A-Za-zÀ-ỹ])(m|cm|km)\/s\^?2\b/gu, (_, unit) => `$\\frac{\\text{${unit}}}{\\text{s}^2}$`);
-        source = source.replace(/(?<![A-Za-zÀ-ỹ])(cm|km|m)\/s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
         source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?2(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^2$`);
         source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?3(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^3$`);
         const chemicalFormulae = {

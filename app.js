@@ -534,6 +534,161 @@ class QuizApp {
         });
     }
 
+    ensureWorkspaceOverlay() {
+        let overlay = document.getElementById('workspace-transition-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'workspace-transition-overlay';
+            overlay.className = 'workspace-transition-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = `
+                <div class="workspace-transition-badge">
+                    <span class="workspace-transition-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    <span id="workspace-transition-text" class="workspace-transition-text">Đang mở Control Center...</span>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        return overlay;
+    }
+
+    initWorkspaceTransitions() {
+        let shouldFadeInFromAdmin = false;
+        try {
+            if (sessionStorage.getItem('quiz_workspace_transition') === 'to-student') {
+                sessionStorage.removeItem('quiz_workspace_transition');
+                shouldFadeInFromAdmin = true;
+            }
+        } catch (e) {}
+
+        if (shouldFadeInFromAdmin) {
+            const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+            const overlay = this.ensureWorkspaceOverlay();
+            const textEl = document.getElementById('workspace-transition-text');
+            if (textEl) textEl.textContent = 'Đang quay về Trang học sinh...';
+            if (reduceMotion) {
+                overlay.classList.remove('is-active');
+                overlay.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('workspace-entering', 'workspace-leaving');
+            } else {
+                overlay.classList.add('is-active');
+                overlay.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('workspace-entering');
+                void overlay.offsetWidth;
+                window.requestAnimationFrame(() => {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                });
+                clearTimeout(this._workspaceEnterTimer);
+                this._workspaceEnterTimer = setTimeout(() => {
+                    document.body.classList.remove('workspace-entering');
+                }, 380);
+            }
+        }
+
+        if (!this._workspaceTransitionsBound) {
+            this._workspaceTransitionsBound = true;
+            window.addEventListener('pageshow', () => {
+                this._navigatingWorkspace = false;
+                clearTimeout(this._workspaceEnterTimer);
+                const overlay = document.getElementById('workspace-transition-overlay');
+                if (overlay) {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                document.body.classList.remove('workspace-leaving', 'workspace-entering');
+            });
+
+            document.querySelectorAll('a[href="admin.html"], #floating-admin-btn, #nav-admin-btn').forEach((link) => {
+                link.addEventListener('click', (event) => {
+                    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                    if (link.getAttribute('target') === '_blank') return;
+                    event.preventDefault();
+                    this.navigateToAdminWithTransition(link.getAttribute('href') || 'admin.html');
+                });
+            });
+        }
+    }
+
+    navigateToAdminWithTransition(targetUrl = 'admin.html') {
+        if (this._navigatingWorkspace) return;
+        this._navigatingWorkspace = true;
+        try {
+            sessionStorage.setItem('quiz_workspace_transition', 'to-admin');
+        } catch (e) {}
+
+        const overlay = this.ensureWorkspaceOverlay();
+        const textEl = document.getElementById('workspace-transition-text');
+        if (textEl) textEl.textContent = 'Đang mở Control Center...';
+        overlay.classList.add('is-active');
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('workspace-leaving');
+
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const delay = reduceMotion ? 0 : 220;
+        if (delay === 0) {
+            window.location.href = targetUrl;
+            return;
+        }
+        setTimeout(() => {
+            window.location.href = targetUrl;
+        }, delay);
+    }
+
+    updateSlidingTabIndicator(container, activeBtn, animate = true) {
+        if (!container) return;
+        container.classList.add('has-sliding-indicator');
+        let indicator = container.querySelector(':scope > .sliding-tab-indicator');
+        if (!indicator) {
+            indicator = document.createElement('span');
+            indicator.className = 'sliding-tab-indicator';
+            indicator.setAttribute('aria-hidden', 'true');
+            container.prepend(indicator);
+        }
+        if (!activeBtn) {
+            indicator.style.opacity = '0';
+            return;
+        }
+
+        const targetLeft = activeBtn.offsetParent === container
+            ? activeBtn.offsetLeft
+            : Math.round(activeBtn.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft);
+        const targetWidth = activeBtn.offsetWidth;
+        if (targetWidth <= 0) return;
+
+        if (this._homeTabIndicatorRaf) {
+            window.cancelAnimationFrame(this._homeTabIndicatorRaf);
+            this._homeTabIndicatorRaf = null;
+        }
+
+        const prevRect = this._homeTabIndicatorRect;
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+        if (animate && !reduceMotion && prevRect && prevRect.width > 0) {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${prevRect.left}px)`;
+            indicator.style.width = `${prevRect.width}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+            this._homeTabIndicatorRaf = window.requestAnimationFrame(() => {
+                this._homeTabIndicatorRaf = null;
+                indicator.style.transform = `translateX(${targetLeft}px)`;
+                indicator.style.width = `${targetWidth}px`;
+                indicator.style.opacity = '1';
+                this._homeTabIndicatorRect = { left: targetLeft, width: targetWidth };
+            });
+        } else {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${targetLeft}px)`;
+            indicator.style.width = `${targetWidth}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+            this._homeTabIndicatorRect = { left: targetLeft, width: targetWidth };
+        }
+    }
+
     /**
      * Khởi tạo toàn bộ ứng dụng
      */
@@ -563,6 +718,7 @@ class QuizApp {
             console.warn('[QuizApp] Lỗi đọc URL token:', e);
         }
 
+        this.initWorkspaceTransitions();
         this.initTheme();
         this.initNetworkListeners();
         this.initEventListeners();
@@ -1178,6 +1334,17 @@ class QuizApp {
                     this.renderHomeSubjects();
                 });
             });
+            this.updateSlidingTabIndicator(tabs, tabs.querySelector('.home-grade-tab.is-active'));
+            if (!this._homeTabResizeBound) {
+                this._homeTabResizeBound = true;
+                window.addEventListener('resize', () => {
+                    const currentTabs = document.getElementById('home-semester-tabs');
+                    const currentActive = currentTabs?.querySelector('.home-grade-tab.is-active');
+                    if (currentTabs && currentActive) {
+                        this.updateSlidingTabIndicator(currentTabs, currentActive, false);
+                    }
+                }, { passive: true });
+            }
         }
 
         // Nếu môn đang chọn hiện tại bị ẩn, tự động chuyển sang môn công khai đầu tiên
@@ -1238,19 +1405,20 @@ class QuizApp {
             else if (grad === 'rose') iconColorClass = "bg-rose-600/30 text-rose-300 border-rose-500/30";
             else if (grad === 'amber') iconColorClass = "bg-amber-600/30 text-amber-300 border-amber-500/30";
 
+            card.dataset.subjectCard = sub.key;
             card.className = `p-3.5 rounded-2xl text-left flex flex-col justify-between cursor-pointer subject-card-interactive transition-all relative min-h-[118px] ${isSelected ? 'selected-' + grad : 'hover:border-slate-600'}`;
             card.onclick = () => this.selectSubject(sub.key);
             card.innerHTML = `
                 <!-- Hàng 1: Icon môn học và Badge trạng thái -->
                 <div class="flex items-center justify-between gap-2 mb-2 w-full">
-                    <div class="w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
+                    <div class="subject-card-icon-box ${isSelected ? 'vt-subject-icon ' : ''}w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
                         <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                     </div>
                     ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
                 </div>
                 <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
-                    <p class="font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(subName)}</p>
+                    <p class="subject-card-title-text ${isSelected ? 'vt-subject-title ' : ''}font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(subName)}</p>
                 </div>
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
@@ -1404,6 +1572,14 @@ class QuizApp {
         this.currentSubject = selected.key;
         this.setExamMode(selected?.mode === 'exam');
         localStorage.setItem('quiz_last_selected_subject', selected.key);
+        const homeGrid = document.getElementById('home-subjects-grid');
+        if (homeGrid) {
+            homeGrid.querySelectorAll('[data-subject-card]').forEach((cardEl) => {
+                const isMatch = String(cardEl.dataset.subjectCard || '').trim().toLowerCase() === targetNorm;
+                cardEl.querySelector('.subject-card-icon-box')?.classList.toggle('vt-subject-icon', isMatch);
+                cardEl.querySelector('.subject-card-title-text')?.classList.toggle('vt-subject-title', isMatch);
+            });
+        }
         this.renderHomeSubjects();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
@@ -1770,6 +1946,7 @@ class QuizApp {
             }
         }, 8000);
         document.addEventListener('visibilitychange', () => {
+            if (this.currentScreen === 'quiz') return;
             if (!document.hidden) {
                 if (!this.canViewGrade5() || !this.tokenInfo) {
                     this.validateUserToken(false).then(() => this.syncClass5Access()).catch(() => {});
@@ -1931,7 +2108,7 @@ class QuizApp {
         if (this.hasAdminIpAccess()) {
             this.isAdminAuthenticated = true;
             this.updateAdminUIVisibility();
-            window.location.href = 'admin.html';
+            this.navigateToAdminWithTransition();
             return;
         }
         this.showToastNotification('Thiết bị này chưa được cấp quyền Quản Trị Viên (Admin).', 'error');
@@ -2315,7 +2492,7 @@ class QuizApp {
 
     openAdminDashboard() {
         if (!this.isAdminAuthenticated || !this.hasAdminIpAccess()) return;
-        window.location.href = 'admin.html';
+        this.navigateToAdminWithTransition();
     }
 
     closeAdminDashboard() {
@@ -4266,6 +4443,10 @@ Giải thích: Biên độ A = 5 cm.`;
                 ? 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 hidden sm:inline-block'
                 : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block';
         }
+        const wrongFilterBtn = document.getElementById('btn-filter-wrong');
+        if (wrongFilterBtn) {
+            wrongFilterBtn.classList.toggle('hidden', this.isExamMode);
+        }
         const homeRules = document.getElementById('home-rules-count-text');
         if (homeRules) {
             homeRules.textContent = this.isExamMode
@@ -5104,6 +5285,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             // Giữ promise để auto-submit có thể chờ ID cloud trước khi ghi điểm.
             this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            this.loadAutoSaveProgress();
             this.pendingStudentProgress = null;
             this.progressSyncRunning = false;
             const attemptId = this.quizAttemptId;
@@ -5158,11 +5340,72 @@ Giải thích: Biên độ A = 5 cm.`;
         // Tải Auto-Save tiến độ cũ nếu có
         this.loadAutoSaveProgress();
 
-        this.switchScreen('quiz');
-        this.observeQuizHeader();
-        this.renderAllQuestions();
-        this.startStopwatch();
-        this.updateLiveStats();
+        const homeGrid = document.getElementById('home-subjects-grid');
+        const quizAdminMark = document.getElementById('quiz-admin-mark');
+        const currentSubjNorm = String(this.currentSubject || '').trim().toLowerCase();
+
+        if (homeGrid) {
+            let matchedIcon = false;
+            let matchedTitle = false;
+            homeGrid.querySelectorAll('[data-subject-card]').forEach((cardEl) => {
+                const isMatch = String(cardEl.dataset.subjectCard || '').trim().toLowerCase() === currentSubjNorm;
+                const iconBox = cardEl.querySelector('.subject-card-icon-box');
+                const titleEl = cardEl.querySelector('.subject-card-title-text');
+                if (iconBox) {
+                    const enableIcon = isMatch && !matchedIcon;
+                    iconBox.classList.toggle('vt-subject-icon', enableIcon);
+                    if (enableIcon) matchedIcon = true;
+                }
+                if (titleEl) {
+                    const enableTitle = isMatch && !matchedTitle;
+                    titleEl.classList.toggle('vt-subject-title', enableTitle);
+                    if (enableTitle) matchedTitle = true;
+                }
+            });
+        }
+        quizAdminMark?.classList.remove('vt-subject-icon');
+        topSubTitle?.classList.remove('vt-subject-title');
+
+        const applyQuizScreenDom = () => {
+            if (homeGrid) {
+                homeGrid.querySelectorAll('.vt-subject-icon').forEach((el) => el.classList.remove('vt-subject-icon'));
+                homeGrid.querySelectorAll('.vt-subject-title').forEach((el) => el.classList.remove('vt-subject-title'));
+            }
+            quizAdminMark?.classList.add('vt-subject-icon');
+            topSubTitle?.classList.add('vt-subject-title');
+
+            this.switchScreen('quiz');
+            this.observeQuizHeader();
+            this.renderAllQuestions(true);
+            this.startStopwatch();
+            this.updateLiveStats();
+        };
+
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (typeof document.startViewTransition === 'function' && !reduceMotion) {
+            try {
+                const vt = document.startViewTransition(() => {
+                    applyQuizScreenDom();
+                });
+                if (vt && vt.finished && typeof vt.finished.finally === 'function') {
+                    vt.finished.catch(() => {}).finally(() => {
+                        quizAdminMark?.classList.remove('vt-subject-icon');
+                        topSubTitle?.classList.remove('vt-subject-title');
+                    });
+                } else {
+                    quizAdminMark?.classList.remove('vt-subject-icon');
+                    topSubTitle?.classList.remove('vt-subject-title');
+                }
+            } catch (err) {
+                applyQuizScreenDom();
+                quizAdminMark?.classList.remove('vt-subject-icon');
+                topSubTitle?.classList.remove('vt-subject-title');
+            }
+        } else {
+            applyQuizScreenDom();
+            quizAdminMark?.classList.remove('vt-subject-icon');
+            topSubTitle?.classList.remove('vt-subject-title');
+        }
     }
 
     loadAutoSaveProgress() {
@@ -5172,11 +5415,10 @@ Giải thích: Biên độ A = 5 cm.`;
             try {
                 const parsed = JSON.parse(saved);
                 if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'answers')) {
-                    if (parsed.attemptId && this.quizAttemptId && parsed.attemptId !== this.quizAttemptId) {
-                        this.userAnswers = {};
-                    } else {
-                        this.userAnswers = parsed.answers || {};
+                    if (parsed.attemptId) {
+                        this.quizAttemptId = parsed.attemptId;
                     }
+                    this.userAnswers = parsed.answers || {};
                 } else {
                     this.userAnswers = parsed || {};
                 }
@@ -5217,17 +5459,24 @@ Giải thích: Biên độ A = 5 cm.`;
 
         // Let the current cards leave before inserting the freshly-rendered state.
         // This keeps answer feedback readable without changing quiz logic.
-        if (!skipExitAnimation && container.children.length > 0) {
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (!skipExitAnimation && !reduceMotion && container.querySelector('.quiz-question-card')) {
             clearTimeout(this.questionRenderTimer);
             container.classList.add('question-list-exit');
             this.questionRenderTimer = setTimeout(() => {
                 container.classList.remove('question-list-exit');
-                this.renderAllQuestions(true);
-            }, 110);
+                this.renderAllQuestions(true, skipEnterAnimation);
+            }, 180);
             return;
         }
+        clearTimeout(this.questionRenderTimer);
+        container.classList.remove('question-list-exit');
 
         container.innerHTML = '';
+
+        if (this.isExamMode && this.currentFilter === 'wrong') {
+            this.currentFilter = 'all';
+        }
 
         const questions = this.allQuestions || [];
         const filtered = questions.filter(q => {
@@ -5236,6 +5485,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (this.currentFilter === 'tf') return q.qType === 'tf_group';
             if (this.currentFilter === 'short') return q.qType === 'short_answer';
             if (this.currentFilter === 'wrong') {
+                if (this.isExamMode) return true;
                 return this.isQuestionWrong(q);
             }
             return (q.category || '').toLowerCase().includes(this.currentFilter.toLowerCase());
@@ -5251,9 +5501,9 @@ Giải thích: Biên độ A = 5 cm.`;
         filtered.forEach((q, idx) => {
             const card = document.createElement('div');
             card.id = `q-card-${q.id}`;
-            const animationClass = !skipEnterAnimation && filtered.length <= 40 ? ' question-card-enter' : '';
+            const animationClass = !skipEnterAnimation ? ' question-card-enter' : '';
             card.className = `glass-card-pro quiz-question-card${animationClass} rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4`;
-            card.style.setProperty('--question-index', idx);
+            card.style.setProperty('--question-index', Math.min(idx, 6));
 
             // Render hình ảnh đính kèm nếu có
             const safeImgUrl = this.sanitizeMediaUrl(q.image_url);
@@ -5272,7 +5522,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     </button>
                     <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
-                <div id="ai-explanation-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
+                <div id="ai-explanation-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
             ` : '';
 
             // 1. Dạng Trắc Nghiệm 4 Đáp Án (MCQ)
@@ -5322,10 +5572,10 @@ Giải thích: Biên độ A = 5 cm.`;
                 }).join('')}
                     </div>
                     ${(!this.isExamMode && isAnswered && q.explanation) ? `
-                        <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
+                        <div class="ui-accordion-wrap is-open practice-explanation-accordion"><div class="ui-accordion-inner"><div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
                             <p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
                             <p>${this.formatScientificNotation(q.explanation)}</p>
-                        </div>
+                        </div></div></div>
                     ` : ''}
                     ${aiButtonHtml}
                 `;
@@ -5472,10 +5722,17 @@ Giải thích: Biên độ A = 5 cm.`;
             });
             if (q.explanation && !card.querySelector('.practice-explanation-box')) {
                 const aiAnchor = document.getElementById(`ai-btn-${qId}`)?.closest('div');
-                const expHtml = `<div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed"><p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p><p>${this.formatScientificNotation(q.explanation)}</p></div>`;
+                const expHtml = `<div class="ui-accordion-wrap practice-explanation-accordion" aria-hidden="false"><div class="ui-accordion-inner"><div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed"><p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p><p>${this.formatScientificNotation(q.explanation)}</p></div></div></div>`;
                 if (aiAnchor) {
                     aiAnchor.insertAdjacentHTML('beforebegin', expHtml);
-                    this.renderMath(aiAnchor.previousElementSibling);
+                    const insertedWrap = aiAnchor.previousElementSibling;
+                    this.renderMath(insertedWrap);
+                    if (insertedWrap) {
+                        void insertedWrap.offsetHeight;
+                        window.requestAnimationFrame(() => {
+                            insertedWrap.classList.add('is-open');
+                        });
+                    }
                 }
             }
             return;
@@ -5661,8 +5918,15 @@ Giải thích: Biên độ A = 5 cm.`;
                 const val = this.userAnswers[q.id];
                 if (val !== undefined) {
                     attemptedCount++;
-                    const isMatch = (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
-                        String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
+                    const userVal = String(val ?? '').trim().toLowerCase();
+                    const expectedVal = String(q.correctValue ?? q.answer ?? '').trim().toLowerCase();
+                    const isMatch = userVal !== '' && (
+                        (Array.isArray(q.acceptedValues) && q.acceptedValues.some(v => {
+                            const av = String(v ?? '').trim().toLowerCase();
+                            return av !== '' && av === userVal;
+                        })) ||
+                        (expectedVal !== '' && expectedVal === userVal)
+                    );
                     if (isMatch) correctCount++; else wrongCount++;
                 }
             } else if (q.qType === 'tf_group') {
@@ -5693,7 +5957,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (liveScore) liveScore.textContent = this.isExamMode ? '?' : correctCount;
         if (attemptedEl) attemptedEl.textContent = attemptedCount;
-        if (wrongBadge) wrongBadge.textContent = wrongCount;
+        if (wrongBadge) wrongBadge.textContent = this.isExamMode ? '?' : wrongCount;
 
         const percent = totalItems > 0 ? Math.round((attemptedCount / totalItems) * 100) : 0;
         if (progressText) progressText.textContent = `Đã làm ${attemptedCount}/${totalItems} ý (${percent}%)`;
@@ -6199,7 +6463,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     </button>
                     <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
-                <div id="ai-explanation-review-${q.id}" class="hidden mt-2.5 p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div>
+                <div id="ai-explanation-review-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
             `;
             reviewContainer.appendChild(card);
         });
@@ -6488,6 +6752,7 @@ Giải thích: Biên độ A = 5 cm.`;
     /* ============================================================== */
 
     switchScreen(screenName) {
+        const prevScreen = this.currentScreen;
         this.currentScreen = screenName;
         if (screenName === 'quiz') {
             this.resetIdleAutoSubmitTimer('quiz screen active');
@@ -6522,15 +6787,26 @@ Giải thích: Biên độ A = 5 cm.`;
             const el = this.screens[key];
             if (el) {
                 if (key === screenName) {
+                    const wasHidden = el.classList.contains('hidden');
                     el.classList.remove('hidden');
-                    el.classList.remove('screen-view-enter');
-                    void el.offsetWidth;
-                    el.classList.add('screen-view-enter');
+                    if (prevScreen !== screenName || wasHidden) {
+                        el.classList.remove('screen-view-enter');
+                        void el.offsetWidth;
+                        el.classList.add('screen-view-enter');
+                    }
                 } else {
                     el.classList.add('hidden');
                 }
             }
         });
+
+        if (screenName === 'home') {
+            const homeTabs = document.getElementById('home-semester-tabs');
+            const activeTab = homeTabs?.querySelector('.home-grade-tab.is-active');
+            if (homeTabs && activeTab) {
+                this.updateSlidingTabIndicator(homeTabs, activeTab, false);
+            }
+        }
     }
 
     showHome() {
@@ -6573,6 +6849,42 @@ Giải thích: Biên độ A = 5 cm.`;
         this.switchScreen('home');
     }
 
+    recordLogin() {
+        if (!window.dbService || typeof window.dbService.recordLogin !== 'function') {
+            this.loginRecordPromise = Promise.resolve(null);
+            return this.loginRecordPromise;
+        }
+        if (!this.quizAttemptId) {
+            this.quizAttemptId = 'attempt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        }
+        this.pendingStudentProgress = null;
+        this.progressSyncRunning = false;
+        const attemptId = this.quizAttemptId;
+        this.loginRecordPromise = window.dbService.recordLogin({
+            playerName: this.playerName,
+            clientIp: this.clientIp,
+            deviceInfo: this.deviceInfo,
+            subjectTitle: this.getSubjectTitle(),
+            scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
+            attemptId,
+            newAttempt: true
+        })
+            .then((res) => {
+                const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
+                if (loginId && this.quizAttemptId === attemptId) {
+                    this.currentLoginId = loginId;
+                    try { sessionStorage.setItem('quiz_current_login_id', loginId); } catch (e) {}
+                    this.flushStudentProgress(attemptId);
+                }
+                return loginId;
+            })
+            .catch((error) => {
+                console.warn("Lỗi lưu đăng nhập lên Supabase:", error);
+                return null;
+            });
+        return this.loginRecordPromise;
+    }
+
     async resetCurrentQuiz() {
         const ok = await this.showConfirmModal({
             title: 'Làm lại bài thi từ đầu?',
@@ -6587,7 +6899,9 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!ok) return;
         this.cancelAwayAutoSubmitTimer('quiz reset');
         this.cancelIdleAutoSubmitTimer('quiz reset');
-        this.quizAttemptId = null;
+        this.quizAttemptId = 'attempt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        this.currentLoginId = null;
+        try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
         this.isFinishingQuiz = false;
         this.isReviewingResult = false;
         document.getElementById('btn-back-to-result')?.classList.add('hidden');
@@ -6604,6 +6918,9 @@ Giải thích: Biên độ A = 5 cm.`;
         const topSubTitle = document.getElementById('quiz-top-subject-title');
         if (topSubTitle) topSubTitle.textContent = this.getSubjectTitle();
         this.switchScreen('quiz');
+        if (window.dbService) {
+            this.recordLogin();
+        }
         this.renderAllQuestions();
         this.startStopwatch();
         this.updateLiveStats();
@@ -6611,11 +6928,12 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     filterQuestions(filterKey) {
-        this.currentFilter = filterKey;
+        const effectiveKey = (this.isExamMode && filterKey === 'wrong') ? 'all' : filterKey;
+        this.currentFilter = effectiveKey;
         const container = document.getElementById('quiz-filter-tabs-container');
         if (container) {
             container.querySelectorAll('.filter-tab-btn').forEach(btn => {
-                const isActive = btn.getAttribute('data-filter') === filterKey;
+                const isActive = btn.getAttribute('data-filter') === effectiveKey;
                 btn.classList.toggle('bg-indigo-600', isActive);
                 btn.classList.toggle('text-white', isActive);
                 btn.classList.toggle('shadow-md', isActive);
@@ -6858,70 +7176,75 @@ Giải thích: Biên độ A = 5 cm.`;
         // Kiểm tra quyền thường xuyên nhưng chỉ ghi heartbeat hiện diện mỗi 20-30 giây.
         setInterval(async () => {
             if (document.hidden || !window.dbService) return;
-
-            if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 20000) {
-                this.presenceHeartbeatAt = Date.now();
-                await window.dbService.heartbeat?.(this.currentLoginId);
-            } else if (!this.currentLoginId) {
-                this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
-            }
-
-            // 1. Kiểm tra trạng thái Bảo trì
+            if (this._heartbeatRunning) return;
+            this._heartbeatRunning = true;
             try {
-                if (typeof window.dbService.checkMaintenanceStatus === 'function') {
-                    const maint = await window.dbService.checkMaintenanceStatus();
-                    if (this.isMaintenanceMode !== Boolean(maint.isActive) || (maint.message && maint.message !== this.maintenanceMessage)) {
-                        this.isMaintenanceMode = Boolean(maint.isActive);
-                        if (maint.message) this.maintenanceMessage = maint.message;
-                        this.applyMaintenanceMode();
-                        this.updateAdminMaintenanceUI();
-                    }
+                if (this.currentLoginId && Date.now() - this.presenceHeartbeatAt >= 20000) {
+                    this.presenceHeartbeatAt = Date.now();
+                    await window.dbService.heartbeat?.(this.currentLoginId);
+                } else if (!this.currentLoginId) {
+                    this.recordVisitorPresence('Đang xem trang chủ').catch(() => {});
                 }
-            } catch (e) { }
 
-            // 2. Kiểm tra xem IP hiện tại có bị chặn không
-            try {
-                if (typeof window.dbService.checkIsIpBanned === 'function' && this.clientIp) {
-                    const banInfo = await window.dbService.checkIsIpBanned(this.clientIp);
-                    if (banInfo && banInfo.isBanned) {
-                        this.showBlockedScreen(banInfo.reason);
-                    }
-                }
-            } catch (e) { }
-
-            // 3. Đồng bộ phân quyền Admin theo IP (Bảo lưu nếu thiết bị đã ghi nhớ Admin)
-            try {
-                if (typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
-                    const isAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
-                    if (this.isAdminAuthenticated !== isAdmin) {
-                        this.isAdminAuthenticated = isAdmin;
-                        if (!isAdmin) {
-                            localStorage.removeItem('quiz_is_admin');
-                            localStorage.removeItem('quiz_admin_authenticated');
+                // 1. Kiểm tra trạng thái Bảo trì
+                try {
+                    if (typeof window.dbService.checkMaintenanceStatus === 'function') {
+                        const maint = await window.dbService.checkMaintenanceStatus();
+                        if (this.isMaintenanceMode !== Boolean(maint.isActive) || (maint.message && maint.message !== this.maintenanceMessage)) {
+                            this.isMaintenanceMode = Boolean(maint.isActive);
+                            if (maint.message) this.maintenanceMessage = maint.message;
+                            this.applyMaintenanceMode();
+                            this.updateAdminMaintenanceUI();
                         }
-                        this.updateAdminUIVisibility();
-                        if (!isAdmin) this.closeAdminDashboard();
                     }
-                }
-            } catch (e) { }
+                } catch (e) { }
 
-            // 4. Đồng bộ quyền AI để thu hồi quyền có hiệu lực ngay.
-            try {
-                await this.loadAiIpsConfig();
-            } catch (e) { }
+                // 2. Kiểm tra xem IP hiện tại có bị chặn không
+                try {
+                    if (typeof window.dbService.checkIsIpBanned === 'function' && this.clientIp) {
+                        const banInfo = await window.dbService.checkIsIpBanned(this.clientIp);
+                        if (banInfo && banInfo.isBanned) {
+                            this.showBlockedScreen(banInfo.reason);
+                        }
+                    }
+                } catch (e) { }
 
-            // 5. Kiểm tra thông báo từ Giám thị
-            try {
-                await this.checkSystemNotice(false);
-            } catch (e) { }
+                // 3. Đồng bộ phân quyền Admin theo IP (Bảo lưu nếu thiết bị đã ghi nhớ Admin)
+                try {
+                    if (typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
+                        const isAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
+                        if (this.isAdminAuthenticated !== isAdmin) {
+                            this.isAdminAuthenticated = isAdmin;
+                            if (!isAdmin) {
+                                localStorage.removeItem('quiz_is_admin');
+                                localStorage.removeItem('quiz_admin_authenticated');
+                            }
+                            this.updateAdminUIVisibility();
+                            if (!isAdmin) this.closeAdminDashboard();
+                        }
+                    }
+                } catch (e) { }
 
-            // 6. Tự động cập nhật danh sách giám sát thí sinh thời gian thực (nếu Admin đang mở tab Giám sát)
-            try {
-                const adminModal = document.getElementById('modal-admin-dashboard');
-                if (adminModal && !adminModal.classList.contains('hidden') && this.adminCurrentTab === 'students' && this.isAdminAuthenticated) {
-                    await this.renderAdminStudentsList(true);
-                }
-            } catch (e) { }
+                // 4. Đồng bộ quyền AI để thu hồi quyền có hiệu lực ngay.
+                try {
+                    await this.loadAiIpsConfig();
+                } catch (e) { }
+
+                // 5. Kiểm tra thông báo từ Giám thị
+                try {
+                    await this.checkSystemNotice(false);
+                } catch (e) { }
+
+                // 6. Tự động cập nhật danh sách giám sát thí sinh thời gian thực (nếu Admin đang mở tab Giám sát)
+                try {
+                    const adminModal = document.getElementById('modal-admin-dashboard');
+                    if (adminModal && !adminModal.classList.contains('hidden') && this.adminCurrentTab === 'students' && this.isAdminAuthenticated) {
+                        await this.renderAdminStudentsList(true);
+                    }
+                } catch (e) { }
+            } finally {
+                this._heartbeatRunning = false;
+            }
         }, 2500);
     }
 
@@ -7818,13 +8141,21 @@ Giải thích: Biên độ A = 5 cm.`;
 
         if (!targetDiv) return;
 
+        const contentHost = targetDiv.querySelector('.ai-explanation-box') || targetDiv;
         targetDiv.classList.remove('hidden');
-        targetDiv.innerHTML = `
+        targetDiv.setAttribute('aria-hidden', 'false');
+        contentHost.innerHTML = `
             <div class="flex items-center gap-2.5 text-purple-300 font-bold py-2">
                 <i class="fa-solid fa-spinner fa-spin text-base text-amber-400"></i>
                 <span>Trợ lý AI đang phân tích câu hỏi & biên soạn lời giải thích ngắn gọn, dễ hiểu...</span>
             </div>
         `;
+        if (!targetDiv.classList.contains('is-open')) {
+            void targetDiv.offsetHeight;
+            window.requestAnimationFrame(() => {
+                targetDiv.classList.add('is-open');
+            });
+        }
 
         if (btn) btn.disabled = true;
 
@@ -7932,7 +8263,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                 .replace(/\n\n/g, '<p class="mt-1.5"></p>')
                 .replace(/\n/g, '<br>');
 
-            targetDiv.innerHTML = `
+            contentHost.innerHTML = `
                 <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-500/30">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
@@ -7946,16 +8277,20 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                     ${formattedHtml}
                 </div>
             `;
+            targetDiv.classList.add('is-open');
+            targetDiv.setAttribute('aria-hidden', 'false');
 
-            this.renderMath(targetDiv);
+            this.renderMath(contentHost);
         } catch (err) {
-            targetDiv.innerHTML = `
+            contentHost.innerHTML = `
                 <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs space-y-1">
                     <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> Không thể tải lời giải thích AI:</p>
                     <p class="text-[11px]">${this.escapeHtml(err?.message || 'Lỗi không xác định')}</p>
                     <p class="text-[10px] text-slate-400">Mẹo: Kiểm tra lại API Key trong nút [Cài API Key] hoặc mạng Internet.</p>
                 </div>
             `;
+            targetDiv.classList.add('is-open');
+            targetDiv.setAttribute('aria-hidden', 'false');
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -8178,7 +8513,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                         ${item.correctCount}/${item.totalCount}
                     </td>
                     <td class="py-2.5 px-3 text-right font-mono text-indigo-300">
-                        ${item.timeSpent || '—'}
+                        ${this.escapeHtml(String(item.timeSpent ?? '')) || '—'}
                     </td>
                 </tr>
             `;

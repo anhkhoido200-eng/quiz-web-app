@@ -100,7 +100,7 @@ ON public.quiz_logins
 FOR ALL
 TO anon, authenticated
 USING (true)
-WITH CHECK (true);
+WITH CHECK (length(trim(coalesce(player_name, ''))) > 0);
 
 -- CẢNH BÁO: Policy này giữ tương thích với SPA hiện tại nhưng chưa phải là
 -- ranh giới bảo mật. Trước khi dùng production, chuyển ghi/đọc quiz_logins
@@ -111,14 +111,15 @@ WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public access to quiz_questions" ON public.quiz_questions;
 DROP POLICY IF EXISTS "Public access active quiz_questions" ON public.quiz_questions;
--- Chỉ cho phép câu hỏi đang hoạt động xuất hiện trong ứng dụng học sinh.
+-- Cho phép đọc tất cả câu hỏi (gồm cả bản ghi đã đánh dấu is_deleted = true) để getNextQuestionId()
+-- và saveQuestion() kiểm tra ID xuyên môn học; việc lọc is_deleted = false thực hiện ở truy vấn client.
 CREATE POLICY "Public access active quiz_questions"
 ON public.quiz_questions
 FOR SELECT
 TO anon, authenticated
-USING (is_deleted = false);
+USING (true);
 
--- Tương thích với SPA quản trị hiện tại (không dùng FOR SELECT USING(true) để tránh vô hiệu hóa lọc soft-delete).
+-- Tương thích với SPA quản trị hiện tại; kiểm tra dữ liệu đầu vào không rỗng.
 -- Trước production nên chuyển các thao tác ghi/sửa/xóa này sang Supabase Auth/RPC/Edge Function có role admin.
 DROP POLICY IF EXISTS "Admin manage quiz_questions" ON public.quiz_questions;
 DROP POLICY IF EXISTS "Admin insert quiz_questions" ON public.quiz_questions;
@@ -129,14 +130,14 @@ CREATE POLICY "Admin insert quiz_questions"
 ON public.quiz_questions
 FOR INSERT
 TO anon, authenticated
-WITH CHECK (true);
+WITH CHECK (length(trim(coalesce(question, ''))) > 0 AND length(trim(coalesce(subject_key, ''))) > 0);
 
 CREATE POLICY "Admin update quiz_questions"
 ON public.quiz_questions
 FOR UPDATE
 TO anon, authenticated
 USING (true)
-WITH CHECK (true);
+WITH CHECK (length(trim(coalesce(question, ''))) > 0 AND length(trim(coalesce(subject_key, ''))) > 0);
 
 CREATE POLICY "Admin delete quiz_questions"
 ON public.quiz_questions

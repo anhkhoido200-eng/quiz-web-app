@@ -285,6 +285,53 @@ body.light-theme .home-grade-tab.is-active {
     border-color: #818cf8;
 }
 
+#home-semester-tabs.home-grade-tabs {
+    position: relative;
+    isolation: isolate;
+    padding: 0.25rem;
+}
+
+#home-semester-tabs .sliding-tab-indicator {
+    position: absolute;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    left: 0;
+    z-index: 0;
+    box-sizing: border-box;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.88), rgba(139, 92, 246, 0.76));
+    border: 1px solid rgba(165, 180, 252, 0.8);
+    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.3);
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), width 0.28s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease;
+    will-change: transform, width;
+}
+
+body.light-theme #home-semester-tabs .sliding-tab-indicator {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-color: #818cf8;
+    box-shadow: 0 8px 18px rgba(99, 102, 241, 0.24);
+}
+
+#home-semester-tabs .home-grade-tab {
+    position: relative;
+    z-index: 1;
+}
+
+#home-semester-tabs.has-sliding-indicator .home-grade-tab.is-active,
+body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-active {
+    color: #fff;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#home-semester-tabs.has-sliding-indicator .home-grade-tab.is-active:hover {
+    color: #fff;
+    border-color: transparent;
+    transform: none;
+}
+
 /* --- Thẻ Kính Mờ Frosted Glass Pro --- */
 .glass-panel-pro {
     background: rgba(15, 23, 42, 0.75);
@@ -1009,22 +1056,22 @@ body.light-theme footer {
 }
 
 .question-card-enter {
-    animation: questionSlideEnter 280ms var(--motion-ease) both;
+    animation: questionSlideEnter 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: min(calc(var(--question-index, 0) * 24ms), 120ms);
 }
 
 .question-list-exit .quiz-question-card {
-    animation: questionSlideExit 110ms var(--motion-ease) both;
+    animation: questionSlideExit 0.2s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes questionSlideEnter {
-    from { opacity: 0; transform: translateX(12px); }
+    from { opacity: 0; transform: translateX(24px); }
     to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes questionSlideExit {
     from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 0; transform: translateX(-24px); }
 }
 
 /* Answer tiles: lift on hover and compress on press. */
@@ -1057,13 +1104,66 @@ body.light-theme footer {
     outline-offset: 2px;
 }
 
-/* Feedback states use one calm reveal for every answer type. */
+/* Feedback states: shimmer sweep for correct, micro-shake for wrong. */
+.option-selected-correct,
+.tf-choice-button.is-selected-correct {
+    position: relative;
+    overflow: hidden;
+}
+
 .option-selected-correct {
     animation: answerSelectionReveal 320ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
-.option-selected-wrong {
-    animation: answerSelectionReveal 320ms cubic-bezier(.22, 1, .36, 1) both;
+.option-selected-correct::after,
+.tf-choice-button.is-selected-correct::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 100%
+    );
+    transform: translateX(-120%) skewX(-20deg);
+    animation: correctShimmerSweep 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    pointer-events: none;
+    will-change: transform;
+}
+
+body.light-theme .option-selected-correct::after,
+body.light-theme .tf-choice-button.is-selected-correct::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.58) 50%,
+        transparent 100%
+    );
+}
+
+@keyframes correctShimmerSweep {
+    from {
+        transform: translateX(-120%) skewX(-20deg);
+    }
+    to {
+        transform: translateX(220%) skewX(-20deg);
+    }
+}
+
+.option-selected-wrong,
+.tf-choice-button.is-selected-wrong {
+    animation: wrongMicroShake 0.25s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes wrongMicroShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    50% { transform: translateX(4px); }
+    75% { transform: translateX(-2.5px); }
 }
 
 @keyframes answerSelectionReveal {
@@ -1967,7 +2067,222 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
     }
 }
 
+/* =========================================================================
+   UI/UX ANIMATION ENHANCEMENTS (VIEW TRANSITIONS, OVERLAY & ACCORDION)
+   ========================================================================= */
+
+@view-transition {
+    navigation: auto;
+}
+
+::view-transition-old(root) {
+    animation: vtRootFadeOut 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+::view-transition-new(root) {
+    animation: vtRootFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes vtRootFadeOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+        filter: blur(0);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.97);
+        filter: blur(4px);
+    }
+}
+
+@keyframes vtRootFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+        filter: blur(4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+        filter: blur(0);
+    }
+}
+
+/* Effect 1: Bidirectional Workspace Transition Overlay */
+.workspace-transition-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(2, 6, 23, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: opacity;
+}
+
+.workspace-transition-overlay.is-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.workspace-transition-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1.35rem;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    box-shadow: 0 20px 50px rgba(2, 6, 23, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: #f8fafc;
+    font-family: var(--font-heading, 'Outfit', 'Plus Jakarta Sans', sans-serif);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    transform: translateY(8px) scale(0.95);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
+    will-change: transform, opacity;
+}
+
+.workspace-transition-overlay.is-active .workspace-transition-badge {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+.workspace-transition-spinner {
+    display: inline-grid;
+    place-items: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(168, 85, 247, 0.24));
+    border: 1px solid rgba(129, 140, 248, 0.42);
+    color: #a5b4fc;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.workspace-transition-text {
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+body.light-theme .workspace-transition-badge,
+body.admin-body:not(.dark) .workspace-transition-badge {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(99, 102, 241, 0.22);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    color: #0f172a;
+}
+
+body.light-theme .workspace-transition-spinner,
+body.admin-body:not(.dark) .workspace-transition-spinner {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(139, 92, 246, 0.16));
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #4f46e5;
+}
+
+body.workspace-leaving {
+    transform: scale(0.98);
+    opacity: 0.92;
+    filter: blur(2px);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease, filter 0.28s ease;
+    transform-origin: center top;
+}
+
+body.workspace-entering {
+    animation: workspaceEnterScale 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
+    transform-origin: center top;
+}
+
+@keyframes workspaceEnterScale {
+    from {
+        opacity: 0.85;
+        transform: scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Effect 2: Subject Card to Quiz Header Morphing */
+.vt-subject-icon {
+    view-transition-name: active-subject-icon;
+}
+
+.vt-subject-title {
+    view-transition-name: active-subject-title;
+}
+
+::view-transition-group(active-subject-icon),
+::view-transition-group(active-subject-title) {
+    animation-duration: 0.36s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 2;
+}
+
+/* Effect 6: Smooth Grid Accordion */
+.ui-accordion-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-top: 0 !important;
+    pointer-events: none;
+    transition: grid-template-rows 0.3s ease, opacity 0.25s ease, margin-top 0.3s ease;
+}
+
+.ui-accordion-wrap.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-top: 0.625rem !important;
+    pointer-events: auto;
+}
+
+.ui-accordion-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none !important;
+        animation-duration: 1ms !important;
+    }
+
+    .workspace-transition-overlay,
+    .workspace-transition-badge,
+    body.workspace-leaving,
+    body.workspace-entering,
+    #home-semester-tabs .sliding-tab-indicator,
+    .question-card-enter,
+    .question-list-exit .quiz-question-card,
+    .option-selected-correct,
+    .option-selected-wrong,
+    .tf-choice-button.is-selected-wrong,
+    .ui-accordion-wrap {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .option-selected-correct::after,
+    .tf-choice-button.is-selected-correct::after {
+        display: none !important;
+        animation: none !important;
+    }
+
     .live-dot-pulse::after {
         animation: none;
     }

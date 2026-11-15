@@ -18,10 +18,12 @@ const STORAGE_KEYS = {
     SUPABASE_KEY: 'quiz_supabase_key',
     LOCAL_LOGINS: 'quiz_local_logins_history',
     CUSTOM_QUESTIONS: 'quiz_custom_questions',
+    MAX_QUESTION_ID: 'quiz_max_question_id',
     BANNED_IPS: 'quiz_banned_ips',
     MAINTENANCE: 'quiz_maintenance_mode',
     MAINTENANCE_MSG: 'quiz_maintenance_msg',
     ADMIN_IPS_CONFIG: 'quiz_admin_ips_config',
+    GEO_CONFIG_CACHE: 'quiz_geo_config_cache',
     DYNAMIC_SUBJECTS: 'quiz_dynamic_subjects'
 };
 
@@ -562,7 +564,7 @@ class DatabaseService {
                                 status: statusVal,
                                 score_summary: scoreVal,
                                 last_active: lastActive
-                            }).eq('id', loginId);
+                            }).eq('id', loginId).not('status', 'like', 'BANNED%');
                             if (error) throw error;
                             syncedCount++;
                             synced = true;
@@ -818,6 +820,44 @@ class DatabaseService {
     // PHẦN 2: QUẢN LÝ NGÂN HÀNG CÂU HỎI TRỰC TUYẾN ĐA MÔN HỌC (QUIZ_QUESTIONS)
     // =========================================================================
 
+    _updateMaxQuestionIdCache(candidateId) {
+        const num = Number(candidateId);
+        if (!Number.isInteger(num) || num <= 0) return;
+        try {
+            const current = Number(localStorage.getItem(STORAGE_KEYS.MAX_QUESTION_ID) || 0);
+            if (!Number.isFinite(current) || num > current) {
+                localStorage.setItem(STORAGE_KEYS.MAX_QUESTION_ID, String(num));
+            }
+        } catch (e) {}
+    }
+
+    _getLocalMaxQuestionId() {
+        let maxLocalId = 0;
+        try {
+            const storedMax = Number(localStorage.getItem(STORAGE_KEYS.MAX_QUESTION_ID) || 0);
+            if (Number.isInteger(storedMax) && storedMax > maxLocalId) {
+                maxLocalId = storedMax;
+            }
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key) continue;
+                if (key.startsWith(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_`) || key === 'quiz_admin_trash') {
+                    const raw = localStorage.getItem(key);
+                    if (!raw) continue;
+                    const parsed = JSON.parse(raw);
+                    const list = Array.isArray(parsed) ? parsed : [];
+                    for (const item of list) {
+                        const idNum = Number(item?.id ?? item?.question_id);
+                        if (Number.isInteger(idNum) && idNum > maxLocalId) {
+                            maxLocalId = idNum;
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+        return maxLocalId;
+    }
+
     /**
      * Tải câu hỏi trực tuyến theo môn học
      */
@@ -838,8 +878,11 @@ class DatabaseService {
 
                 let { data, error } = await query;
 
-        if (!error) {
+                if (!error) {
                     console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: (data || []).length });
+                    for (const row of (data || [])) {
+                        if (row && row.id !== undefined) this._updateMaxQuestionIdCache(row.id);
+                    }
                     return (data || []).filter(row => row.is_deleted !== true).map(row => ({
                         id: row.id,
                         subjectKey: row.subject_key || 'history',
@@ -851,6 +894,7 @@ class DatabaseService {
                         correct: row.correct !== undefined ? row.correct : (row.answer || 0),
                         answer: row.answer !== undefined ? row.answer : (row.correct || 0),
                         correctValue: row.correct_value || '',
+                        acceptedValues: row.accepted_values || row.acceptedValues || [],
                         explanation: row.explanation || '',
                         imageUrl: row.image_url || ''
                     }));
@@ -867,7 +911,12 @@ class DatabaseService {
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
-                return Array.isArray(parsed) ? parsed.filter((question) => question?.is_deleted !== true) : [];
+                return Array.isArray(parsed)
+                    ? parsed.filter((question) => question?.is_deleted !== true).map((q) => ({
+                        ...q,
+                        acceptedValues: q.accepted_values || q.acceptedValues || []
+                    }))
+                    : [];
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi parse cache questions:", e);
             }
@@ -876,22 +925,33 @@ class DatabaseService {
     }
 
     async getNextQuestionId() {
-        let maxId = 0;
+        let maxId = this._getLocalMaxQuestionId();
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data } = await this.client
+                // Truy vấn tất cả ID (bao gồm cả các câu hỏi đã xóa mềm is_deleted = true)
+                let { data, error } = await this.client
                     .from('quiz_questions')
-                    .select('id')
+                    .select('id, is_deleted')
+                    .or('is_deleted.eq.false,is_deleted.eq.true,is_deleted.is.null')
                     .order('id', { ascending: false })
                     .limit(1);
-                if (data && data.length > 0 && typeof data[0].id === 'number') {
-                    maxId = data[0].id;
+                if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|column .* does not exist/i.test(error.message || ''))) {
+                    ({ data, error } = await this.client
+                        .from('quiz_questions')
+                        .select('id')
+                        .order('id', { ascending: false })
+                        .limit(1));
+                }
+                if (!error && data && data.length > 0 && Number.isInteger(Number(data[0].id))) {
+                    maxId = Math.max(maxId, Number(data[0].id));
                 }
             } catch (e) {
-                maxId = 1000;
+                maxId = Math.max(maxId, 1000);
             }
         }
-        return maxId + 1;
+        const nextId = maxId + 1;
+        this._updateMaxQuestionIdCache(nextId);
+        return nextId;
     }
 
     /**
@@ -942,6 +1002,7 @@ class DatabaseService {
             correct: correctInt,
             answer: correctInt,
             correct_value: correctValueStr,
+            accepted_values: qObj.acceptedValues || qObj.accepted_values || null,
             explanation: qObj.explanation || '',
             image_url: qObj.image_url || qObj.imageUrl || '',
             is_deleted: false,
@@ -949,45 +1010,118 @@ class DatabaseService {
             updated_at: this.getNowIso()
         };
 
-        if (qObj.id !== undefined && qObj.id !== null && qObj.id !== '' && Number.isInteger(Number(qObj.id))) {
+        const hasCandidateId = qObj.id !== undefined && qObj.id !== null && qObj.id !== '' && Number.isInteger(Number(qObj.id)) && Number(qObj.id) > 0;
+        const isCreatingNew = !hasCandidateId || qObj.isNew === true || qObj._isNew === true;
+        let isExistingSameSubjectRow = false;
+
+        if (hasCandidateId) {
             const candidateId = Number(qObj.id);
-            let belongsToOtherSubject = false;
-            if (this.isSupabaseActive && this.client) {
+            let idCollision = false;
+
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key || !key.startsWith(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_`)) continue;
+                    const cachedSubj = key.slice(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_`.length);
+                    const raw = localStorage.getItem(key);
+                    const list = raw ? JSON.parse(raw) : [];
+                    if (!Array.isArray(list)) continue;
+                    const matched = list.find(item => Number(item?.id) === candidateId);
+                    if (matched && (cachedSubj !== targetSubject || matched.is_deleted === true || isCreatingNew)) {
+                        idCollision = true;
+                        break;
+                    }
+                }
+            } catch (e) {}
+
+            if (this.isSupabaseActive && this.client && !idCollision) {
                 try {
-                    const { data: existingIdRow } = await this.client
+                    let { data: existingIdRow, error: checkErr } = await this.client
                         .from('quiz_questions')
-                        .select('id, subject_key')
+                        .select('id, subject_key, is_deleted')
                         .eq('id', candidateId)
                         .limit(1);
-                    if (Array.isArray(existingIdRow) && existingIdRow.length > 0 && existingIdRow[0].subject_key !== targetSubject) {
-                        belongsToOtherSubject = true;
+                    if (checkErr && (checkErr.code === '42703' || checkErr.code === 'PGRST204' || /is_deleted|column .* does not exist/i.test(checkErr.message || ''))) {
+                        ({ data: existingIdRow } = await this.client
+                            .from('quiz_questions')
+                            .select('id, subject_key')
+                            .eq('id', candidateId)
+                            .limit(1));
+                    }
+                    if (Array.isArray(existingIdRow) && existingIdRow.length > 0) {
+                        const existing = existingIdRow[0];
+                        if (existing.subject_key !== targetSubject || existing.is_deleted === true || isCreatingNew) {
+                            idCollision = true;
+                        } else {
+                            isExistingSameSubjectRow = true;
+                        }
                     }
                 } catch (e) {}
             }
-            record.id = belongsToOtherSubject ? await this.getNextQuestionId() : candidateId;
+
+            if (idCollision) {
+                this._updateMaxQuestionIdCache(candidateId);
+                record.id = await this.getNextQuestionId();
+                qObj.id = record.id;
+            } else {
+                record.id = candidateId;
+                this._updateMaxQuestionIdCache(candidateId);
+            }
         } else {
             record.id = await this.getNextQuestionId();
         }
 
         if (this.isSupabaseActive && this.client) {
             try {
-                let { data, error } = await this.client
-                    .from('quiz_questions')
-                    .upsert([record], { onConflict: 'id' })
-                    .select();
-
-                if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
-                    const legacyRecord = { ...record };
-                    delete legacyRecord.is_deleted;
-                    delete legacyRecord.deleted_at;
-                    ({ data, error } = await this.client
+                const executeWrite = async (payload, useUpsert) => {
+                    if (useUpsert) {
+                        return await this.client
+                            .from('quiz_questions')
+                            .upsert([payload], { onConflict: 'id' })
+                            .select();
+                    }
+                    return await this.client
                         .from('quiz_questions')
-                        .upsert([legacyRecord], { onConflict: 'id' })
-                        .select());
+                        .insert([payload])
+                        .select();
+                };
+
+                const writeWithSchemaFallback = async (basePayload, useUpsert) => {
+                    let res = await executeWrite(basePayload, useUpsert);
+                    if (res.error && (res.error.code === '42703' || res.error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(res.error.message || ''))) {
+                        const msg = res.error.message || '';
+                        if (/accepted_values/i.test(msg) && !/is_deleted|deleted_at/i.test(msg)) {
+                            const noAccepted = { ...basePayload };
+                            delete noAccepted.accepted_values;
+                            res = await executeWrite(noAccepted, useUpsert);
+                        }
+                        if (res.error && (res.error.code === '42703' || res.error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(res.error.message || ''))) {
+                            const legacyRecord = { ...basePayload };
+                            delete legacyRecord.accepted_values;
+                            delete legacyRecord.is_deleted;
+                            delete legacyRecord.deleted_at;
+                            res = await executeWrite(legacyRecord, useUpsert);
+                        }
+                    }
+                    return res;
+                };
+
+                let { data, error } = await writeWithSchemaFallback(record, isExistingSameSubjectRow);
+
+                // Nếu chèn mới gặp xung đột khóa chính (ví dụ ID trùng với dòng đã soft-delete bị ẩn bởi RLS),
+                // cấp ID mới và thử chèn lại thay vì ghi đè dòng cũ qua upsert.
+                let retryCount = 0;
+                while (error && (error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '')) && retryCount < 5) {
+                    retryCount++;
+                    this._updateMaxQuestionIdCache(record.id);
+                    record.id = await this.getNextQuestionId();
+                    qObj.id = record.id;
+                    ({ data, error } = await writeWithSchemaFallback(record, false));
                 }
 
                 if (!error) {
                     const item = data?.[0] || record;
+                    if (item?.id !== undefined) this._updateMaxQuestionIdCache(item.id);
                     if (qObj.id === undefined || qObj.id === null || qObj.id === '') qObj.id = item.id;
                     return { success: true, item };
                 }
@@ -1087,6 +1221,7 @@ class DatabaseService {
             }
             const id = canReuseId ? rawIdNum : generatedId++;
             usedIdsInBatch.add(id);
+            this._updateMaxQuestionIdCache(id);
             q.id = id;
             return {
                 id,
@@ -1099,6 +1234,7 @@ class DatabaseService {
                 correct: correctInt,
                 answer: correctInt,
                 correct_value: q.correctValue !== undefined ? String(q.correctValue) : '',
+                accepted_values: q.acceptedValues || q.accepted_values || null,
                 explanation: q.explanation || '',
                 image_url: q.image_url || q.imageUrl || '',
                 is_deleted: false,
@@ -1123,12 +1259,22 @@ class DatabaseService {
                         .from('quiz_questions')
                         .upsert(chunk, { onConflict: 'id' })
                         .select('id');
-                    if (error && (error.code === '42703' || error.code === 'PGRST204' || /is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
-                        const legacyChunk = chunk.map(({ is_deleted, deleted_at, ...rest }) => rest);
-                        ({ data, error } = await this.client
-                            .from('quiz_questions')
-                            .upsert(legacyChunk, { onConflict: 'id' })
-                            .select('id'));
+                    if (error && (error.code === '42703' || error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
+                        const msg = error.message || '';
+                        if (/accepted_values/i.test(msg) && !/is_deleted|deleted_at/i.test(msg)) {
+                            const noAcceptedChunk = chunk.map(({ accepted_values, ...rest }) => rest);
+                            ({ data, error } = await this.client
+                                .from('quiz_questions')
+                                .upsert(noAcceptedChunk, { onConflict: 'id' })
+                                .select('id'));
+                        }
+                        if (error && (error.code === '42703' || error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
+                            const legacyChunk = chunk.map(({ accepted_values, is_deleted, deleted_at, ...rest }) => rest);
+                            ({ data, error } = await this.client
+                                .from('quiz_questions')
+                                .upsert(legacyChunk, { onConflict: 'id' })
+                                .select('id'));
+                        }
                     }
                     if (error) throw error;
                     (data || []).forEach((row, rowIndex) => {
@@ -1164,6 +1310,7 @@ class DatabaseService {
      * Xóa 1 câu hỏi theo ID (ưu tiên soft-delete, fallback hard-delete cho schema cũ)
      */
     async deleteQuestion(qId) {
+        this._updateMaxQuestionIdCache(qId);
         if (this.isSupabaseActive && this.client && qId) {
             try {
                 const nowIso = this.getNowIso();
@@ -1190,6 +1337,7 @@ class DatabaseService {
     async clearQuestionsBySubject(subjectKey) {
         const cleanSubject = String(subjectKey || '').trim();
         if (!cleanSubject) return { success: false, count: 0, error: 'Thiếu mã môn học.' };
+        this._updateMaxQuestionIdCache(this._getLocalMaxQuestionId());
         if (!this.isSupabaseActive || !this.client) {
             return { success: false, count: 0, error: 'Supabase Cloud chưa sẵn sàng.' };
         }
@@ -1480,11 +1628,19 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                // Dọn các thông báo cũ trước khi chèn thông báo mới để bảng quiz_logins luôn sạch
-                const { error: deleteError } = await this.client
+                // Chỉ dọn thông báo cũ của cùng đối tượng nhận (cùng targetIp/targetName hoặc cùng nhóm broadcast),
+                // bảo toàn các thông báo riêng chưa đọc của những học sinh khác.
+                let deleteQuery = this.client
                     .from('quiz_logins')
                     .delete()
-                    .eq('player_name', '__SYSTEM_NOTICE__');
+                    .eq('player_name', '__SYSTEM_NOTICE__')
+                    .eq('ip_address', cleanTargetIp);
+                if (cleanTargetName) {
+                    deleteQuery = deleteQuery.ilike('device_info', cleanTargetName);
+                } else {
+                    deleteQuery = deleteQuery.eq('device_info', '5s');
+                }
+                const { error: deleteError } = await deleteQuery;
                 if (deleteError) throw deleteError;
                 const { error } = await this.client
                     .from('quiz_logins')
@@ -1518,9 +1674,10 @@ class DatabaseService {
         const matchesTarget = (itemIp, itemDeviceInfo) => {
             const targetIp = String(itemIp || '').trim();
             const targetName = String(itemDeviceInfo || '').trim().toLowerCase();
-            if (targetIp === 'ALL') return true;
+            const hasSpecificName = Boolean(targetName && targetName !== '5s' && targetName !== 'all');
+            if (targetIp === 'ALL' && !hasSpecificName) return true;
             if (validIp && targetIp === validIp) return true;
-            if (normPlayer && normPlayer !== 'khách truy cập' && targetName && targetName !== '5s' && targetName !== 'all' && targetName === normPlayer) {
+            if (normPlayer && normPlayer !== 'khách truy cập' && hasSpecificName && targetName === normPlayer) {
                 return true;
             }
             return false;
@@ -1631,31 +1788,45 @@ class DatabaseService {
                             }
                         } catch (e) {}
                     }
-            try {
-                localStorage.setItem('quiz_geo_mode', mode);
-                localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
-                localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
-            } catch (e) {}
-            grade5Ips = grade5Ips.map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
-            console.debug('[DatabaseService] Loaded Grade 5 access config from Supabase:', { mode, ips, grade5Ips });
-            return { mode, ips, grade5Ips };
+                    grade5Ips = grade5Ips.map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+                    try {
+                        localStorage.setItem(STORAGE_KEYS.GEO_CONFIG_CACHE, JSON.stringify({ mode, ips, grade5Ips }));
+                        localStorage.setItem('quiz_geo_mode', mode);
+                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(ips));
+                        localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(grade5Ips));
+                    } catch (e) {}
+                    console.debug('[DatabaseService] Loaded Grade 5 access config from Supabase:', { mode, ips, grade5Ips });
+                    return { mode, ips, grade5Ips };
                 }
             } catch (e) {
                 console.warn("[DatabaseService] Lỗi lấy cấu hình phân quyền môn Địa:", e);
             }
-            console.debug('[DatabaseService] Geo config fetch result:', { mode, ips, grade5Ips, error: undefined });
-            return { mode, ips, grade5Ips };
         }
 
         try {
-            mode = localStorage.getItem('quiz_geo_mode') || 'PUBLIC';
-            const raw = localStorage.getItem('quiz_allowed_geo_ips');
-            ips = raw ? JSON.parse(raw) : [];
-            const grade5Raw = localStorage.getItem('quiz_allowed_grade5_ips');
-            grade5Ips = grade5Raw ? JSON.parse(grade5Raw) : [];
+            let loadedFromCache = false;
+            const cachedRaw = localStorage.getItem(STORAGE_KEYS.GEO_CONFIG_CACHE);
+            if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw);
+                if (cached && typeof cached === 'object') {
+                    if (cached.mode === 'PUBLIC' || cached.mode === 'PRIVATE') mode = cached.mode;
+                    if (Array.isArray(cached.ips)) ips = cached.ips;
+                    if (Array.isArray(cached.grade5Ips)) grade5Ips = cached.grade5Ips;
+                    loadedFromCache = true;
+                }
+            }
+            if (!loadedFromCache) {
+                const savedMode = localStorage.getItem('quiz_geo_mode');
+                if (savedMode === 'PUBLIC' || savedMode === 'PRIVATE') mode = savedMode;
+                const raw = localStorage.getItem('quiz_allowed_geo_ips');
+                ips = raw ? JSON.parse(raw) : [];
+                const grade5Raw = localStorage.getItem('quiz_allowed_grade5_ips');
+                grade5Ips = grade5Raw ? JSON.parse(grade5Raw) : [];
+            }
         } catch (e) {}
 
-        grade5Ips = grade5Ips.map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+        grade5Ips = (Array.isArray(grade5Ips) ? grade5Ips : []).map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+        ips = Array.isArray(ips) ? ips : [];
         console.debug('[DatabaseService] Loaded Grade 5 access config from localStorage:', { mode, ips, grade5Ips });
         return { mode, ips, grade5Ips };
     }
@@ -1670,6 +1841,7 @@ class DatabaseService {
         const cleanGrade5Ips = Array.isArray(storedGrade5Ips) ? [...new Set(storedGrade5Ips.map(ip => String(ip).trim()).filter(Boolean))] : [];
 
         try {
+            localStorage.setItem(STORAGE_KEYS.GEO_CONFIG_CACHE, JSON.stringify({ mode: cleanMode, ips: cleanList, grade5Ips: cleanGrade5Ips }));
             localStorage.setItem('quiz_geo_mode', cleanMode);
             localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(cleanList));
             localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(cleanGrade5Ips));

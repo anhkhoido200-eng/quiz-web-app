@@ -1453,6 +1453,8 @@ body.dark .library-bulk-bar {
 
 /* Quick Exam / Subject Tabs */
 .library-subject-tabs {
+    position: relative;
+    isolation: isolate;
     display: flex;
     gap: 8px;
     overflow-x: auto;
@@ -1468,7 +1470,22 @@ body.dark .library-bulk-bar {
     background: rgba(99, 102, 241, 0.3);
     border-radius: 999px;
 }
+.library-subject-tabs .sliding-tab-indicator {
+    position: absolute;
+    top: 4px;
+    height: calc(100% - 14px);
+    left: 0;
+    z-index: 0;
+    border-radius: 999px;
+    background: var(--primary);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), width 0.28s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease;
+    will-change: transform, width;
+}
 .subject-tab-pill {
+    position: relative;
+    z-index: 1;
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -1495,6 +1512,12 @@ body.dark .library-bulk-bar {
     background: var(--primary) !important;
     border-color: var(--primary) !important;
     box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+.library-subject-tabs.has-sliding-indicator .subject-tab-pill.is-active {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #fff !important;
 }
 .subject-tab-pill .pill-count {
     font-size: 10px;
@@ -2258,9 +2281,29 @@ body.dark .library-toolbar input[type="search"] {
 .student-q-summary{display:grid;gap:3px;min-width:0}
 .student-q-summary strong{font-weight:600;color:var(--text);font-size:12px}
 .student-q-summary em{grid-column:auto;color:var(--muted);font-size:11px;font-style:normal}
-.student-q-chevron{color:var(--muted);font-size:11px;transition:transform .18s ease}
+.student-q-chevron{color:var(--muted);font-size:11px;transition:transform 0.3s ease, color 0.2s ease}
 .student-detail-answer-row.is-open .student-q-chevron{transform:rotate(180deg);color:var(--primary)}
-.student-q-collapse{padding:0 12px 12px;border-top:1px solid var(--line)}
+.student-q-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    padding: 0 12px;
+    border-top: 1px solid transparent;
+    pointer-events: none;
+    transition: grid-template-rows 0.3s ease, opacity 0.25s ease, padding-bottom 0.3s ease, border-color 0.3s ease;
+}
+.student-q-collapse > .student-q-collapse-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+.student-detail-answer-row.is-open .student-q-collapse,
+.student-q-collapse.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    padding: 0 12px 12px;
+    border-top-color: var(--line);
+    pointer-events: auto;
+}
 .student-q-expanded-body{display:grid;gap:10px;padding-top:10px}
 .student-q-full-text{font-size:12.5px;font-weight:600;line-height:1.55;color:var(--text)}
 .student-q-opt-list,.student-q-tf-list{display:grid;gap:6px}
@@ -2361,6 +2404,12 @@ body.dark .library-toolbar input[type="search"] {
     .button-primary::after,
     .button-purple::after {
         display: none;
+    }
+    .library-subject-tabs .sliding-tab-indicator,
+    .student-q-collapse,
+    .student-q-chevron {
+        transition: none !important;
+        animation: none !important;
     }
 }
 

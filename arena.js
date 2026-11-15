@@ -55,6 +55,15 @@
         return /match_rooms|PGRST205|42P01|does not exist|schema cache/i.test(msg);
     }
 
+    const MAX_PENDING_RETRIES = 3;
+
+    function isTerminalSubmitError(err) {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || err || '');
+        if (/^(P0001|22P02|23503|23505|23514|42883|PGRST)/i.test(code)) return true;
+        return /SESSION_REPLACED|MATCH_TIME_UP|Không tìm thấy phiên thi|Câu hỏi không thuộc phiên thi này|Không tìm thấy câu hỏi|invalid input syntax|violates/i.test(msg);
+    }
+
     function getOrCreateClientId() {
         try {
             let cid = localStorage.getItem('arena_client_id');
@@ -339,14 +348,33 @@
                     if (isMissingSchemaError(error)) {
                         return showErr('Hệ thống chưa chạy file supabase_arena_setup.sql trên Supabase.');
                     }
+                    if (/MATCH_TIME_UP|Hết thời gian làm bài/i.test(String(error.message || ''))) {
+                        return showErr('Hết thời gian làm bài.');
+                    }
                     return showErr(error.message || 'Không thể tham gia phòng.');
                 }
 
                 if (data?.server_now) {
                     this.clockOffsetMs = new Date(data.server_now).getTime() - Date.now();
                 }
-                this.room = data.room;
-                this.attempt = data.attempt;
+                this.room = data?.room || null;
+                this.attempt = data?.attempt || null;
+                if (
+                    data?.error === 'MATCH_TIME_UP' ||
+                    data?.match_time_up ||
+                    (this.attempt?.status === 'SUBMITTED' && this.attempt?.finish_reason === 'TIME_UP')
+                ) {
+                    if (!this.room || !this.attempt) {
+                        return showErr(data?.message || 'Hết thời gian làm bài.');
+                    }
+                    this.questions = [];
+                    this.currentIndex = Number(this.attempt?.current_index || 0);
+                    this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
+                    this.pendingFinishKey = `arena_pending_finish_${this.attempt.id}`;
+                    this.subscribeRoom();
+                    this.renderLeaderboardView();
+                    return;
+                }
                 this.questions = Array.isArray(data.questions) ? data.questions : [];
                 this.currentIndex = Number(this.attempt?.current_index || 0);
                 this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
@@ -417,7 +445,10 @@
                     this.renderLeaderboardView();
                 }
             }
-            if (this.room?.status === 'FINISHED') {
+            if (
+                this.room?.status === 'FINISHED' ||
+                (this.room?.status === 'IN_PROGRESS' && this.attempt && (this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED'))
+            ) {
                 this.refreshLobbyOrLeaderboard();
             }
             await this.flushPendingAnswers();
@@ -708,7 +739,8 @@
                     this.enqueuePendingAnswer({
                         ...payload,
                         p_is_offline_sync: true,
-                        p_client_elapsed_ms: clientElapsedMs
+                        p_client_elapsed_ms: clientElapsedMs,
+                        _retryCount: 0
                     });
                     if (this.attempt) {
                         this.attempt.question_started_at = new Date(this.serverNowMs()).toISOString();
@@ -722,16 +754,27 @@
                 if (error) {
                     if (String(error.message || '').includes('SESSION_REPLACED')) return this.renderSessionReplaced();
                     if (String(error.message || '').includes('MATCH_TIME_UP')) return this.renderLeaderboardView();
-                    this.enqueuePendingAnswer({
-                        ...payload,
-                        p_is_offline_sync: true,
-                        p_client_elapsed_ms: clientElapsedMs
-                    });
+                    if (!isTerminalSubmitError(error)) {
+                        this.enqueuePendingAnswer({
+                            ...payload,
+                            p_is_offline_sync: true,
+                            p_client_elapsed_ms: clientElapsedMs,
+                            _retryCount: 0
+                        });
+                    }
                     if (this.attempt) {
                         this.attempt.question_started_at = new Date(this.serverNowMs()).toISOString();
                     }
                 } else if (data?.attempt) {
                     this.attempt = data.attempt;
+                }
+                if (
+                    data?.error === 'MATCH_TIME_UP' ||
+                    data?.match_time_up ||
+                    this.attempt?.finish_reason === 'TIME_UP'
+                ) {
+                    this.renderLeaderboardView();
+                    return;
                 }
                 if (data?.already_submitted || this.attempt?.status === 'SUBMITTED' || this.attempt?.status === 'FORCED') {
                     this.routeByState();
@@ -769,19 +812,31 @@
             try {
                 const remaining = [];
                 let sessionReplaced = false;
+                let matchTimeUp = false;
                 for (const item of list) {
-                    const { data, error } = await client.rpc('arena_submit_answer', item);
+                    const { _retryCount = 0, ...rpcPayload } = item || {};
+                    const { data, error } = await client.rpc('arena_submit_answer', rpcPayload);
                     if (error) {
                         const msg = String(error.message || '');
                         if (/SESSION_REPLACED/i.test(msg)) {
                             sessionReplaced = true;
                             break;
                         }
-                        if (!/MATCH_TIME_UP/i.test(msg)) {
-                            remaining.push(item);
+                        if (/MATCH_TIME_UP/i.test(msg)) {
+                            matchTimeUp = true;
+                            continue;
                         }
-                    } else if (data?.attempt) {
-                        this.attempt = data.attempt;
+                        const nextRetry = (Number(_retryCount) || 0) + 1;
+                        if (!isTerminalSubmitError(error) && nextRetry < MAX_PENDING_RETRIES) {
+                            remaining.push({ ...rpcPayload, _retryCount: nextRetry });
+                        }
+                    } else {
+                        if (data?.attempt) {
+                            this.attempt = data.attempt;
+                        }
+                        if (data?.error === 'MATCH_TIME_UP' || data?.match_time_up || this.attempt?.finish_reason === 'TIME_UP') {
+                            matchTimeUp = true;
+                        }
                     }
                 }
                 try {
@@ -792,6 +847,9 @@
                 if (sessionReplaced) {
                     this.renderSessionReplaced();
                     return;
+                }
+                if (matchTimeUp && (document.getElementById('arena-exam-view') || document.getElementById('arena-lb-rows'))) {
+                    this.renderLeaderboardView();
                 }
 
                 if (remaining.length === 0 && pendingFinishReason && this.attempt?.id) {
