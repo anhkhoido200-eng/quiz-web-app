@@ -111,13 +111,23 @@
         },
 
         openJoinModal(prefillCode = '') {
+            if (!document.getElementById('arena-lockdown-style')) {
+                const style = document.createElement('style');
+                style.id = 'arena-lockdown-style';
+                style.textContent = `
+                    @media print { #arena-modal { display: none !important; } }
+                    #arena-exam-view, #arena-exam-view * { -webkit-touch-callout: none; }
+                    #arena-exam-view input, #arena-exam-view textarea { -webkit-user-select: text; user-select: text; }
+                `;
+                document.head.appendChild(style);
+            }
             let modal = document.getElementById('arena-modal');
             if (!modal) {
                 modal = document.createElement('div');
                 modal.id = 'arena-modal';
                 modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3 sm:p-5';
                 modal.innerHTML = `
-                    <div id="arena-modal-card" class="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-4 sm:p-6 text-slate-100 space-y-4">
+                    <div id="arena-modal-card" class="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-4 sm:p-6 text-slate-100 space-y-4">
                         <div class="flex items-center justify-between gap-3 border-b border-slate-800 pb-3">
                             <div class="flex items-center gap-2.5">
                                 <span class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center">
@@ -133,16 +143,79 @@
                             </button>
                         </div>
                         <div id="arena-stage"></div>
+                        <div id="arena-privacy-shield" class="hidden fixed inset-0 z-[70] bg-slate-950/98 backdrop-blur-2xl flex-col items-center justify-center p-6 text-center space-y-4">
+                            <div class="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-400 flex items-center justify-center text-2xl">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <div class="space-y-1.5 max-w-md">
+                                <h3 class="text-lg font-extrabold text-white">Màn hình thi đấu đã bị khóa</h3>
+                                <p id="arena-shield-msg" class="text-xs sm:text-sm text-slate-300">Phát hiện rời cửa sổ hoặc thao tác bị hạn chế. Nội dung đề thi được che tạm thời để bảo mật.</p>
+                            </div>
+                            <button type="button" id="arena-shield-resume" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs sm:text-sm cursor-pointer">
+                                <i class="fa-solid fa-shield-halved mr-1.5"></i> Quay lại làm bài
+                            </button>
+                        </div>
                     </div>
                 `;
                 document.body.appendChild(modal);
                 modal.addEventListener('click', (e) => {
                     if (e.target.closest('#arena-close-btn')) this.closeModal();
+                    if (e.target.closest('#arena-shield-resume')) this.tryResumeFromShield();
                 });
             }
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+            this.updateLockdownUI(false);
             this.renderJoinForm(prefillCode);
+        },
+
+        updateLockdownUI(locked) {
+            const closeBtn = document.getElementById('arena-close-btn');
+            if (closeBtn) {
+                closeBtn.classList.toggle('hidden', Boolean(locked));
+            }
+            if (!locked) {
+                this.hidePrivacyShield();
+            }
+        },
+
+        showPrivacyShield(message, autoUnlockMs = 0) {
+            const shield = document.getElementById('arena-privacy-shield');
+            const msgEl = document.getElementById('arena-shield-msg');
+            if (!shield) return;
+            if (msgEl && message) msgEl.textContent = message;
+            shield.classList.remove('hidden');
+            shield.classList.add('flex');
+            clearTimeout(this._shieldTimer);
+            if (autoUnlockMs > 0) {
+                this._shieldTimer = setTimeout(() => {
+                    if (!document.hidden && (!this.room?.require_fullscreen || !document.documentElement.requestFullscreen || document.fullscreenElement)) {
+                        this.hidePrivacyShield();
+                    }
+                }, autoUnlockMs);
+            }
+        },
+
+        hidePrivacyShield() {
+            clearTimeout(this._shieldTimer);
+            const shield = document.getElementById('arena-privacy-shield');
+            if (shield) {
+                shield.classList.add('hidden');
+                shield.classList.remove('flex');
+            }
+        },
+
+        tryResumeFromShield() {
+            if (this.room?.require_fullscreen && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    this.hidePrivacyShield();
+                    document.getElementById('arena-fs-prompt')?.classList.add('hidden');
+                }).catch(() => {});
+                return;
+            }
+            if (!document.hidden) {
+                this.hidePrivacyShield();
+            }
         },
 
         closeModal() {
@@ -386,6 +459,7 @@
             if (needFsPrompt) {
                 document.documentElement.requestFullscreen().catch(() => {});
             }
+            this.updateLockdownUI(true);
             this.bindAntiCheat();
 
             if (this.currentIndex >= this.questions.length) {
@@ -475,10 +549,13 @@
                             <button type="button" id="arena-fs-btn" class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer shrink-0">Bật toàn màn hình</button>
                         </div>
                     ` : ''}
-                    <div class="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
-                        <div class="text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
-                        ${safeImgHtml}
-                        ${answerAreaHtml}
+                    <div class="relative overflow-hidden p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                        <div aria-hidden="true" class="pointer-events-none select-none absolute inset-0 flex flex-wrap items-center justify-center gap-8 -rotate-12 opacity-[0.06] text-[11px] font-mono font-bold text-slate-200 overflow-hidden">
+                            ${new Array(8).fill(0).map(() => `<span>${esc(this.attempt?.player_name || '')} • ${esc(this.room?.room_code || '')}</span>`).join('')}
+                        </div>
+                        <div class="relative z-10 text-sm sm:text-base font-bold text-white leading-relaxed">${esc(q.question)}</div>
+                        <div class="relative z-10">${safeImgHtml}</div>
+                        <div class="relative z-10">${answerAreaHtml}</div>
                     </div>
                 </div>
             `;
@@ -741,16 +818,68 @@
         bindAntiCheat() {
             if (this.antiCheatBound) return;
             this.antiCheatBound = true;
-            this._onVisibility = () => { if (document.hidden) this.handleViolation('TAB_SWITCH'); };
-            this._onBlur = () => this.handleViolation('WINDOW_BLUR');
+            this._onVisibility = () => {
+                if (document.hidden) {
+                    this.showPrivacyShield('Bạn vừa chuyển tab hoặc ẩn trình duyệt. Quay lại để tiếp tục làm bài.');
+                    this.handleViolation('TAB_SWITCH');
+                } else if (!this.room?.require_fullscreen || !document.documentElement.requestFullscreen || document.fullscreenElement) {
+                    this.hidePrivacyShield();
+                }
+            };
+            this._onBlur = () => {
+                this.showPrivacyShield('Cửa sổ thi đấu vừa bị mất tiêu điểm. Nhấn quay lại để tiếp tục.');
+                this.handleViolation('WINDOW_BLUR');
+            };
+            this._onFocus = () => {
+                if (!document.hidden && (!this.room?.require_fullscreen || !document.documentElement.requestFullscreen || document.fullscreenElement)) {
+                    this.hidePrivacyShield();
+                }
+            };
             this._onFullscreen = () => {
                 if (this.room?.require_fullscreen && !document.fullscreenElement) {
+                    this.showPrivacyShield('Phòng thi bắt buộc chế độ toàn màn hình. Bấm nút bên dưới để vào lại toàn màn hình.');
                     this.handleViolation('FULLSCREEN_EXIT');
+                } else {
+                    document.getElementById('arena-fs-prompt')?.classList.add('hidden');
+                    if (!document.hidden) this.hidePrivacyShield();
+                }
+            };
+            this._onBeforeUnload = (e) => {
+                if (this.attempt?.status === 'IN_PROGRESS' && this.room?.status === 'IN_PROGRESS') {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            };
+            this._onKeyGuard = (e) => {
+                const key = String(e.key || '').toLowerCase();
+                const mod = e.ctrlKey || e.metaKey;
+                const isPrintScreen = e.key === 'PrintScreen' || e.code === 'PrintScreen';
+                const isMacShot = e.metaKey && e.shiftKey && ['3', '4', '5'].includes(key);
+                const isWinSnip = e.metaKey && e.shiftKey && key === 's';
+                const isBlockedCombo = mod && (
+                    key === 'p' || key === 's' || key === 'u' ||
+                    (e.shiftKey && ['i', 'j', 'c'].includes(key))
+                );
+                if (isPrintScreen || isMacShot || isWinSnip || e.key === 'F12' || isBlockedCombo) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (isPrintScreen || isMacShot || isWinSnip) {
+                        navigator.clipboard?.writeText?.('').catch(() => {});
+                        this.showPrivacyShield('Phát hiện thao tác chụp ảnh màn hình! Nội dung đã bị che tạm thời.', 2000);
+                        this.handleViolation('SCREENSHOT_ATTEMPT');
+                    } else {
+                        this.showPrivacyShield('Phím tắt in / lưu / kiểm tra trang bị vô hiệu hóa trong khi thi.', 1500);
+                        this.handleViolation('RESTRICTED_SHORTCUT');
+                    }
                 }
             };
             document.addEventListener('visibilitychange', this._onVisibility);
             window.addEventListener('blur', this._onBlur);
+            window.addEventListener('focus', this._onFocus);
             document.addEventListener('fullscreenchange', this._onFullscreen);
+            window.addEventListener('beforeunload', this._onBeforeUnload);
+            window.addEventListener('keydown', this._onKeyGuard, true);
+            window.addEventListener('keyup', this._onKeyGuard, true);
         },
 
         unbindAntiCheat() {
@@ -758,7 +887,11 @@
             this.antiCheatBound = false;
             document.removeEventListener('visibilitychange', this._onVisibility);
             window.removeEventListener('blur', this._onBlur);
+            window.removeEventListener('focus', this._onFocus);
             document.removeEventListener('fullscreenchange', this._onFullscreen);
+            window.removeEventListener('beforeunload', this._onBeforeUnload);
+            window.removeEventListener('keydown', this._onKeyGuard, true);
+            window.removeEventListener('keyup', this._onKeyGuard, true);
         },
 
         async handleViolation(eventType) {
@@ -832,6 +965,7 @@
         renderSessionReplaced() {
             this.unbindAntiCheat();
             this.cleanupTimers();
+            this.updateLockdownUI(false);
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
             stage.innerHTML = `
@@ -860,6 +994,7 @@
             this.unbindAntiCheat();
             clearInterval(this.tickTimer);
             this.tickTimer = null;
+            this.updateLockdownUI(false);
 
             const stage = document.getElementById('arena-stage');
             if (!stage) return;
