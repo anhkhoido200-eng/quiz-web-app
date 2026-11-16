@@ -37,7 +37,7 @@
     <!-- CSS tùy chỉnh v4.0 -->
     <link rel="stylesheet" href="style.css?v=20261112c">
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-[#07111e] text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
 
     <!-- ============================================================== -->
     <!-- NÚT NỔI ADMIN BẤM VÀO LÀ VÀO THẲNG DASHBOARD (CHO IP ĐÃ WHITELIST) -->
@@ -80,7 +80,7 @@
                 <button type="button" onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition">
                     <i class="fa-solid fa-rotate-right mr-1"></i> Tải lại trang
                 </button>
-                <button type="button" onclick="app.adminEmergencyUnban()" class="px-3.5 py-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/50 text-xs font-bold cursor-pointer transition">
+                <button type="button" onclick="app.adminEmergencyUnban()" class="px-3.5 py-2 rounded-xl bg-sky-600/40 hover:bg-sky-600 text-sky-200 border border-sky-500/50 text-xs font-bold cursor-pointer transition">
                     <i class="fa-solid fa-key mr-1 text-amber-400"></i> Mở khóa khẩn cấp (Admin)
                 </button>
             </div>
@@ -178,8 +178,8 @@
 
     <!-- Background Glow Effects -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
-        <div class="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-sky-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 -right-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
         <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl"></div>
     </div>
 
@@ -196,11 +196,11 @@
         <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3 select-none">
                 <!-- ICON CHIẾC MŨ TỐT NGHIỆP: Mở Admin bí mật hoặc vào thẳng nếu IP Whitelisted -->
-                <div id="admin-brand-mark" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25" title="Quiz Studio">
+                <div id="admin-brand-mark" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 via-blue-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/25" title="Quiz Studio">
                     <i class="fa-solid fa-graduation-cap text-lg"></i>
                 </div>
                 <div class="cursor-pointer" onclick="app.showHome()">
-                    <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+                    <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-sky-400 via-blue-300 to-pink-400 bg-clip-text text-transparent">
                         Ôn tập
                     </h1>
                     <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Hệ Thống Ôn Luyện Thông Minh</p>
@@ -216,7 +216,7 @@
 
                 <!-- Nút bật/tắt âm thanh Ting/Bíp -->
                 <button type="button" id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng" aria-label="Bật/Tắt âm thanh hiệu ứng">
-                    <i id="header-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
+                    <i id="header-sound-icon" class="fa-solid fa-volume-high text-sky-400"></i>
                 </button>
 
                 <!-- Nút tham gia Đấu Trường (Arena) -->
@@ -262,9 +262,30 @@
         <!-- ========================================== -->
         <section id="screen-home" class="screen-view transition-all duration-300">
             <div class="max-w-xl mx-auto glass-panel-pro rounded-3xl p-6 sm:p-9 shadow-2xl relative overflow-hidden">
+                <!-- Animated Navy + Ocean Blue Study Motif -->
+                <div class="navy-hero-motif mx-auto mb-3 flex items-center justify-center" aria-hidden="true">
+                    <svg viewBox="0 0 120 72" class="w-28 h-16 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="navyMotifGrad" x1="0" y1="0" x2="120" y2="72" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#38bdf8" />
+                                <stop offset="55%" stop-color="#0284c7" />
+                                <stop offset="100%" stop-color="#1e3a8a" />
+                            </linearGradient>
+                        </defs>
+                        <ellipse cx="60" cy="36" rx="46" ry="20" stroke="#eadbc4" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="4 4" class="navy-orbit-ring" />
+                        <ellipse cx="60" cy="36" rx="34" ry="14" stroke="#38bdf8" stroke-opacity="0.38" stroke-width="1.2" class="navy-orbit-ring-rev" />
+                        <g class="navy-float-core">
+                            <rect x="42" y="18" width="36" height="36" rx="11" fill="#11223a" stroke="url(#navyMotifGrad)" stroke-width="1.8" />
+                            <path d="M51 33L60 27L69 33L60 39L51 33Z" fill="#f5ede0" fill-opacity="0.22" stroke="#fbf8f3" stroke-width="1.5" stroke-linejoin="round" />
+                            <path d="M54 37V43C54 44.5 56.7 46 60 46C63.3 46 66 44.5 66 43V37" stroke="#eadbc4" stroke-width="1.5" stroke-linecap="round" />
+                        </g>
+                        <circle cx="20" cy="24" r="3" fill="#f5ede0" class="navy-pulse-dot" />
+                        <circle cx="101" cy="48" r="2.5" fill="#38bdf8" class="navy-pulse-dot-delay" />
+                    </svg>
+                </div>
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-pink-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold mb-3 shadow-sm">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#f5ede0]/10 border border-[#eadbc4]/30 text-[#f5ede0] text-xs font-bold mb-3 shadow-sm">
+                        <span class="w-2 h-2 rounded-full bg-[#eadbc4] animate-pulse"></span>
                         ⚡ Ôn tập
                     </div>
                     <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn tập</h2>
@@ -272,7 +293,7 @@
                 </div>
 
                 <!-- Thẻ ghi nhớ thí sinh đã đăng nhập -->
-                <div id="saved-user-banner" class="hidden mb-5 p-4 rounded-2xl bg-gradient-to-r from-indigo-950/90 via-slate-900 to-purple-950/90 border border-indigo-500/40 shadow-xl transition-all">
+                <div id="saved-user-banner" class="hidden mb-5 p-4 rounded-2xl bg-gradient-to-r from-sky-950/90 via-slate-900 to-blue-950/90 border border-sky-500/40 shadow-xl transition-all">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-lg shadow">
@@ -293,10 +314,10 @@
                 <div class="mb-5 p-4 rounded-2xl glass-card-pro">
                     <div class="flex items-center justify-between mb-3">
                         <label class="text-xs font-heading font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                            <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                            <i class="fa-solid fa-layer-group text-sky-400"></i>
                             <span>Chọn Môn Ôn Tập</span>
                         </label>
-                        <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px]">Đang tải...</span>
+                        <span id="home-subject-badge" class="px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/30 text-sky-300 font-bold text-[11px]">Đang tải...</span>
                     </div>
 
                     <!-- Bộ lọc lớp để tách riêng khu vực ôn tập của Lớp 5 và Lớp 11 -->
@@ -328,7 +349,7 @@
                                 <i class="fa-solid fa-shield-halved"></i> Quản lý Đề & Môn (Admin)
                             </span>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <button type="button" onclick="app.openSmartImporter()" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Nạp nhanh file Word (.docx), PDF (.pdf), Excel vào môn đang chọn">
+                                <button type="button" onclick="app.openSmartImporter()" class="px-2.5 py-1.5 rounded-xl bg-sky-600/30 hover:bg-sky-600 border border-sky-500/40 text-sky-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Nạp nhanh file Word (.docx), PDF (.pdf), Excel vào môn đang chọn">
                                     <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề Word/PDF
                                 </button>
                                 <button type="button" onclick="app.openNewQuestionModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Tạo câu hỏi thủ công cho môn này">
@@ -341,21 +362,21 @@
                         </div>
 
                         <!-- Dropzone Kéo Thả Thẳng File Word / PDF / Excel vào Môn đang chọn -->
-                        <div class="p-2.5 rounded-2xl bg-slate-900/90 border-2 border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-indigo-950/20 transition cursor-pointer relative group flex items-center justify-between gap-3 shadow-inner">
+                        <div class="p-2.5 rounded-2xl bg-slate-900/90 border-2 border-dashed border-sky-500/50 hover:border-sky-400 hover:bg-sky-950/20 transition cursor-pointer relative group flex items-center justify-between gap-3 shadow-inner">
                             <input type="file" accept=".docx, .pdf, .xlsx, .xls, .json" onchange="app.handleHomeDirectFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" title="Nhấp hoặc thả file Word (.docx) hoặc PDF (.pdf) vào đây">
                             <div class="flex items-center gap-2.5 pointer-events-none text-xs flex-1 min-w-0">
-                                <div class="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-sm shrink-0 border border-indigo-500/30 group-hover:scale-105 transition-transform">
-                                    <i class="fa-solid fa-cloud-arrow-up text-indigo-400"></i>
+                                <div class="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-300 flex items-center justify-center text-sm shrink-0 border border-sky-500/30 group-hover:scale-105 transition-transform">
+                                    <i class="fa-solid fa-cloud-arrow-up text-sky-400"></i>
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <p class="font-bold text-white text-[11px] flex items-center gap-1.5 truncate">
                                         <span>Gửi thẳng file Word / PDF để tự động tạo câu hỏi</span>
-                                        <span class="px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 text-[9px] font-mono shrink-0">Tự bóc tách ⚡</span>
+                                        <span class="px-1.5 py-0.5 rounded bg-sky-500/30 text-sky-300 text-[9px] font-mono shrink-0">Tự bóc tách ⚡</span>
                                     </p>
                                     <p class="text-[10px] text-slate-400 truncate">Kéo thả file .docx, .pdf vào đây để nạp ngay vào môn: <strong id="home-upload-current-sub-label" class="text-amber-400">...</strong></p>
                                 </div>
                             </div>
-                            <span class="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold shrink-0 pointer-events-none shadow transition flex items-center gap-1">
+                            <span class="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-bold shrink-0 pointer-events-none shadow transition flex items-center gap-1">
                                 <i class="fa-solid fa-bolt text-amber-300"></i> Nạp Ngay
                             </span>
                         </div>
@@ -370,10 +391,10 @@
                         </label>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                                <i class="fa-regular fa-user text-indigo-400"></i>
+                                <i class="fa-regular fa-user text-sky-400"></i>
                             </span>
                             <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
-                                class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-inner">
+                                class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition shadow-inner">
                         </div>
                         <div class="mt-2.5 flex items-center gap-2 flex-wrap">
                             <button type="button" onclick="app.showMyIp()" id="btn-show-ip" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 text-slate-300 text-xs font-semibold transition cursor-pointer shadow-inner hover:border-cyan-500/50" title="Nhấp để xem và sao chép địa chỉ IP của bạn">
@@ -395,7 +416,7 @@
 
                     <!-- Nút bắt đầu làm bài -->
                     <div class="pt-2">
-                        <button type="button" id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-indigo-500/25">
+                        <button type="button" id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-navy w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-sky-500/25">
                             <span>Bắt Đầu Làm Bài Ngay</span>
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
                         </button>
@@ -420,12 +441,12 @@
                 <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
                         <!-- Icon Admin ẩn -->
-                        <div id="quiz-admin-mark" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md shrink-0" title="Quiz">
+                        <div id="quiz-admin-mark" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white shadow-md shrink-0" title="Quiz">
                             <i class="fa-solid fa-graduation-cap text-xs"></i>
                         </div>
                         <span id="quiz-top-subject-title" class="font-heading font-extrabold text-sm sm:text-base text-white hidden sm:inline-block">Lịch Sử 11</span>
                         <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs font-semibold text-slate-300 shadow-sm">
-                            <i class="fa-solid fa-user text-indigo-400 text-[11px]"></i>
+                            <i class="fa-solid fa-user text-sky-400 text-[11px]"></i>
                             <span id="quiz-header-player-name" class="text-white font-bold max-w-[110px] truncate">Học sinh</span>
                         </div>
                         <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs font-semibold text-slate-300 shadow-sm">
@@ -437,7 +458,7 @@
                             <span id="timer-display">00:00</span>
                         </div>
                         <!-- Badge chế độ thi -->
-                        <span id="quiz-mode-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block">
+                        <span id="quiz-mode-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30 hidden sm:inline-block">
                             Luyện tập
                         </span>
                     </div>
@@ -445,7 +466,7 @@
                     <div class="flex items-center gap-1.5 sm:gap-2">
                         <!-- Bật/Tắt âm thanh trong phòng thi -->
                         <button type="button" id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
-                            <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
+                            <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-sky-400"></i>
                         </button>
                         <!-- Nút Dark/Light Mode -->
                         <button type="button" onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
@@ -463,7 +484,7 @@
                             <i class="fa-solid fa-circle-xmark text-[11px]"></i>
                             <span>Sai (<span id="wrong-count-badge">0</span>)</span>
                         </button>
-                        <button type="button" onclick="app.backToResultScreen()" id="btn-back-to-result" class="hidden btn-3d px-3 sm:px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.backToResultScreen()" id="btn-back-to-result" class="hidden btn-3d px-3 sm:px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-trophy text-xs"></i>
                             <span>Bảng Điểm</span>
                         </button>
@@ -486,7 +507,7 @@
 
                 <!-- Dưới cùng: Đường line tiến độ chạy suốt toàn màn hình có hào quang -->
                 <div class="w-full bg-slate-900 h-1.5 overflow-hidden">
-                    <div id="quiz-progress-bar" class="quiz-progress-bar h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400" style="width: 0%"></div>
+                    <div id="quiz-progress-bar" class="quiz-progress-bar h-full bg-gradient-to-r from-sky-500 via-blue-500 to-emerald-400" style="width: 0%"></div>
                 </div>
             </div>
 
@@ -581,7 +602,7 @@
                             <i class="fa-solid fa-fire text-amber-300 animate-pulse"></i>
                             <span id="btn-result-action-revenge-text">🔥 Làm lại các câu sai</span>
                         </button>
-                        <button type="button" onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-navy px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
                         </button>
@@ -607,7 +628,7 @@
                 <!-- Khu vực xem lại đáp án chi tiết (Review Answers) -->
                 <div id="review-container" class="result-review-section space-y-4">
                     <h3 class="font-heading text-lg font-bold text-slate-200 flex items-center gap-2">
-                        <i class="fa-solid fa-clipboard-check text-indigo-400"></i>
+                        <i class="fa-solid fa-clipboard-check text-sky-400"></i>
                         <span>Chi Tiết Toàn Bộ Đề & Lời Giải</span>
                     </h3>
                     <div id="review-list" class="space-y-4">
@@ -653,10 +674,10 @@
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between shadow-sm">
                     <div>
-                        <b id="obs-stat-submitted" class="text-2xl font-extrabold text-indigo-400">0</b>
+                        <b id="obs-stat-submitted" class="text-2xl font-extrabold text-sky-400">0</b>
                         <div class="text-xs text-slate-400 mt-0.5 font-medium">Đã nộp bài</div>
                     </div>
-                    <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20">
+                    <div class="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center text-lg border border-sky-500/20">
                         <i class="fa-solid fa-circle-check"></i>
                     </div>
                 </div>
@@ -760,8 +781,8 @@
                         <i class="fa-solid fa-arrow-right-from-bracket text-rose-400"></i>
                         <span class="hidden sm:inline">Đăng Xuất Admin</span>
                     </button>
-                    <button type="button" onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
-                        <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
+                    <button type="button" onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
+                        <i class="fa-solid fa-wand-magic-sparkles text-blue-400"></i>
                         <span class="hidden sm:inline">Cài Đặt API Key</span>
                     </button>
                     <button type="button" onclick="app.openSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer" title="Cấu hình Supabase Cloud">
@@ -848,7 +869,7 @@
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <button type="button" onclick="app.openSmartImporter()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md">
+                        <button type="button" onclick="app.openSmartImporter()" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md">
                             <i class="fa-solid fa-file-import"></i> Nạp Đề Word/Excel
                         </button>
                         <button type="button" onclick="app.seedCurrentSubjectToCloud()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Lưu đề môn này lên Supabase Cloud">
@@ -877,7 +898,7 @@
                         <p class="text-xs font-semibold text-slate-200">Giám Sát Thí Sinh Thời Gian Thực & Phân Quyền:</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button type="button" onclick="app.renderAdminStudentsList()" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.renderAdminStudentsList()" class="px-3 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-rotate"></i> Làm mới
                         </button>
                         <button type="button" onclick="app.adminClearAllLogins()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
@@ -1045,9 +1066,9 @@
                 </div>
 
                 <!-- Phân Quyền Trợ Lý AI Theo Địa Chỉ IP -->
-                <div class="p-4 rounded-2xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-indigo-950/40 border border-purple-500/40 shadow-lg space-y-3">
+                <div class="p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-slate-900 to-sky-950/40 border border-blue-500/40 shadow-lg space-y-3">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800 gap-1">
-                        <div class="flex items-center gap-2 text-xs font-bold text-purple-300">
+                        <div class="flex items-center gap-2 text-xs font-bold text-blue-300">
                             <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                             <span>Cấp Quyền Trợ Lý AI Theo Địa Chỉ IP (<span id="admin-ai-ips-count" class="text-amber-300 font-bold font-mono">0</span> IP):</span>
                         </div>
@@ -1059,15 +1080,15 @@
                         <div class="sm:col-span-6 relative">
                             <i class="fa-solid fa-network-wired absolute left-3.5 top-3 text-slate-500 text-xs"></i>
                             <input type="text" id="admin-manual-ai-ip-input" placeholder="Nhập IP máy học sinh cần cấp quyền AI..." 
-                                class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-purple-400 font-mono">
+                                class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-blue-400 font-mono">
                         </div>
                         <div class="sm:col-span-4 relative">
                             <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-500 text-xs"></i>
                             <input type="text" id="admin-manual-ai-name-input" placeholder="Tên học sinh / ghi chú..." 
-                                class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-purple-400">
+                                class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-blue-400">
                         </div>
                         <div class="sm:col-span-2">
-                            <button type="button" onclick="app.adminAddManualAiIp()" class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
+                            <button type="button" onclick="app.adminAddManualAiIp()" class="w-full py-2.5 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
                                 <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                                 <span>Cấp Quyền</span>
                             </button>
@@ -1180,7 +1201,7 @@
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-4xl w-full h-[90vh] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <div class="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 flex items-center justify-center text-base">
+                    <div class="w-9 h-9 rounded-xl bg-sky-600/30 border border-sky-500/40 text-sky-300 flex items-center justify-center text-base">
                         <i class="fa-solid fa-file-import"></i>
                     </div>
                     <div>
@@ -1203,7 +1224,7 @@
                         </select>
                     </div>
                     <label class="flex items-center gap-2 cursor-pointer select-none text-slate-300">
-                        <input type="checkbox" id="importer-replace-checkbox" aria-label="Xóa câu hỏi cũ của môn này trước khi lưu" class="accent-indigo-500 rounded">
+                        <input type="checkbox" id="importer-replace-checkbox" aria-label="Xóa câu hỏi cũ của môn này trước khi lưu" class="accent-sky-500 rounded">
                         <span class="text-[11px] font-semibold text-rose-300">Xóa hết câu hỏi cũ của môn này trước khi lưu</span>
                     </label>
                 </div>
@@ -1214,9 +1235,9 @@
                     <div class="space-y-2 flex flex-col">
                         <div class="flex items-center justify-between">
                             <label class="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
-                                <i class="fa-solid fa-paste text-indigo-400"></i> Dán Văn Bản Đề Thi (Từ Word):
+                                <i class="fa-solid fa-paste text-sky-400"></i> Dán Văn Bản Đề Thi (Từ Word):
                             </label>
-                            <button type="button" onclick="app.importerInsertSampleText()" class="text-[11px] text-indigo-400 hover:underline">Chèn đề mẫu</button>
+                            <button type="button" onclick="app.importerInsertSampleText()" class="text-[11px] text-sky-400 hover:underline">Chèn đề mẫu</button>
                         </div>
                         <textarea id="importer-text-input" rows="11" placeholder="Dán nội dung đề thi từ Word vào đây...
 Ví dụ:
@@ -1226,7 +1247,7 @@ B. TP. Hồ Chí Minh
 C. Đà Nẵng
 D. Cần Thơ
 Đáp án: A
-Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 font-mono text-[11px] outline-none focus:border-indigo-500 resize-none flex-1"></textarea>
+Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 font-mono text-[11px] outline-none focus:border-sky-500 resize-none flex-1"></textarea>
                     </div>
 
                     <!-- Cột 2: Tải lên file Word (.docx) / Excel (.xlsx) / JSON hoặc xem định dạng hỗ trợ -->
@@ -1235,7 +1256,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                             <label class="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
                                 <i class="fa-solid fa-file-word text-sky-400"></i> Hoặc Tải Tệp Word (.docx) / PDF (.pdf) / Excel / JSON:
                             </label>
-                            <div class="p-4 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl text-center cursor-pointer transition bg-slate-950/40 relative group">
+                            <div class="p-4 border-2 border-dashed border-slate-700 hover:border-sky-500 rounded-xl text-center cursor-pointer transition bg-slate-950/40 relative group">
                                 <input type="file" id="importer-file-input" accept=".docx, .pdf, .xlsx, .xls, .json" onchange="app.handleImporterFileUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" title="Chọn file Word, PDF hoặc Excel">
                                 <div class="space-y-1 pointer-events-none">
                                     <div class="flex items-center justify-center gap-2 text-2xl mb-1 text-slate-400 group-hover:scale-105 transition-transform">
@@ -1263,7 +1284,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
                         <!-- NÚT BÓC TÁCH ĐỀ THI TỰ ĐỘNG -->
                         <div>
-                            <button type="button" id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
+                            <button type="button" id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
                                 <i class="fa-solid fa-bolt text-amber-300"></i>
                                 <span>Phân Tích & Bóc Tách Đề Thi Tự Động</span>
                             </button>
@@ -1276,7 +1297,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <span class="font-bold text-slate-200 uppercase tracking-wide">Xem Trước Dữ Liệu Bóc Tách:</span>
-                            <span id="importer-preview-count" class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold font-mono text-[11px]">0 câu hỏi</span>
+                            <span id="importer-preview-count" class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold font-mono text-[11px]">0 câu hỏi</span>
                         </div>
                         <span class="text-[11px] text-slate-500">Kiểm tra kĩ trước khi bấm lưu</span>
                     </div>
@@ -1465,7 +1486,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <!-- Danh sách từ Hạng 4 đến Hạng 10 -->
                 <div class="space-y-2">
                     <h4 class="font-bold text-slate-300 text-xs flex items-center gap-1.5">
-                        <i class="fa-solid fa-ranking-star text-indigo-400"></i> Các Vị Trí Tiếp Theo (Top 4 - 10):
+                        <i class="fa-solid fa-ranking-star text-sky-400"></i> Các Vị Trí Tiếp Theo (Top 4 - 10):
                     </h4>
                     <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
                         <table class="w-full text-left text-xs">
@@ -1589,7 +1610,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
         <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-700">
                 <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-cloud text-indigo-400"></i>
+                    <i class="fa-solid fa-cloud text-sky-400"></i>
                     <h3 class="font-heading font-bold text-white text-base">Cấu Hình Supabase Cloud</h3>
                     <div id="supabase-modal-status-badge"></div>
                 </div>
@@ -1601,16 +1622,16 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             <div class="space-y-4 text-xs">
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">Project URL</label>
-                    <input type="text" id="supabase-url-input" placeholder="https://your-project.supabase.co" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
+                    <input type="text" id="supabase-url-input" placeholder="https://your-project.supabase.co" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-sky-500">
                 </div>
                 <div>
                     <div class="flex items-center justify-between mb-1">
                         <label class="block font-semibold text-slate-300">Anon Public Key</label>
-                        <button type="button" onclick="const k = document.getElementById('supabase-key-input'); k.type = k.type === 'password' ? 'text' : 'password';" class="text-indigo-400 hover:text-indigo-300 text-[11px] cursor-pointer">
+                        <button type="button" onclick="const k = document.getElementById('supabase-key-input'); k.type = k.type === 'password' ? 'text' : 'password';" class="text-sky-400 hover:text-sky-300 text-[11px] cursor-pointer">
                             <i class="fa-solid fa-eye mr-0.5"></i> Hiện/Ẩn mã
                         </button>
                     </div>
-                     <input type="password" id="supabase-key-input" form="supabase-settings-form" autocomplete="off" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-indigo-500">
+                     <input type="password" id="supabase-key-input" form="supabase-settings-form" autocomplete="off" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono text-[11px] focus:border-sky-500">
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
@@ -1620,7 +1641,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     </button>
                     <div class="flex gap-2">
                         <button type="button" onclick="app.closeSettingsModal()" class="px-3 py-1.5 text-slate-400 hover:text-white cursor-pointer">Đóng</button>
-                        <button type="button" onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
+                        <button type="button" onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
                     </div>
                 </div>
             </div>
@@ -1661,10 +1682,10 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- MODAL: KÍCH HOẠT QUYỀN TRUY CẬP BẰNG TOKEN (MÃ TRUY CẬP) -->
     <!-- ======================================================= -->
     <div id="modal-token-activation" class="fixed inset-0 z-[100004] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
-        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-indigo-500/30 animate-fade-in">
+        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-sky-500/30 animate-fade-in">
             <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center text-lg shadow-lg shadow-indigo-500/30">
+                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-sky-600 text-white flex items-center justify-center text-lg shadow-lg shadow-sky-500/30">
                         <i class="fa-solid fa-key"></i>
                     </div>
                     <div>
@@ -1723,7 +1744,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         Mã kích hoạt (Token):
                     </label>
                     <input type="text" id="token-input-field" placeholder="Ví dụ: GRADE5_abc123 hoặc AI_xyz789" 
-                        class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 font-mono text-xs outline-none focus:border-indigo-500 transition shadow-inner uppercase">
+                        class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 font-mono text-xs outline-none focus:border-sky-500 transition shadow-inner uppercase">
                     <p class="text-[11px] text-slate-400 mt-1">
                         Mã dùng để mở khóa các môn <strong>Lớp 5</strong> hoặc tính năng <strong>Trợ lý AI</strong> mà không phụ thuộc vào địa chỉ IP mạng.
                     </p>
@@ -1733,7 +1754,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <button type="button" onclick="app.closeTokenModal()" class="btn-3d btn-3d-slate flex-1 py-2.5 rounded-xl text-slate-300 text-xs font-heading font-bold transition cursor-pointer">
                         Đóng
                     </button>
-                    <button type="button" onclick="app.submitTokenActivation()" id="btn-submit-token" class="btn-3d btn-3d-indigo flex-1 py-2.5 rounded-xl text-white text-xs font-heading font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-500/25">
+                    <button type="button" onclick="app.submitTokenActivation()" id="btn-submit-token" class="btn-3d btn-3d-navy flex-1 py-2.5 rounded-xl text-white text-xs font-heading font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-sky-500/25">
                         <i class="fa-solid fa-circle-check"></i>
                         <span>Kích Hoạt Ngay</span>
                     </button>
@@ -1747,15 +1768,15 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- ======================================================= -->
     <form id="ai-settings-form" class="hidden" aria-hidden="true" onsubmit="event.preventDefault();"></form>
     <div id="modal-ai-settings" class="fixed inset-0 z-[100003] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
-        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-purple-500/30 animate-fade-in">
+        <div class="glass-panel-pro rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4 border border-blue-500/30 animate-fade-in">
             <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center text-sm shadow">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-sky-600 text-white flex items-center justify-center text-sm shadow">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </div>
                     <div>
                         <h3 class="font-heading font-extrabold text-white text-base">Cấu Hình Trợ Lý AI (Quản Trị Viên)</h3>
-                        <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Cấp khóa API dùng chung cho toàn bộ học sinh</p>
+                        <p class="text-[11px] text-blue-300">Đồng bộ đám mây • Cấp khóa API dùng chung cho toàn bộ học sinh</p>
                     </div>
                 </div>
                 <button type="button" onclick="app.closeAiSettingsModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
@@ -1771,7 +1792,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <!-- CHỌN LOẠI NHÀ CUNG CẤP AI -->
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">Nhà Cung Cấp AI:</label>
-                    <select id="ai-provider-select" aria-label="Chọn nhà cung cấp AI" onchange="app.toggleAiProviderFields()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none text-xs focus:border-purple-500 transition cursor-pointer">
+                    <select id="ai-provider-select" aria-label="Chọn nhà cung cấp AI" onchange="app.toggleAiProviderFields()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none text-xs focus:border-blue-500 transition cursor-pointer">
                         <option value="gemini">Google Gemini (Mặc định - Nhanh, Miễn phí)</option>
                         <option value="openai_compatible">Chuẩn OpenAI / DeepSeek / Custom (/v1/chat/completions)</option>
                     </select>
@@ -1783,12 +1804,12 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <label class="block font-semibold text-slate-300 mb-1">
                             Endpoint / Base URL:
                         </label>
-                        <input type="text" id="ai-base-url-input" placeholder="https://api.openai.com/v1 hoặc https://api.deepseek.com/v1" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-purple-500 transition">
+                        <input type="text" id="ai-base-url-input" placeholder="https://api.openai.com/v1 hoặc https://api.deepseek.com/v1" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-blue-500 transition">
                         <p class="text-[10px] text-slate-400 mt-0.5">Tự động nhận diện và ghép <code>/v1/chat/completions</code></p>
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">Tên Model:</label>
-                        <input type="text" id="ai-custom-model-input" placeholder="Ví dụ: gpt-4o-mini, deepseek-chat, llama-3.3-70b..." class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-purple-500 transition">
+                        <input type="text" id="ai-custom-model-input" placeholder="Ví dụ: gpt-4o-mini, deepseek-chat, llama-3.3-70b..." class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-[11px] focus:border-blue-500 transition">
                     </div>
                 </div>
 
@@ -1796,15 +1817,15 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1 flex items-center justify-between">
                         <span id="ai-key-label">API Key:</span>
-                        <a id="ai-key-link" href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-normal flex items-center gap-1">
+                        <a id="ai-key-link" href="https://aistudio.google.com/app/apikey" target="_blank" class="text-sky-400 hover:text-sky-300 underline font-normal flex items-center gap-1">
                             Lấy key miễn phí <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                         </a>
                     </label>
-                    <input type="password" id="gemini-api-key-input" form="ai-settings-form" autocomplete="off" placeholder="Dán mã API Key tại đây..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-purple-500 transition">
+                    <input type="password" id="gemini-api-key-input" form="ai-settings-form" autocomplete="off" placeholder="Dán mã API Key tại đây..." class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 outline-none font-mono text-xs focus:border-blue-500 transition">
                 </div>
 
-                <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-200 space-y-1">
-                    <p class="font-bold flex items-center gap-1.5 text-purple-300"><i class="fa-solid fa-circle-check"></i> Tự động đồng bộ toàn hệ thống:</p>
+                <div class="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-200 space-y-1">
+                    <p class="font-bold flex items-center gap-1.5 text-blue-300"><i class="fa-solid fa-circle-check"></i> Tự động đồng bộ toàn hệ thống:</p>
                     <p>Cấu hình AI được mã hóa và lưu tại Supabase Cloud. Tất cả học sinh truy cập trên mọi thiết bị đều được dùng chung ngay lập tức.</p>
                 </div>
 
@@ -1814,7 +1835,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     </button>
                     <div class="flex gap-2">
                         <button type="button" onclick="app.closeAiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Đóng</button>
-                        <button type="button" onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu & Chia Sẻ Toàn Hệ Thống</button>
+                        <button type="button" onclick="app.saveAiApiKey()" class="btn-3d btn-3d-navy px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu & Chia Sẻ Toàn Hệ Thống</button>
                     </div>
                 </div>
             </div>
@@ -1826,7 +1847,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
     <!-- ======================================================= -->
     <div id="modal-my-history" class="fixed inset-0 z-[100004] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4 overflow-hidden">
         <div class="glass-panel-pro rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto border border-cyan-500/30 animate-fade-in">
-            <div class="p-4 sm:p-5 bg-gradient-to-r from-cyan-950/60 via-slate-900 to-indigo-950/60 border-b border-cyan-500/30 flex items-center justify-between shrink-0">
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-cyan-950/60 via-slate-900 to-sky-950/60 border-b border-cyan-500/30 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center justify-center text-lg shadow">
                         <i class="fa-solid fa-clock-rotate-left"></i>
@@ -1908,7 +1929,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <div id="custom-confirm-copy-box" class="hidden p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/70 border border-cyan-500/40 shadow-inner">
+                <div id="custom-confirm-copy-box" class="hidden p-3.5 rounded-2xl bg-gradient-to-r from-sky-950/80 via-slate-900 to-cyan-950/70 border border-cyan-500/40 shadow-inner">
                     <span id="custom-confirm-copy-label" class="block text-[10px] font-extrabold uppercase tracking-wider text-cyan-300/90 mb-1">Địa chỉ IP hiện tại của bạn</span>
                     <div class="flex items-center justify-between gap-2">
                         <code id="custom-confirm-copy-value" class="font-mono font-extrabold text-base sm:text-lg text-white tracking-wider select-all break-all">0.0.0.0</code>

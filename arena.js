@@ -522,8 +522,8 @@
                 answerAreaHtml = `
                     <div class="space-y-2">
                         <div class="flex gap-2">
-                            <input id="arena-short-input" type="text" placeholder="Nhập đáp án..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm select-text outline-none focus:border-indigo-400">
-                            <button id="arena-short-submit" type="button" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer">Gửi</button>
+                            <input id="arena-short-input" type="text" placeholder="Nhập đáp án..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm select-text outline-none focus:border-sky-400 transition duration-200">
+                            <button id="arena-short-submit" type="button" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-sky-600 text-white font-bold text-xs cursor-pointer transition duration-200">Gửi</button>
                         </div>
                         <p id="arena-short-hint" class="hidden text-xs text-amber-300 font-semibold"></p>
                     </div>
@@ -546,7 +546,7 @@
                             </div>
                         `).join('')}
                         <p id="arena-tf-hint" class="hidden text-xs text-amber-300 font-semibold"></p>
-                        <button id="arena-tf-submit" type="button" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer transition">
+                        <button id="arena-tf-submit" type="button" class="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-sky-600 text-white font-bold text-xs cursor-pointer transition duration-200">
                             <i class="fa-solid fa-paper-plane mr-1"></i> Gửi đáp án Đúng/Sai
                         </button>
                     </div>
@@ -555,7 +555,7 @@
                 answerAreaHtml = `
                     <div class="grid grid-cols-1 gap-2">
                         ${(q.options || []).map((opt, idx) => `
-                            <button type="button" class="arena-opt-btn text-left px-4 py-3 rounded-xl bg-slate-900 hover:bg-indigo-600/25 border border-slate-700 hover:border-indigo-400 text-sm text-slate-100 flex items-center gap-3 cursor-pointer transition" data-opt-idx="${idx}">
+                            <button type="button" class="arena-opt-btn text-left px-4 py-3 rounded-xl bg-slate-900 hover:bg-sky-600/20 border border-slate-700 hover:border-sky-400 text-sm text-slate-100 flex items-center gap-3 cursor-pointer transition duration-200" data-opt-idx="${idx}">
                                 <span class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-bold text-xs shrink-0">${['A', 'B', 'C', 'D'][idx] || idx + 1}</span>
                                 <span>${esc(opt)}</span>
                             </button>
@@ -598,7 +598,7 @@
                 stage.innerHTML = `
                     <div id="arena-exam-view" class="space-y-4 select-none">
                         <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                            <span id="arena-q-progress-text" class="text-xs font-bold text-indigo-300">Câu ${this.currentIndex + 1} / ${totalQ}</span>
+                            <span id="arena-q-progress-text" class="text-xs font-bold text-sky-300">Câu ${this.currentIndex + 1} / ${totalQ}</span>
                             <div class="flex items-center gap-3 text-xs font-mono font-bold">
                                 <span class="text-emerald-400">Điểm: <b id="arena-live-score">${this.attempt?.score || 0}</b></span>
                                 <span class="text-rose-400">Vi phạm: <b id="arena-live-violations">${this.attempt?.violation_count || 0}/${this.room?.max_violations ?? 0}</b></span>
@@ -614,7 +614,7 @@
                                     <b id="arena-q-timer" class="text-cyan-300">${this.room.per_question_sec}s</b>
                                 </div>
                                 <div class="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
-                                    <div id="arena-q-bar" class="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-200" style="width:100%"></div>
+                                    <div id="arena-q-bar" class="h-full bg-gradient-to-r from-sky-400 to-blue-600 transition-all duration-200" style="width:100%"></div>
                                 </div>
                             </div>
                         ` : ''}
@@ -1105,7 +1105,7 @@
 
         buildLeaderboardRowsHtml(rows) {
             return rows.map((r, idx) => `
-                <tr class="border-b border-slate-800/80 ${r.id === this.attempt?.id ? 'bg-indigo-500/15' : ''}">
+                <tr class="border-b border-slate-800/80 transition duration-200 ${r.id === this.attempt?.id ? 'bg-sky-500/15' : ''}">
                     <td class="py-2.5 px-2 font-black text-amber-400">#${idx + 1}</td>
                     <td class="py-2.5 px-2 font-bold text-white">${esc(r.player_name)}</td>
                     <td class="py-2.5 px-2 text-emerald-400 font-bold">${r.correct_count || 0}</td>
@@ -1146,7 +1146,7 @@
                             <span class="text-[11px] font-bold uppercase text-emerald-400">Bảng xếp hạng trận đấu</span>
                             <h3 class="text-base font-extrabold text-white">${esc(this.room?.title || 'Phòng thi đấu')} (${esc(this.room?.room_code || '')})</h3>
                         </div>
-                        <span class="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold">
+                        <span class="px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 text-xs font-bold">
                             Trạng thái của bạn: ${esc(this.attempt?.finish_reason || this.attempt?.status || 'SUBMITTED')}
                         </span>
                     </div>

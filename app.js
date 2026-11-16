@@ -260,7 +260,7 @@ class QuizApp {
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <div id="custom-confirm-copy-box" class="hidden p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/70 border border-cyan-500/40 shadow-inner">
+                    <div id="custom-confirm-copy-box" class="hidden p-3.5 rounded-2xl bg-gradient-to-r from-sky-950/80 via-slate-900 to-cyan-950/70 border border-cyan-500/40 shadow-inner">
                         <span id="custom-confirm-copy-label" class="block text-[10px] font-extrabold uppercase tracking-wider text-cyan-300/90 mb-1">Địa chỉ IP hiện tại của bạn</span>
                         <div class="flex items-center justify-between gap-2">
                             <code id="custom-confirm-copy-value" class="font-mono font-extrabold text-base sm:text-lg text-white tracking-wider select-all break-all">0.0.0.0</code>
@@ -272,7 +272,7 @@ class QuizApp {
                     </div>
                     <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
                     <div id="custom-confirm-input-wrap" class="hidden">
-                        <input id="custom-confirm-input" type="text" autocomplete="off" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-white text-xs sm:text-sm" placeholder="Nhập nội dung...">
+                        <input id="custom-confirm-input" type="text" autocomplete="off" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 focus:outline-none text-white text-xs sm:text-sm" placeholder="Nhập nội dung...">
                     </div>
                     <div class="flex items-center justify-end gap-2.5 pt-1">
                         <button type="button" id="custom-confirm-cancel-btn" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-200 font-heading font-bold text-xs sm:text-sm transition cursor-pointer">
@@ -314,12 +314,12 @@ class QuizApp {
                 okBtn: 'btn-3d btn-3d-rose px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
             },
             primary: {
-                accent: 'h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400',
-                iconWrap: 'w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/35 text-indigo-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
-                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mb-1',
+                accent: 'h-1.5 w-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400',
+                iconWrap: 'w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/35 text-sky-400 flex items-center justify-center text-xl shrink-0 shadow-lg',
+                badge: 'inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 mb-1',
                 badgeText: 'Thông tin hệ thống',
                 icon: 'fa-solid fa-circle-info',
-                okBtn: 'btn-3d btn-3d-indigo px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
+                okBtn: 'btn-3d btn-3d-navy px-5 py-2.5 rounded-xl text-white font-heading font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer'
             },
             success: {
                 accent: 'h-1.5 w-full bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500',
@@ -1050,7 +1050,7 @@ class QuizApp {
 
         if (badge) {
             if (isAdmin) {
-                badge.className = "text-[11px] font-bold px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                badge.className = "text-[11px] font-bold px-2.5 py-1 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30";
                 badge.innerHTML = '<i class="fa-solid fa-crown mr-1 text-amber-400"></i> Admin (Toàn quyền)';
                 badge.classList.remove('hidden');
             } else if (isParent) {
@@ -1087,7 +1087,7 @@ class QuizApp {
                     html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">✓ Coi & Làm Đề Lớp 5</span>';
                 }
                 if (this.hasTokenRole('ai')) {
-                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 text-purple-300 border border-purple-500/40">✓ Trợ lý AI</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/25 text-blue-300 border border-blue-500/40">✓ Trợ lý AI</span>';
                 }
                 if (isParent) {
                     html += '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40">✓ Giám sát tiến trình</span>';
@@ -1486,8 +1486,8 @@ class QuizApp {
             card.type = 'button';
 
             let grad = sub.gradient || 'indigo';
-            let iconColorClass = "bg-indigo-600/30 text-indigo-300 border-indigo-500/30";
-            if (grad === 'purple') iconColorClass = "bg-purple-600/30 text-purple-300 border-purple-500/30";
+            let iconColorClass = "bg-sky-600/30 text-sky-300 border-sky-500/30";
+            if (grad === 'purple') iconColorClass = "bg-blue-600/30 text-blue-300 border-blue-500/30";
             else if (grad === 'emerald') iconColorClass = "bg-emerald-600/30 text-emerald-300 border-emerald-500/30";
             else if (grad === 'rose') iconColorClass = "bg-rose-600/30 text-rose-300 border-rose-500/30";
             else if (grad === 'amber') iconColorClass = "bg-amber-600/30 text-amber-300 border-amber-500/30";
@@ -1501,7 +1501,7 @@ class QuizApp {
                     <div class="subject-card-icon-box ${applyVt ? 'vt-subject-icon ' : ''}w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
                         <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                     </div>
-                    ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
+                    ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-sky-500/30 text-sky-200 border border-sky-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
                 </div>
                 <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
@@ -1563,7 +1563,7 @@ class QuizApp {
                             <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/35 flex items-center justify-center text-lg shrink-0 shadow-md">
                                 <i class="fa-solid fa-folder-closed"></i>
                             </div>
-                            <span class="text-[10px] px-2.5 py-1 rounded-full ${hasSelected ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/50' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'} font-bold flex items-center gap-1 shrink-0 shadow-sm">
+                            <span class="text-[10px] px-2.5 py-1 rounded-full ${hasSelected ? 'bg-sky-500/30 text-sky-200 border border-sky-400/50' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'} font-bold flex items-center gap-1 shrink-0 shadow-sm">
                                 <i class="fa-solid fa-layer-group text-[9px]"></i> ${group.items.length} đề
                             </span>
                         </div>
@@ -2722,12 +2722,12 @@ class QuizApp {
             const safeName = this.escapeHtml(name);
             card.innerHTML = `
                 <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold">
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center font-bold">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="font-mono text-purple-300 font-bold">${safeIp}</span>
+                            <span class="font-mono text-blue-300 font-bold">${safeIp}</span>
                             ${isCurrent ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">Máy của bạn</span>' : ''}
                         </div>
                         <p class="text-[11px] text-slate-400 font-medium">${safeName}</p>
@@ -3684,7 +3684,7 @@ Giải thích: Biên độ A = 5 cm.`;
         this.parsedImportQuestions.forEach((q, idx) => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-slate-900/60 transition";
-            let typeBadge = '<span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">MCQ (4 đáp án)</span>';
+            let typeBadge = '<span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold text-[10px]">MCQ (4 đáp án)</span>';
             let ansDisplay = '';
 
             // Xác định chính xác index đáp án đúng (0, 1, 2, hoặc 3)
@@ -3700,7 +3700,7 @@ Giải thích: Biên độ A = 5 cm.`;
             }
 
             if (q.qType === 'tf_group') {
-                typeBadge = '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-[10px]">Đúng/Sai (Ý)</span>';
+                typeBadge = '<span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-[10px]">Đúng/Sai (Ý)</span>';
                 ansDisplay = `
                     <div class="flex flex-col gap-1.5 min-w-[130px]">
                         ${(q.statements || []).map((st, sIdx) => {
@@ -3708,7 +3708,7 @@ Giải thích: Biên độ A = 5 cm.`;
                             const isTrue = st.answer === true;
                             return `
                                 <div class="inline-flex items-center justify-between gap-2 p-1 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
-                                    <span class="font-bold text-purple-300 text-xs px-1.5">${letter}</span>
+                                    <span class="font-bold text-blue-300 text-xs px-1.5">${letter}</span>
                                     <div class="inline-flex items-center gap-1">
                                         <button type="button" onclick="app.toggleImporterTfAnswer(${idx}, ${sIdx}, true)" 
                                             class="w-7 h-6 rounded-md text-xs font-black cursor-pointer transition flex items-center justify-center ${isTrue ? 'bg-emerald-500 text-slate-950 shadow ring-1 ring-emerald-400 font-extrabold scale-105' : 'text-slate-400 hover:text-white hover:bg-slate-800'}"
@@ -3788,7 +3788,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         return `
                             <div class="flex items-center justify-between gap-2.5 p-2 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 transition">
                                 <div class="flex items-start gap-2 flex-1 min-w-0">
-                                    <span class="font-bold text-purple-400 shrink-0">${letter})</span>
+                                    <span class="font-bold text-blue-400 shrink-0">${letter})</span>
                                     <span class="text-slate-200 leading-snug">${this.formatScientificNotation(st.text)}</span>
                                 </div>
                                 <div class="inline-flex items-center gap-1 shrink-0 p-0.5 rounded-lg bg-slate-900 border border-slate-700/80">
@@ -4075,7 +4075,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         return `
                             <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-300">
                                 <div class="flex items-start gap-2 flex-1">
-                                    <strong class="text-purple-400">${letter})</strong>
+                                    <strong class="text-blue-400">${letter})</strong>
                                     <span class="flex-1">${this.formatScientificNotation(st.text)}</span>
                                 </div>
                                 <div class="inline-flex items-center gap-1 shrink-0 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
@@ -4235,11 +4235,11 @@ Giải thích: Biên độ A = 5 cm.`;
                 </div>
                 <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-700/60">
                     <span>Thẻ: <strong class="text-slate-200">${safeSemester}</strong></span>
-                    <span>Đề: <strong class="text-indigo-400">${Number(sub.count) || 0} câu</strong></span>
+                    <span>Đề: <strong class="text-sky-400">${Number(sub.count) || 0} câu</strong></span>
                 </div>
                 <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-700/60 flex-wrap">
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <button type="button" class="js-sub-import px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Nạp nhanh đề từ file Word/PDF/Excel vào môn này">
+                        <button type="button" class="js-sub-import px-2.5 py-1.5 rounded-lg bg-sky-600/30 hover:bg-sky-600 text-sky-200 border border-sky-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Nạp nhanh đề từ file Word/PDF/Excel vào môn này">
                             <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề File
                         </button>
                         <button type="button" class="js-sub-new-q px-2.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-sm" title="Tạo thêm câu hỏi mới cho môn này">
@@ -4710,7 +4710,7 @@ Giải thích: Biên độ A = 5 cm.`;
             badge.textContent = this.isExamMode ? 'Thi đấu' : 'Luyện tập';
             badge.className = this.isExamMode
                 ? 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 hidden sm:inline-block'
-                : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block';
+                : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30 hidden sm:inline-block';
         }
         const wrongFilterBtn = document.getElementById('btn-filter-wrong');
         if (wrongFilterBtn) {
@@ -4734,7 +4734,7 @@ Giải thích: Biên độ A = 5 cm.`;
     updateSoundIcons() {
         const headerIcon = document.getElementById('header-sound-icon');
         const quizIcon = document.getElementById('quiz-sound-icon');
-        const iconClass = this.soundEnabled ? 'fa-solid fa-volume-high text-indigo-400' : 'fa-solid fa-volume-xmark text-slate-500';
+        const iconClass = this.soundEnabled ? 'fa-solid fa-volume-high text-sky-400' : 'fa-solid fa-volume-xmark text-slate-500';
 
         if (headerIcon) headerIcon.className = iconClass;
         if (quizIcon) quizIcon.className = iconClass;
@@ -5074,7 +5074,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
         const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round((wrongCount / totalBase) * 1000) / 10) : 0;
         if (okPct === 0 && badPct === 0 && percent > 0) {
-            return `<div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500" style="width:${percent}%;"></div>`;
+            return `<div class="obs-progress-fill h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-sky-500" style="width:${percent}%;"></div>`;
         }
         return `<div class="obs-progress-split">
             ${okPct > 0 ? `<div class="obs-progress-fill is-ok" style="width:${okPct}%"></div>` : ''}
@@ -5090,7 +5090,7 @@ Giải thích: Biên độ A = 5 cm.`;
             <div class="pt-2 border-t border-slate-800/70 space-y-1.5">
                 <div class="flex items-center justify-between text-[11px] text-slate-400">
                     <span class="font-semibold flex items-center gap-1.5">
-                        <i class="fa-solid fa-clock-rotate-left text-indigo-400 text-[10px]"></i>
+                        <i class="fa-solid fa-clock-rotate-left text-sky-400 text-[10px]"></i>
                         Lịch sử làm bài (${history.length} đề gần nhất)
                     </span>
                 </div>
@@ -5102,9 +5102,9 @@ Giải thích: Biên độ A = 5 cm.`;
                             ? `${att.score10.toFixed(1)}đ`
                             : `${att.answered}/${att.total || '?'} câu`;
                         const chipCls = isCurrent
-                            ? 'bg-indigo-500/20 border-indigo-400/60 text-indigo-200'
+                            ? 'bg-sky-500/20 border-sky-400/60 text-sky-200'
                             : (att.isCompleted
-                                ? 'bg-slate-950/80 border-slate-700/80 text-slate-300 hover:border-indigo-500/60 hover:text-white'
+                                ? 'bg-slate-950/80 border-slate-700/80 text-slate-300 hover:border-sky-500/60 hover:text-white'
                                 : 'bg-amber-500/10 border-amber-500/35 text-amber-300 hover:border-amber-400');
                         const latestBadge = isLatest
                             ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wide shrink-0">Mới nhất</span>`
@@ -5161,7 +5161,7 @@ Giải thích: Biên độ A = 5 cm.`;
             return `
                 <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2.5 min-w-0">
-                        <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20 shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center text-lg border border-sky-500/20 shrink-0">
                             <i class="fa-solid fa-award"></i>
                         </div>
                         <div class="min-w-0">
@@ -5169,17 +5169,17 @@ Giải thích: Biên độ A = 5 cm.`;
                             <small class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> <span class="obs-card-time">${this.escapeHtml(timeAgo)}</span></small>
                         </div>
                     </div>
-                    <span class="px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 shadow-sm">
-                        <i class="fa-solid fa-circle-check text-indigo-400 text-[10px]"></i> Đã nộp bài
+                    <span class="px-2.5 py-1 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i class="fa-solid fa-circle-check text-sky-400 text-[10px]"></i> Đã nộp bài
                     </span>
                 </div>
 
                 <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
                     <div class="flex items-center justify-between text-xs">
                         <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
-                            <i class="fa-solid fa-book-open text-indigo-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
+                            <i class="fa-solid fa-book-open text-sky-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
                         </span>
-                        <span class="font-bold text-indigo-400 shrink-0 obs-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                        <span class="font-bold text-sky-400 shrink-0 obs-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
                     </div>
                     <div class="obs-progress-track h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
                         ${this.buildObserverProgressBarHtml(p, 100)}
@@ -5196,7 +5196,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                     <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
-                    <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
+                    <span class="text-sky-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
                 </div>
             `;
         }
@@ -5221,7 +5221,7 @@ Giải thích: Biên độ A = 5 cm.`;
             <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
                 <div class="flex items-center justify-between text-xs">
                     <span class="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
-                        <i class="fa-solid fa-book-open text-indigo-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
+                        <i class="fa-solid fa-book-open text-sky-400"></i> <span class="obs-card-subject">${this.escapeHtml(p.subject)}</span>
                     </span>
                     <span class="font-bold text-cyan-400 shrink-0 obs-card-count">${p.answered}/${p.total > 0 ? p.total : 41} câu</span>
                 </div>
@@ -5240,7 +5240,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
             <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                 <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-slate-500"></i> <span class="obs-card-duration">Đã làm: ${this.escapeHtml(p.durationLabel || '—')}</span></span>
-                <span class="text-indigo-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
+                <span class="text-sky-300 font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-chart"></i> Xem chi tiết</span>
             </div>
         `;
     }
@@ -5479,7 +5479,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const questionStemHtml = qObj?.question
             ? `<div class="text-sm font-semibold text-white leading-relaxed break-words">${this.formatScientificNotation(qObj.question)}</div>`
-            : `<div class="text-xs text-slate-400 italic">${isLoadingQuestions ? '<i class="fa-solid fa-circle-notch fa-spin mr-1.5 text-indigo-400"></i>Đang tải nội dung đề bài...' : `Câu hỏi số ${idx + 1}${catLabel ? ` (${this.escapeHtml(catLabel)})` : ''} — xem lựa chọn và đáp án đúng bên dưới.`}</div>`;
+            : `<div class="text-xs text-slate-400 italic">${isLoadingQuestions ? '<i class="fa-solid fa-circle-notch fa-spin mr-1.5 text-sky-400"></i>Đang tải nội dung đề bài...' : `Câu hỏi số ${idx + 1}${catLabel ? ` (${this.escapeHtml(catLabel)})` : ''} — xem lựa chọn và đáp án đúng bên dưới.`}</div>`;
 
         const safeImgUrl = this.sanitizeMediaUrl(qObj?.image_url);
         const imgHtml = safeImgUrl ? `
@@ -5522,7 +5522,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         return `
                             <div class="p-2.5 rounded-xl border ${rowCls} flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                                 <div class="text-slate-200 leading-relaxed break-words">
-                                    <b class="text-indigo-300 mr-1">${String.fromCharCode(97 + sIdx)})</b>
+                                    <b class="text-sky-300 mr-1">${String.fromCharCode(97 + sIdx)})</b>
                                     ${st?.text ? this.formatScientificNotation(st.text) : `<span class="text-slate-400">Ý ${String.fromCharCode(97 + sIdx)}</span>`}
                                 </div>
                                 <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
@@ -5646,7 +5646,7 @@ Giải thích: Biên độ A = 5 cm.`;
             <div class="rounded-2xl bg-slate-950/75 border border-slate-800 p-3.5 sm:p-4 space-y-3">
                 <div class="flex items-center justify-between gap-2 flex-wrap">
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <span class="px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-extrabold">Câu ${idx + 1}</span>
+                        <span class="px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 text-xs font-extrabold">Câu ${idx + 1}</span>
                         <span class="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-semibold">${typeLabel}</span>
                         ${catLabel ? `<span class="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-400 border border-slate-800 text-[11px]">${this.escapeHtml(catLabel)}</span>` : ''}
                     </div>
@@ -5675,7 +5675,7 @@ Giải thích: Biên độ A = 5 cm.`;
             const idx = Number(btn.dataset.obsQIdx);
             const isActive = state.viewMode === 'single' && state.selectedIdx === idx;
             btn.classList.toggle('ring-2', isActive);
-            btn.classList.toggle('ring-indigo-400', isActive);
+            btn.classList.toggle('ring-sky-400', isActive);
             btn.classList.toggle('shadow-md', isActive);
             btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
@@ -5767,7 +5767,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 <div class="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-4 sm:p-6 space-y-4 text-slate-100">
                     <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
                         <div>
-                            <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-400">Chi tiết bài làm học sinh</p>
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-sky-400">Chi tiết bài làm học sinh</p>
                             <h3 id="obs-modal-title" class="text-lg font-bold text-white mt-0.5"></h3>
                             <p id="obs-modal-subtitle" class="text-xs text-slate-400 mt-0.5"></p>
                         </div>
@@ -5883,7 +5883,7 @@ Giải thích: Biên độ A = 5 cm.`;
             <div class="p-3 rounded-2xl bg-slate-950/75 border border-slate-800 space-y-2">
                 <div class="flex items-center justify-between gap-2">
                     <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+                        <i class="fa-solid fa-clock-rotate-left text-sky-400"></i>
                         Lịch sử bài đã làm (${history.length} đề)
                     </h4>
                     <span class="text-[11px] text-slate-400">Ấn để xem lại từng đề</span>
@@ -5898,7 +5898,7 @@ Giải thích: Biên độ A = 5 cm.`;
                         const latestBadge = isLatest
                             ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wide shrink-0">Mới nhất</span>`
                             : '';
-                        return `<button type="button" data-obs-attempt-id="${this.escapeHtml(att.id)}" class="px-2.5 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 text-xs ${isSelected ? 'bg-indigo-600/30 border-indigo-400 text-white ring-2 ring-indigo-500/40' : 'bg-slate-900/90 border-slate-700/80 hover:border-indigo-500/50 text-slate-300'}">
+                        return `<button type="button" data-obs-attempt-id="${this.escapeHtml(att.id)}" class="px-2.5 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 text-xs ${isSelected ? 'bg-sky-600/30 border-sky-400 text-white ring-2 ring-sky-500/40' : 'bg-slate-900/90 border-slate-700/80 hover:border-sky-500/50 text-slate-300'}">
                             <span class="${att.isCompleted ? 'text-emerald-400' : 'text-amber-400'} font-bold">${att.isCompleted ? '✓' : '•'}</span>
                             <span class="font-bold truncate max-w-[140px]">${this.escapeHtml(att.subject)}</span>
                             <span class="font-extrabold ${att.isCompleted ? 'text-amber-300' : 'text-cyan-300'} shrink-0">${statusText}</span>
@@ -6461,11 +6461,11 @@ Giải thích: Biên độ A = 5 cm.`;
             // Nút Hỏi AI dùng chung cho chế độ Luyện tập
             const aiButtonHtml = !this.isExamMode ? `
                 <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-950/40 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-sky-700 hover:from-blue-500 hover:to-sky-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-sky-950/40 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
+                    <span class="text-[11px] text-blue-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
                 <div id="ai-explanation-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
             ` : '';
@@ -6493,7 +6493,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
                     if (!showGrading) {
                         if (selected === oIdx) {
-                            optStyle = "bg-indigo-600/30 border-indigo-500 text-white font-bold ring-2 ring-indigo-500/50";
+                            optStyle = "bg-sky-600/30 border-sky-500 text-white font-bold ring-2 ring-sky-500/50";
                         }
                     } else if (isAnswered || this.isReviewingResult) {
                         if (oIdx === correctIdx) {
@@ -6534,7 +6534,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
-                        <span class="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold text-xs">Câu ${idx + 1} (Đúng / Sai)</span>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold text-xs">Câu ${idx + 1} (Đúng / Sai)</span>
                         <span class="text-[11px] text-slate-400">${this.escapeHtml(q.category || 'Đúng/Sai')}</span>
                     </div>
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
@@ -6549,8 +6549,8 @@ Giải thích: Biên độ A = 5 cm.`;
                     let falseBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
 
                     if (!showGrading) {
-                        if (val === true) trueBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
-                        if (val === false) falseBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
+                        if (val === true) trueBtnClass = "bg-sky-600 border-sky-500 text-white font-bold";
+                        if (val === false) falseBtnClass = "bg-sky-600 border-sky-500 text-white font-bold";
                     } else if (isAnswered) {
                         if (val === true) {
                             trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
@@ -6570,7 +6570,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     return `
                                 <div class="tf-statement-row p-2.5 sm:p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 text-xs" id="tf-row-${q.id}-${sIdx}">
                                     <div class="flex items-start gap-2 flex-1 min-w-0">
-                                        <span class="font-bold text-indigo-400 shrink-0">${String.fromCharCode(97 + sIdx)})</span>
+                                        <span class="font-bold text-sky-400 shrink-0">${String.fromCharCode(97 + sIdx)})</span>
                                         <span class="text-slate-200 font-medium leading-relaxed break-words">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -6605,7 +6605,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
                     ${imgHtml}
                     <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${this.escapeHtml(q.id)}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-indigo-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
+                        <input type="text" id="short-input-${this.escapeHtml(q.id)}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-sky-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
                         <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, this.parentElement.querySelector('.answer-text-input').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
                             <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
                             <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
@@ -6643,7 +6643,7 @@ Giải thích: Biên độ A = 5 cm.`;
             const optButtons = card.querySelectorAll('.quiz-option-tile');
             optButtons.forEach((btn, idx) => {
                 const isSelected = (idx === oIdx);
-                btn.className = `quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${isSelected ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 font-bold option-selected-user' : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:border-slate-500'}`;
+                btn.className = `quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${isSelected ? 'bg-sky-600/30 border-sky-500 text-sky-200 font-bold option-selected-user' : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:border-slate-500'}`;
             });
             return;
         }
@@ -6716,8 +6716,8 @@ Giải thích: Biên độ A = 5 cm.`;
             const choice = Boolean(isTrue);
 
             if (this.isExamMode) {
-                btnTrue.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === true ? 'is-exam-selected is-selected bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
-                btnFalse.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === false ? 'is-exam-selected is-selected bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
+                btnTrue.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === true ? 'is-exam-selected is-selected bg-sky-600 border-sky-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
+                btnFalse.className = `tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${choice === false ? 'is-exam-selected is-selected bg-sky-600 border-sky-500 text-white font-bold' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'}`;
                 btnTrue.setAttribute('aria-pressed', String(choice === true));
                 btnFalse.setAttribute('aria-pressed', String(choice === false));
             } else {
@@ -7412,11 +7412,11 @@ Giải thích: Biên độ A = 5 cm.`;
                 ${ansReview}
                 ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${this.formatScientificNotation(q.explanation)}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
-                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span>✨ Hỏi AI giải thích chi tiết</span>
                     </button>
-                    <span class="text-[11px] text-purple-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
+                    <span class="text-[11px] text-blue-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
                 <div id="ai-explanation-review-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
             `;
@@ -7899,7 +7899,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (container) {
             container.querySelectorAll('.filter-tab-btn').forEach(btn => {
                 const isActive = btn.getAttribute('data-filter') === effectiveKey;
-                btn.classList.toggle('bg-indigo-600', isActive);
+                btn.classList.toggle('bg-sky-600', isActive);
                 btn.classList.toggle('text-white', isActive);
                 btn.classList.toggle('shadow-md', isActive);
                 btn.classList.toggle('bg-slate-800', !isActive);
@@ -8040,7 +8040,7 @@ Giải thích: Biên độ A = 5 cm.`;
         container.innerHTML = tabs.map(t => {
             const isActive = t.key === activeFilter;
             const stateClass = isActive
-                ? 'bg-indigo-600 text-white shadow-md'
+                ? 'bg-sky-600 text-white shadow-md'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300';
             return `<button onclick="app.filterQuestions('${t.key}')" class="filter-tab-btn px-3 py-1 rounded-full font-semibold transition ${stateClass} cursor-pointer" data-filter="${t.key}">${t.label}</button>`;
         }).join('');
@@ -8320,12 +8320,12 @@ Giải thích: Biên độ A = 5 cm.`;
                         </div>
                         <span class="text-sm font-extrabold text-emerald-400">${activeNow.length} máy</span>
                     </div>
-                    <div class="p-3 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between">
+                    <div class="p-3 rounded-xl bg-slate-900/90 border border-sky-500/30 flex items-center justify-between">
                         <div class="flex items-center gap-2">
-                            <i class="fa-solid fa-users text-indigo-400 text-xs"></i>
+                            <i class="fa-solid fa-users text-sky-400 text-xs"></i>
                             <span class="text-xs font-semibold text-slate-300">Tổng Lượt Truy Cập:</span>
                         </div>
-                        <span class="text-sm font-extrabold text-indigo-300">${list.length}</span>
+                        <span class="text-sm font-extrabold text-sky-300">${list.length}</span>
                     </div>
                 `;
             }
@@ -8387,13 +8387,13 @@ Giải thích: Biên độ A = 5 cm.`;
                         <td class="py-2.5 px-3 text-slate-300 text-xs">${safeDevice}</td>
                         <td class="py-2.5 px-3 text-center text-slate-400 text-xs font-mono">${timeStr}</td>
                         <td class="py-2.5 px-3 text-center">
-                            <span class="px-2.5 py-1 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-200 border border-rose-500/30' : 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/30'} font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${safeScoreInfo}">
+                            <span class="px-2.5 py-1 rounded-lg ${isBanned ? 'bg-rose-500/20 text-rose-200 border border-rose-500/30' : 'bg-sky-500/20 text-sky-200 border border-sky-500/30'} font-semibold text-[11px] inline-block max-w-[220px] truncate" title="${safeScoreInfo}">
                                 ${safeScoreInfo}
                             </span>
                         </td>
                         <td class="py-2.5 px-3 text-right">
                             <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                                <button onclick="app.adminToggleStudentAiRole('${jsIp}', '${jsName}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-purple-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
+                                <button onclick="app.adminToggleStudentAiRole('${jsIp}', '${jsName}')" class="px-2.5 py-1 rounded-lg ${isAiGranted ? 'bg-blue-600/30 text-blue-200 border border-blue-500/50 hover:bg-rose-600/30' : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:bg-blue-600/30'} text-xs font-bold transition cursor-pointer" title="${isAiGranted ? 'Bấm để thu hồi quyền Trợ lý AI' : 'Bấm để cấp quyền sử dụng Trợ lý AI cho IP này'}">
                                     <i class="fa-solid fa-wand-magic-sparkles mr-1 ${isAiGranted ? 'text-amber-300' : 'text-slate-400'}"></i> ${isAiGranted ? 'Đã có AI' : 'Cấp AI'}
                                 </button>
                                 ${isBanned ? `
@@ -9069,7 +9069,7 @@ Giải thích: Biên độ A = 5 cm.`;
         targetDiv.classList.remove('hidden');
         targetDiv.setAttribute('aria-hidden', 'false');
         contentHost.innerHTML = `
-            <div class="flex items-center gap-2.5 text-purple-300 font-bold py-2">
+            <div class="flex items-center gap-2.5 text-blue-300 font-bold py-2">
                 <i class="fa-solid fa-spinner fa-spin text-base text-amber-400"></i>
                 <span>Trợ lý AI đang phân tích câu hỏi & biên soạn lời giải thích ngắn gọn, dễ hiểu...</span>
             </div>
@@ -9172,19 +9172,19 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
 
             let formattedHtml = this.formatScientificNotation(replyText)
                 .replace(/^### (.*$)/gim, '<h4 class="font-bold text-amber-300 mt-2 mb-1">$1</h4>')
-                .replace(/^## (.*$)/gim, '<h3 class="font-bold text-purple-300 mt-2 mb-1 text-sm">$1</h3>')
+                .replace(/^## (.*$)/gim, '<h3 class="font-bold text-blue-300 mt-2 mb-1 text-sm">$1</h3>')
                 .replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-300 font-bold">$1</strong>')
                 .replace(/^\* (.*$)/gim, '<li class="ml-4 list-disc text-slate-200">$1</li>')
                 .replace(/\n\n/g, '<p class="mt-1.5"></p>')
                 .replace(/\n/g, '<br>');
 
             contentHost.innerHTML = `
-                <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-500/30">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-blue-500/30">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                         <span class="font-heading font-bold text-white text-xs">Lời Giải Thích Chi Tiết Từ Trợ Lý AI (Gemini)</span>
                     </div>
-                    <button onclick="app.copyAiText(this)" class="px-2 py-0.5 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-[10px] font-semibold transition cursor-pointer flex items-center gap-1">
+                    <button onclick="app.copyAiText(this)" class="px-2 py-0.5 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white text-[10px] font-semibold transition cursor-pointer flex items-center gap-1">
                         <i class="fa-regular fa-copy"></i> Sao chép
                     </button>
                 </div>
@@ -9431,7 +9431,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                     <td class="py-2.5 px-3 text-center font-mono text-slate-300">
                         ${item.correctCount}/${item.totalCount}
                     </td>
-                    <td class="py-2.5 px-3 text-right font-mono text-indigo-300">
+                    <td class="py-2.5 px-3 text-right font-mono text-sky-300">
                         ${this.escapeHtml(String(item.timeSpent ?? '')) || '—'}
                     </td>
                 </tr>
@@ -9496,8 +9496,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         const text = document.getElementById('network-status-text');
         if (!banner || !icon || !text) return;
 
-        banner.className = `fixed top-2 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300 ${type === 'success' ? 'bg-emerald-600/90 text-white border border-emerald-400' : 'bg-slate-900/95 text-indigo-300 border border-indigo-500'}`;
-        icon.className = type === 'success' ? "fa-solid fa-circle-check text-emerald-200" : "fa-solid fa-info-circle text-indigo-300";
+        banner.className = `fixed top-2 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl text-xs font-bold transition-all duration-300 ${type === 'success' ? 'bg-emerald-600/90 text-white border border-emerald-400' : 'bg-slate-900/95 text-sky-300 border border-sky-500'}`;
+        icon.className = type === 'success' ? "fa-solid fa-circle-check text-emerald-200" : "fa-solid fa-info-circle text-sky-300";
         text.textContent = msg;
         banner.classList.remove('hidden');
         if (this.networkToastTimer) clearTimeout(this.networkToastTimer);

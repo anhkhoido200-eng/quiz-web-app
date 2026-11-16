@@ -14,10 +14,10 @@ body {
 
 body:not(.admin-body) {
     font-family: var(--font-sans);
-    background-color: #080c16;
+    background-color: #07111e;
     background-image: 
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+        radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(30, 58, 138, 0.15) 0px, transparent 50%),
         radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.10) 0px, transparent 50%);
     background-attachment: fixed;
     color: #f1f5f9;
@@ -45,7 +45,7 @@ body:not(.admin-body) {
 .quiz-question-card {
     position: relative;
     overflow: hidden;
-    background: linear-gradient(145deg, rgba(20, 28, 52, .92), rgba(11, 16, 31, .88));
+    background: linear-gradient(145deg, rgba(15, 33, 55, .92), rgba(11, 25, 44, .88));
     border: 1px solid rgba(148, 163, 184, .16);
     box-shadow: 0 18px 45px rgba(2, 6, 23, .32), inset 0 1px rgba(255, 255, 255, .07);
     scroll-margin-top: calc(var(--quiz-header-height, 120px) + 20px);
@@ -60,7 +60,7 @@ body:not(.admin-body) {
     left: 1.5rem;
     width: 4rem;
     height: 3px;
-    background: linear-gradient(90deg, #22d3ee, #a78bfa, #f472b6);
+    background: linear-gradient(90deg, #22d3ee, #38bdf8, #f472b6);
     border-radius: 0 0 999px 999px;
 }
 
@@ -118,7 +118,7 @@ body:not(.admin-body) {
     place-items: center;
     border-radius: .7rem;
     color: #cffafe;
-    background: linear-gradient(145deg, rgba(34, 211, 238, .2), rgba(129, 140, 248, .18));
+    background: linear-gradient(145deg, rgba(34, 211, 238, .2), rgba(56, 189, 248, .18));
     border: 1px solid rgba(103, 232, 249, .35);
     font-family: var(--font-heading);
     font-weight: 800;
@@ -180,11 +180,11 @@ html {
     background: rgba(11, 15, 25, 0.8);
 }
 ::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.35);
+    background: rgba(2, 132, 199, 0.35);
     border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(129, 140, 248, 0.7);
+    background: rgba(56, 189, 248, 0.7);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -203,7 +203,7 @@ html {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: .45rem;
     padding: .25rem;
-    border: 1px solid rgba(129, 140, 248, .18);
+    border: 1px solid rgba(56, 189, 248, .18);
     border-radius: 1rem;
     background: rgba(15, 23, 42, .55);
 }
@@ -238,15 +238,15 @@ html {
 
 .home-grade-tab:hover {
     color: #e0e7ff;
-    border-color: rgba(129, 140, 248, .65);
+    border-color: rgba(56, 189, 248, .65);
     transform: translateY(-1px);
 }
 
 .home-grade-tab.is-active {
     color: #fff;
-    background: linear-gradient(135deg, rgba(99, 102, 241, .85), rgba(139, 92, 246, .72));
+    background: linear-gradient(135deg, rgba(2, 132, 199, .85), rgba(56, 189, 248, .72));
     border-color: rgba(165, 180, 252, .8);
-    box-shadow: 0 8px 18px rgba(79, 70, 229, .3);
+    box-shadow: 0 8px 18px rgba(29, 78, 216, .3);
 }
 
 .home-grade-tab.is-active b {
@@ -265,7 +265,7 @@ html {
     align-items: center;
     gap: .4rem;
     padding: .48rem .72rem;
-    border: 1px solid rgba(99, 102, 241, .32);
+    border: 1px solid rgba(2, 132, 199, .32);
     border-radius: .75rem;
     background: rgba(30, 41, 59, .58);
     color: #a5b4fc;
@@ -281,8 +281,8 @@ body.light-theme .home-grade-tab {
 
 body.light-theme .home-grade-tab.is-active {
     color: #fff;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    border-color: #818cf8;
+    background: linear-gradient(135deg, #0284c7, #0284c7);
+    border-color: #38bdf8;
 }
 
 #home-semester-tabs.home-grade-tabs {
@@ -299,18 +299,18 @@ body.light-theme .home-grade-tab.is-active {
     z-index: 0;
     box-sizing: border-box;
     border-radius: 0.75rem;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.88), rgba(139, 92, 246, 0.76));
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.88), rgba(56, 189, 248, 0.76));
     border: 1px solid rgba(165, 180, 252, 0.8);
-    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.3);
+    box-shadow: 0 8px 18px rgba(29, 78, 216, 0.3);
     pointer-events: none;
     transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), width 0.28s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease;
     will-change: transform, width;
 }
 
 body.light-theme #home-semester-tabs .sliding-tab-indicator {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    border-color: #818cf8;
-    box-shadow: 0 8px 18px rgba(99, 102, 241, 0.24);
+    background: linear-gradient(135deg, #0284c7, #0284c7);
+    border-color: #38bdf8;
+    box-shadow: 0 8px 18px rgba(2, 132, 199, 0.24);
 }
 
 #home-semester-tabs .home-grade-tab {
@@ -358,9 +358,9 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 
 .glass-card-pro:hover {
     transform: translateY(-2px);
-    border-color: rgba(99, 102, 241, 0.4);
+    border-color: rgba(2, 132, 199, 0.4);
     box-shadow: 
-        0 18px 35px -8px rgba(99, 102, 241, 0.2),
+        0 18px 35px -8px rgba(2, 132, 199, 0.2),
         inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
 }
 
@@ -379,12 +379,12 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
     transform: translateY(2px) scale(0.985);
 }
 
-.btn-3d-indigo {
-    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-    box-shadow: 0 4px 0 #3730a3, 0 8px 20px -4px rgba(99, 102, 241, 0.5);
+.btn-3d-navy {
+    background: linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%);
+    box-shadow: 0 4px 0 #3730a3, 0 8px 20px -4px rgba(2, 132, 199, 0.5);
 }
-.btn-3d-indigo:active {
-    box-shadow: 0 1px 0 #3730a3, 0 4px 10px -2px rgba(99, 102, 241, 0.4);
+.btn-3d-navy:active {
+    box-shadow: 0 1px 0 #3730a3, 0 4px 10px -2px rgba(2, 132, 199, 0.4);
 }
 
 .btn-3d-emerald {
@@ -437,15 +437,15 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 }
 
 .subject-card-interactive.selected-indigo {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(79, 70, 229, 0.12));
-    border-color: #818cf8;
-    box-shadow: 0 0 25px -4px rgba(99, 102, 241, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.22), rgba(29, 78, 216, 0.12));
+    border-color: #38bdf8;
+    box-shadow: 0 0 25px -4px rgba(2, 132, 199, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .subject-card-interactive.selected-purple {
-    background: linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(147, 51, 234, 0.12));
-    border-color: #c084fc;
-    box-shadow: 0 0 25px -4px rgba(168, 85, 247, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    background: linear-gradient(135deg, rgba(30, 58, 138, 0.22), rgba(147, 51, 234, 0.12));
+    border-color: #7dd3fc;
+    box-shadow: 0 0 25px -4px rgba(30, 58, 138, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .subject-card-interactive.selected-emerald {
@@ -484,8 +484,8 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 .quiz-option-tile:hover:not(:disabled) {
     transform: translateY(-1px);
     background: rgba(30, 41, 59, 0.8);
-    border-color: rgba(129, 140, 248, 0.5);
-    box-shadow: 0 6px 15px -3px rgba(99, 102, 241, 0.2);
+    border-color: rgba(56, 189, 248, 0.5);
+    box-shadow: 0 6px 15px -3px rgba(2, 132, 199, 0.2);
 }
 
 .quiz-option-tile:active:not(:disabled) {
@@ -582,10 +582,10 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 }
 
 .tf-choice-button.is-exam-selected {
-    background: linear-gradient(135deg, rgba(99, 102, 241, .95), rgba(79, 70, 229, .86)) !important;
+    background: linear-gradient(135deg, rgba(2, 132, 199, .95), rgba(29, 78, 216, .86)) !important;
     border-color: rgba(165, 180, 252, .95) !important;
     color: #fff !important;
-    box-shadow: 0 8px 20px rgba(99, 102, 241, .24), 0 0 0 2px rgba(129, 140, 248, .12);
+    box-shadow: 0 8px 20px rgba(2, 132, 199, .24), 0 0 0 2px rgba(56, 189, 248, .12);
 }
 
 /* --- Trả lời ngắn: khóa sau khi ghi nhận và phản hồi cùng nhịp với các dạng khác --- */
@@ -602,8 +602,8 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 }
 
 .answer-text-input:focus {
-    border-color: rgba(129, 140, 248, .86);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, .14), 0 8px 20px rgba(15, 23, 42, .18);
+    border-color: rgba(56, 189, 248, .86);
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, .14), 0 8px 20px rgba(15, 23, 42, .18);
 }
 
 .answer-text-input.is-submitted {
@@ -614,13 +614,13 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 }
 
 .answer-submit-button {
-    background: linear-gradient(135deg, #6366f1, #4f46e5);
-    box-shadow: 0 7px 16px rgba(79, 70, 229, .25);
+    background: linear-gradient(135deg, #0284c7, #1d4ed8);
+    box-shadow: 0 7px 16px rgba(29, 78, 216, .25);
 }
 
 .answer-submit-button:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(79, 70, 229, .34);
+    box-shadow: 0 10px 22px rgba(29, 78, 216, .34);
 }
 
 .answer-submit-button:active:not(:disabled) {
@@ -639,7 +639,7 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
     display: grid;
     gap: .45rem;
     padding: .8rem .9rem;
-    border: 1px solid rgba(129, 140, 248, .24);
+    border: 1px solid rgba(56, 189, 248, .24);
     border-radius: .9rem;
     background: rgba(15, 23, 42, .66);
     color: #cbd5e1;
@@ -657,8 +657,8 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 }
 
 .short-answer-feedback.is-pending {
-    border-color: rgba(129, 140, 248, .42);
-    background: linear-gradient(135deg, rgba(99, 102, 241, .16), rgba(30, 27, 75, .26));
+    border-color: rgba(56, 189, 248, .42);
+    background: linear-gradient(135deg, rgba(2, 132, 199, .16), rgba(30, 27, 75, .26));
 }
 
 .short-answer-feedback-title,
@@ -693,7 +693,7 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 
 /* --- Chữ Gradient thời thượng (Trendy Gradient Text) --- */
 .gradient-text-hero {
-    background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 50%, #f472b6 100%);
+    background: linear-gradient(135deg, #a5b4fc 0%, #7dd3fc 50%, #f472b6 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -781,7 +781,7 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 /* ============================================================== */
 .ai-explanation-box {
     background: linear-gradient(135deg, rgba(88, 28, 135, 0.25), rgba(30, 27, 75, 0.45));
-    border: 1.5px solid rgba(168, 85, 247, 0.4);
+    border: 1.5px solid rgba(30, 58, 138, 0.4);
     box-shadow: 0 10px 25px -5px rgba(147, 51, 234, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     border-radius: 1.25rem;
     transition: all 0.3s ease;
@@ -812,7 +812,7 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 body.light-theme {
     background-color: #f8fafc;
     background-image: 
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.08) 0px, transparent 50%),
         radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.06) 0px, transparent 50%),
         radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
     color: #0f172a;
@@ -836,18 +836,19 @@ body.light-theme #screen-quiz > div:first-child {
     border-bottom-color: rgba(226, 232, 240, 0.9) !important;
 }
 
-body.light-theme .text-white:not(.btn-3d-emerald):not(.btn-3d-indigo):not([class*="bg-gradient-"]):not(button[class*="bg-emerald-"]):not(button[class*="bg-indigo-"]):not(button[class*="bg-rose-"]):not(button[class*="bg-sky-"]):not(button[class*="bg-purple-"]):not(button[class*="bg-amber-"]):not(a[class*="bg-gradient-"]),
+body.light-theme .text-white:not(.btn-3d-emerald):not(.btn-3d-navy):not([class*="bg-gradient-"]):not(button[class*="bg-emerald-"]):not(button[class*="bg-blue-"]):not(button[class*="bg-rose-"]):not(button[class*="bg-sky-"]):not(button[class*="bg-cyan-"]):not(button[class*="bg-amber-"]):not(a[class*="bg-gradient-"]),
 body.light-theme .text-slate-100,
 body.light-theme .text-slate-200 {
     color: #0f172a !important;
 }
 
 body.light-theme .btn-3d-emerald,
-body.light-theme .btn-3d-indigo,
+body.light-theme .btn-3d-navy,
 body.light-theme button[class*="bg-gradient-"],
 body.light-theme .tf-choice-button[class*="bg-emerald-"],
 body.light-theme .tf-choice-button[class*="bg-rose-"],
-body.light-theme .tf-choice-button[class*="bg-indigo-"] {
+body.light-theme .tf-choice-button[class*="bg-sky-"],
+body.light-theme .tf-choice-button[class*="bg-blue-"] {
     color: #ffffff !important;
 }
 
@@ -968,7 +969,7 @@ body.light-theme .quiz-option-tile {
 
 body.light-theme .quiz-option-tile:hover:not(:disabled) {
     background: #f1f5f9;
-    border-color: rgba(99, 102, 241, 0.6);
+    border-color: rgba(2, 132, 199, 0.6);
 }
 
 body.light-theme .subject-card-interactive {
@@ -982,8 +983,8 @@ body.light-theme .subject-card-interactive:hover {
 
 body.light-theme .ai-explanation-box {
     background: linear-gradient(135deg, rgba(243, 232, 255, 0.9), rgba(238, 242, 255, 0.95));
-    border-color: rgba(168, 85, 247, 0.5);
-    box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.15);
+    border-color: rgba(30, 58, 138, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.15);
     color: #1e1b4b;
 }
 
@@ -1096,7 +1097,7 @@ body.light-theme footer {
 .quiz-option-tile:hover:not(:disabled) {
     transform: translateY(-2px);
     border-color: rgba(165, 180, 252, .72);
-    box-shadow: 0 9px 22px rgba(15, 23, 42, .24), 0 0 0 1px rgba(129, 140, 248, .08);
+    box-shadow: 0 9px 22px rgba(15, 23, 42, .24), 0 0 0 1px rgba(56, 189, 248, .08);
 }
 
 .quiz-option-tile:active:not(:disabled) {
@@ -1104,7 +1105,7 @@ body.light-theme footer {
 }
 
 .quiz-option-tile:focus-visible {
-    outline: 2px solid rgba(129, 140, 248, .85);
+    outline: 2px solid rgba(56, 189, 248, .85);
     outline-offset: 2px;
 }
 
@@ -1261,7 +1262,7 @@ body.light-theme .quiz-sticky-header {
     overflow: visible;
     transition: width 0.16s ease-out !important;
     will-change: width;
-    box-shadow: 0 0 14px rgba(99, 102, 241, .6);
+    box-shadow: 0 0 14px rgba(2, 132, 199, .6);
 }
 
 .quiz-progress-bar::after {
@@ -1387,15 +1388,15 @@ body.admin-body.dark {
     --line: rgba(148, 163, 184, 0.14);
     --text: #f1f5f9;
     --muted: #94a3b8;
-    --primary: #6366f1;
-    --primary-2: #8b5cf6;
-    --primary-soft: rgba(99, 102, 241, 0.16);
+    --primary: #0284c7;
+    --primary-2: #0284c7;
+    --primary-soft: rgba(2, 132, 199, 0.16);
     --red: #ef4444;
     --green: #10b981;
     --cyan: #06b6d4;
     --orange: #f59e0b;
     --shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5);
-    background: radial-gradient(circle at 80% -10%, rgba(99, 102, 241, 0.14) 0, transparent 35%), var(--bg);
+    background: radial-gradient(circle at 80% -10%, rgba(2, 132, 199, 0.14) 0, transparent 35%), var(--bg);
     color: var(--text);
 }
 
@@ -1410,8 +1411,8 @@ body.admin-body.dark {
 
 .stat-grid .metric-card:hover {
     transform: translateY(-2px);
-    border-color: rgba(139, 92, 246, 0.45);
-    box-shadow: 0 14px 32px -6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 92, 246, 0.18);
+    border-color: rgba(56, 189, 248, 0.45);
+    box-shadow: 0 14px 32px -6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18);
 }
 
 .stat-grid .metric-card.metric-green:hover {
@@ -1525,7 +1526,7 @@ body.dark .maintenance-toggle-label.is-active {
 }
 
 .maintenance-message-preview:hover {
-    border-color: rgba(129, 140, 248, 0.45);
+    border-color: rgba(56, 189, 248, 0.45);
 }
 
 .maintenance-panel.is-locked .maintenance-message-preview {
@@ -1670,8 +1671,8 @@ body.dark .maintenance-toggle-label.is-active {
 
 .ip-copy-btn:hover {
     color: var(--text);
-    border-color: rgba(129, 140, 248, 0.45);
-    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(2, 132, 199, 0.15);
 }
 
 .ip-copy-btn.is-copied {
@@ -1704,7 +1705,7 @@ body.dark .maintenance-toggle-label.is-active {
 
 .shortcut:hover {
     transform: translateY(-2px);
-    border-color: rgba(129, 140, 248, 0.42);
+    border-color: rgba(56, 189, 248, 0.42);
     box-shadow: 0 12px 26px -6px rgba(0, 0, 0, 0.42);
 }
 
@@ -1873,14 +1874,14 @@ body.light-theme #badge-all-correct-result {
    ========================================================================= */
 
 /* 1. Hiệu ứng ánh sáng lướt (Shimmer Swipe) cho nút Bắt đầu & Nộp bài */
-.btn-3d-indigo,
+.btn-3d-navy,
 .btn-3d-emerald {
     position: relative;
     overflow: hidden;
     isolation: isolate;
 }
 
-.btn-3d-indigo::before,
+.btn-3d-navy::before,
 .btn-3d-emerald::before {
     content: "";
     position: absolute;
@@ -1900,7 +1901,7 @@ body.light-theme #badge-all-correct-result {
     pointer-events: none;
 }
 
-.btn-3d-indigo:hover::before,
+.btn-3d-navy:hover::before,
 .btn-3d-emerald:hover::before {
     left: 160%;
 }
@@ -1918,7 +1919,7 @@ body.light-theme #badge-all-correct-result {
     inset: 0;
     border-radius: inherit;
     padding: 1.5px;
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.6), rgba(129, 140, 248, 0.6));
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.6), rgba(56, 189, 248, 0.6));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -1932,7 +1933,7 @@ body.light-theme #badge-all-correct-result {
 }
 
 .quiz-option-tile:hover:not(:disabled) .quiz-option-letter {
-    background: linear-gradient(135deg, #38bdf8, #6366f1);
+    background: linear-gradient(135deg, #38bdf8, #0284c7);
     color: #ffffff;
     border-color: transparent;
     box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
@@ -1946,26 +1947,26 @@ body.light-theme #badge-all-correct-result {
 }
 
 .tf-choice-button:not(:disabled):hover {
-    border-color: rgba(129, 140, 248, 0.8);
-    box-shadow: 0 0 14px rgba(99, 102, 241, 0.25);
+    border-color: rgba(56, 189, 248, 0.8);
+    box-shadow: 0 0 14px rgba(2, 132, 199, 0.25);
 }
 
 /* 4. Hiệu ứng nút Hỏi AI giải thích (Viền Gradient chuyển động nhẹ) */
 button[id^="ai-btn-"] {
     position: relative;
     border: 1px solid rgba(192, 132, 252, 0.45);
-    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.28);
+    box-shadow: 0 4px 15px rgba(29, 78, 216, 0.28);
     transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.18s ease;
 }
 
 button[id^="ai-btn-"]:hover:not(:disabled) {
     border-color: #e879f9;
-    box-shadow: 0 6px 22px rgba(168, 85, 247, 0.48), 0 0 0 2px rgba(192, 132, 252, 0.18);
+    box-shadow: 0 6px 22px rgba(30, 58, 138, 0.48), 0 0 0 2px rgba(192, 132, 252, 0.18);
 }
 
 /* 5. Tối ưu cho chế độ giảm chuyển động & Mobile */
 @media (prefers-reduced-motion: reduce), (hover: none) and (pointer: coarse) {
-    .btn-3d-indigo::before,
+    .btn-3d-navy::before,
     .btn-3d-emerald::before,
     .quiz-option-tile::before,
     .subject-card-interactive::after {
@@ -1989,7 +1990,7 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
     inset: 0;
     border-radius: inherit;
     padding: 1.5px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.7), rgba(34, 211, 238, 0.7), rgba(168, 85, 247, 0.5));
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.7), rgba(34, 211, 238, 0.7), rgba(30, 58, 138, 0.5));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -2005,7 +2006,7 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
 /* 2. Thanh tiến trình có đầu sáng Laser tinh tế */
 #quiz-progress-bar {
     position: relative;
-    background: linear-gradient(90deg, #6366f1 0%, #38bdf8 60%, #34d399 100%);
+    background: linear-gradient(90deg, #0284c7 0%, #38bdf8 60%, #34d399 100%);
 }
 
 #quiz-progress-bar::before {
@@ -2018,7 +2019,7 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
     height: 8px;
     border-radius: 50%;
     background: #ffffff;
-    box-shadow: 0 0 10px 2px #38bdf8, 0 0 18px 4px rgba(99, 102, 241, 0.8);
+    box-shadow: 0 0 10px 2px #38bdf8, 0 0 18px 4px rgba(2, 132, 199, 0.8);
 }
 
 /* 3. Khung giải thích AI có dải nhấn Gradient sang trọng */
@@ -2035,7 +2036,7 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
     left: 0;
     width: 4px;
     height: 100%;
-    background: linear-gradient(180deg, #a855f7, #6366f1, #22d3ee);
+    background: linear-gradient(180deg, #0284c7, #0284c7, #22d3ee);
 }
 
 @keyframes aiCardReveal {
@@ -2176,8 +2177,8 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
     width: 1.65rem;
     height: 1.65rem;
     border-radius: 9999px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(168, 85, 247, 0.24));
-    border: 1px solid rgba(129, 140, 248, 0.42);
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.24), rgba(30, 58, 138, 0.24));
+    border: 1px solid rgba(56, 189, 248, 0.42);
     color: #a5b4fc;
     font-size: 0.85rem;
     flex-shrink: 0;
@@ -2191,16 +2192,16 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
 body.light-theme .workspace-transition-badge,
 body.admin-body:not(.dark) .workspace-transition-badge {
     background: rgba(255, 255, 255, 0.94);
-    border-color: rgba(99, 102, 241, 0.22);
+    border-color: rgba(2, 132, 199, 0.22);
     box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.95);
     color: #0f172a;
 }
 
 body.light-theme .workspace-transition-spinner,
 body.admin-body:not(.dark) .workspace-transition-spinner {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(139, 92, 246, 0.16));
-    border-color: rgba(99, 102, 241, 0.3);
-    color: #4f46e5;
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.14), rgba(56, 189, 248, 0.16));
+    border-color: rgba(2, 132, 199, 0.3);
+    color: #1d4ed8;
 }
 
 body.workspace-leaving {
@@ -2444,5 +2445,145 @@ span:has(> .timer-critical-pulse) {
     select,
     .answer-text-input {
         font-size: 16px !important;
+    }
+}
+
+/* ==========================================================================
+   NAVY + WARM CREAM (KEM) THEME OVERRIDES & SMOOTH UI MOTION
+   ========================================================================== */
+body:not(.admin-body) {
+    background-color: #0b192c;
+    background-image:
+        radial-gradient(at 0% 0%, rgba(29, 78, 216, 0.18) 0px, transparent 52%),
+        radial-gradient(at 100% 0%, rgba(234, 219, 196, 0.08) 0px, transparent 48%),
+        radial-gradient(at 50% 100%, rgba(2, 132, 199, 0.12) 0px, transparent 52%);
+}
+
+.glass-panel-pro {
+    background: linear-gradient(155deg, rgba(17, 34, 58, 0.94), rgba(11, 25, 44, 0.96));
+    border: 1px solid rgba(234, 219, 196, 0.18);
+    box-shadow: 0 24px 60px -15px rgba(2, 8, 23, 0.72), inset 0 1px 0 rgba(251, 248, 243, 0.1);
+}
+
+.glass-card-pro {
+    background: linear-gradient(155deg, rgba(23, 45, 75, 0.85), rgba(11, 25, 44, 0.92));
+    border: 1px solid rgba(214, 195, 165, 0.18);
+}
+
+.gradient-text-hero {
+    background: linear-gradient(135deg, #fbf8f3 0%, #eadbc4 48%, #38bdf8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+body.light-theme:not(.admin-body) {
+    background-color: #fbf8f3 !important;
+    background-image:
+        radial-gradient(at 0% 0%, rgba(30, 58, 138, 0.07) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(214, 195, 165, 0.25) 0px, transparent 50%) !important;
+    color: #0b192c !important;
+}
+
+body.light-theme .glass-panel-pro,
+body.light-theme .glass-card-pro,
+body.light-theme .quiz-question-card {
+    background: linear-gradient(160deg, #ffffff 0%, #f5ede0 100%) !important;
+    border-color: #d6c3a5 !important;
+    color: #0b192c !important;
+}
+
+body.light-theme .gradient-text-hero {
+    background: linear-gradient(135deg, #0b192c 0%, #1e3a8a 60%, #0284c7 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.btn-3d-navy {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 55%, #0284c7 100%);
+    border-bottom: 3px solid #0b192c;
+    box-shadow: 0 10px 25px -8px rgba(29, 78, 216, 0.45), inset 0 1px 0 rgba(251, 248, 243, 0.22);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-3d-navy::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, 0.2) 50%, transparent 75%);
+    transform: translateX(-120%);
+    transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+}
+
+.btn-3d-navy:hover::after {
+    transform: translateX(120%);
+}
+
+.btn-3d-navy:active {
+    transform: translateY(1px) scale(0.99);
+}
+
+@keyframes navyOrbitSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes navyFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+}
+
+@keyframes navyPulseDot {
+    0%, 100% { opacity: 0.45; transform: scale(0.92); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+.navy-orbit-ring {
+    transform-origin: 60px 36px;
+    animation: navyOrbitSpin 18s linear infinite;
+}
+
+.navy-orbit-ring-rev {
+    transform-origin: 60px 36px;
+    animation: navyOrbitSpin 13s linear infinite reverse;
+}
+
+.navy-float-core {
+    animation: navyFloat 4s ease-in-out infinite;
+}
+
+.navy-pulse-dot {
+    transform-origin: center;
+    animation: navyPulseDot 2.8s ease-in-out infinite;
+}
+
+.navy-pulse-dot-delay {
+    transform-origin: center;
+    animation: navyPulseDot 2.8s ease-in-out 1.4s infinite;
+}
+
+.quiz-option-tile {
+    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.quiz-option-tile:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -10px rgba(56, 189, 248, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .navy-orbit-ring,
+    .navy-orbit-ring-rev,
+    .navy-float-core,
+    .navy-pulse-dot,
+    .navy-pulse-dot-delay {
+        animation: none !important;
+    }
+    .btn-3d-navy::after,
+    .quiz-option-tile {
+        transition: none !important;
     }
 }

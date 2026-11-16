@@ -984,7 +984,7 @@
         const style = document.createElement('style');
         style.id = 'question-type-runtime-style';
         style.textContent = `
-            #dynamic-type-editor{margin-bottom:14px}.type-note,.field-note{font-size:10px;color:var(--muted);line-height:1.5;margin:5px 0 12px}.field-note i{color:var(--primary);margin-right:4px}.tf-editor-grid{display:grid;gap:8px}.tf-answer-field{display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;gap:6px;align-items:center;margin:0}.tf-answer-field>b{color:var(--primary);font-size:12px}.tf-answer-field input{margin:0}.tf-choice{border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:8px;padding:7px 8px;font-size:10px;font-weight:700}.tf-choice.is-selected[data-value="true"]{color:#078256;background:#def9eb;border-color:#86efac}.tf-choice.is-selected[data-value="false"]{color:#d73840;background:#ffe7e8;border-color:#fca5a5}.type-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border-radius:7px;font-size:9px;font-weight:800;background:#eeedff;color:var(--primary)}.type-chip.tf{background:#fff0e5;color:#bd6310}.type-chip.short{background:#def9eb;color:#078256}.tf-preview-list{display:grid;gap:8px}.tf-preview-row{display:grid;grid-template-columns:25px minmax(0,1fr) auto;gap:8px;align-items:start;padding:9px;border:1px solid #e1e5f0;background:#fff;border-radius:10px;font-size:11px}.tf-preview-row>b{color:var(--primary)}.tf-preview-answer{font-size:9px;font-weight:800;padding:4px 6px;border-radius:6px;background:#def9eb;color:#078256}.tf-preview-answer.false{background:#ffe7e8;color:#d73840}.short-preview-input{width:100%;border:1px dashed #bdb7ff;background:#fff;border-radius:10px;padding:12px;color:#8994a8;font-size:11px}.ai-review{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}.ai-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.ai-review-list{display:flex;gap:5px;overflow:auto;padding:10px 0}.ai-review-index{border:1px solid var(--line);background:var(--surface-2);border-radius:7px;padding:6px 8px;font-size:10px;font-weight:800;color:var(--muted)}.ai-review-index.is-active{background:var(--primary);color:#fff;border-color:var(--primary)}.ai-review-question{border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:12px;font-size:11px;line-height:1.55}.strict-warning{display:flex;gap:7px;padding:9px;border:1px solid #f8db8b;background:#fff9e8;color:#9a6400;border-radius:9px;font-size:10px;line-height:1.45;margin-top:10px}.question-item .item-statements{display:grid;gap:4px;margin-top:5px}.question-item .item-statement{font-size:10px;color:var(--muted);padding:5px 7px;background:var(--surface-2);border-radius:6px}.question-item .item-statement b{color:var(--primary);margin-right:4px}.type-filter-note{font-size:10px;color:var(--muted)}
+            #dynamic-type-editor{margin-bottom:14px}.type-note,.field-note{font-size:10px;color:var(--muted);line-height:1.5;margin:5px 0 12px}.field-note i{color:var(--primary);margin-right:4px}.tf-editor-grid{display:grid;gap:8px}.tf-answer-field{display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;gap:6px;align-items:center;margin:0}.tf-answer-field>b{color:var(--primary);font-size:12px}.tf-answer-field input{margin:0}.tf-choice{border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:8px;padding:7px 8px;font-size:10px;font-weight:700}.tf-choice.is-selected[data-value="true"]{color:#078256;background:#def9eb;border-color:#86efac}.tf-choice.is-selected[data-value="false"]{color:#d73840;background:#ffe7e8;border-color:#fca5a5}.type-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border-radius:7px;font-size:9px;font-weight:800;background:#e0f2fe;color:var(--primary)}.type-chip.tf{background:#fff0e5;color:#bd6310}.type-chip.short{background:#def9eb;color:#078256}.tf-preview-list{display:grid;gap:8px}.tf-preview-row{display:grid;grid-template-columns:25px minmax(0,1fr) auto;gap:8px;align-items:start;padding:9px;border:1px solid #e1e5f0;background:#fff;border-radius:10px;font-size:11px}.tf-preview-row>b{color:var(--primary)}.tf-preview-answer{font-size:9px;font-weight:800;padding:4px 6px;border-radius:6px;background:#def9eb;color:#078256}.tf-preview-answer.false{background:#ffe7e8;color:#d73840}.short-preview-input{width:100%;border:1px dashed #7dd3fc;background:#fff;border-radius:10px;padding:12px;color:#8994a8;font-size:11px}.ai-review{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}.ai-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.ai-review-list{display:flex;gap:5px;overflow:auto;padding:10px 0}.ai-review-index{border:1px solid var(--line);background:var(--surface-2);border-radius:7px;padding:6px 8px;font-size:10px;font-weight:800;color:var(--muted)}.ai-review-index.is-active{background:var(--primary);color:#fff;border-color:var(--primary)}.ai-review-question{border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:12px;font-size:11px;line-height:1.55}.strict-warning{display:flex;gap:7px;padding:9px;border:1px solid #f8db8b;background:#fff9e8;color:#9a6400;border-radius:9px;font-size:10px;line-height:1.45;margin-top:10px}.question-item .item-statements{display:grid;gap:4px;margin-top:5px}.question-item .item-statement{font-size:10px;color:var(--muted);padding:5px 7px;background:var(--surface-2);border-radius:6px}.question-item .item-statement b{color:var(--primary);margin-right:4px}.type-filter-note{font-size:10px;color:var(--muted)}
         `;
         document.head.appendChild(style);
     }
@@ -3505,10 +3505,10 @@
 
                     const aiStatusHtml = hasAi
                         ? `<div style="display:inline-flex;align-items:center;gap:4px;">
-                               <span class="status-badge" style="background:rgba(168,85,247,0.15);color:#c084fc;font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Đã có AI</span>
+                               <span class="status-badge" style="background:rgba(56,189,248,0.16);color:#38bdf8;font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Đã có AI</span>
                                <button type="button" class="button button-sm button-secondary compact" data-toggle-ai="${esc(item.token)}" title="Tắt quyền AI (vẫn giữ Lớp 5)" style="font-size:10px;padding:2px 6px;color:var(--muted);"><i class="fa-solid fa-xmark"></i> Tắt AI</button>
                            </div>`
-                        : `<button type="button" class="button button-sm button-secondary compact" data-toggle-ai="${esc(item.token)}" title="Cấp thêm Trợ lý AI cho học sinh này (dùng chung mã/IP)" style="font-size:11px;color:#c084fc;border-color:rgba(168,85,247,0.3);padding:3px 8px;">
+                        : `<button type="button" class="button button-sm button-secondary compact" data-toggle-ai="${esc(item.token)}" title="Cấp thêm Trợ lý AI cho học sinh này (dùng chung mã/IP)" style="font-size:11px;color:#38bdf8;border-color:rgba(168,85,247,0.3);padding:3px 8px;">
                                <i class="fa-solid fa-wand-magic-sparkles"></i> + Cấp thêm AI
                            </button>`;
 
@@ -3584,7 +3584,7 @@
                         <tr>
                             <td>
                                 <div style="display:flex;align-items:center;gap:8px;">
-                                    <span class="stack-item-icon" style="color:#c084fc;background:var(--surface-3);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
+                                    <span class="stack-item-icon" style="color:#38bdf8;background:var(--surface-3);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
                                         <i class="fa-solid fa-robot"></i>
                                     </span>
                                     <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Học sinh')}</b>
@@ -3592,7 +3592,7 @@
                             </td>
                             <td>
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                                    <code style="font-weight:700;color:#c084fc;cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                    <code style="font-weight:700;color:#38bdf8;cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
                                     <button type="button" class="button button-sm button-secondary compact" data-copy-token-link="${esc(item.token)}" data-token-name="${esc(item.name || '')}" style="font-size:10px;padding:3px 7px;">
                                         <i class="fa-solid fa-link"></i> Link
                                     </button>
@@ -4777,7 +4777,7 @@
     function resetSubjectForm() {
         ['subject-name-input', 'subject-key-input', 'subject-semester-input', 'subject-folder-input'].forEach((id) => { if ($(id)) $(id).value = ''; });
         if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book';
-        if ($('subject-gradient-input')) $('subject-gradient-input').value = 'indigo';
+        if ($('subject-gradient-input')) $('subject-gradient-input').value = 'navy';
         if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC';
         setSubjectGrade('11');
         setSubjectMode('practice');
@@ -4801,7 +4801,7 @@
             $('subject-semester-input').value = subject.semester || '';
             if ($('subject-folder-input')) $('subject-folder-input').value = subject.folder || subject.group || '';
             $('subject-icon-input').value = subject.icon || 'fa-book';
-            $('subject-gradient-input').value = subject.gradient || 'indigo';
+            $('subject-gradient-input').value = subject.gradient || 'navy';
             $('subject-visibility-input').value = subject.visibility || 'PUBLIC';
             setSubjectGrade(subjectGrade(subject));
             setSubjectMode(subject.mode || 'practice');
@@ -4981,7 +4981,7 @@
         const key = $('subject-key-input')?.value.trim();
         const name = $('subject-name-input')?.value.trim();
         if (!key || !name) return notify('Nhập tên và mã môn học.', true);
-        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', folder: $('subject-folder-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'indigo', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
+        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', folder: $('subject-folder-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'navy', visibility: $('subject-visibility-input')?.value || 'PUBLIC' };
         const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
         const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
         if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
@@ -5317,7 +5317,7 @@
         $('student-count') && ($('student-count').textContent = `${rows.length} phiên`);
         $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
 
-        const nextStatsHtml = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#eeedff" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${banned.length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`;
+        const nextStatsHtml = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#e0f2fe" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${banned.length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`;
         if ($('monitor-stats') && state.lastMonitorStatsHtml !== nextStatsHtml) {
             state.lastMonitorStatsHtml = nextStatsHtml;
             $('monitor-stats').innerHTML = nextStatsHtml;
@@ -5719,7 +5719,7 @@
         const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
         const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round(((p.wrong || 0) / totalBase) * 1000) / 10) : 0;
         if (okPct === 0 && badPct === 0 && percent > 0) {
-            return `<div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #6366f1 100%);border-radius:99px;"></div>`;
+            return `<div class="g5-progress-fill" style="width:${percent}%;height:100%;background:linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #0284c7 100%);border-radius:99px;"></div>`;
         }
         return `<div class="g5-progress-split">
             ${okPct > 0 ? `<div class="g5-progress-fill is-ok" style="width:${okPct}%" title="Đúng: ${p.correct}"></div>` : ''}
