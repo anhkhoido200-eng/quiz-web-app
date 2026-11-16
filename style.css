@@ -691,10 +691,12 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
     to { opacity: 1; transform: scale(1); }
 }
 
-/* --- Chữ Gradient thời thượng (Trendy Gradient Text) --- */
+/* --- Tiêu đề nổi bật (Navy + Warm Cream) --- */
 .gradient-text-hero {
-    background: linear-gradient(135deg, #a5b4fc 0%, #7dd3fc 50%, #f472b6 100%);
+    color: #fbf8f3;
+    background: linear-gradient(135deg, #fbf8f3 0%, #f5ede0 52%, #bae6fd 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -2575,59 +2577,85 @@ body.light-theme .gradient-text-hero {
     box-shadow: 0 8px 20px -10px rgba(56, 189, 248, 0.35);
 }
 
-/* Floating knowledge & academic background motifs */
-.floating-motif {
-    position: absolute;
-    opacity: 0.32;
-    filter: drop-shadow(0 8px 18px rgba(7, 17, 30, 0.45));
+/* Chalkboard / Blueprint Scientific Formulas Background */
+.chalkboard-bg {
+    opacity: 0.28;
+    transition: opacity 0.3s ease;
+}
+
+.chalk-group {
+    opacity: 0.85;
+}
+
+.chalk-formulas {
+    opacity: 0.78;
+}
+
+.chalk-draw {
+    stroke-dasharray: 280;
+    stroke-dashoffset: 0;
+    animation: chalkTrace 10s ease-in-out infinite alternate;
+}
+
+.chalk-draw-slow {
+    stroke-dasharray: 340;
+    stroke-dashoffset: 0;
+    animation: chalkTrace 15s ease-in-out infinite alternate;
+}
+
+.chalk-drift-a {
+    animation: floatDriftA 18s ease-in-out infinite;
     will-change: transform;
 }
 
-.floating-formula {
-    position: absolute;
-    padding: 0.35rem 0.75rem;
-    border-radius: 9999px;
-    background: rgba(17, 34, 58, 0.55);
-    border: 1px solid rgba(234, 219, 196, 0.22);
-    color: rgba(245, 237, 224, 0.65);
-    font-family: "Be Vietnam Pro", ui-monospace, SFMono-Regular, monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    backdrop-filter: blur(4px);
+.chalk-drift-b {
+    animation: floatDriftB 20s ease-in-out infinite;
     will-change: transform;
 }
 
-body.light-theme .floating-motif {
-    opacity: 0.24;
-    filter: none;
+.chalk-drift-c {
+    animation: floatDriftC 22s ease-in-out infinite;
+    will-change: transform;
 }
 
-body.light-theme .floating-formula {
-    background: rgba(255, 255, 255, 0.75);
-    border-color: rgba(30, 58, 138, 0.2);
-    color: rgba(30, 58, 138, 0.75);
+body.light-theme .chalkboard-bg {
+    opacity: 0.14;
+}
+
+body.light-theme .chalk-group,
+body.light-theme .chalk-group path,
+body.light-theme .chalk-group line,
+body.light-theme .chalk-group circle,
+body.light-theme .chalk-group ellipse,
+body.light-theme .chalk-group rect,
+body.light-theme .chalk-group polygon {
+    stroke: #1e3a8a;
+}
+
+body.light-theme .chalk-formulas text {
+    fill: #1e3a8a;
+}
+
+@keyframes chalkTrace {
+    0% { stroke-dashoffset: 45; opacity: 0.55; }
+    50% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: -30; opacity: 0.7; }
 }
 
 @keyframes floatDriftA {
-    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(-3deg); }
-    50% { transform: translate3d(8px, -16px, 0) rotate(4deg); }
+    0%, 100% { transform: translate3d(0px, 0px, 0); }
+    50% { transform: translate3d(6px, -10px, 0); }
 }
 
 @keyframes floatDriftB {
-    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(3deg); }
-    50% { transform: translate3d(-10px, 14px, 0) rotate(-4deg); }
+    0%, 100% { transform: translate3d(0px, 0px, 0); }
+    50% { transform: translate3d(-8px, 10px, 0); }
 }
 
 @keyframes floatDriftC {
-    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(0deg); }
-    33% { transform: translate3d(9px, 10px, 0) rotate(5deg); }
-    66% { transform: translate3d(-7px, -12px, 0) rotate(-3deg); }
+    0%, 100% { transform: translate3d(0px, 0px, 0); }
+    50% { transform: translate3d(5px, 8px, 0); }
 }
-
-.motif-a { animation: floatDriftA 11s ease-in-out infinite; }
-.motif-b { animation: floatDriftB 14s ease-in-out infinite; }
-.motif-c { animation: floatDriftC 16s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
     .navy-orbit-ring,
@@ -2635,9 +2663,11 @@ body.light-theme .floating-formula {
     .navy-float-core,
     .navy-pulse-dot,
     .navy-pulse-dot-delay,
-    .motif-a,
-    .motif-b,
-    .motif-c {
+    .chalk-draw,
+    .chalk-draw-slow,
+    .chalk-drift-a,
+    .chalk-drift-b,
+    .chalk-drift-c {
         animation: none !important;
     }
     .btn-3d-navy::after,
