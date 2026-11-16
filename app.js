@@ -9610,3 +9610,207 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
 
 // Khởi tạo ứng dụng toàn cục
 window.app = new QuizApp();
+
+// Hiệu ứng bảng phấn khoa học trôi lơ lửng kiểu không trọng lực (Toán - Lý - Hóa)
+(function initSpaceChalkboard() {
+    const canvas = document.getElementById('space-chalk-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const formulas = [
+        'E = mc²', 'a² + b² = c²', 'iℏ ∂Ψ/∂t = ĤΨ', '2H₂ + O₂ → 2H₂O',
+        'pV = nRT', 'Δ = b² - 4ac', 'F = G·m₁m₂/r²', '∫ e⁻ᵃˣ² dx',
+        'H₂SO₄', 'CH₃COOH + NaOH', '∇ × E = -∂B/∂t', 'e^(iπ) + 1 = 0',
+        'sin²α + cos²α = 1', 'U = I · R', 'pH = -log[H⁺]', 'λ = v / f',
+        'E_đ = ½mv²', 'C₆H₁₂O₆', '∮ B · dl = μ₀I', '√2/4 × 4/5',
+        'π = 3.14159...', 'Fe + 2HCl → FeCl₂', 'Q = mcΔT', 'x² + y² = 1',
+        '1/2 · 3/5', 'NH₃ + HCl', 'v² - v₀² = 2as', 'r = d / 2',
+        '1s² 2s² 2p⁶', 'lim (1+1/n)ⁿ = e', 'CH₂OH', 'P = U·I·cosφ'
+    ];
+    const shapes = ['atom', 'benzene', 'flask', 'cube', 'cone', 'triangle', 'wave', 'book', 'graph', 'ruler'];
+
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let particles = [];
+    let rafId = 0;
+
+    function createParticles() {
+        const count = width < 640 ? 32 : 56;
+        particles = [];
+        for (let i = 0; i < count; i++) {
+            const isFormula = i % 3 !== 0;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.16 + Math.random() * 0.36;
+            particles.push({
+                kind: isFormula ? 'formula' : 'shape',
+                text: formulas[i % formulas.length],
+                shape: shapes[i % shapes.length],
+                x: Math.random() * width,
+                y: Math.random() * height,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                rot: (Math.random() - 0.5) * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.0045,
+                scale: 0.72 + Math.random() * 0.56,
+                alpha: 0.17 + Math.random() * 0.25,
+                tint: i % 2 === 0 ? 'cream' : 'sky'
+            });
+        }
+    }
+
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (!particles.length) createParticles();
+    }
+
+    function drawShape(type) {
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        switch (type) {
+            case 'atom':
+                for (let a = 0; a < 3; a++) {
+                    ctx.save();
+                    ctx.rotate((a * Math.PI) / 3);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 24, 9, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                ctx.beginPath();
+                ctx.arc(0, 0, 3, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case 'benzene':
+                ctx.beginPath();
+                for (let k = 0; k < 6; k++) {
+                    const ang = (k * Math.PI) / 3;
+                    const px = Math.cos(ang) * 18;
+                    const py = Math.sin(ang) * 18;
+                    if (k === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.stroke();
+                break;
+            case 'flask':
+                ctx.beginPath();
+                ctx.moveTo(-6, -20); ctx.lineTo(6, -20);
+                ctx.moveTo(-4, -20); ctx.lineTo(-4, -8); ctx.lineTo(-18, 16);
+                ctx.lineTo(18, 16); ctx.lineTo(4, -8); ctx.lineTo(4, -20);
+                ctx.moveTo(-12, 7); ctx.lineTo(12, 7);
+                ctx.stroke();
+                break;
+            case 'cube':
+                ctx.strokeRect(-14, -10, 20, 20);
+                ctx.strokeRect(-6, -18, 20, 20);
+                ctx.beginPath();
+                ctx.moveTo(-14, -10); ctx.lineTo(-6, -18);
+                ctx.moveTo(6, -10); ctx.lineTo(14, -18);
+                ctx.moveTo(-14, 10); ctx.lineTo(-6, 2);
+                ctx.moveTo(6, 10); ctx.lineTo(14, 2);
+                ctx.stroke();
+                break;
+            case 'cone':
+                ctx.beginPath();
+                ctx.ellipse(0, 12, 16, 5, 0, 0, Math.PI * 2);
+                ctx.moveTo(-16, 12); ctx.lineTo(0, -18); ctx.lineTo(16, 12);
+                ctx.stroke();
+                break;
+            case 'triangle':
+                ctx.beginPath();
+                ctx.moveTo(-18, 14); ctx.lineTo(0, -18); ctx.lineTo(18, 14); ctx.closePath();
+                ctx.moveTo(0, -18); ctx.lineTo(-4, 14);
+                ctx.stroke();
+                break;
+            case 'wave':
+                ctx.beginPath();
+                for (let x = -24; x <= 24; x += 2) {
+                    const y = Math.sin(x * 0.22) * 8;
+                    if (x === -24) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                break;
+            case 'book':
+                ctx.beginPath();
+                ctx.moveTo(0, -10); ctx.quadraticCurveTo(-12, -14, -20, -9); ctx.lineTo(-20, 13);
+                ctx.quadraticCurveTo(-12, 8, 0, 12); ctx.quadraticCurveTo(12, 8, 20, 13);
+                ctx.lineTo(20, -9); ctx.quadraticCurveTo(12, -14, 0, -10);
+                ctx.moveTo(0, -10); ctx.lineTo(0, 12);
+                ctx.stroke();
+                break;
+            case 'graph':
+                ctx.beginPath();
+                ctx.moveTo(-18, -16); ctx.lineTo(-18, 16); ctx.lineTo(20, 16);
+                ctx.moveTo(-16, 14); ctx.quadraticCurveTo(0, 10, 16, -14);
+                ctx.stroke();
+                break;
+            case 'ruler':
+                ctx.beginPath();
+                ctx.moveTo(-16, 14); ctx.lineTo(16, 14); ctx.lineTo(-16, -16); ctx.closePath();
+                ctx.moveTo(-10, 8); ctx.lineTo(2, 8); ctx.lineTo(-10, -4); ctx.closePath();
+                ctx.stroke();
+                break;
+        }
+    }
+
+    function renderFrame() {
+        const isLight = document.body.classList.contains('light-theme');
+        ctx.clearRect(0, 0, width, height);
+        ctx.font = 'italic 700 15px "Be Vietnam Pro", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const pad = 70;
+        for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            if (!prefersReducedMotion) {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.rot += p.vRot;
+                if (p.x < -pad) p.x = width + pad;
+                else if (p.x > width + pad) p.x = -pad;
+                if (p.y < -pad) p.y = height + pad;
+                else if (p.y > height + pad) p.y = -pad;
+            }
+
+            const color = isLight
+                ? (p.tint === 'cream' ? `rgba(30, 58, 138, ${p.alpha * 0.72})` : `rgba(2, 132, 199, ${p.alpha * 0.72})`)
+                : (p.tint === 'cream' ? `rgba(245, 237, 224, ${p.alpha})` : `rgba(125, 211, 252, ${p.alpha})`);
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.scale(p.scale, p.scale);
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+
+            if (p.kind === 'formula') {
+                ctx.fillText(p.text, 0, 0);
+            } else {
+                drawShape(p.shape);
+            }
+            ctx.restore();
+        }
+
+        if (!prefersReducedMotion) {
+            rafId = window.requestAnimationFrame(renderFrame);
+        }
+    }
+
+    resize();
+    window.addEventListener('resize', resize, { passive: true });
+    renderFrame();
+})();

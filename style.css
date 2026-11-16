@@ -2577,10 +2577,9 @@ body.light-theme .gradient-text-hero {
     box-shadow: 0 8px 20px -10px rgba(56, 189, 248, 0.35);
 }
 
-/* Chalkboard / Blueprint Scientific Formulas Background */
+/* Zero-gravity Space Chalkboard Canvas */
 .chalkboard-bg {
-    opacity: 0.36;
-    transition: opacity 0.3s ease;
+    opacity: 1;
 }
 
 .chalk-group {
