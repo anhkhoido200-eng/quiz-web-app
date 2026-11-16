@@ -9627,23 +9627,27 @@ window.app = new QuizApp();
         'E_đ = ½mv²', 'C₆H₁₂O₆', '∮ B · dl = μ₀I', '√2/4 × 4/5',
         'π = 3.14159...', 'Fe + 2HCl → FeCl₂', 'Q = mcΔT', 'x² + y² = 1',
         '1/2 · 3/5', 'NH₃ + HCl', 'v² - v₀² = 2as', 'r = d / 2',
-        '1s² 2s² 2p⁶', 'lim (1+1/n)ⁿ = e', 'CH₂OH', 'P = U·I·cosφ'
+        '90° sin 60°', 'r = ab / 2', 'CH₂OH', 'x² + y² = ab²',
+        'sin A · cos B', '1 + 1 = 2', 'x + y + z', 'y = (a²√b + c)/x'
     ];
-    const shapes = ['atom', 'benzene', 'flask', 'cube', 'cone', 'triangle', 'wave', 'book', 'graph', 'ruler'];
+    const shapes = [
+        'atom', 'benzene', 'benzenes', 'glucose', 'testtube', 'cylinder',
+        'pyramid', 'plane3d', 'pencil', 'paper', 'cloud', 'piechart',
+        'ruler', 'graph', 'star', 'flask', 'cube', 'cone'
+    ];
 
     let width = 0;
     let height = 0;
     let dpr = 1;
     let particles = [];
-    let rafId = 0;
 
     function createParticles() {
-        const count = width < 640 ? 32 : 56;
+        const count = width < 640 ? 30 : 54;
         particles = [];
         for (let i = 0; i < count; i++) {
-            const isFormula = i % 3 !== 0;
+            const isFormula = i % 2 === 0;
             const angle = Math.random() * Math.PI * 2;
-            const speed = 0.16 + Math.random() * 0.36;
+            const speed = 0.16 + Math.random() * 0.34;
             particles.push({
                 kind: isFormula ? 'formula' : 'shape',
                 text: formulas[i % formulas.length],
@@ -9653,9 +9657,9 @@ window.app = new QuizApp();
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 rot: (Math.random() - 0.5) * Math.PI * 2,
-                vRot: (Math.random() - 0.5) * 0.0045,
-                scale: 0.72 + Math.random() * 0.56,
-                alpha: 0.17 + Math.random() * 0.25,
+                vRot: (Math.random() - 0.5) * 0.0042,
+                scale: 0.95 + Math.random() * 0.55,
+                alpha: 0.2 + Math.random() * 0.26,
                 tint: i % 2 === 0 ? 'cream' : 'sky'
             });
         }
@@ -9671,8 +9675,21 @@ window.app = new QuizApp();
         if (!particles.length) createParticles();
     }
 
+    function drawHexagon(cx, cy, r) {
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+            const ang = (k * Math.PI) / 3;
+            const px = cx + Math.cos(ang) * r;
+            const py = cy + Math.sin(ang) * r;
+            if (k === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
+
     function drawShape(type) {
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 2.0;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         switch (type) {
@@ -9681,86 +9698,151 @@ window.app = new QuizApp();
                     ctx.save();
                     ctx.rotate((a * Math.PI) / 3);
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, 24, 9, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, 0, 26, 10, 0, 0, Math.PI * 2);
                     ctx.stroke();
                     ctx.restore();
                 }
                 ctx.beginPath();
-                ctx.arc(0, 0, 3, 0, Math.PI * 2);
+                ctx.arc(0, 0, 4, 0, Math.PI * 2);
                 ctx.fill();
                 break;
             case 'benzene':
+                drawHexagon(0, 0, 20);
                 ctx.beginPath();
-                for (let k = 0; k < 6; k++) {
-                    const ang = (k * Math.PI) / 3;
-                    const px = Math.cos(ang) * 18;
-                    const py = Math.sin(ang) * 18;
-                    if (k === 0) ctx.moveTo(px, py);
+                ctx.arc(0, 0, 11, 0, Math.PI * 2);
+                ctx.stroke();
+                break;
+            case 'benzenes':
+                drawHexagon(-14, -6, 14);
+                drawHexagon(14, 10, 14);
+                ctx.beginPath();
+                ctx.arc(-14, -6, 7, 0, Math.PI * 2);
+                ctx.moveTo(-2, 1); ctx.lineTo(2, 3);
+                ctx.moveTo(26, 3); ctx.lineTo(34, -2);
+                ctx.stroke();
+                break;
+            case 'glucose':
+                drawHexagon(0, 0, 18);
+                ctx.beginPath();
+                ctx.moveTo(0, -18); ctx.lineTo(0, -28);
+                ctx.moveTo(18, 0); ctx.lineTo(27, -6);
+                ctx.moveTo(10, 16); ctx.lineTo(16, 25);
+                ctx.moveTo(-18, 0); ctx.lineTo(-27, 6);
+                ctx.stroke();
+                break;
+            case 'testtube':
+                ctx.beginPath();
+                ctx.moveTo(-8, -24); ctx.lineTo(8, -24);
+                ctx.moveTo(-5, -24); ctx.lineTo(-5, 16);
+                ctx.arc(0, 16, 5, Math.PI, 0, true);
+                ctx.lineTo(5, -24);
+                ctx.moveTo(-5, 2); ctx.lineTo(5, 2);
+                ctx.moveTo(-2, -14); ctx.lineTo(2, -14);
+                ctx.moveTo(-2, -6); ctx.lineTo(2, -6);
+                ctx.stroke();
+                break;
+            case 'cylinder':
+                ctx.beginPath();
+                ctx.ellipse(0, -16, 16, 6, 0, 0, Math.PI * 2);
+                ctx.moveTo(-16, -16); ctx.lineTo(-16, 16);
+                ctx.ellipse(0, 16, 16, 6, 0, 0, Math.PI);
+                ctx.moveTo(16, 16); ctx.lineTo(16, -16);
+                ctx.stroke();
+                break;
+            case 'pyramid':
+                ctx.beginPath();
+                ctx.moveTo(0, -22); ctx.lineTo(-20, 16); ctx.lineTo(20, 16); ctx.closePath();
+                ctx.moveTo(0, -22); ctx.lineTo(2, 8); ctx.lineTo(-20, 16);
+                ctx.moveTo(2, 8); ctx.lineTo(20, 16);
+                ctx.stroke();
+                break;
+            case 'plane3d':
+                ctx.beginPath();
+                ctx.moveTo(-24, 12); ctx.lineTo(-12, -10); ctx.lineTo(22, -10); ctx.lineTo(10, 12); ctx.closePath();
+                ctx.moveTo(-2, 1); ctx.lineTo(-2, -24);
+                ctx.moveTo(-2, 1); ctx.lineTo(26, 1);
+                ctx.moveTo(-2, 1); ctx.lineTo(-16, 20);
+                ctx.stroke();
+                break;
+            case 'pencil':
+                ctx.beginPath();
+                ctx.moveTo(-16, 10); ctx.lineTo(8, -14); ctx.lineTo(16, -6); ctx.lineTo(-8, 18); ctx.lineTo(-20, 22); ctx.closePath();
+                ctx.moveTo(3, -9); ctx.lineTo(11, -1);
+                ctx.stroke();
+                break;
+            case 'paper':
+                ctx.beginPath();
+                ctx.moveTo(-14, -18); ctx.lineTo(12, -22); ctx.lineTo(16, 18); ctx.lineTo(-10, 22); ctx.closePath();
+                ctx.moveTo(-7, -10); ctx.lineTo(7, -12);
+                ctx.moveTo(-6, -2); ctx.lineTo(8, -4);
+                ctx.moveTo(-5, 6); ctx.lineTo(9, 4);
+                ctx.stroke();
+                break;
+            case 'cloud':
+                ctx.beginPath();
+                ctx.arc(-10, 2, 9, Math.PI * 0.5, Math.PI * 1.5);
+                ctx.arc(0, -6, 11, Math.PI, 0);
+                ctx.arc(11, 2, 9, Math.PI * 1.5, Math.PI * 0.5);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.font = 'bold 13px "Be Vietnam Pro", sans-serif';
+                ctx.fillText('??', 0, 2);
+                break;
+            case 'piechart':
+                ctx.beginPath();
+                ctx.arc(0, 0, 18, 0, Math.PI * 2);
+                ctx.moveTo(0, 0); ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                ctx.moveTo(0, -18); ctx.lineTo(0, -6);
+                ctx.moveTo(-15, 9); ctx.lineTo(-5, 3);
+                ctx.moveTo(15, 9); ctx.lineTo(5, 3);
+                ctx.stroke();
+                break;
+            case 'star':
+                ctx.beginPath();
+                for (let s = 0; s < 5; s++) {
+                    const a1 = (s * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const px = Math.cos(a1) * 14;
+                    const py = Math.sin(a1) * 14;
+                    if (s === 0) ctx.moveTo(px, py);
                     else ctx.lineTo(px, py);
                 }
                 ctx.closePath();
                 ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(0, 0, 10, 0, Math.PI * 2);
-                ctx.stroke();
                 break;
             case 'flask':
                 ctx.beginPath();
-                ctx.moveTo(-6, -20); ctx.lineTo(6, -20);
-                ctx.moveTo(-4, -20); ctx.lineTo(-4, -8); ctx.lineTo(-18, 16);
-                ctx.lineTo(18, 16); ctx.lineTo(4, -8); ctx.lineTo(4, -20);
-                ctx.moveTo(-12, 7); ctx.lineTo(12, 7);
+                ctx.moveTo(-7, -22); ctx.lineTo(7, -22);
+                ctx.moveTo(-4, -22); ctx.lineTo(-4, -9); ctx.lineTo(-20, 18);
+                ctx.lineTo(20, 18); ctx.lineTo(4, -9); ctx.lineTo(4, -22);
+                ctx.moveTo(-13, 8); ctx.lineTo(13, 8);
                 ctx.stroke();
                 break;
             case 'cube':
-                ctx.strokeRect(-14, -10, 20, 20);
-                ctx.strokeRect(-6, -18, 20, 20);
+                ctx.strokeRect(-15, -10, 22, 22);
+                ctx.strokeRect(-6, -19, 22, 22);
                 ctx.beginPath();
-                ctx.moveTo(-14, -10); ctx.lineTo(-6, -18);
-                ctx.moveTo(6, -10); ctx.lineTo(14, -18);
-                ctx.moveTo(-14, 10); ctx.lineTo(-6, 2);
-                ctx.moveTo(6, 10); ctx.lineTo(14, 2);
+                ctx.moveTo(-15, -10); ctx.lineTo(-6, -19);
+                ctx.moveTo(7, -10); ctx.lineTo(16, -19);
+                ctx.moveTo(-15, 12); ctx.lineTo(-6, 3);
+                ctx.moveTo(7, 12); ctx.lineTo(16, 3);
                 ctx.stroke();
                 break;
             case 'cone':
                 ctx.beginPath();
-                ctx.ellipse(0, 12, 16, 5, 0, 0, Math.PI * 2);
-                ctx.moveTo(-16, 12); ctx.lineTo(0, -18); ctx.lineTo(16, 12);
-                ctx.stroke();
-                break;
-            case 'triangle':
-                ctx.beginPath();
-                ctx.moveTo(-18, 14); ctx.lineTo(0, -18); ctx.lineTo(18, 14); ctx.closePath();
-                ctx.moveTo(0, -18); ctx.lineTo(-4, 14);
-                ctx.stroke();
-                break;
-            case 'wave':
-                ctx.beginPath();
-                for (let x = -24; x <= 24; x += 2) {
-                    const y = Math.sin(x * 0.22) * 8;
-                    if (x === -24) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
-                }
-                ctx.stroke();
-                break;
-            case 'book':
-                ctx.beginPath();
-                ctx.moveTo(0, -10); ctx.quadraticCurveTo(-12, -14, -20, -9); ctx.lineTo(-20, 13);
-                ctx.quadraticCurveTo(-12, 8, 0, 12); ctx.quadraticCurveTo(12, 8, 20, 13);
-                ctx.lineTo(20, -9); ctx.quadraticCurveTo(12, -14, 0, -10);
-                ctx.moveTo(0, -10); ctx.lineTo(0, 12);
+                ctx.ellipse(0, 14, 18, 6, 0, 0, Math.PI * 2);
+                ctx.moveTo(-18, 14); ctx.lineTo(0, -20); ctx.lineTo(18, 14);
                 ctx.stroke();
                 break;
             case 'graph':
                 ctx.beginPath();
-                ctx.moveTo(-18, -16); ctx.lineTo(-18, 16); ctx.lineTo(20, 16);
-                ctx.moveTo(-16, 14); ctx.quadraticCurveTo(0, 10, 16, -14);
+                ctx.moveTo(-20, -18); ctx.lineTo(-20, 18); ctx.lineTo(22, 18);
+                ctx.moveTo(-18, 16); ctx.lineTo(-6, -4); ctx.lineTo(4, 6); ctx.lineTo(18, -14);
                 ctx.stroke();
                 break;
             case 'ruler':
                 ctx.beginPath();
-                ctx.moveTo(-16, 14); ctx.lineTo(16, 14); ctx.lineTo(-16, -16); ctx.closePath();
-                ctx.moveTo(-10, 8); ctx.lineTo(2, 8); ctx.lineTo(-10, -4); ctx.closePath();
+                ctx.moveTo(-18, 16); ctx.lineTo(18, 16); ctx.lineTo(-18, -18); ctx.closePath();
+                ctx.moveTo(-11, 9); ctx.lineTo(3, 9); ctx.lineTo(-11, -5); ctx.closePath();
                 ctx.stroke();
                 break;
         }
@@ -9769,11 +9851,10 @@ window.app = new QuizApp();
     function renderFrame() {
         const isLight = document.body.classList.contains('light-theme');
         ctx.clearRect(0, 0, width, height);
-        ctx.font = 'italic 700 15px "Be Vietnam Pro", system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const pad = 70;
+        const pad = 80;
         for (let i = 0; i < particles.length; i++) {
             const p = particles[i];
             if (!prefersReducedMotion) {
@@ -9798,6 +9879,7 @@ window.app = new QuizApp();
             ctx.fillStyle = color;
 
             if (p.kind === 'formula') {
+                ctx.font = 'italic 700 21px "Be Vietnam Pro", system-ui, sans-serif';
                 ctx.fillText(p.text, 0, 0);
             } else {
                 drawShape(p.shape);
@@ -9806,7 +9888,7 @@ window.app = new QuizApp();
         }
 
         if (!prefersReducedMotion) {
-            rafId = window.requestAnimationFrame(renderFrame);
+            window.requestAnimationFrame(renderFrame);
         }
     }
 
