@@ -42,12 +42,60 @@ const SYSTEM_RECORDS = {
     GEMINI_CONFIG: '00000000-0000-0000-0000-000000000005',
     AI_IPS: '00000000-0000-0000-0000-000000000006',
     TRASH: '00000000-0000-0000-0000-000000000007',
-    ACCESS_TOKENS: '00000000-0000-0000-0000-000000000008'
+    ACCESS_TOKENS: '00000000-0000-0000-0000-000000000008',
+    SYSTEM_FOLDERS: '00000000-0000-0000-0000-000000000009'
 };
+
+const SYSTEM_RECORD_IDS = new Set(Object.values(SYSTEM_RECORDS));
+const SYSTEM_RECORD_NAMES = new Set([
+    '__ADMIN_IPS_CONFIG__',
+    '__ALLOWED_GEO_IPS__',
+    '__SYSTEM_MAINTENANCE__',
+    '__DYNAMIC_SUBJECTS__',
+    '__GEMINI_CONFIG__',
+    '__AI_IPS_CONFIG__',
+    '__TRASH_BIN__',
+    '__TRASH_QUESTIONS__',
+    '__ACCESS_TOKENS_CONFIG__',
+    '__SYSTEM_FOLDERS__',
+    '__SYSTEM_NOTICE__',
+    '__BANNED_IP__'
+]);
+
+const SCHEMA_CAPABILITY_STORAGE_KEY = 'quiz_supabase_missing_columns_v1';
+const SCHEMA_CAPABILITY_TTL_MS = 30 * 60 * 1000;
+const OPTIONAL_LOGIN_COLUMNS = ['session_id', 'created_at'];
+const OPTIONAL_QUESTION_COLUMNS = ['grade', 'accepted_values', 'is_deleted', 'deleted_at', 'created_at', 'updated_at', 'image_url'];
 
 function formatSupabaseUrl(rawUrl) {
     if (!rawUrl) return "";
     return rawUrl.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+}
+
+function getSharedSupabaseClient(rawUrl, rawKey) {
+    const cleanUrl = formatSupabaseUrl(rawUrl);
+    const cleanKey = String(rawKey || '').trim();
+    if (!cleanUrl || !cleanKey) return null;
+
+    const root = typeof window !== 'undefined' ? window : globalThis;
+    if (!root.__quizSupabaseClients || typeof root.__quizSupabaseClients !== 'object') {
+        root.__quizSupabaseClients = {};
+    }
+    const cacheKey = `${cleanUrl}::${cleanKey}`;
+    if (root.__quizSupabaseClients[cacheKey]) {
+        return root.__quizSupabaseClients[cacheKey];
+    }
+    if (!root.supabase || typeof root.supabase.createClient !== 'function') {
+        return null;
+    }
+    const client = root.supabase.createClient(cleanUrl, cleanKey);
+    root.__quizSupabaseClients[cacheKey] = client;
+    return client;
+}
+
+if (typeof window !== 'undefined') {
+    window.getSharedSupabaseClient = getSharedSupabaseClient;
+    window.QUIZ_SYSTEM_RECORDS = SYSTEM_RECORDS;
 }
 
 class DatabaseService {
@@ -55,6 +103,8 @@ class DatabaseService {
         this.client = null;
         this.isSupabaseActive = false;
         this.serverClockOffsetMs = 0;
+        this._missingColumnsCache = new Map();
+        this._skipSessionIdColumn = false;
         this.init();
     }
 
@@ -65,13 +115,17 @@ class DatabaseService {
         storedUrl = formatSupabaseUrl(storedUrl);
         this.url = storedUrl;
         this.anonKey = storedKey;
+        this._loadMissingColumnsCache();
+        this._skipSessionIdColumn = this._isColumnMissing('quiz_logins', 'session_id');
 
-        if (storedUrl && storedKey && window.supabase) {
+        if (storedUrl && storedKey && typeof window !== 'undefined' && window.supabase) {
             try {
-                this.client = window.supabase.createClient(storedUrl, storedKey);
-                this.isSupabaseActive = true;
-                this.syncServerClock();
-                console.log("%c[DatabaseService] QuizMaster Pro v4.0 - Đã kích hoạt Supabase Cloud!", "color: #10b981; font-weight: bold;");
+                this.client = getSharedSupabaseClient(storedUrl, storedKey);
+                this.isSupabaseActive = Boolean(this.client);
+                if (this.isSupabaseActive) {
+                    this.syncServerClock();
+                    console.log("%c[DatabaseService] QuizMaster Pro v4.0 - Đã kích hoạt Supabase Cloud!", "color: #10b981; font-weight: bold;");
+                }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi kết nối Supabase, fallback về Local:", err);
                 this.client = null;
@@ -81,6 +135,195 @@ class DatabaseService {
             this.client = null;
             this.isSupabaseActive = false;
         }
+    }
+
+    _schemaScopeKey() {
+        return formatSupabaseUrl(this.url) || '__default__';
+    }
+
+    _loadMissingColumnsCache() {
+        this._missingColumnsCache = new Map();
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const raw = sessionStorage.getItem(SCHEMA_CAPABILITY_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const scoped = parsed && typeof parsed === 'object' ? parsed[this._schemaScopeKey()] : null;
+            if (!scoped || typeof scoped !== 'object') return;
+            const now = Date.now();
+            let pruned = false;
+            for (const [colKey, expiresAt] of Object.entries(scoped)) {
+                if (Number(expiresAt) > now) {
+                    this._missingColumnsCache.set(colKey, Number(expiresAt));
+                } else {
+                    pruned = true;
+                }
+            }
+            if (pruned) this._persistMissingColumnsCache();
+        } catch (e) {}
+    }
+
+    _persistMissingColumnsCache() {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const raw = sessionStorage.getItem(SCHEMA_CAPABILITY_STORAGE_KEY);
+            const allScopes = raw ? JSON.parse(raw) : {};
+            const nextStore = (allScopes && typeof allScopes === 'object' && !Array.isArray(allScopes)) ? allScopes : {};
+            const now = Date.now();
+            const scopedObj = {};
+            for (const [colKey, expiresAt] of this._missingColumnsCache.entries()) {
+                if (Number(expiresAt) > now) {
+                    scopedObj[colKey] = Number(expiresAt);
+                } else {
+                    this._missingColumnsCache.delete(colKey);
+                }
+            }
+            const scopeKey = this._schemaScopeKey();
+            if (Object.keys(scopedObj).length > 0) {
+                nextStore[scopeKey] = scopedObj;
+            } else {
+                delete nextStore[scopeKey];
+            }
+            if (Object.keys(nextStore).length > 0) {
+                sessionStorage.setItem(SCHEMA_CAPABILITY_STORAGE_KEY, JSON.stringify(nextStore));
+            } else {
+                sessionStorage.removeItem(SCHEMA_CAPABILITY_STORAGE_KEY);
+            }
+        } catch (e) {}
+    }
+
+    _clearMissingColumnsCache() {
+        this._missingColumnsCache.clear();
+        this._skipSessionIdColumn = false;
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const raw = sessionStorage.getItem(SCHEMA_CAPABILITY_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                delete parsed[this._schemaScopeKey()];
+                if (Object.keys(parsed).length > 0) {
+                    sessionStorage.setItem(SCHEMA_CAPABILITY_STORAGE_KEY, JSON.stringify(parsed));
+                } else {
+                    sessionStorage.removeItem(SCHEMA_CAPABILITY_STORAGE_KEY);
+                }
+            }
+        } catch (e) {}
+    }
+
+    _isColumnMissing(tableName, columnName) {
+        const key = `${tableName}.${columnName}`;
+        if (tableName === 'quiz_logins' && columnName === 'session_id' && this._skipSessionIdColumn) {
+            return true;
+        }
+        const expiresAt = this._missingColumnsCache.get(key);
+        if (!expiresAt) return false;
+        if (expiresAt <= Date.now()) {
+            this._missingColumnsCache.delete(key);
+            this._persistMissingColumnsCache();
+            return false;
+        }
+        return true;
+    }
+
+    _markColumnMissing(tableName, columnName, ttlMs = SCHEMA_CAPABILITY_TTL_MS) {
+        if (!tableName || !columnName) return;
+        const key = `${tableName}.${columnName}`;
+        this._missingColumnsCache.set(key, Date.now() + ttlMs);
+        if (tableName === 'quiz_logins' && columnName === 'session_id') {
+            this._skipSessionIdColumn = true;
+        }
+        this._persistMissingColumnsCache();
+    }
+
+    _isMissingColumnError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').trim();
+        if (code === '42703' || code === 'PGRST204') return true;
+        const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+        return /Could not find the '[^']+' column|column .* does not exist|schema cache/i.test(text);
+    }
+
+    _extractMissingColumn(error, candidateColumns = []) {
+        const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
+        const patterns = [
+            /Could not find the '([^']+)' column/i,
+            /column\s+"([^"]+)"\s+of\s+relation/i,
+            /column\s+(?:[a-z0-9_]+\.)?([a-z0-9_]+)\s+does\s+not\s+exist/i,
+            /column\s+'([^']+)'/i
+        ];
+        for (const re of patterns) {
+            const m = text.match(re);
+            if (m && m[1]) return m[1].trim();
+        }
+        for (const col of candidateColumns) {
+            if (new RegExp(`\\b${col}\\b`, 'i').test(text)) return col;
+        }
+        return '';
+    }
+
+    _stripColumnsFromPayload(payloadOrRows, colsToStrip = []) {
+        const stripSet = new Set(colsToStrip || []);
+        const cloneRow = (row) => {
+            if (!row || typeof row !== 'object') return row;
+            if (stripSet.size === 0) return { ...row };
+            const copy = {};
+            for (const [k, v] of Object.entries(row)) {
+                if (!stripSet.has(k)) copy[k] = v;
+            }
+            return copy;
+        };
+        return Array.isArray(payloadOrRows) ? payloadOrRows.map(cloneRow) : cloneRow(payloadOrRows);
+    }
+
+    async _executeWriteWithSchemaFallback(tableName, optionalColumns, writeFn, payloadOrRows) {
+        const knownMissing = optionalColumns.filter((col) => this._isColumnMissing(tableName, col));
+        let current = this._stripColumnsFromPayload(payloadOrRows, knownMissing);
+        const hasCol = (col) => Array.isArray(current)
+            ? current.some((row) => row && Object.prototype.hasOwnProperty.call(row, col))
+            : Boolean(current && Object.prototype.hasOwnProperty.call(current, col));
+
+        let res = await writeFn(current);
+        for (let attempt = 0; attempt < optionalColumns.length + 1; attempt++) {
+            if (!res?.error || !this._isMissingColumnError(res.error)) {
+                return res;
+            }
+            const missingCol = this._extractMissingColumn(res.error, optionalColumns);
+            if (missingCol && hasCol(missingCol)) {
+                this._markColumnMissing(tableName, missingCol);
+                current = this._stripColumnsFromPayload(current, [missingCol]);
+                console.warn(`[DatabaseService] Bảng ${tableName} chưa có cột '${missingCol}'; đã lưu cache bỏ qua cho schema cũ.`);
+                res = await writeFn(current);
+                continue;
+            }
+            const remainingOptional = optionalColumns.filter((col) => hasCol(col));
+            if (remainingOptional.length === 0) {
+                return res;
+            }
+            for (const col of remainingOptional) {
+                this._markColumnMissing(tableName, col);
+            }
+            current = this._stripColumnsFromPayload(current, remainingOptional);
+            console.warn(`[DatabaseService] Bảng ${tableName} thiếu cột tùy chọn; chuyển sang payload schema cũ:`, remainingOptional);
+            res = await writeFn(current);
+        }
+        return res;
+    }
+
+    isSystemLoginRecord(row) {
+        if (!row || typeof row !== 'object') return false;
+        const id = String(row.id || '').trim();
+        if (id && SYSTEM_RECORD_IDS.has(id)) return true;
+        const name = String(row.player_name || '').trim();
+        if (name && (name.startsWith('__') || SYSTEM_RECORD_NAMES.has(name.toUpperCase()))) return true;
+        if (String(row.ip_address || '').trim().toUpperCase() === 'SYSTEM') return true;
+        return false;
+    }
+
+    isVisitorLoginRecord(row) {
+        if (!row || typeof row !== 'object') return false;
+        const name = String(row.player_name || '').trim();
+        return !name || /^(khách truy cập|visitor)$/i.test(name);
     }
 
     async syncServerClock() {
@@ -127,12 +370,14 @@ class DatabaseService {
         if (!url || !anonKey) {
             throw new Error("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
         }
+        this._clearMissingColumnsCache();
         localStorage.setItem(STORAGE_KEYS.SUPABASE_URL, formatSupabaseUrl(url));
         localStorage.setItem(STORAGE_KEYS.SUPABASE_KEY, anonKey.trim());
         this.init();
     }
 
     clearConfig() {
+        this._clearMissingColumnsCache();
         localStorage.removeItem(STORAGE_KEYS.SUPABASE_URL);
         localStorage.removeItem(STORAGE_KEYS.SUPABASE_KEY);
         this.init();
@@ -279,7 +524,6 @@ class DatabaseService {
         // 2. Lưu Supabase Cloud cho Admin giám sát (Cập nhật đúng bản ghi của thiết bị này, không ghi đè máy khác)
         if (this.isSupabaseActive && this.client) {
             try {
-                const systemIds = Object.values(SYSTEM_RECORDS);
                 let existingRows = [];
 
                 // 1. Nếu client đã lưu sẵn loginId của chính máy mình -> truy vấn trực tiếp theo ID
@@ -290,9 +534,10 @@ class DatabaseService {
                         .eq('id', targetLoginId)
                         .limit(1);
                     if (Array.isArray(byId) && byId.length > 0) {
-                        existingRows = (isVisitorAttempt || !isIncomingExam)
-                            ? byId.filter((r) => !isExamAttemptRow(r))
-                            : byId;
+                        existingRows = byId.filter((r) =>
+                            !this.isSystemLoginRecord(r)
+                            && (!(isVisitorAttempt || !isIncomingExam) || !isExamAttemptRow(r))
+                        );
                     }
                 }
 
@@ -307,8 +552,7 @@ class DatabaseService {
                             .limit(30);
                         if (Array.isArray(byName)) {
                             existingRows = byName.filter((r) =>
-                                !systemIds.includes(r.id)
-                                && !String(r.player_name || '').startsWith('__')
+                                !this.isSystemLoginRecord(r)
                                 && (!(isVisitorAttempt || !isIncomingExam) || !isExamAttemptRow(r))
                             );
                         }
@@ -322,7 +566,7 @@ class DatabaseService {
                             .limit(20);
                         if (Array.isArray(byIp)) {
                             existingRows = byIp.filter((r) =>
-                                !systemIds.includes(r.id)
+                                !this.isSystemLoginRecord(r)
                                 && (!(isVisitorAttempt || !isIncomingExam) || !isExamAttemptRow(r))
                             );
                         }
@@ -392,19 +636,15 @@ class DatabaseService {
                     last_active: nowIso,
                     created_at: nowIso
                 };
-                if (!this._skipSessionIdColumn && record.session_id) {
+                if (!this._isColumnMissing('quiz_logins', 'session_id') && record.session_id) {
                     payload.session_id = record.session_id;
                 }
-                let { data: inserted, error } = await this.client.from('quiz_logins').insert([payload]).select('id');
-                // Existing deployments may not have session_id yet. Retry once without
-                // the optional column and remember so monitoring/submission avoids repeated HTTP 400s.
-                if (error && (error.code === '42703' || error.code === 'PGRST204' || /session_id|column .* does not exist/i.test(error.message || ''))) {
-                    this._skipSessionIdColumn = true;
-                    const legacyPayload = { ...payload };
-                    delete legacyPayload.session_id;
-                    ({ data: inserted, error } = await this.client.from('quiz_logins').insert([legacyPayload]).select('id'));
-                    console.warn('[DatabaseService] Supabase chưa có quiz_logins.session_id; đã chuyển sang payload tương thích schema cũ.');
-                }
+                const { data: inserted, error } = await this._executeWriteWithSchemaFallback(
+                    'quiz_logins',
+                    OPTIONAL_LOGIN_COLUMNS,
+                    (candidate) => this.client.from('quiz_logins').insert([candidate]).select('id'),
+                    payload
+                );
 
                 if (error && /policy|permission|not allowed/i.test(error.message || '')) {
                     console.warn('[DatabaseService] Supabase từ chối ghi phiên, không dùng fallback giả online.');
@@ -604,16 +844,15 @@ class DatabaseService {
                                     last_active: lastActive,
                                     created_at: localRow.created_at || lastActive
                                 };
-                                if (!this._skipSessionIdColumn && localRow.session_id) {
+                                if (!this._isColumnMissing('quiz_logins', 'session_id') && localRow.session_id) {
                                     payload.session_id = localRow.session_id;
                                 }
-                                let { error } = await this.client.from('quiz_logins').insert([payload]);
-                                if (error && (error.code === '42703' || error.code === 'PGRST204' || /session_id|column .* does not exist/i.test(error.message || ''))) {
-                                    this._skipSessionIdColumn = true;
-                                    const legacyPayload = { ...payload };
-                                    delete legacyPayload.session_id;
-                                    ({ error } = await this.client.from('quiz_logins').insert([legacyPayload]));
-                                }
+                                const { error } = await this._executeWriteWithSchemaFallback(
+                                    'quiz_logins',
+                                    OPTIONAL_LOGIN_COLUMNS,
+                                    (candidate) => this.client.from('quiz_logins').insert([candidate]),
+                                    payload
+                                );
                                 if (error) throw error;
                                 resolvedLocalIds.set(loginId, cloudId);
                                 localRow.id = cloudId;
@@ -707,8 +946,23 @@ class DatabaseService {
      * Lấy danh sách máy & lượt làm bài cho Admin / Giám sát (Mặc định giữ toàn bộ lượt để xem lịch sử từng đề)
      */
     async getLoginHistory(limit = 300, options = {}) {
-        const dedupeByStudent = Boolean(options && options.dedupeByStudent);
-        const systemIds = Object.values(SYSTEM_RECORDS);
+        let rawLimit = limit;
+        let opts = (options && typeof options === 'object') ? options : {};
+        if (limit && typeof limit === 'object') {
+            opts = limit;
+            rawLimit = opts.limit !== undefined ? opts.limit : 300;
+        }
+        const isUncapped = rawLimit === 0 || rawLimit === null || rawLimit === Infinity || (typeof rawLimit === 'number' && rawLimit < 0);
+        const maxRows = isUncapped ? Infinity : Math.max(1, Math.floor(Number(rawLimit) || 300));
+        const dedupeByStudent = Boolean(opts.dedupeByStudent);
+        const excludeVisitors = Boolean(opts.excludeVisitors);
+        const excludeSystem = opts.excludeSystem !== undefined ? Boolean(opts.excludeSystem) : true;
+        const excludeAdmin = Boolean(opts.excludeAdmin);
+        const ascending = Boolean(opts.ascending);
+        const selectCols = String(opts.select || 'id, player_name, ip_address, device_info, status, score_summary, last_active, created_at');
+        const shouldPaginate = Boolean(opts.paginate || excludeVisitors || isUncapped || maxRows > 1000);
+        const pageSize = Math.min(1000, Math.max(1, Math.floor(Number(opts.pageSize) || 1000)));
+
         let adminIps = new Set();
         try {
             const adminConfig = await this.fetchAdminIpsConfig();
@@ -721,17 +975,18 @@ class DatabaseService {
             console.warn('[DatabaseService] Không tải được danh sách IP quản trị để lọc giám sát:', error);
         }
         const isStudentLogin = (item) => {
-            const playerName = String(item?.player_name || '').trim();
+            if (excludeSystem && this.isSystemLoginRecord(item)) return false;
+            if (excludeVisitors && this.isVisitorLoginRecord(item)) return false;
             const ip = String(item?.ip_address || item?.client_ip || '').trim();
-            if (systemIds.includes(item?.id) || playerName.startsWith('__')) return false;
-            if ((!playerName || playerName.toLowerCase() === 'khách truy cập') && adminIps.has(ip)) return false;
+            if (excludeAdmin && ip && adminIps.has(ip)) return false;
+            if (this.isVisitorLoginRecord(item) && adminIps.has(ip)) return false;
             return true;
         };
-        const normalizeRows = (list) => {
-            const seenIds = new Set();
-            const seenKeys = new Set();
-            const out = [];
+        const seenIds = new Set();
+        const seenKeys = new Set();
+        const appendNormalizedRows = (list, targetOut) => {
             for (const item of list) {
+                if (Number.isFinite(maxRows) && targetOut.length >= maxRows) break;
                 if (!isStudentLogin(item)) continue;
                 const row = {
                     ...item,
@@ -755,23 +1010,77 @@ class DatabaseService {
                     if (seenKeys.has(key)) continue;
                     seenKeys.add(key);
                 }
-                out.push(row);
+                targetOut.push(row);
             }
-            return out;
+            return targetOut;
         };
         if (this.isSupabaseActive && this.client) {
             try {
-                const { data, error } = await this.client
-                    .from('quiz_logins')
-                    .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
-                    .order('last_active', { ascending: false })
-                    .limit(limit);
+                if (!shouldPaginate) {
+                    const { data, error } = await this.client
+                        .from('quiz_logins')
+                        .select(selectCols)
+                        .order('last_active', { ascending })
+                        .limit(maxRows);
 
-                if (!error && Array.isArray(data)) {
-                    console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length, dedupeByStudent });
-                    return normalizeRows(data);
-                } else if (error) {
-                    console.warn('[DatabaseService] Student monitor query failed:', { message: error.message, code: error.code });
+                    if (!error && Array.isArray(data)) {
+                        console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length, dedupeByStudent });
+                        return appendNormalizedRows(data, []);
+                    } else if (error) {
+                        console.warn('[DatabaseService] Student monitor query failed:', { message: error.message, code: error.code });
+                    }
+                } else {
+                    const collected = [];
+                    let offset = 0;
+                    let queryFailed = false;
+                    for (let page = 0; page < 200; page++) {
+                        if (Number.isFinite(maxRows) && collected.length >= maxRows) break;
+                        const batchSize = (!dedupeByStudent && !excludeAdmin && !excludeVisitors && !excludeSystem && Number.isFinite(maxRows))
+                            ? Math.min(pageSize, Math.max(1, maxRows - collected.length))
+                            : pageSize;
+
+                        let query = this.client
+                            .from('quiz_logins')
+                            .select(selectCols);
+                        if (excludeVisitors) {
+                            query = query
+                                .neq('player_name', '')
+                                .neq('player_name', 'Khách truy cập')
+                                .neq('player_name', 'visitor')
+                                .not('player_name', 'like', '\\_\\_%');
+                        } else if (excludeSystem) {
+                            query = query.not('player_name', 'like', '\\_\\_%');
+                        }
+                        query = query
+                            .order('last_active', { ascending })
+                            .order('id', { ascending: true })
+                            .range(offset, offset + batchSize - 1);
+
+                        const { data, error } = await query;
+                        if (error) {
+                            queryFailed = true;
+                            console.warn('[DatabaseService] Paginated student monitor query failed:', {
+                                offset,
+                                message: error.message,
+                                code: error.code
+                            });
+                            break;
+                        }
+                        if (!Array.isArray(data) || data.length === 0) break;
+
+                        appendNormalizedRows(data, collected);
+                        offset += data.length;
+                        if (data.length < batchSize) break;
+                    }
+                    if (!queryFailed || collected.length > 0) {
+                        console.debug('[DatabaseService] Paginated student monitor records loaded:', {
+                            count: collected.length,
+                            dedupeByStudent,
+                            excludeVisitors,
+                            maxRows: Number.isFinite(maxRows) ? maxRows : 'all'
+                        });
+                        return Number.isFinite(maxRows) ? collected.slice(0, maxRows) : collected;
+                    }
                 }
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi khi tải quiz_logins từ Supabase:", err);
@@ -780,16 +1089,36 @@ class DatabaseService {
         const localSorted = [...this._getLocalLogins()].sort((a, b) => {
             const ta = new Date(a?.last_active || a?.created_at || 0).getTime() || 0;
             const tb = new Date(b?.last_active || b?.created_at || 0).getTime() || 0;
-            return tb - ta;
+            return ascending ? (ta - tb) : (tb - ta);
         });
-        return normalizeRows(localSorted).slice(0, limit);
+        const localNormalized = appendNormalizedRows(localSorted, []);
+        return Number.isFinite(maxRows) ? localNormalized.slice(0, maxRows) : localNormalized;
+    }
+
+    /**
+     * Lấy lịch sử đăng nhập/làm bài của học sinh đã nhập tên (bỏ qua Khách truy cập và bản ghi __*, phân trang qua mốc 1000 dòng)
+     */
+    async getNamedLoginHistory(maxRows = 1500, options = {}) {
+        let targetMax = maxRows;
+        let opts = (options && typeof options === 'object') ? options : {};
+        if (maxRows && typeof maxRows === 'object') {
+            opts = maxRows;
+            targetMax = opts.maxRows !== undefined ? opts.maxRows : (opts.limit !== undefined ? opts.limit : 1500);
+        }
+        return await this.getLoginHistory(targetMax, {
+            ...opts,
+            excludeVisitors: true,
+            excludeSystem: opts.excludeSystem !== undefined ? opts.excludeSystem : true,
+            paginate: true
+        });
     }
 
     /**
      * Alias cho fetchActiveLogins (giữ 1 dòng đại diện mới nhất cho mỗi học sinh/thiết bị trong bảng Admin)
      */
-    async fetchActiveLogins(limit = 300) {
-        return await this.getLoginHistory(limit, { dedupeByStudent: true });
+    async fetchActiveLogins(limit = 300, options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        return await this.getLoginHistory(limit, { ...opts, dedupeByStudent: true });
     }
 
     /**
@@ -809,7 +1138,6 @@ class DatabaseService {
      * Xóa sạch toàn bộ lịch sử đăng nhập học sinh (bảo toàn cấu hình hệ thống)
      */
     async clearAllLogins() {
-        const systemIds = Object.values(SYSTEM_RECORDS);
         if (this.isSupabaseActive && this.client) {
             const pageSize = 500;
             const rows = [];
@@ -826,7 +1154,7 @@ class DatabaseService {
             }
 
             const ids = rows
-                .filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__'))
+                .filter(item => !this.isSystemLoginRecord(item))
                 .map(item => item.id)
                 .filter(id => id && !String(id).startsWith('local_'));
             const chunkSize = 50;
@@ -2736,32 +3064,57 @@ class DatabaseService {
         const clean = String(rawToken || '').trim().toLowerCase();
         const cleanIp = String(clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
 
-        const found = tokens.find(t => {
-            const tokenVal = String(t.token || '').trim().toLowerCase();
-            const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
-            const ipVal = String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const ipMatches = (ipVal) => Boolean(cleanIp && ipVal && (
+            cleanIp === ipVal ||
+            cleanIp.endsWith(':' + ipVal) ||
+            ipVal.endsWith(':' + cleanIp)
+        ));
 
-            // 1. Khớp theo địa chỉ IP thiết bị học sinh (chính xác hoặc dạng IPv6 prefix ::ffff:ip)
-            if (cleanIp && ipVal && (cleanIp === ipVal || cleanIp.endsWith(':' + ipVal) || ipVal.endsWith(':' + cleanIp))) return true;
+        const isIpOnlyRecord = (tokenVal, rawCodeVal, ipVal) => {
+            if (!ipVal) return false;
+            return (!rawCodeVal || rawCodeVal === ipVal) && (!tokenVal || tokenVal === ipVal);
+        };
 
-            // 2. Khớp chính xác theo chuỗi gửi lên (clean)
-            if (clean) {
-                if (tokenVal === clean || (rawCodeVal && rawCodeVal === clean)) return true;
-                if (ipVal && clean === ipVal) return true;
+        const extractMachineCode = (val) => {
+            if (!val) return '';
+            return val.includes('-') ? val.split('-').pop() : val;
+        };
+
+        // 1. Ưu tiên khớp chính xác chuỗi token / rawCode gửi lên
+        if (clean) {
+            const exactMatch = tokens.find(t => {
+                const tokenVal = String(t.token || '').trim().toLowerCase();
+                const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
+                const ipVal = String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+                return tokenVal === clean || (rawCodeVal && rawCodeVal === clean) || (ipVal && clean === ipVal);
+            });
+            if (exactMatch) return exactMatch;
+
+            // 2. Khớp theo hậu tố mã máy kết hợp (ví dụ: cùng kết thúc bằng -qm-xxxxxx khi đổi IP mạng/4G)
+            const cleanMachineCode = extractMachineCode(clean);
+            if (cleanMachineCode && cleanMachineCode.length >= 5) {
+                const machineMatch = tokens.find(t => {
+                    const tokenVal = String(t.token || '').trim().toLowerCase();
+                    const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
+                    const tokenMachineCode = tokenVal.includes('-') ? tokenVal.split('-').pop() : (rawCodeVal || '');
+                    return tokenMachineCode && tokenMachineCode === cleanMachineCode && tokenMachineCode.length >= 5;
+                });
+                if (machineMatch) return machineMatch;
             }
+        }
 
-            // 3. Khớp theo hậu tố mã máy kết hợp (ví dụ: cùng kết thúc bằng -qm-xxxxxx khi đổi IP mạng/4G)
-            if (clean && tokenVal) {
-                const tokenMachineCode = tokenVal.includes('-') ? tokenVal.split('-').pop() : (rawCodeVal || '');
-                const cleanMachineCode = clean.includes('-') ? clean.split('-').pop() : clean;
-                if (tokenMachineCode && cleanMachineCode && tokenMachineCode === cleanMachineCode && tokenMachineCode.length >= 5) {
-                    return true;
-                }
-            }
+        // 3. Dự phòng khớp theo IP: chỉ khớp bản ghi IP-only (không khóa theo mã máy riêng)
+        if (cleanIp) {
+            const ipOnlyMatch = tokens.find(t => {
+                const tokenVal = String(t.token || '').trim().toLowerCase();
+                const rawCodeVal = String(t.rawCode || '').trim().toLowerCase();
+                const ipVal = String(t.ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+                return ipMatches(ipVal) && isIpOnlyRecord(tokenVal, rawCodeVal, ipVal);
+            });
+            if (ipOnlyMatch) return ipOnlyMatch;
+        }
 
-            return false;
-        });
-        return found || null;
+        return null;
     }
 }
 

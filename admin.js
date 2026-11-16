@@ -123,6 +123,21 @@
         return overlay;
     }
 
+    /** Return the singleton Supabase client shared with supabase.js. */
+    function ensureSupabaseClient() {
+        if (!state.client) {
+            state.client = typeof window.getSharedSupabaseClient === 'function'
+                ? window.getSharedSupabaseClient(CONFIG.url, CONFIG.key)
+                : window.supabase.createClient(CONFIG.url, CONFIG.key);
+        }
+        return state.client;
+    }
+
+    /** Check whether the user requested reduced motion. */
+    function isReducedMotionPreferred() {
+        return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
     function navigateToStudentWithTransition(targetUrl = 'index.html') {
         if (state.isLeavingWorkspace) return;
         state.isLeavingWorkspace = true;
@@ -130,6 +145,10 @@
         try {
             sessionStorage.setItem('quiz_workspace_transition', 'to-student');
         } catch (e) {}
+        if (isReducedMotionPreferred()) {
+            window.location.href = cleanUrl;
+            return;
+        }
         const overlay = ensureAdminWorkspaceOverlay();
         const textEl = $('workspace-transition-text');
         if (textEl) textEl.textContent = 'Đang quay về Trang học sinh...';
@@ -139,11 +158,9 @@
         }
         document.body?.classList.remove('workspace-entering');
         document.body?.classList.add('workspace-leaving');
-        const reducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-        const delay = reducedMotion ? 0 : 220;
         window.setTimeout(() => {
             window.location.href = cleanUrl;
-        }, delay);
+        }, 220);
     }
 
     function initAdminWorkspaceTransitions() {
@@ -156,27 +173,36 @@
             try {
                 sessionStorage.removeItem('quiz_workspace_transition');
             } catch (e) {}
-            const overlay = ensureAdminWorkspaceOverlay();
-            const textEl = $('workspace-transition-text');
-            if (textEl) textEl.textContent = 'Đang mở Control Center...';
-            if (overlay) {
-                overlay.classList.add('is-active');
-                overlay.setAttribute('aria-hidden', 'false');
-                void overlay.offsetWidth;
-            }
-            document.body?.classList.remove('workspace-leaving');
-            document.body?.classList.add('workspace-entering');
-            requestAnimationFrame(() => {
+            const reducedMotion = isReducedMotionPreferred();
+            const overlay = reducedMotion ? $('workspace-transition-overlay') : ensureAdminWorkspaceOverlay();
+            if (reducedMotion) {
+                if (overlay) {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                document.body?.classList.remove('workspace-leaving', 'workspace-entering');
+            } else {
+                const textEl = $('workspace-transition-text');
+                if (textEl) textEl.textContent = 'Đang mở Control Center...';
+                if (overlay) {
+                    overlay.classList.add('is-active');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    void overlay.offsetWidth;
+                }
+                document.body?.classList.remove('workspace-leaving');
+                document.body?.classList.add('workspace-entering');
                 requestAnimationFrame(() => {
-                    if (overlay) {
-                        overlay.classList.remove('is-active');
-                        overlay.setAttribute('aria-hidden', 'true');
-                    }
+                    requestAnimationFrame(() => {
+                        if (overlay) {
+                            overlay.classList.remove('is-active');
+                            overlay.setAttribute('aria-hidden', 'true');
+                        }
+                    });
                 });
-            });
-            window.setTimeout(() => {
-                document.body?.classList.remove('workspace-entering');
-            }, 380);
+                window.setTimeout(() => {
+                    document.body?.classList.remove('workspace-entering');
+                }, 380);
+            }
         }
 
         if (!state.workspaceTransitionsBound) {
@@ -616,7 +642,7 @@
         state.grade = targetGrade;
         state.subject = 'all';
         state.page = 1;
-        document.querySelectorAll('.grade-filter').forEach((button) => {
+        document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((button) => {
             button.classList.toggle('is-active', button.dataset.grade === targetGrade);
         });
         fillLibrarySubjects();
@@ -812,7 +838,7 @@
     }
 
     async function bootstrapAdmin() {
-        if (!state.client) state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+        ensureSupabaseClient();
         if (!state.clientIp) state.clientIp = await getClientIp();
         if (!state.clientIp || state.clientIp === 'Chưa xác định') return notify('Không xác định được IP máy hiện tại.', true);
         const row = await systemRow(SYSTEM.admin);
@@ -836,7 +862,7 @@
         const val = $('admin-token-unlock-input')?.value.trim();
         if (!val) return notify('Vui lòng nhập hoặc dán mã IP-Token Admin.', true);
 
-        if (!state.client) state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+        ensureSupabaseClient();
         state.clientIp = await getClientIp();
 
         let isMatch = false;
@@ -1032,13 +1058,35 @@
             [0, 1, 2, 3].forEach((index) => { $(`tf-${index}`).required = true; });
         }
         if (state.type === 'short_answer' && short) {
-            short.innerHTML = '<label>Đáp án chính xác<input id="correct-value-input" placeholder="Ví dụ: 16.9 hoặc từ khóa chính xác"></label><p class="field-note"><i class="fa-solid fa-circle-info"></i> Đáp án được lưu nguyên văn để hỗ trợ số, đơn vị và từ khóa.</p>';
+            short.innerHTML = '<label>Đáp án chính xác<input id="correct-value-input" placeholder="Ví dụ: 16.9 hoặc từ khóa chính xác"></label><label>Các đáp án chấp nhận khác (tùy chọn)<textarea id="accepted-values-input" rows="2" placeholder="Mỗi đáp án một dòng hoặc ngăn cách bằng dấu ; (ví dụ: 16,9; 16.90)"></textarea></label><p class="field-note"><i class="fa-solid fa-circle-info"></i> Đáp án được lưu nguyên văn để hỗ trợ số, đơn vị và từ khóa.</p>';
             $('correct-value-input').required = true;
         }
         renderPreview();
     }
 
+    /** Normalize accepted_values / acceptedValues into a deduplicated array of non-empty strings. */
+    function normalizeAcceptedValues(value) {
+        const rawList = Array.isArray(value)
+            ? value
+            : typeof value === 'string'
+                ? value.split(/\r?\n|[;|]+|,\s+/)
+                : (value !== undefined && value !== null ? [value] : []);
+        const seen = new Set();
+        const result = [];
+        rawList.forEach((item) => {
+            const clean = String(item ?? '').trim();
+            if (!clean || seen.has(clean)) return;
+            seen.add(clean);
+            result.push(clean);
+        });
+        return result;
+    }
+
     function readQuestion() {
+        const correctVal = $('correct-value-input')?.value || '';
+        const acceptedValues = state.type === 'short_answer'
+            ? normalizeAcceptedValues($('accepted-values-input')?.value || '')
+            : [];
         const q = {
             grade: $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'),
             subject_key: $('subject-select')?.value || state.importSubject,
@@ -1046,8 +1094,10 @@
             q_type: state.type,
             question: $('question-input')?.value || '',
             options: [], statements: [], correct: 0, answer: 0,
-            correct_value: $('correct-value-input')?.value || '', explanation: $('explanation-input')?.value || '',
-            qType: state.type, correctValue: $('correct-value-input')?.value || ''
+            correct_value: correctVal, explanation: $('explanation-input')?.value || '',
+            qType: state.type, correctValue: correctVal,
+            acceptedValues,
+            accepted_values: acceptedValues.length > 0 ? acceptedValues : null
         };
         if (state.type === 'mcq') {
             q.options = [0, 1, 2, 3].map((index) => $(`option-${index}`)?.value || '');
@@ -1066,7 +1116,9 @@
         if (state.type === 'tf_group') {
             body = `<div class="tf-preview-list">${q.statements.map((statement, index) => `<div class="tf-preview-row"><b>${statement.key}</b><span>${htmlText(statement.text, `Nội dung ý ${statement.key}`)}</span><span class="tf-preview-answer ${statement.answer ? '' : 'false'}">${statement.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('')}</div>`;
         } else if (state.type === 'short_answer') {
-            body = '<div class="short-preview-input">Nhập câu trả lời ngắn tại đây...</div>';
+            const expectedVal = String(q.correctValue || '').trim();
+            const extraVals = (Array.isArray(q.acceptedValues) ? q.acceptedValues : []).filter((val) => val && val !== expectedVal);
+            body = `<div class="preview-options-list"><div class="short-preview-input">Nhập câu trả lời ngắn tại đây...</div><div class="preview-option is-correct"><b><i class="fa-solid fa-check"></i></b><span>Đáp án chuẩn: ${htmlText(expectedVal, 'Chưa nhập đáp án chính xác')}</span></div>${extraVals.length ? `<div class="preview-option"><b>+</b><span>Chấp nhận thêm: ${esc(extraVals.join(' · '))}</span></div>` : ''}</div>`;
         } else {
             body = `<div class="preview-options-list">${q.options.map((option, index) => `<div class="preview-option ${index === state.answer ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(option, `Phương án ${'ABCD'[index]}`)}</span></div>`).join('')}</div>`;
         }
@@ -1104,14 +1156,49 @@
     function normalizeRow(row) {
         const qType = row.q_type || row.qType || 'mcq';
         const statements = Array.isArray(row.statements) ? row.statements.map((item, index) => ({ key: item.key || item.id || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.text ?? item.content ?? '', math: item.math ?? item.latex ?? item.formula } : item.text ?? item.content ?? '', answer: parseBool(item.answer ?? item.correctAnswer) })) : [];
-        return { ...row, subjectKey: row.subject_key, qType, q_type: qType, options: Array.isArray(row.options) ? row.options : [], statements, correct: Number(row.correct ?? row.answer ?? 0), answer: Number(row.answer ?? row.correct ?? 0), correctValue: row.correct_value ?? row.correctValue ?? '', explanation: row.explanation || '' };
+        const acceptedValues = qType === 'short_answer'
+            ? normalizeAcceptedValues(row.accepted_values ?? row.acceptedValues)
+            : [];
+        const correctValue = String(row.correct_value ?? row.correctValue ?? (acceptedValues[0] || ''));
+        return {
+            ...row,
+            subjectKey: row.subject_key,
+            qType,
+            q_type: qType,
+            options: Array.isArray(row.options) ? row.options : [],
+            statements,
+            correct: Number(row.correct ?? row.answer ?? 0),
+            answer: Number(row.answer ?? row.correct ?? 0),
+            correctValue,
+            correct_value: correctValue,
+            acceptedValues,
+            accepted_values: acceptedValues.length > 0 ? acceptedValues : null,
+            explanation: row.explanation || ''
+        };
+    }
+
+    /** Fetch all rows from quiz_questions using 1000-row .range() pagination so >1000 questions never truncate. */
+    async function fetchAllQuestionRows(selectCols = '*', { orderById = true } = {}) {
+        const pageSize = 1000;
+        const rows = [];
+        for (let from = 0; ; from += pageSize) {
+            let query = state.client.from('quiz_questions').select(selectCols);
+            if (orderById) {
+                query = query.order('id', { ascending: true });
+            }
+            const { data, error } = await query.range(from, from + pageSize - 1);
+            if (error) throw error;
+            const batch = Array.isArray(data) ? data : [];
+            rows.push(...batch);
+            if (batch.length < pageSize) break;
+        }
+        return rows;
     }
 
     async function loadQuestions() {
         try {
             if (!navigator.onLine) throw new Error('Thiết bị đang ngoại tuyến (Offline)');
-            const { data, error } = await state.client.from('quiz_questions').select('*').order('id', { ascending: true });
-            if (error) throw error;
+            const data = await fetchAllQuestionRows('*', { orderById: true });
             state.questions = (data || []).filter((r) => !r.is_deleted).map(normalizeRow);
             state.questionsLoaded = true;
             setConnection(true, 'Đã kết nối');
@@ -1414,7 +1501,10 @@
             const isSelected = state.selectedQuestionIds.has(String(q.id));
             let answerPreview = '';
             if (q.qType === 'tf_group') answerPreview = `<div class="item-statements">${q.statements.map((s) => `<div class="item-statement"><b>${esc(s.key)}.</b>${htmlText(s.text)} <strong>${s.answer ? 'Đúng' : 'Sai'}</strong></div>`).join('')}</div>`;
-            else if (q.qType === 'short_answer') answerPreview = `<div class="item-option is-correct">Đáp án: ${htmlText(q.correctValue)}</div>`;
+            else if (q.qType === 'short_answer') {
+                const extraVals = (Array.isArray(q.acceptedValues) ? q.acceptedValues : []).filter((val) => val && val !== q.correctValue);
+                answerPreview = `<div class="item-option is-correct">Đáp án: ${htmlText(q.correctValue)}${extraVals.length ? ` <span class="muted-copy">(Chấp nhận thêm: ${esc(extraVals.join(' · '))})</span>` : ''}</div>`;
+            }
             else answerPreview = `<div class="item-options">${q.options.slice(0, 4).map((option, index) => `<span class="item-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}.</b> ${htmlText(option)}</span>`).join('')}</div>`;
             return `<article class="question-item ${isSelected ? 'is-selected' : ''}" data-item-id="${esc(q.id)}">
                 <div class="question-item-head">
@@ -1523,24 +1613,29 @@
         while (state.tfAnswers.length < 4) state.tfAnswers.push(true);
         ensureTypeEditor(normalized.qType); setAnswer(state.answer);
         if (normalized.qType === 'tf_group') normalized.statements.forEach((item, index) => { if ($(`tf-${index}`)) $(`tf-${index}`).value = storageText(item.text); });
-        if (normalized.qType === 'short_answer' && $('correct-value-input')) $('correct-value-input').value = normalized.correctValue || '';
+        if (normalized.qType === 'short_answer') {
+            if ($('correct-value-input')) $('correct-value-input').value = normalized.correctValue || '';
+            if ($('accepted-values-input')) {
+                const acceptedList = normalizeAcceptedValues(normalized.acceptedValues ?? normalized.accepted_values);
+                $('accepted-values-input').value = acceptedList.join('\n');
+            }
+        }
         renderPreview();
     }
 
     function normalizeAiQuestion(raw) {
         const rawType = String(raw?.type ?? raw?.q_type ?? raw?.qType ?? '').trim().toLowerCase().replace(/[-\s]/g, '_');
-        const inferredShortAnswer = !rawType && (raw?.answer !== undefined || raw?.correctAnswer !== undefined || raw?.correct_value !== undefined || raw?.correctValue !== undefined || raw?.acceptedAnswer !== undefined || raw?.acceptedValues !== undefined) && !Array.isArray(raw?.options) && !Array.isArray(raw?.subQuestions) && !Array.isArray(raw?.statements);
+        const inferredShortAnswer = !rawType && (raw?.answer !== undefined || raw?.correctAnswer !== undefined || raw?.correct_value !== undefined || raw?.correctValue !== undefined || raw?.acceptedAnswer !== undefined || raw?.acceptedValues !== undefined || raw?.accepted_values !== undefined) && !Array.isArray(raw?.options) && !Array.isArray(raw?.subQuestions) && !Array.isArray(raw?.statements);
         const type = rawType === 'multiple_choice' || rawType === 'multiplechoice' || rawType === 'mcq' ? 'mcq' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf_group' || rawType === 'tf' ? 'tf_group' : rawType === 'short_answer' || rawType === 'short' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'shortanswer' || rawType === 'tra_loi_ngan' || rawType === 'trả_lời_ngắn' || rawType === 'text_answer' || rawType === 'free_text' || inferredShortAnswer ? 'short_answer' : 'mcq';
         if (type === 'tf_group') {
             const rawStatements = Array.isArray(raw?.subQuestions) ? raw.subQuestions : (Array.isArray(raw?.statements) ? raw.statements : []);
             return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.content ?? item.text ?? '', math: item.math ?? item.latex ?? item.formula } : item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
         }
         if (type === 'short_answer') {
-            const rawAcceptedValues = raw?.acceptedValues ?? raw?.accepted_values;
-            const acceptedValues = Array.isArray(rawAcceptedValues) ? rawAcceptedValues : rawAcceptedValues !== undefined && rawAcceptedValues !== null ? [rawAcceptedValues] : [];
+            const acceptedValues = normalizeAcceptedValues(raw?.acceptedValues ?? raw?.accepted_values);
             const rawAnswer = raw?.correctAnswer ?? raw?.correct_answer ?? raw?.correct_value ?? raw?.correctValue ?? raw?.acceptedAnswer ?? raw?.accepted_answer ?? raw?.answer ?? raw?.correct ?? raw?.value ?? acceptedValues[0] ?? '';
             const answerValue = rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer) ? (rawAnswer.value ?? rawAnswer.answer ?? rawAnswer.text ?? '') : Array.isArray(rawAnswer) ? rawAnswer[0] ?? '' : rawAnswer;
-            return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? raw?.prompt ?? raw?.text ?? '', options: [], statements: [], correctValue: String(answerValue ?? ''), acceptedValues: acceptedValues.map((value) => String(value)), explanation: raw?.explanation ?? '' };
+            return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? raw?.prompt ?? raw?.text ?? '', options: [], statements: [], correctValue: String(answerValue ?? ''), acceptedValues, accepted_values: acceptedValues.length > 0 ? acceptedValues : null, explanation: raw?.explanation ?? '' };
         }
         return { ...raw, qType: 'mcq', q_type: 'mcq', question: raw?.question ?? '', options: Array.isArray(raw?.options) ? raw.options : [], statements: [], correct: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), correctAnswer: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), explanation: raw?.explanation ?? '' };
     }
@@ -1550,13 +1645,17 @@
         const targetSubjectKey = subjectKey || normalized.subject_key || 'history';
         const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(targetSubjectKey));
         const resolvedGrade = String(normalized.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'));
+        const acceptedValues = normalized.qType === 'short_answer'
+            ? normalizeAcceptedValues(normalized.acceptedValues ?? normalized.accepted_values)
+            : [];
         const record = {
             ...(id ? { id: Number(id) } : {}), subject_key: targetSubjectKey, grade: resolvedGrade, category: normalized.category || 'Bài tập',
             q_type: normalized.qType, question: storageText(normalized.question), options: normalized.qType === 'mcq' ? normalized.options.map(storageText) : [],
             statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: storageText(item.text ?? item.content), answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
             correct: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             answer: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
-            correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? '') : '',
+            correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? acceptedValues[0] ?? '') : '',
+            accepted_values: normalized.qType === 'short_answer' && acceptedValues.length > 0 ? acceptedValues : null,
             explanation: normalized.explanation ?? '', image_url: normalized.image_url || normalized.imageUrl || '', is_deleted: false, deleted_at: null, updated_at: new Date().toISOString()
         };
         return record;
@@ -1598,7 +1697,7 @@
     async function saveQuestion(event) {
         event?.preventDefault();
         const q = readQuestion();
-        const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && q.correct_value.length > 0));
+        const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && (q.correct_value.trim().length > 0 || (q.acceptedValues && q.acceptedValues.length > 0))));
         if (!valid) return notify('Vui lòng nhập đủ nội dung theo loại câu hỏi.', true);
         try {
             const isEditing = Boolean(state.editingId);
@@ -1916,13 +2015,17 @@
         const safeAnswer = Number.isFinite(rawAnswer) ? Math.floor(rawAnswer) : safeCorrect;
         const subjectKey = item.subject_key || item.subjectKey || 'history';
         const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(subjectKey));
+        const qType = item.q_type || item.qType || 'mcq';
+        const acceptedValues = qType === 'short_answer'
+            ? normalizeAcceptedValues(item.accepted_values ?? item.acceptedValues)
+            : [];
 
         return {
             id: targetId,
             subject_key: subjectKey,
             grade: String(item.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || '11'),
             category: item.category || 'Ôn tập',
-            q_type: item.q_type || item.qType || 'mcq',
+            q_type: qType,
             question: storageText(item.question ?? ''),
             options: Array.isArray(item.options) ? item.options.map((opt) => storageText(opt ?? '')) : [],
             statements: Array.isArray(item.statements)
@@ -1935,7 +2038,8 @@
                 : [],
             correct: safeCorrect,
             answer: safeAnswer,
-            correct_value: String(item.correct_value ?? item.correctValue ?? ''),
+            correct_value: String(item.correct_value ?? item.correctValue ?? acceptedValues[0] ?? ''),
+            accepted_values: qType === 'short_answer' && acceptedValues.length > 0 ? acceptedValues : null,
             explanation: storageText(item.explanation || ''),
             image_url: item.image_url || item.imageUrl || '',
             is_deleted: false,
@@ -1961,11 +2065,11 @@
             delete copy[col];
             return copy;
         });
-        const stripKnownOptional = (list) => list.map(({ grade, is_deleted, deleted_at, updated_at, image_url, ...rest }) => rest);
+        const stripKnownOptional = (list) => list.map(({ grade, is_deleted, deleted_at, updated_at, image_url, accepted_values, ...rest }) => rest);
 
         const execWithSchemaAdapt = async (initialChunk, mode) => {
             let current = initialChunk;
-            for (let attempt = 0; attempt < 8; attempt++) {
+            for (let attempt = 0; attempt < 12; attempt++) {
                 let query = mode === 'insert'
                     ? state.client.from('quiz_questions').insert(current)
                     : state.client.from('quiz_questions').upsert(current, { onConflict: 'id' });
@@ -2085,7 +2189,7 @@
             });
             if (state.client) {
                 try {
-                    const { data: existingRows } = await state.client.from('quiz_questions').select('id');
+                    const existingRows = await fetchAllQuestionRows('id', { orderById: true });
                     (existingRows || []).forEach((r) => {
                         const num = Number(r.id);
                         if (Number.isFinite(num) && num > 0 && num < 2000000000) usedIds.add(num);
@@ -3122,8 +3226,7 @@
         }
 
         if (view === 'progress') {
-            if (requestedLiveTab) switchLiveSubtab(requestedLiveTab);
-            else renderGrade5ProgressMonitor();
+            switchLiveSubtab(requestedLiveTab || 'cards');
 
             // Kích hoạt Realtime Supabase live feed cho Admin (cập nhật ngay khi học sinh chọn đáp án)
             if (!state.progressRealtimeChannel && state.client && typeof state.client.channel === 'function') {
@@ -3257,11 +3360,10 @@
     async function toggleMaintenance(customActionNote = '') {
         const active = Boolean($('maintenance-toggle')?.checked);
         const defaultLockedMsg = 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
-        let message = String(state.maintenance.message || '').trim();
-        if (!message || message === 'Website đang mở công khai cho học sinh.' || message === 'Website đang mở.') {
-            message = defaultLockedMsg;
-        }
-        if (active && !rowHasCustomMessage(message) && !customActionNote) {
+        const rawMessage = String(state.maintenance.message || '').trim();
+        const hasCustomMessage = rowHasCustomMessage(rawMessage);
+        let message = hasCustomMessage ? rawMessage : defaultLockedMsg;
+        if (active && !hasCustomMessage && !customActionNote) {
             const prompted = await promptDialog({
                 title: 'Lời nhắn khi bảo trì',
                 eyebrow: 'MAINTENANCE MODE',
@@ -3297,7 +3399,13 @@
     }
 
     function rowHasCustomMessage(msg) {
-        return Boolean(msg && msg !== 'Website đang mở công khai cho học sinh.' && msg !== 'Website đang mở.');
+        const clean = String(msg || '').trim();
+        return Boolean(
+            clean
+            && clean !== 'Website đang mở công khai cho học sinh.'
+            && clean !== 'Website đang mở.'
+            && clean !== 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!'
+        );
     }
 
     function generateRandomToken(prefix = 'GRADE5') {
@@ -3750,6 +3858,25 @@
         renderUnifiedAccess();
     }
 
+    function isIpOnlyTokenRecord(t) {
+        if (!t) return false;
+        const tCode = String(t.token || '').trim().toLowerCase();
+        const tRaw = String(t.rawCode || '').trim().toLowerCase();
+        const tIp = String(t.ip || '').trim().toLowerCase();
+        if (!tIp) return false;
+        return (!tRaw || tRaw === tIp) && (!tCode || tCode === tIp);
+    }
+
+    function hasOtherTokenWithRoleOnIp(ip, excludeToken, roles) {
+        const cleanIp = String(ip || '').trim().toLowerCase();
+        if (!cleanIp) return false;
+        return (state.tokens || []).some(t =>
+            t.token !== excludeToken &&
+            String(t.ip || '').trim().toLowerCase() === cleanIp &&
+            roles.includes(t.role)
+        );
+    }
+
     async function toggleStudentAi(token) {
         const item = (state.tokens || []).find(t => t.token === token);
         if (!item) return notify('Không tìm thấy học sinh này.', true);
@@ -3777,7 +3904,7 @@
             if (!confirmed) return;
 
             item.role = 'grade5';
-            if (item.ip) {
+            if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['ai', 'all'])) {
                 state.aiIps = (state.aiIps || []).filter(x => (typeof x === 'string' ? x : x.ip) !== item.ip);
                 await saveAiIps();
             }
@@ -3814,7 +3941,7 @@
             if (!confirmed) return;
 
             item.role = 'ai';
-            if (item.ip) {
+            if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'])) {
                 state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
                 await saveGeo();
             }
@@ -3836,7 +3963,7 @@
             icon: 'fa-trash-can'
         }))) return;
 
-        if (item.ip) {
+        if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'])) {
             state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
             await saveGeo();
         }
@@ -3866,7 +3993,7 @@
             icon: 'fa-trash-can'
         }))) return;
 
-        if (item.ip) {
+        if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['ai', 'all'])) {
             state.aiIps = (state.aiIps || []).filter(x => (typeof x === 'string' ? x : x.ip) !== item.ip);
             await saveAiIps();
         }
@@ -3940,14 +4067,16 @@
 
         state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
 
-        // Tìm xem token / mã kết hợp đã có trong danh sách chưa
+        // Tìm xem token / mã kết hợp đã có trong danh sách chưa.
+        // Nếu có mã máy riêng (detectedCode), chỉ cập nhật đúng máy đó — không ghi đè máy khác cùng IP.
         const existingIdx = state.tokens.findIndex(t => {
             const tCode = String(t.token || '').toUpperCase();
             const tRaw = String(t.rawCode || '').toUpperCase();
             const tIp = String(t.ip || '').toLowerCase();
-            return (combinedToken && tCode === combinedToken.toUpperCase()) ||
-                   (rawCode && (tRaw === rawCode || tCode === rawCode)) ||
-                   (ip && tIp === ip);
+            if (combinedToken && tCode === combinedToken.toUpperCase()) return true;
+            if (detectedCode && rawCode && (tRaw === rawCode || tCode === rawCode)) return true;
+            if (!detectedCode && ip && tIp === ip && isIpOnlyTokenRecord(t)) return true;
+            return false;
         });
 
         const allowedSubjects = Array.from(document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]:checked')).map((cb) => cb.value).filter(Boolean);
@@ -4035,11 +4164,11 @@
 
         if (item?.ip) {
             const cleanIp = item.ip;
-            if (state.geo?.grade5Ips) {
+            if (state.geo?.grade5Ips && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['grade5', 'all'])) {
                 state.geo.grade5Ips = state.geo.grade5Ips.filter(ip => ip !== cleanIp);
                 await saveGeo();
             }
-            if (state.aiIps) {
+            if (state.aiIps && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['ai', 'all'])) {
                 state.aiIps = state.aiIps.filter(i => (typeof i === 'string' ? i : i.ip) !== cleanIp);
                 await saveAiIps();
             }
@@ -4089,7 +4218,10 @@
             if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
                 const existing = state.tokens.find(t => String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp);
                 if (existing) {
-                    if (existing.role === 'grade5') existing.role = 'all';
+                    const hasOtherAi = state.tokens.some(t => String(t.ip || '').toLowerCase() === cleanIp && (t.role === 'ai' || t.role === 'all'));
+                    if (existing.role === 'grade5' && (isIpOnlyTokenRecord(existing) || !hasOtherAi)) {
+                        existing.role = 'all';
+                    }
                 } else {
                     state.tokens.push({
                         token: cleanIp,
@@ -4982,6 +5114,12 @@
                     nameEl.textContent = name;
                 }
 
+                const ipText = ip || 'Chưa xác định';
+                const ipEl = tr.children[1]?.querySelector('code') || tr.children[1];
+                if (ipEl && ipEl.textContent !== ipText) {
+                    ipEl.textContent = ipText;
+                }
+
                 const devCell = tr.children[2];
                 if (devCell && devCell.textContent !== dev) {
                     devCell.textContent = dev;
@@ -5009,10 +5147,38 @@
                 const actionsEl = tr.querySelector('.table-actions');
                 if (actionsEl) {
                     const banBtn = actionsEl.querySelector('[data-ban-row], [data-unban-row]');
-                    if (status === 'banned' && banBtn && banBtn.hasAttribute('data-ban-row')) {
-                        banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
-                    } else if (status !== 'banned' && banBtn && banBtn.hasAttribute('data-unban-row')) {
-                        banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
+                    if (status === 'banned' && banBtn) {
+                        if (banBtn.hasAttribute('data-ban-row')) {
+                            banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
+                        } else if (banBtn.dataset.unbanRow !== ip) {
+                            banBtn.dataset.unbanRow = ip;
+                        }
+                    } else if (status !== 'banned' && banBtn) {
+                        if (banBtn.hasAttribute('data-unban-row')) {
+                            banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
+                        } else if (banBtn.dataset.banRow !== ip) {
+                            banBtn.dataset.banRow = ip;
+                        }
+                    }
+
+                    const grantBtn = actionsEl.querySelector('[data-grant-token-name]');
+                    if (grantBtn) {
+                        grantBtn.dataset.grantTokenName = name;
+                        grantBtn.dataset.grantTokenIp = ip;
+                        grantBtn.dataset.grantTokenDevice = dev;
+                    }
+
+                    const noticeBtn = actionsEl.querySelector('[data-private-notice]');
+                    if (noticeBtn) {
+                        noticeBtn.dataset.privateNotice = ip;
+                        noticeBtn.dataset.privateName = name;
+                    }
+
+                    const deleteBtn = actionsEl.querySelector('[data-delete-student-name]');
+                    if (deleteBtn) {
+                        deleteBtn.dataset.deleteStudentName = name;
+                        deleteBtn.dataset.deleteStudentIp = ip;
+                        deleteBtn.dataset.deleteStudentDevice = dev;
                     }
                 }
 
@@ -5610,6 +5776,27 @@
         `;
     }
 
+    /** Render the shared header of a live progress card so long names wrap inside .progress-card-identity without clipping .progress-card-actions. */
+    function buildProgressCardHeaderHtml(p, statusHtml, timeAgo, avatarStyle, iconClass) {
+        return `
+            <div class="progress-card-head">
+                <div class="progress-card-head-main">
+                    <div class="progress-card-avatar" style="${avatarStyle}">
+                        <i class="fa-solid ${iconClass}"></i>
+                    </div>
+                    <div class="progress-card-identity">
+                        <h3 class="progress-card-name" title="${esc(p.name)}">${esc(p.name)}</h3>
+                        <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
+                    </div>
+                </div>
+                <div class="progress-card-actions">
+                    ${statusHtml}
+                    ${buildProgressDeleteButton(p)}
+                </div>
+            </div>
+        `;
+    }
+
     function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
         const status = getProgressCardStatus(p);
         const statusColors = {
@@ -5621,21 +5808,13 @@
         const statusHtml = `<span class="status-badge" style="${statusColors[status.type] || statusColors.doing}font-weight:700;display:inline-flex;align-items:center;gap:5px;"><i class="fa-solid ${status.icon}"></i> ${status.label}</span>`;
         if (cardType === 'waiting') {
             return `
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <div style="width:38px;height:38px;border-radius:10px;background:rgba(148,163,184,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:16px;">
-                            <i class="fa-solid fa-user-clock"></i>
-                        </div>
-                        <div>
-                            <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                            <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
-                        </div>
-                    </div>
-                    <div class="progress-card-actions">
-                        ${statusHtml}
-                        ${buildProgressDeleteButton(p)}
-                    </div>
-                </div>
+                ${buildProgressCardHeaderHtml(
+                    p,
+                    statusHtml,
+                    timeAgo,
+                    'background:rgba(148,163,184,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:16px;',
+                    'fa-user-clock'
+                )}
 
                 <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
                     <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
@@ -5653,21 +5832,13 @@
 
         if (cardType === 'completed') {
             return `
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;">
-                            <i class="fa-solid fa-award"></i>
-                        </div>
-                        <div>
-                            <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                            <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
-                        </div>
-                    </div>
-                    <div class="progress-card-actions">
-                        ${statusHtml}
-                        ${buildProgressDeleteButton(p)}
-                    </div>
-                </div>
+                ${buildProgressCardHeaderHtml(
+                    p,
+                    statusHtml,
+                    timeAgo,
+                    'background:rgba(99,102,241,0.15);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;',
+                    'fa-award'
+                )}
 
                 <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -5694,21 +5865,13 @@
 
         // CardType: doing
         return `
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;">
-                        <i class="fa-solid fa-user-pen"></i>
-                    </div>
-                    <div>
-                        <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--text);">${esc(p.name)}</h3>
-                        <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
-                    </div>
-                </div>
-                <div class="progress-card-actions">
-                    ${statusHtml}
-                    ${buildProgressDeleteButton(p)}
-                </div>
-            </div>
+            ${buildProgressCardHeaderHtml(
+                p,
+                statusHtml,
+                timeAgo,
+                'background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;',
+                'fa-user-pen'
+            )}
 
             <div style="background:var(--surface-3);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -5802,6 +5965,19 @@
                         deleteBtn.dataset.deleteProgressName = p.name || '';
                         deleteBtn.dataset.deleteProgressIp = p.ip || '';
                         deleteBtn.dataset.deleteProgressDevice = p.device || '';
+                    }
+
+                    const nameEl = card.querySelector('.progress-card-name');
+                    const nextName = String(p.name ?? '');
+                    if (nameEl && nameEl.textContent !== nextName) {
+                        nameEl.textContent = nextName;
+                        nameEl.title = nextName;
+                    }
+
+                    const noticeBtn = card.querySelector('[data-private-notice]');
+                    if (noticeBtn) {
+                        noticeBtn.dataset.privateNotice = p.ip || '';
+                        noticeBtn.dataset.privateName = p.name || 'Học sinh';
                     }
 
                     if (cardType === 'doing' || cardType === 'ready') {
@@ -6771,7 +6947,7 @@
         $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
         $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
         $('question-form')?.addEventListener('input', (event) => {
-            if (event.target.id === 'question-input' || event.target.id === 'category-input' || event.target.id === 'explanation-input' || event.target.id.startsWith('option-') || event.target.id.startsWith('tf-') || event.target.id === 'correct-value-input') renderPreview();
+            if (event.target.id === 'question-input' || event.target.id === 'category-input' || event.target.id === 'explanation-input' || event.target.id.startsWith('option-') || event.target.id.startsWith('tf-') || event.target.id === 'correct-value-input' || event.target.id === 'accepted-values-input') renderPreview();
         });
         $('question-form')?.addEventListener('submit', saveQuestion);
         $('reset-form')?.addEventListener('click', resetForm); $('cancel-edit')?.addEventListener('click', resetForm); $('new-question-button')?.addEventListener('click', () => { resetForm(); switchView('questions'); });
@@ -6791,8 +6967,8 @@
             state.page = 1;
             renderLibrary();
         });
-        document.querySelectorAll('.grade-filter').forEach((button) => button.addEventListener('click', () => {
-            document.querySelectorAll('.grade-filter').forEach((item) => item.classList.remove('is-active'));
+        document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((button) => button.addEventListener('click', () => {
+            document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((item) => item.classList.remove('is-active'));
             button.classList.add('is-active');
             state.grade = button.dataset.grade;
             state.subject = 'all';
@@ -7251,7 +7427,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
             }
         });
         try {
-            state.client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+            ensureSupabaseClient();
             if (!(await isCurrentIpAllowed())) {
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;

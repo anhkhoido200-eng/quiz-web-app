@@ -760,16 +760,20 @@ body.light-theme #home-semester-tabs.has-sliding-indicator .home-grade-tab.is-ac
 @keyframes adminPulseGlow {
     0%, 100% {
         box-shadow: 0 0 15px rgba(245, 158, 11, 0.45);
-        transform: scale(1);
     }
     50% {
         box-shadow: 0 0 30px rgba(245, 158, 11, 0.85);
-        transform: scale(1.03);
     }
 }
 
 .admin-floating-glow {
     animation: adminPulseGlow 2.5s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-floating-glow {
+        animation: none;
+    }
 }
 
 /* ============================================================== */
@@ -1480,13 +1484,21 @@ body.admin-body.dark {
 .maintenance-toggle-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--text-secondary, #4b5870);
     transition: color 0.2s ease;
 }
 
 .maintenance-toggle-label.is-active {
-    color: #fca5a5;
+    color: #b91c1c;
     font-weight: 700;
+}
+
+body.dark .maintenance-toggle-label {
+    color: #cbd5e1;
+}
+
+body.dark .maintenance-toggle-label.is-active {
+    color: #fca5a5;
 }
 
 .status-badge.danger.is-pulsing {
@@ -2071,9 +2083,8 @@ button[id^="ai-btn-"]:hover:not(:disabled) {
    UI/UX ANIMATION ENHANCEMENTS (VIEW TRANSITIONS, OVERLAY & ACCORDION)
    ========================================================================= */
 
-@view-transition {
-    navigation: auto;
-}
+/* Cross-document navigation uses #workspace-transition-overlay instead of @view-transition
+   so Chrome does not throw aborted cross-doc ViewTransition pageerrors during navigation. */
 
 ::view-transition-old(root) {
     animation: vtRootFadeOut 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;

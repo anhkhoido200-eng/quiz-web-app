@@ -13,6 +13,8 @@ class QuizApp {
 
         // Thông tin người học & Thiết bị & IP
         this.playerName = "";
+        this.isPlayerNameCommitted = false;
+        this._draftPlayerName = "";
         this.clientIp = "Đang nhận diện...";
         this.deviceMachineCode = this.getOrCreateDeviceMachineCode();
         this.deviceInfo = `${this.detectDevice()} [${this.deviceMachineCode}]`;
@@ -59,20 +61,30 @@ class QuizApp {
         this.allowedAiIps = [];
 
         // Phân quyền kết hợp Token (Token-based Auth)
-        this.localTestIpOverride = (() => {
+        const _localTestState = (() => {
             try {
-                return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(String(window.location.hostname || '').toLowerCase())
-                    && String(window.location.port || '') === '4173';
+                const host = String(window.location.hostname || '').toLowerCase();
+                const isLocalHost = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(host);
+                const requestedIp = new URLSearchParams(window.location.search).get('test_ip') || '';
+                const hasTestIp = isLocalHost && /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(requestedIp.trim());
+                return {
+                    hasTestIp,
+                    // Chỉ khóa cứng chế độ preview ẩn Lớp 5 trên cổng 4173 khi KHÔNG truyền ?test_ip= tường minh.
+                    override: isLocalHost && !hasTestIp && String(window.location.port || '') === '4173'
+                };
             } catch (e) {
-                return false;
+                return { hasTestIp: false, override: false };
             }
         })();
-        this.userToken = this.localTestIpOverride ? '' : (localStorage.getItem('quiz_access_token') || '').trim();
+        this.hasLocalTestIpParam = _localTestState.hasTestIp;
+        this.localTestIpOverride = _localTestState.override;
+        const _isolateLocalProfile = this.localTestIpOverride || this.hasLocalTestIpParam;
+        this.userToken = _isolateLocalProfile ? '' : (localStorage.getItem('quiz_access_token') || '').trim();
         this.tokenInfo = null;
         try {
-            const cachedToken = this.localTestIpOverride ? '' : localStorage.getItem('quiz_token_info');
+            const cachedToken = _isolateLocalProfile ? '' : localStorage.getItem('quiz_token_info');
             if (cachedToken) this.tokenInfo = JSON.parse(cachedToken);
-            if (this.localTestIpOverride) {
+            if (_isolateLocalProfile) {
                 ['quiz_admin_token', 'quiz_access_token', 'quiz_token_info', 'quiz_is_admin', 'quiz_admin_authenticated', 'quiz_admin_saved_ip']
                     .forEach((key) => localStorage.removeItem(key));
             }
@@ -715,6 +727,7 @@ class QuizApp {
         } catch (e) {
             console.warn('[QuizApp] Lỗi đọc URL token:', e);
         }
+        this._hasUrlToken = hasUrlToken;
 
         this.initWorkspaceTransitions();
         this.initTheme();
@@ -920,21 +933,21 @@ class QuizApp {
                 console.debug('[QuizApp] Local test mode: bỏ qua xác thực token/Admin cloud.');
             } else {
             if (window.dbService && typeof window.dbService.verifyAccessToken === 'function') {
-                // Ưu tiên số 1: Kiểm tra theo IP của thiết bị hiện tại
-                if (this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') {
-                    matched = await window.dbService.verifyAccessToken('', this.clientIp);
-                }
-                // Ưu tiên số 2: Kiểm tra theo chuỗi kết hợp IP-QM-...
-                if (!matched && combinedKey) {
+                // Ưu tiên số 1: Kiểm tra theo chuỗi kết hợp IP-QM-...
+                if (combinedKey) {
                     matched = await window.dbService.verifyAccessToken(combinedKey, this.clientIp);
                 }
-                // Ưu tiên số 3: Kiểm tra theo mã máy QM-... đơn lẻ
+                // Ưu tiên số 2: Kiểm tra theo mã máy QM-... đơn lẻ
                 if (!matched && this.deviceMachineCode) {
                     matched = await window.dbService.verifyAccessToken(this.deviceMachineCode, this.clientIp);
                 }
-                // Ưu tiên số 4: Kiểm tra token nhập tay / link
+                // Ưu tiên số 3: Kiểm tra token nhập tay / link
                 if (!matched && this.userToken) {
                     matched = await window.dbService.verifyAccessToken(this.userToken, this.clientIp);
+                }
+                // Ưu tiên số 4: Dự phòng theo IP của thiết bị hiện tại (cho các cấp quyền chỉ dùng IP)
+                if (!matched && this.clientIp && !this.clientIp.startsWith('Đang') && this.clientIp !== 'Chưa xác định') {
+                    matched = await window.dbService.verifyAccessToken('', this.clientIp);
                 }
             }
             }
@@ -1041,6 +1054,10 @@ class QuizApp {
         const codeEl = document.getElementById('token-code-display');
         const badgesEl = document.getElementById('token-roles-badges');
         const inputField = document.getElementById('token-input-field');
+        const combinedDisplay = document.getElementById('modal-combined-code-display');
+        if (combinedDisplay) {
+            combinedDisplay.textContent = this.getCombinedDeviceKey();
+        }
 
         if (info && info.token) {
             if (box) box.classList.remove('hidden');
@@ -1071,6 +1088,9 @@ class QuizApp {
         const modal = document.getElementById('modal-token-activation');
         if (!modal) return;
         this.updateTokenStatusUi();
+        if (!this.clientIp || this.clientIp.startsWith('Đang') || this.clientIp === 'Chưa xác định') {
+            this.fetchClientIp().then(() => this.updateTokenStatusUi()).catch(() => {});
+        }
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         const input = document.getElementById('token-input-field');
@@ -1166,10 +1186,46 @@ class QuizApp {
         return false;
     }
 
+    hasGrade5OnlyAccess() {
+        if (this.localTestIpOverride || this.isAdminAuthenticated || this.hasAdminIpAccess()) return false;
+
+        const info = this.tokenInfo || this.getCachedTokenInfo();
+        const role = String(info?.role || '').trim().toLowerCase();
+        if (['grade5', 'class5', 'lop5', 'parent', 'phuhuynh', 'observer', 'observer_grade5'].includes(role)) {
+            return true;
+        }
+
+        const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '')
+            .trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const currentIp = normalizeIp(this.clientIp);
+        const allowedIps = Array.isArray(this.class5AllowedIps)
+            ? this.class5AllowedIps.map(normalizeIp).filter(Boolean)
+            : [];
+        return Boolean(currentIp) && !currentIp.startsWith('đang') && currentIp !== 'chưa xác định'
+            && allowedIps.includes(currentIp);
+    }
+
+    isSubjectAccessibleToCurrentUser(subjectOrKey) {
+        if (!this.hasGrade5OnlyAccess()) return true;
+        const rawKey = typeof subjectOrKey === 'object'
+            ? (subjectOrKey?.key || subjectOrKey?.subject_key)
+            : subjectOrKey;
+        const targetNorm = String(rawKey || '').trim().toLowerCase();
+        const subject = typeof subjectOrKey === 'object'
+            ? subjectOrKey
+            : (this.dynamicSubjects || []).find((item) => String(item?.key || item?.subject_key || '').trim().toLowerCase() === targetNorm);
+        return Boolean(subject) && this.getSubjectGrade(subject) === '5';
+    }
+
     getHomeGradeFilter() {
         const canViewGrade5 = this.canViewGrade5();
+        const grade5Only = this.hasGrade5OnlyAccess();
+        if (grade5Only && this.homeGradeFilter === '11') this.homeGradeFilter = canViewGrade5 ? '5' : 'all';
         if (!canViewGrade5 && this.homeGradeFilter === '5') this.homeGradeFilter = 'all';
-        return (canViewGrade5 ? ['all', '5', '11'] : ['all', '11']).includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
+        const availableGrades = grade5Only
+            ? (canViewGrade5 ? ['all', '5'] : ['all'])
+            : (canViewGrade5 ? ['all', '5', '11'] : ['all', '11']);
+        return availableGrades.includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
     }
 
     getMatchedAllowedSubjects() {
@@ -1198,16 +1254,19 @@ class QuizApp {
     getHomeVisibleSubjects() {
         const assignedSet = this.getMatchedAllowedSubjects();
         const canViewGrade5 = this.canViewGrade5();
+        const grade5Only = this.hasGrade5OnlyAccess();
         const currentIp = String(this.clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         const normalizedGeoIps = new Set((this.allowedGeoIps || []).map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean));
         const canViewPrivateByIp = Boolean(currentIp) && normalizedGeoIps.has(currentIp);
         const allowedSubjects = (this.dynamicSubjects || []).filter((sub) => {
             const subKey = String(sub.key || sub.subject_key || '').trim().toLowerCase();
             if (assignedSet) {
-                return assignedSet.has(subKey);
+                return assignedSet.has(subKey) && (!grade5Only || this.getSubjectGrade(sub) === '5');
             }
             const grade = this.getSubjectGrade(sub);
-            const canViewGrade = grade === '11' || (grade === '5' && canViewGrade5);
+            const canViewGrade = grade === '5'
+                ? canViewGrade5
+                : grade === '11' && !grade5Only;
             const visibility = String(sub.visibility || '').toUpperCase();
             const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || sub.is_public === false;
             const canViewPrivate = this.isAdminAuthenticated || this.hasAdminIpAccess() || canViewPrivateByIp || (grade === '5' && canViewGrade5);
@@ -1216,6 +1275,7 @@ class QuizApp {
         console.debug('[QuizApp] Visible subject decision:', {
             currentIp,
             canViewGrade5,
+            grade5Only,
             homeGradeFilter: this.homeGradeFilter,
             subjects: (this.dynamicSubjects || []).map((sub) => ({ key: sub?.key, detectedGrade: this.getSubjectGrade(sub), visibility: sub?.visibility, visible: allowedSubjects.includes(sub) }))
         });
@@ -1305,7 +1365,7 @@ class QuizApp {
         if (tabs) {
             const assignedSet = this.getMatchedAllowedSubjects();
             const canViewGrade5 = this.canViewGrade5() || (assignedSet && (this.dynamicSubjects || []).some(s => assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase()) && this.getSubjectGrade(s) === '5'));
-            const hasG11 = (this.dynamicSubjects || []).some(s => (!assignedSet || assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase())) && this.getSubjectGrade(s) === '11');
+            const hasG11 = !this.hasGrade5OnlyAccess() && (this.dynamicSubjects || []).some(s => (!assignedSet || assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase())) && this.getSubjectGrade(s) === '11');
             const grades = ['all'];
             if (canViewGrade5) grades.push('5');
             if (hasG11) grades.push('11');
@@ -1381,8 +1441,13 @@ class QuizApp {
 
         const fragment = document.createDocumentFragment();
         this._subjectCountCache = this._subjectCountCache || {};
+        let vtTargetApplied = false;
+        const currentSubjForVt = String(this.currentSubject || '').trim().toLowerCase();
         const renderSubjectCard = (sub) => {
-            const isSelected = this.currentSubject === sub.key;
+            const subKeyNorm = String(sub.key || '').trim().toLowerCase();
+            const isSelected = Boolean(currentSubjForVt) && subKeyNorm === currentSubjForVt && this.currentSubject === sub.key;
+            const applyVt = isSelected && !vtTargetApplied;
+            if (applyVt) vtTargetApplied = true;
             const subName = sub.name || sub.title || sub.key || 'Môn học';
             const subCount = Number(sub.count) || 0;
             const cacheKey = `sub:${sub.key}`;
@@ -1406,14 +1471,14 @@ class QuizApp {
             card.innerHTML = `
                 <!-- Hàng 1: Icon môn học và Badge trạng thái -->
                 <div class="flex items-center justify-between gap-2 mb-2 w-full">
-                    <div class="subject-card-icon-box ${isSelected ? 'vt-subject-icon ' : ''}w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
+                    <div class="subject-card-icon-box ${applyVt ? 'vt-subject-icon ' : ''}w-10 h-10 rounded-xl ${iconColorClass} border flex items-center justify-center text-lg shrink-0 shadow-md">
                         <i class="fa-solid ${sub.icon || 'fa-book'}"></i>
                     </div>
                     ${isSelected ? '<span class="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-bold flex items-center gap-1 shrink-0 shadow-sm"><i class="fa-solid fa-check text-[9px]"></i> Đã chọn</span>' : ''}
                 </div>
                 <!-- Hàng 2: Tên môn học -->
                 <div class="w-full mb-2">
-                    <p class="subject-card-title-text ${isSelected ? 'vt-subject-title ' : ''}font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(subName)}</p>
+                    <p class="subject-card-title-text ${applyVt ? 'vt-subject-title ' : ''}font-heading font-extrabold text-sm sm:text-base text-white leading-snug break-words">${this.escapeHtml(subName)}</p>
                 </div>
                 <!-- Hàng 3: Học kỳ và Chữ số lượng câu hỏi -->
                 <div class="flex items-center justify-between gap-1 text-[11px] text-slate-400 w-full pt-2 border-t border-slate-800/80 mt-auto">
@@ -1675,11 +1740,34 @@ class QuizApp {
         }, duration);
     }
 
+    syncHomeSubjectViewTransitionTargets(targetKey = this.currentSubject) {
+        const homeGrid = document.getElementById('home-subjects-grid');
+        if (!homeGrid) return;
+        const targetNorm = String(targetKey || '').trim().toLowerCase();
+        let matchedIcon = false;
+        let matchedTitle = false;
+        homeGrid.querySelectorAll('[data-subject-card]').forEach((cardEl) => {
+            const isMatch = Boolean(targetNorm) && String(cardEl.dataset.subjectCard || '').trim().toLowerCase() === targetNorm;
+            const iconBox = cardEl.querySelector('.subject-card-icon-box');
+            const titleEl = cardEl.querySelector('.subject-card-title-text');
+            if (iconBox) {
+                const enableIcon = isMatch && !matchedIcon;
+                iconBox.classList.toggle('vt-subject-icon', enableIcon);
+                if (enableIcon) matchedIcon = true;
+            }
+            if (titleEl) {
+                const enableTitle = isMatch && !matchedTitle;
+                titleEl.classList.toggle('vt-subject-title', enableTitle);
+                if (enableTitle) matchedTitle = true;
+            }
+        });
+    }
+
     async selectSubject(subjKey) {
         const targetNorm = String(subjKey || '').trim().toLowerCase();
         const selected = (this.dynamicSubjects || []).find((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm);
         console.debug('[QuizApp] Subject selection requested:', { subjKey, selected, currentSubject: this.currentSubject, visible: this.getHomeVisibleSubjects().some((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm) });
-        if (!selected || !this.getHomeVisibleSubjects().some((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm)) {
+        if (!selected || !this.isSubjectAccessibleToCurrentUser(selected) || !this.getHomeVisibleSubjects().some((subject) => String(subject.key || '').trim().toLowerCase() === targetNorm)) {
             this.showToastNotification('Môn học này không thuộc khu vực được cấp quyền trên thiết bị hiện tại.');
             return;
         }
@@ -1687,14 +1775,7 @@ class QuizApp {
         this.currentSubject = selected.key;
         this.setExamMode(selected?.mode === 'exam');
         localStorage.setItem('quiz_last_selected_subject', selected.key);
-        const homeGrid = document.getElementById('home-subjects-grid');
-        if (homeGrid) {
-            homeGrid.querySelectorAll('[data-subject-card]').forEach((cardEl) => {
-                const isMatch = String(cardEl.dataset.subjectCard || '').trim().toLowerCase() === targetNorm;
-                cardEl.querySelector('.subject-card-icon-box')?.classList.toggle('vt-subject-icon', isMatch);
-                cardEl.querySelector('.subject-card-title-text')?.classList.toggle('vt-subject-title', isMatch);
-            });
-        }
+        this.syncHomeSubjectViewTransitionTargets(selected.key);
         this.renderHomeSubjects();
         await this.loadQuestionsForCurrentSubject();
         this.updateTotalQuestionDisplay();
@@ -1704,6 +1785,13 @@ class QuizApp {
     async loadQuestionsForCurrentSubject() {
         if (!this.currentSubject) {
             this.allQuestions = [];
+            this.renderFilterTabs();
+            return;
+        }
+        if (!this.isSubjectAccessibleToCurrentUser(this.currentSubject)) {
+            console.warn('[QuizApp] Blocked question load for an inaccessible subject:', this.currentSubject);
+            this.allQuestions = [];
+            this.fullQuestionsPool = [];
             this.renderFilterTabs();
             return;
         }
@@ -1900,27 +1988,29 @@ class QuizApp {
 
         if (localTestIp) {
             this.clientIp = localTestIp;
-            this.localTestIpOverride = true;
-            // Local test luôn bắt đầu như thiết bị học sinh mới, không kế thừa
-            // token/quyền Admin đã lưu trong profile VS Code.
+            // Khi truyền ?test_ip=<ip> tường minh trên local, cho phép kiểm thử quyền thật của IP đó
+            // thay vì ép localTestIpOverride = true (chỉ khóa trắng cổng 4173 khi không có ?test_ip=).
+            this.localTestIpOverride = false;
+            this.hasLocalTestIpParam = true;
             try {
-                [
+                const keysToReset = [
                     'quiz_admin_token',
-                    'quiz_access_token',
-                    'quiz_token_info',
                     'quiz_is_admin',
                     'quiz_admin_authenticated',
                     'quiz_admin_saved_ip'
-                ].forEach((key) => localStorage.removeItem(key));
+                ];
+                if (!this._hasUrlToken) {
+                    keysToReset.push('quiz_access_token', 'quiz_token_info');
+                    this.userToken = '';
+                    this.tokenInfo = null;
+                }
+                keysToReset.forEach((key) => localStorage.removeItem(key));
             } catch (e) {}
-            this.userToken = '';
-            this.tokenInfo = null;
             this.isAdminAuthenticated = false;
-            try { sessionStorage.setItem('quiz_stable_client_ip', localTestIp); } catch (e) {}
-            console.debug('[QuizApp] Local test IP override:', localTestIp);
+            console.debug('[QuizApp] Local test IP active:', localTestIp);
         }
 
-        const cachedIp = !forceRefresh ? sessionStorage.getItem('quiz_stable_client_ip') : '';
+        const cachedIp = (!forceRefresh && !localTestIp) ? sessionStorage.getItem('quiz_stable_client_ip') : '';
         if (localTestIp) {
             // Đã gán IP test ở trên; không gọi dịch vụ nhận diện IP thật.
         } else if (cachedIp && cachedIp !== 'Chưa xác định' && !cachedIp.startsWith('Đang')) {
@@ -4683,9 +4773,19 @@ Giải thích: Biên độ A = 5 cm.`;
         }[character]));
     }
 
+    escapeJsString(value) {
+        return String(value ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\u2028/g, '\\u2028')
+            .replace(/\u2029/g, '\\u2029');
+    }
+
     attrArg(value) {
         if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-        return `'${String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;')}'`;
+        return `'${this.escapeJsString(value).replace(/"/g, '&quot;')}'`;
     }
 
     sanitizeMediaUrl(url) {
@@ -4723,12 +4823,32 @@ Giải thích: Biên độ A = 5 cm.`;
         }
         const rawScore = detailMarkerIdx >= 0 ? fullRawScore.slice(0, detailMarkerIdx) : fullRawScore;
         let subjectName = '';
-        const subjMatch = rawStatus.match(/^\[(.*?)\]/) || rawScore.match(/^\[(.*?)\]/);
+        // Hỗ trợ ngoặc lồng nhau: "[[Phục thù] Toán đề 1] ..."
+        const bracketRe = /^\[((?:\[[^\]]*\]|[^\]])*)\]/;
+        const subjMatch = rawStatus.match(bracketRe) || rawScore.match(bracketRe);
         if (subjMatch) subjectName = subjMatch[1].trim();
 
-        const isGrade5 = /lớp\s*5|toán|math5|toán\s*đề/i.test(subjectName) || 
-                        /lớp\s*5/i.test(rawStatus) || /lớp\s*5/i.test(rawScore) ||
-                        subjectName.toLowerCase().startsWith('toán');
+        const isRevenge = /^\[?\s*phục\s*thù\s*\]?/i.test(subjectName) || Boolean(detail && detail.revenge);
+        const baseSubjectName = subjectName.replace(/^\[\s*phục\s*thù\s*\]\s*/i, '').replace(/^phục\s*thù\s*[:\-]?\s*/i, '').trim();
+
+        let isGrade5 = false;
+        let gradeResolved = false;
+        if (baseSubjectName && Array.isArray(this.dynamicSubjects) && typeof this.getSubjectGrade === 'function') {
+            const baseNorm = baseSubjectName.toLowerCase().replace(/\s+/g, ' ');
+            const matchedSub = this.dynamicSubjects.find((s) => {
+                const title = String(s?.title || s?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                const key = String(s?.key || s?.id || '').trim().toLowerCase();
+                return (title && title === baseNorm) || (key && key === baseNorm);
+            });
+            if (matchedSub) {
+                isGrade5 = String(this.getSubjectGrade(matchedSub)) === '5';
+                gradeResolved = true;
+            }
+        }
+        if (!gradeResolved && baseSubjectName) {
+            const looksOtherGrade = /lớp\s*(?:[0-46-9]|1[0-2])\b|vật\s*l[íý]|hóa\s*học|lịch\s*sử|địa\s*l[íý]|sinh\s*học|\b(?:6|7|8|9|10|11|12)\b/i.test(baseSubjectName);
+            isGrade5 = !looksOtherGrade && (/lớp\s*5|math5|toán/i.test(baseSubjectName));
+        }
 
         let answered = 0, total = 0, percent = 0;
         const progMatch = rawStatus.match(/(\d+)\s*\/\s*(\d+)/);
@@ -4756,7 +4876,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (isCompleted && percent === 0 && total > 0) percent = 100;
 
         let finalScore = null;
-        const scoreMatch = rawScore.match(/(\d+)\s*điểm/i);
+        const scoreMatch = rawScore.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
         if (scoreMatch) finalScore = Number(scoreMatch[1].replace(',', '.'));
 
         const isWaiting = !isCompleted && (answered === 0 || /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus) || /trang chủ/i.test(subjectName));
@@ -4800,7 +4920,9 @@ Giải thích: Biên độ A = 5 cm.`;
             name: row?.player_name || 'Học sinh',
             ip: row?.ip_address || '',
             device: row?.device_info || '',
-            subject: subjectName || 'Toán Lớp 5',
+            subject: subjectName || 'Chưa chọn môn',
+            baseSubject: baseSubjectName,
+            isRevenge,
             isGrade5,
             answered,
             total,
@@ -5209,6 +5331,10 @@ Giải thích: Biên độ A = 5 cm.`;
         const subjKey = this.resolveObserverSubjectKey(subjectName);
         const cacheKey = String(subjKey || subjectName || '').trim().toLowerCase();
         if (!cacheKey) return [];
+        if (!this.isSubjectAccessibleToCurrentUser(subjKey)) {
+            console.warn('[Observer] Blocked detail questions for an inaccessible subject:', subjectName);
+            return [];
+        }
 
         const currentNorm = String(this.currentSubject || '').trim().toLowerCase();
         if (currentNorm && cacheKey === currentNorm && Array.isArray(this.allQuestions) && this.allQuestions.length > 0) {
@@ -5867,14 +5993,19 @@ Giải thích: Biên độ A = 5 cm.`;
                 groupedByStudent.get(key).push({ row, time });
             }
 
+            const grade5Only = this.hasGrade5OnlyAccess();
             const matchesObserverFilter = (item) => Boolean(
-                item && (item.isGrade5 || item.answered > 0 || item.subject.toLowerCase().includes('toán') || item.subject.toLowerCase().includes('lớp 5'))
+                item && (grade5Only
+                    ? item.isGrade5
+                    : (item.isGrade5 || item.answered > 0 || item.subject.toLowerCase().includes('toán') || item.subject.toLowerCase().includes('lớp 5')))
             );
 
             const parsed = [];
             groupedByStudent.forEach((entries, studentKey) => {
                 entries.sort((a, b) => b.time - a.time);
-                const records = entries.map(e => this.parseStudentProgressRecord(e.row));
+                const records = entries.map(e => this.parseStudentProgressRecord(e.row))
+                    .filter((record) => !grade5Only || record.isGrade5);
+                if (records.length === 0) return;
                 const seenIds = new Set();
                 const realAttempts = records.filter((r) => {
                     const idKey = String(r.id);
