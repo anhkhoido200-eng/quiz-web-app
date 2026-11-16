@@ -8671,8 +8671,12 @@ Giải thích: Biên độ A = 5 cm.`;
                     window.dbService.url = url;
                     window.dbService.anonKey = key;
                     if (window.supabase) {
-                        window.dbService.client = window.supabase.createClient(url, key);
-                        window.dbService.isSupabaseActive = true;
+                        const getClient = window.getSharedSupabaseClient;
+                        const client = typeof getClient === 'function'
+                            ? getClient(url, key)
+                            : window.supabase.createClient(url, key);
+                        window.dbService.client = client;
+                        window.dbService.isSupabaseActive = Boolean(client);
                     }
                 }
             }
