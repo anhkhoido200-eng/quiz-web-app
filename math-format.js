@@ -76,12 +76,18 @@
         // Never rewrite an explicitly supplied LaTeX block.
         source = protectMathBlocks(source, tokens);
 
+        // Unit rates such as m/s^2, cm/s², km/s^2 before generic symbolic fractions.
+        source = source.replace(/(?<![A-Za-zÀ-ỹ])(cm|km|m)\s*\/\s*s([⁰¹²³⁴⁵⁶⁷⁸⁹]+|\^?\d+)\b/gu, (_, unit, exponent) => {
+            const exp = exponent.startsWith('^')
+                ? exponent.slice(1)
+                : [...exponent].map((char) => SUPERSCRIPTS[char] ?? char).join('');
+            return `$\\frac{\\text{${unit}}}{\\text{s}^{${exp}}}$`;
+        });
+        source = protectMathBlocks(source, tokens);
+
         // Numeric and simple symbolic fractions. This covers old text such as
         // 3/10, 1 / 2π, v²/ω⁴, 1 / 0,4, 2,5 / 3,6, and g / ℓ without cutting
         // Vietnamese decimals or multi-part slash expressions (e.g. USD/người/năm).
-        source = source.replace(/\b(cm|km|m)\s*\/\s*s([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/gu, (_, unit, exponent) => `$\\frac{\\text{${unit}}}{\\text{s}^{${[...exponent].map((char) => SUPERSCRIPTS[char]).join('')}}}$`);
-        source = protectMathBlocks(source, tokens);
-
         source = source.replace(/(?<![\p{L}\p{N}_/])(?<!\d[.,])(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?![\p{L}\p{N}_/])(?![.,]\d)/gu, (match, numerator, denominator, offset, whole) => {
             // Keep calendar dates and multi-part slash sequences unchanged.
             if (/\/\s*$/.test(whole.slice(0, offset)) || /^\s*\//.test(whole.slice(offset + match.length))) return match;
@@ -101,7 +107,7 @@
 
         // Geometry, chemistry, implication, comparison, and sign symbols.
         source = source.replace(/(?:([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\))\s*\/\/\s*([A-Z]{2}|d\d?|\([A-Za-zα-ωΑ-Ω]\)))/g, '$1 $\\parallel$ $2');
-        source = source.replace(/\s*(?:(?<!:)\/{2,3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
+        source = source.replace(/\s*(?:(?<!:)\/{3}|<=>|<->|⇌|⇄)\s*/g, ' $\\rightleftharpoons$ ');
         source = source.replace(/\s*(?:-{1,3}>|──>|⟶)\s*/g, ' $\\rightarrow$ ');
         source = source.replace(/\s*=>\s*/g, ' $\\Rightarrow$ ');
         source = source.replace(/\s*>=\s*/g, ' $\\ge$ ');
@@ -119,9 +125,8 @@
         source = source.replace(/\bK[Cc]\b/g, '$K_C$');
         source = source.replace(/\bK[Pp]\b/g, '$K_p$');
 
-        // Units and common chemical formulas. Use a real fraction for rates.
+        // Units and common chemical formulas.
         source = source.replace(/(\d+(?:[.,]\d+)?)\s*(?:°C|\^oC|\*C)/g, (_, number) => `$${number}^{\\circ}\\text{C}$`);
-        source = source.replace(/(?<![A-Za-zÀ-ỹ])(m|cm|km)\/s\^?2\b/gu, (_, unit) => `$\\frac{\\text{${unit}}}{\\text{s}^2}$`);
         source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?2(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^2$`);
         source = source.replace(/(?<![A-Za-zÀ-ỹ])(km|cm|dm|mm|m)\^?3(?![A-Za-z0-9À-ỹ])/gu, (_, unit) => `$\\text{${unit}}^3$`);
         const chemicalFormulae = {

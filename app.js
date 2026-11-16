@@ -31,6 +31,7 @@ class QuizApp {
         this.pendingStudentProgress = null;
         this.progressSyncRunning = false;
         this.isFinishingQuiz = false;
+        this.awaySwitchCount = 0;
         this.isExamMode = false;
         this.examMinutes = 45;
         this.examSecondsRemaining = 45 * 60;
@@ -984,6 +985,7 @@ class QuizApp {
             }
             this.isInitialValidated = true;
             this.renderHomeSubjects();
+            this.populateSubjectDropdowns();
 
             // Không tự động chuyển màn hình; người dùng sẽ bấm nút [👁 Xem Tiến Trình] khi cần
 
@@ -1002,12 +1004,14 @@ class QuizApp {
                     }
                 } catch (e) {}
                 this.updateTokenStatusUi();
+                this.populateSubjectDropdowns();
                 if (showToastOnSuccess) {
                     this.showToastNotification(`⚠️ Mã ${combinedKey} chưa được Admin duyệt. Hãy gửi mã này cho Admin.`, 'error');
                 }
             } else {
                 this.tokenInfo = this.getCachedTokenInfo();
                 this.updateTokenStatusUi();
+                this.populateSubjectDropdowns();
             }
             return this.tokenInfo;
         }
@@ -1187,22 +1191,10 @@ class QuizApp {
     }
 
     hasGrade5OnlyAccess() {
-        if (this.localTestIpOverride || this.isAdminAuthenticated || this.hasAdminIpAccess()) return false;
-
-        const info = this.tokenInfo || this.getCachedTokenInfo();
-        const role = String(info?.role || '').trim().toLowerCase();
-        if (['grade5', 'class5', 'lop5', 'parent', 'phuhuynh', 'observer', 'observer_grade5'].includes(role)) {
-            return true;
+        if (this.localTestIpOverride || this.isAdminAuthenticated || this.hasAdminIpAccess() || this.hasTokenRole('admin')) {
+            return false;
         }
-
-        const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '')
-            .trim().replace(/^\[|\]$/g, '').toLowerCase();
-        const currentIp = normalizeIp(this.clientIp);
-        const allowedIps = Array.isArray(this.class5AllowedIps)
-            ? this.class5AllowedIps.map(normalizeIp).filter(Boolean)
-            : [];
-        return Boolean(currentIp) && !currentIp.startsWith('đang') && currentIp !== 'chưa xác định'
-            && allowedIps.includes(currentIp);
+        return this.canViewGrade5();
     }
 
     isSubjectAccessibleToCurrentUser(subjectOrKey) {
@@ -1228,6 +1220,15 @@ class QuizApp {
         return availableGrades.includes(this.homeGradeFilter) ? this.homeGradeFilter : 'all';
     }
 
+    isIpOnlyTokenRecord(tokenRecord, normalizedIp = '') {
+        if (!tokenRecord) return false;
+        const ip = String(normalizedIp || (typeof tokenRecord.ip === 'object' ? tokenRecord.ip?.ip : tokenRecord.ip) || '')
+            .trim().replace(/^\[|\]$/g, '').toLowerCase();
+        const rawCodeNorm = String(tokenRecord.rawCode || '').trim().toLowerCase();
+        const tokenNorm = String(tokenRecord.token || '').trim().toLowerCase();
+        return (!rawCodeNorm || (ip && rawCodeNorm === ip)) && (!tokenNorm || (ip && tokenNorm === ip));
+    }
+
     getMatchedAllowedSubjects() {
         if (this.isAdminAuthenticated || this.hasAdminIpAccess()) return null;
         const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
@@ -1239,7 +1240,7 @@ class QuizApp {
             matched = tokens.find(t => String(t.token || '').toUpperCase() === String(this.tokenInfo.token || '').toUpperCase()) || this.tokenInfo;
         }
         if (!matched && currentIp && !currentIp.startsWith('đang') && currentIp !== 'chưa xác định') {
-            matched = tokens.find(t => t.ip && normalizeIp(t.ip) === currentIp) || null;
+            matched = tokens.find(t => t.ip && normalizeIp(t.ip) === currentIp && this.isIpOnlyTokenRecord(t, currentIp)) || null;
         }
         if (!matched) {
             const cached = this.getCachedTokenInfo();
@@ -1307,7 +1308,7 @@ class QuizApp {
                         const r = String(t.role || '').toLowerCase();
                         if ((r === 'grade5' || r === 'all' || r === 'class5') && t.ip) {
                             const cleanIp = String(t.ip).trim().toLowerCase();
-                            if (cleanIp && !this.class5AllowedIps.includes(cleanIp)) {
+                            if (cleanIp && this.isIpOnlyTokenRecord(t, cleanIp) && !this.class5AllowedIps.includes(cleanIp)) {
                                 this.class5AllowedIps.push(cleanIp);
                             }
                         }
@@ -1330,6 +1331,7 @@ class QuizApp {
         console.debug('[QuizApp] Rendering Grade 5 visibility:', { currentIp: this.clientIp, canViewGrade5: this.canViewGrade5(), homeGradeFilter: this.homeGradeFilter });
         this.renderHomeSubjects();
         this.updateTokenStatusUi();
+        this.populateSubjectDropdowns();
     }
 
     getSubjectFolderInfo(sub) {
@@ -1364,8 +1366,19 @@ class QuizApp {
         const tabs = document.getElementById('home-semester-tabs');
         if (tabs) {
             const assignedSet = this.getMatchedAllowedSubjects();
+            const currentIp = String(this.clientIp || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+            const normalizedGeoIps = new Set((this.allowedGeoIps || []).map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean));
+            const canViewPrivateByIp = Boolean(currentIp) && normalizedGeoIps.has(currentIp);
+            const canViewPrivateG11 = this.isAdminAuthenticated || this.hasAdminIpAccess() || canViewPrivateByIp;
             const canViewGrade5 = this.canViewGrade5() || (assignedSet && (this.dynamicSubjects || []).some(s => assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase()) && this.getSubjectGrade(s) === '5'));
-            const hasG11 = !this.hasGrade5OnlyAccess() && (this.dynamicSubjects || []).some(s => (!assignedSet || assignedSet.has(String(s.key || s.subject_key || '').trim().toLowerCase())) && this.getSubjectGrade(s) === '11');
+            const hasG11 = !this.hasGrade5OnlyAccess() && (this.dynamicSubjects || []).some(s => {
+                if (this.getSubjectGrade(s) !== '11') return false;
+                const subKey = String(s.key || s.subject_key || '').trim().toLowerCase();
+                if (assignedSet) return assignedSet.has(subKey);
+                const visibility = String(s.visibility || '').toUpperCase();
+                const isPrivate = visibility === 'PRIVATE' || visibility === 'HIDDEN' || s.is_public === false;
+                return !isPrivate || canViewPrivateG11;
+            });
             const grades = ['all'];
             if (canViewGrade5) grades.push('5');
             if (hasG11) grades.push('11');
@@ -1569,14 +1582,20 @@ class QuizApp {
             const select = document.getElementById(id);
             if (!select) return;
             const currentVal = select.value || this.currentSubject;
+            const subjects = id === 'leaderboard-subject-select'
+                ? (this.dynamicSubjects || []).filter(sub => this.isSubjectAccessibleToCurrentUser(sub))
+                : (this.dynamicSubjects || []);
             select.innerHTML = '';
-            this.dynamicSubjects.forEach(sub => {
+            subjects.forEach(sub => {
                 const opt = document.createElement('option');
                 opt.value = sub.key;
                 opt.textContent = `${sub.name} (${sub.semester || 'Học kỳ'})`;
                 if (sub.key === currentVal) opt.selected = true;
                 select.appendChild(opt);
             });
+            if (id === 'leaderboard-subject-select' && subjects.length > 0 && !subjects.some(sub => sub.key === currentVal)) {
+                select.value = subjects[0].key;
+            }
         });
     }
 
@@ -1904,9 +1923,9 @@ class QuizApp {
                 item.acceptedValues = item.accepted_values;
             }
 
-            // 2. Chuẩn hóa nội dung câu hỏi
-            if (item.question !== undefined && item.question !== null) {
-                item.question = this.formatScientificNotation(item.question);
+            // 2. Chuẩn hóa nội dung câu hỏi (giữ nguyên dữ liệu gốc, chỉ format/escape khi render)
+            if (typeof item.question === 'string') {
+                item.question = item.question.trim();
             }
 
             // 3. Chuẩn hóa 4 phương án options: Hỗ trợ cả mảng và object { A, B, C, D }, loại bỏ hoàn toàn tiền tố "A. ", "B. ", "C. ", "D. "
@@ -1917,14 +1936,13 @@ class QuizApp {
             if (Array.isArray(rawOpts)) {
                 item.options = rawOpts.map(opt => {
                     if (opt && typeof opt === 'object') {
-                        const rawText = opt.text ?? opt.value ?? opt.content ?? '';
                         if (opt.math ?? opt.latex ?? opt.formula) {
-                            return this.formatScientificNotation(opt);
+                            return opt;
                         }
-                        return this.formatScientificNotation(String(rawText).replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim());
+                        const rawText = opt.text ?? opt.value ?? opt.content ?? '';
+                        return String(rawText).replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
                     }
-                    const cleanOpt = String(opt || '').replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
-                    return this.formatScientificNotation(cleanOpt);
+                    return String(opt || '').replace(/^[A-D][\s.):\/\-–]\s*/i, '').trim();
                 });
             } else {
                 item.options = [];
@@ -1943,12 +1961,12 @@ class QuizApp {
             } else if (item.qType === 'tf_group') {
                 if (!Array.isArray(item.statements)) item.statements = [];
                 item.statements = item.statements.map(st => {
-                    if (!st || typeof st !== 'object') return { text: this.formatScientificNotation(String(st || '')), answer: true };
+                    if (!st || typeof st !== 'object') return { text: String(st || '').trim(), answer: true };
                     const statementText = st.text ?? st.content ?? '';
                     const statementValue = st.math ?? st.latex ?? st.formula
                         ? { text: statementText, math: st.math ?? st.latex ?? st.formula }
                         : String(statementText).trim();
-                    return { text: this.formatScientificNotation(statementValue), answer: this._parseBoolAnswer(st.answer) };
+                    return { text: statementValue, answer: this._parseBoolAnswer(st.answer) };
                 });
                 item.correct = 0;
                 item.answer = 0;
@@ -1963,8 +1981,8 @@ class QuizApp {
                 item.correctAnswer = ['A', 'B', 'C', 'D'][correctIdx];
             }
 
-            // 5. Chuẩn hóa giải thích
-            item.explanation = typeof item.explanation === 'string' ? this.formatScientificNotation(item.explanation.trim()) : '';
+            // 5. Chuẩn hóa giải thích (giữ nguyên dữ liệu gốc)
+            item.explanation = typeof item.explanation === 'string' ? item.explanation.trim() : '';
 
             return item;
         });
@@ -3981,7 +3999,9 @@ Giải thích: Biên độ A = 5 cm.`;
         const cat = filterCat ? filterCat.value : 'all';
 
         const filtered = questions.filter(q => {
-            const matchesText = !keyword || q.question.toLowerCase().includes(keyword) || (q.explanation && q.explanation.toLowerCase().includes(keyword));
+            const qText = String(q.question?.text ?? q.question ?? '').toLowerCase();
+            const expText = String(q.explanation?.text ?? q.explanation ?? '').toLowerCase();
+            const matchesText = !keyword || qText.includes(keyword) || expText.includes(keyword);
             let matchesCat = true;
             if (cat !== 'all') matchesCat = (q.category || '').includes(cat);
             return matchesText && matchesCat;
@@ -4469,8 +4489,11 @@ Giải thích: Biên độ A = 5 cm.`;
             modal.classList.add('flex');
             this.populateSubjectDropdowns();
             const select = document.getElementById('leaderboard-subject-select');
-            const target = subjKey || this.currentSubject;
-            if (select) select.value = target;
+            const requestedTarget = subjKey || this.currentSubject;
+            const target = this.isSubjectAccessibleToCurrentUser(requestedTarget)
+                ? requestedTarget
+                : (select?.options?.[0]?.value || '');
+            if (select && target) select.value = target;
             this.renderLeaderboard(target);
         }
     }
@@ -4486,6 +4509,12 @@ Giải thích: Biên độ A = 5 cm.`;
     async renderLeaderboard(subjKey) {
         const podiumContainer = document.getElementById('leaderboard-podium-container');
         const tbody = document.getElementById('leaderboard-list-tbody');
+
+        if (!subjKey || !this.isSubjectAccessibleToCurrentUser(subjKey)) {
+            if (podiumContainer) podiumContainer.innerHTML = '<div class="col-span-3 text-center py-6 text-slate-500 italic">Không có dữ liệu bảng xếp hạng cho môn học này.</div>';
+            if (tbody) tbody.innerHTML = '';
+            return;
+        }
 
         if (podiumContainer) podiumContainer.innerHTML = this.renderSkeletonCards(3, 'podium');
         if (tbody) tbody.innerHTML = this.renderSkeletonCards(3, 'leaderboard-row');
@@ -4791,7 +4820,7 @@ Giải thích: Biên độ A = 5 cm.`;
     sanitizeMediaUrl(url) {
         const raw = String(url ?? '').trim();
         if (!raw) return '';
-        if (/^https?:\/\//i.test(raw) || /^data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(raw)) {
+        if (/^https?:\/\//i.test(raw) || /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[a-z0-9+/=]+$/i.test(raw)) {
             return raw;
         }
         return '';
@@ -5025,21 +5054,20 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     buildObserverCardHistoryStripHtml(p) {
-        const history = Array.isArray(p?.history) ? p.history : [];
+        const history = Array.isArray(p?.history) ? p.history.slice(0, 8) : [];
         if (history.length <= 1) return '';
-        const shown = history.slice(0, 6);
-        const hiddenCount = Math.max(0, history.length - shown.length);
+        const shown = history.slice(0, 8);
         return `
             <div class="pt-2 border-t border-slate-800/70 space-y-1.5">
                 <div class="flex items-center justify-between text-[11px] text-slate-400">
                     <span class="font-semibold flex items-center gap-1.5">
                         <i class="fa-solid fa-clock-rotate-left text-indigo-400 text-[10px]"></i>
-                        Lịch sử làm bài (${history.length} đề)
+                        Lịch sử làm bài (${history.length} đề gần nhất)
                     </span>
-                    ${hiddenCount > 0 ? `<span class="text-slate-500">+${hiddenCount} đề cũ</span>` : ''}
                 </div>
                 <div class="flex flex-wrap gap-1.5">
-                    ${shown.map((att) => {
+                    ${shown.map((att, idx) => {
+                        const isLatest = idx === 0;
                         const isCurrent = String(att.id) === String(p.id);
                         const scoreText = att.isCompleted
                             ? `${att.score10.toFixed(1)}đ`
@@ -5049,10 +5077,14 @@ Giải thích: Biên độ A = 5 cm.`;
                             : (att.isCompleted
                                 ? 'bg-slate-950/80 border-slate-700/80 text-slate-300 hover:border-indigo-500/60 hover:text-white'
                                 : 'bg-amber-500/10 border-amber-500/35 text-amber-300 hover:border-amber-400');
+                        const latestBadge = isLatest
+                            ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wide shrink-0">Mới nhất</span>`
+                            : '';
                         return `<button type="button" data-obs-history-id="${this.escapeHtml(att.id)}" class="px-2 py-1 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer transition max-w-full ${chipCls}" title="Xem bài làm ${this.escapeHtml(att.subject)}">
                             <span class="${att.isCompleted ? 'text-emerald-400' : 'text-amber-400'}">${att.isCompleted ? '✓' : '•'}</span>
                             <span class="truncate max-w-[115px]">${this.escapeHtml(att.subject)}</span>
                             <span class="font-extrabold ${att.isCompleted ? 'text-amber-300' : 'text-cyan-300'} shrink-0">${scoreText}</span>
+                            ${latestBadge}
                         </button>`;
                     }).join('')}
                 </div>
@@ -5689,7 +5721,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (!rootRecord) return;
 
         const history = (Array.isArray(rootRecord.history) && rootRecord.history.length > 0)
-            ? rootRecord.history
+            ? rootRecord.history.slice(0, 8)
             : [rootRecord];
         const p = preferredAttemptId
             ? (history.find(h => String(h.id) === String(preferredAttemptId)) || rootRecord)
@@ -5828,15 +5860,20 @@ Giải thích: Biên độ A = 5 cm.`;
                     <span class="text-[11px] text-slate-400">Ấn để xem lại từng đề</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5">
-                    ${history.map((att) => {
+                    ${history.map((att, idx) => {
+                        const isLatest = idx === 0;
                         const isSelected = String(att.id) === String(p.id);
                         const statusText = att.isCompleted
-                            ? `${att.score10.toFixed(1)}/10đ`
+                            ? `${att.score10.toFixed(1)}đ`
                             : `${att.answered}/${att.total || '?'} câu`;
+                        const latestBadge = isLatest
+                            ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wide shrink-0">Mới nhất</span>`
+                            : '';
                         return `<button type="button" data-obs-attempt-id="${this.escapeHtml(att.id)}" class="px-2.5 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 text-xs ${isSelected ? 'bg-indigo-600/30 border-indigo-400 text-white ring-2 ring-indigo-500/40' : 'bg-slate-900/90 border-slate-700/80 hover:border-indigo-500/50 text-slate-300'}">
                             <span class="${att.isCompleted ? 'text-emerald-400' : 'text-amber-400'} font-bold">${att.isCompleted ? '✓' : '•'}</span>
                             <span class="font-bold truncate max-w-[140px]">${this.escapeHtml(att.subject)}</span>
                             <span class="font-extrabold ${att.isCompleted ? 'text-amber-300' : 'text-cyan-300'} shrink-0">${statusText}</span>
+                            ${latestBadge}
                             <span class="text-[10px] text-slate-400 shrink-0">${this.escapeHtml(this.formatRelativeTime(att.lastActive))}</span>
                         </button>`;
                     }).join('')}
@@ -6017,7 +6054,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 const latestCompleted = realAttempts.find(r => r.isCompleted);
                 const primary = inProgress || latestCompleted || realAttempts[0] || records[0];
                 if (!primary) return;
-                primary.history = realAttempts.length > 0 ? realAttempts : [primary];
+                primary.history = (realAttempts.length > 0 ? realAttempts : [primary]).slice(0, 8);
                 primary.studentKey = studentKey;
                 if (matchesObserverFilter(primary) || primary.history.some(matchesObserverFilter)) {
                     parsed.push(primary);
@@ -6150,14 +6187,23 @@ Giải thích: Biên độ A = 5 cm.`;
 
         // Bài mới phải có ID riêng, không để heartbeat/tiến độ chạm vào lượt cũ.
         this.currentLoginId = null;
+        this.awaySwitchCount = 0;
         try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
+
+        // Khôi phục tiến độ Auto-Save (nếu có) trước khi khởi tạo phiên mới
+        this.loadAutoSaveProgress();
+        const hasResumedAnswers = Object.keys(this.userAnswers || {}).length > 0;
+        const freshAttemptId = (window.dbService && typeof window.dbService.generateUUID === 'function')
+            ? window.dbService.generateUUID()
+            : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        if (!hasResumedAnswers || !this.quizAttemptId) {
+            this.quizAttemptId = freshAttemptId;
+        }
 
         // Khởi tạo bài thi trên Cloud Supabase ở nền; không bắt học sinh chờ
         // truy vấn lookup + insert/update trước khi nhìn thấy câu hỏi.
         if (window.dbService && typeof window.dbService.recordLogin === 'function') {
             // Giữ promise để auto-submit có thể chờ ID cloud trước khi ghi điểm.
-            this.quizAttemptId = (window.dbService.generateUUID ? window.dbService.generateUUID() : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-            this.loadAutoSaveProgress();
             this.pendingStudentProgress = null;
             this.progressSyncRunning = false;
             const attemptId = this.quizAttemptId;
@@ -6168,7 +6214,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 subjectTitle: this.getSubjectTitle(),
                 scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
                 attemptId,
-                newAttempt: true
+                newAttempt: !hasResumedAnswers
             })
                 .then((res) => {
                     const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
@@ -6208,9 +6254,6 @@ Giải thích: Biên độ A = 5 cm.`;
 
         const currentSubjectObj = (this.dynamicSubjects || []).find((subject) => subject.key === this.currentSubject);
         this.setExamMode(currentSubjectObj?.mode === 'exam');
-
-        // Tải Auto-Save tiến độ cũ nếu có
-        this.loadAutoSaveProgress();
 
         const homeGrid = document.getElementById('home-subjects-grid');
         const quizAdminMark = document.getElementById('quiz-admin-mark');
@@ -6346,7 +6389,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
         container.innerHTML = '';
 
-        if (this.isExamMode && this.currentFilter === 'wrong') {
+        if (this.isExamMode && !this.isReviewingResult && this.currentFilter === 'wrong') {
             this.currentFilter = 'all';
         }
 
@@ -6357,7 +6400,7 @@ Giải thích: Biên độ A = 5 cm.`;
             if (this.currentFilter === 'tf') return q.qType === 'tf_group';
             if (this.currentFilter === 'short') return q.qType === 'short_answer';
             if (this.currentFilter === 'wrong') {
-                if (this.isExamMode) return true;
+                if (this.isExamMode && !this.isReviewingResult) return true;
                 return this.isQuestionWrong(q);
             }
             return (q.category || '').toLowerCase().includes(this.currentFilter.toLowerCase());
@@ -6402,6 +6445,8 @@ Giải thích: Biên độ A = 5 cm.`;
                 const optChars = ['A', 'B', 'C', 'D'];
                 const selected = this.userAnswers[q.id];
                 const isAnswered = selected !== undefined;
+                const showGrading = !this.isExamMode || this.isReviewingResult;
+                const lockMcq = this.isReviewingResult || (!this.isExamMode && isAnswered);
                 const rawCorrectIdx = q.correct !== undefined ? q.correct : q.answer;
                 const correctIdx = (rawCorrectIdx !== undefined && rawCorrectIdx !== null && rawCorrectIdx !== '') ? Number(rawCorrectIdx) : NaN;
 
@@ -6416,26 +6461,24 @@ Giải thích: Biên độ A = 5 cm.`;
                         ${(q.options || []).map((opt, oIdx) => {
                     let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
 
-                    if (this.isExamMode) {
+                    if (!showGrading) {
                         if (selected === oIdx) {
                             optStyle = "bg-indigo-600/30 border-indigo-500 text-white font-bold ring-2 ring-indigo-500/50";
                         }
-                    } else {
-                        if (isAnswered) {
-                            if (oIdx === correctIdx) {
-                                optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
-                            } else if (selected === oIdx) {
-                                optStyle = "bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong";
-                            }
+                    } else if (isAnswered || this.isReviewingResult) {
+                        if (oIdx === correctIdx) {
+                            optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
+                        } else if (selected === oIdx) {
+                            optStyle = "bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong";
                         }
                     }
 
-                    const feedbackIcon = !this.isExamMode && isAnswered && oIdx === correctIdx
+                    const feedbackIcon = showGrading && (isAnswered || this.isReviewingResult) && oIdx === correctIdx
                         ? '<span class="answer-feedback-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>'
                         : '';
 
                     return `
-                                <button type="button" onclick="app.selectOption(${this.attrArg(q.id)}, ${oIdx})" ${!this.isExamMode && isAnswered ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
+                                <button type="button" onclick="app.selectOption(${this.attrArg(q.id)}, ${oIdx})" ${lockMcq ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
                                     <span class="quiz-option-letter">${optChars[oIdx]}</span>
                                     <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
                                     ${feedbackIcon}
@@ -6443,7 +6486,7 @@ Giải thích: Biên độ A = 5 cm.`;
                             `;
                 }).join('')}
                     </div>
-                    ${(!this.isExamMode && isAnswered && q.explanation) ? `
+                    ${(showGrading && (isAnswered || this.isReviewingResult) && q.explanation) ? `
                         <div class="ui-accordion-wrap is-open practice-explanation-accordion"><div class="ui-accordion-inner"><div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
                             <p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
                             <p>${this.formatScientificNotation(q.explanation)}</p>
@@ -6457,6 +6500,7 @@ Giải thích: Biên độ A = 5 cm.`;
             else if (q.qType === 'tf_group') {
                 const ansObj = this.userAnswers[q.id] || {};
                 const stmts = q.statements || [];
+                const showGrading = !this.isExamMode || this.isReviewingResult;
 
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
@@ -6469,30 +6513,29 @@ Giải thích: Biên độ A = 5 cm.`;
                         ${stmts.map((st, sIdx) => {
                     const val = ansObj[sIdx];
                     const isAnswered = val !== undefined;
+                    const lockTf = this.isReviewingResult || (!this.isExamMode && isAnswered);
 
                     let trueBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
                     let falseBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
 
-                    if (this.isExamMode) {
+                    if (!showGrading) {
                         if (val === true) trueBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
                         if (val === false) falseBtnClass = "bg-indigo-600 border-indigo-500 text-white font-bold";
-                    } else {
-                        if (isAnswered) {
-                            if (val === true) {
-                                trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                            }
-                            if (val === false) {
-                                falseBtnClass = (st.answer === false) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                            }
+                    } else if (isAnswered) {
+                        if (val === true) {
+                            trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
+                        }
+                        if (val === false) {
+                            falseBtnClass = (st.answer === false) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
                         }
                     }
 
                     const trueStateClass = val === true
-                        ? `is-selected ${!this.isExamMode ? (st.answer === true ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (!this.isExamMode && isAnswered ? 'is-locked' : '');
+                        ? `is-selected ${showGrading ? (st.answer === true ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
+                        : (lockTf ? 'is-locked' : '');
                     const falseStateClass = val === false
-                        ? `is-selected ${!this.isExamMode ? (st.answer === false ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (!this.isExamMode && isAnswered ? 'is-locked' : '');
+                        ? `is-selected ${showGrading ? (st.answer === false ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
+                        : (lockTf ? 'is-locked' : '');
 
                     return `
                                 <div class="tf-statement-row p-2.5 sm:p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 text-xs" id="tf-row-${q.id}-${sIdx}">
@@ -6501,10 +6544,10 @@ Giải thích: Biên độ A = 5 cm.`;
                                         <span class="text-slate-200 font-medium leading-relaxed break-words">${this.formatScientificNotation(st.text)}</span>
                                     </div>
                                     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, true)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, true)" ${lockTf ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
                                             ĐÚNG
                                         </button>
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, false)" ${!this.isExamMode && isAnswered ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
+                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, false)" ${lockTf ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
                                             SAI
                                         </button>
                                     </div>
@@ -6520,9 +6563,9 @@ Giải thích: Biên độ A = 5 cm.`;
             else if (q.qType === 'short_answer') {
                 const hasSubmitted = this.hasSubmittedAnswer(q.id);
                 const userVal = hasSubmitted ? String(this.userAnswers[q.id] ?? '') : '';
-                const shortFeedbackHtml = hasSubmitted ? this.buildShortAnswerFeedbackHtml(q, userVal) : '';
+                const shortFeedbackHtml = (hasSubmitted || this.isReviewingResult) ? this.buildShortAnswerFeedbackHtml(q, userVal) : '';
 
-                const isInputLocked = !this.isExamMode && hasSubmitted;
+                const isInputLocked = this.isReviewingResult || (!this.isExamMode && hasSubmitted);
 
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
@@ -6552,7 +6595,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     selectOption(qId, oIdx) {
-        if (this.isFinishingQuiz) return;
+        if (this.isFinishingQuiz || this.isReviewingResult) return;
         const q = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!q) return;
         if (!this.isExamMode && this.hasSubmittedAnswer(qId)) {
@@ -6616,7 +6659,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     selectTfOption(qId, stmtIdx, isTrue) {
-        if (this.isFinishingQuiz) return;
+        if (this.isFinishingQuiz || this.isReviewingResult) return;
         qId = this.allQuestions.find(item => String(item.id) === String(qId))?.id ?? qId;
         const currentAnswers = this.userAnswers[qId];
         const hasExistingAnswer = currentAnswers && typeof currentAnswers === 'object'
@@ -6672,17 +6715,18 @@ Giải thích: Biên độ A = 5 cm.`;
     buildShortAnswerFeedbackHtml(question, userVal) {
         const isCorrect = this.isShortAnswerCorrect(question, userVal);
         const correctValue = String(question.correctValue ?? '').trim() || String(question.acceptedValues?.[0] ?? '').trim();
+        const showGrading = !this.isExamMode || this.isReviewingResult;
         return `
-            <div class="short-answer-feedback ${this.isExamMode ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
+            <div class="short-answer-feedback ${!showGrading ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
                 <div class="short-answer-feedback-title">
-                    <i class="fa-solid ${this.isExamMode ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
-                    <span>${this.isExamMode ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
+                    <i class="fa-solid ${!showGrading ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
+                    <span>${!showGrading ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
                 </div>
                 <div class="short-answer-feedback-line">
                     <span>Bạn nhập:</span>
-                    <strong>${this.escapeHtml(userVal)}</strong>
+                    <strong>${userVal ? this.escapeHtml(userVal) : 'Chưa trả lời'}</strong>
                 </div>
-                ${!this.isExamMode ? `
+                ${showGrading ? `
                     <div class="short-answer-feedback-line">
                         <span>Đáp án đúng:</span>
                         <strong>${correctValue ? this.formatScientificNotation(correctValue) : 'Chưa thiết lập'}</strong>
@@ -6693,7 +6737,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     saveShortAnswer(qId, val) {
-        if (this.isFinishingQuiz) return;
+        if (this.isFinishingQuiz || this.isReviewingResult) return;
         const question = this.allQuestions.find(item => String(item.id) === String(qId));
         if (!question || question.qType !== 'short_answer') return;
         if (!this.isExamMode && this.hasSubmittedAnswer(qId)) {
@@ -7635,7 +7679,7 @@ Giải thích: Biên độ A = 5 cm.`;
     switchScreen(screenName) {
         const prevScreen = this.currentScreen;
         this.currentScreen = screenName;
-        if (screenName === 'quiz') {
+        if (screenName === 'quiz' && !this.isReviewingResult) {
             this.resetIdleAutoSubmitTimer('quiz screen active');
             const windowUnfocused = typeof document.hasFocus === 'function' && !document.hasFocus();
             if (document.hidden || windowUnfocused) {
@@ -7644,7 +7688,9 @@ Giải thích: Biên độ A = 5 cm.`;
                 this.cancelAwayAutoSubmitTimer('quiz screen active');
             }
         } else {
-            this.quizAttemptId = null;
+            if (screenName !== 'quiz') {
+                this.quizAttemptId = null;
+            }
             this.cancelAwayAutoSubmitTimer(`screen changed to ${screenName}`);
             this.cancelIdleAutoSubmitTimer(`screen changed to ${screenName}`);
         }
@@ -7736,7 +7782,9 @@ Giải thích: Biên độ A = 5 cm.`;
             return this.loginRecordPromise;
         }
         if (!this.quizAttemptId) {
-            this.quizAttemptId = 'attempt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+            this.quizAttemptId = (window.dbService && typeof window.dbService.generateUUID === 'function')
+                ? window.dbService.generateUUID()
+                : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         }
         this.pendingStudentProgress = null;
         this.progressSyncRunning = false;
@@ -7781,7 +7829,10 @@ Giải thích: Biên độ A = 5 cm.`;
         this.cancelAwayAutoSubmitTimer('quiz reset');
         this.cancelIdleAutoSubmitTimer('quiz reset');
         document.getElementById('timer-display')?.classList.remove('timer-critical-pulse');
-        this.quizAttemptId = 'attempt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        this.quizAttemptId = (window.dbService && typeof window.dbService.generateUUID === 'function')
+            ? window.dbService.generateUUID()
+            : `attempt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        this.awaySwitchCount = 0;
         this.currentLoginId = null;
         try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
         this.isFinishingQuiz = false;
@@ -7810,7 +7861,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     filterQuestions(filterKey) {
-        const effectiveKey = (this.isExamMode && filterKey === 'wrong') ? 'all' : filterKey;
+        const effectiveKey = (this.isExamMode && !this.isReviewingResult && filterKey === 'wrong') ? 'all' : filterKey;
         this.currentFilter = effectiveKey;
         const container = document.getElementById('quiz-filter-tabs-container');
         if (container) {
@@ -8108,10 +8159,12 @@ Giải thích: Biên độ A = 5 cm.`;
                     }
                 } catch (e) { }
 
-                // 3. Đồng bộ phân quyền Admin theo IP (Bảo lưu nếu thiết bị đã ghi nhớ Admin)
+                // 3. Đồng bộ phân quyền Admin theo IP (bảo lưu nếu đăng nhập bằng Token Admin hợp lệ)
                 try {
                     if (typeof window.dbService.checkIsAdminIp === 'function' && this.clientIp) {
-                        const isAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
+                        const isIpAdmin = await window.dbService.checkIsAdminIp(this.clientIp);
+                        const hasTokenAdmin = this.hasTokenRole('admin') || this.hasAdminIpAccess();
+                        const isAdmin = Boolean(isIpAdmin || hasTokenAdmin);
                         if (this.isAdminAuthenticated !== isAdmin) {
                             this.isAdminAuthenticated = isAdmin;
                             if (!isAdmin) {
@@ -8641,15 +8694,16 @@ Giải thích: Biên độ A = 5 cm.`;
                 const badge = document.getElementById('editor-modal-badge');
                 if (badge) badge.textContent = `Đang sửa Câu #${q.id}`;
                 if (idInput) idInput.value = q.id;
+                const rawText = (val) => (val && typeof val === 'object') ? (val.math ?? val.latex ?? val.formula ?? val.text ?? val.value ?? val.content ?? '') : (val ?? '');
                 if (catInput) catInput.value = q.category || 'Ôn tập';
-                if (textInput) textInput.value = q.question || '';
+                if (textInput) textInput.value = rawText(q.question);
                 if (imgInput) imgInput.value = q.image_url || '';
-                if (expInput) expInput.value = q.explanation || '';
+                if (expInput) expInput.value = rawText(q.explanation);
 
                 if (q.options && q.options.length >= 4) {
                     for (let i = 0; i < 4; i++) {
                         const optEl = document.getElementById(`edit-q-opt-${i}`);
-                        if (optEl) optEl.value = q.options[i] || '';
+                        if (optEl) optEl.value = rawText(q.options[i]);
                     }
                 }
                 const correctIdx = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
@@ -8713,7 +8767,8 @@ Giải thích: Biên độ A = 5 cm.`;
         const expInput = document.getElementById('edit-q-explanation');
 
         const targetSubject = (subjSelect && subjSelect.value) ? subjSelect.value : this.currentSubject;
-        const qId = idInput && idInput.value ? parseInt(idInput.value, 10) : null;
+        const rawId = idInput && idInput.value ? idInput.value.trim() : '';
+        const qId = rawId ? (/^\d+$/.test(rawId) ? parseInt(rawId, 10) : rawId) : null;
         const questionText = textInput ? textInput.value.trim() : '';
 
         if (!questionText) {
@@ -9023,7 +9078,7 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        const q = (this.allQuestions || []).find(item => item.id == qId);
+        const q = (this.allQuestions || []).find(item => String(item.id) === String(qId));
         if (!q) {
             this.showAlertModal("Không tìm thấy dữ liệu câu hỏi.");
             return;
@@ -9308,7 +9363,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         try {
             let list = this.getPersonalHistory();
             list.unshift(record);
-            if (list.length > 10) list = list.slice(0, 10);
+            if (list.length > 8) list = list.slice(0, 8);
             localStorage.setItem('quiz_my_history', JSON.stringify(list));
         } catch (e) {
             console.warn("Lỗi lưu lịch sử cá nhân:", e);
@@ -9319,7 +9374,7 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         if (!(await this.showConfirmModal({
             title: 'Xóa nhật ký ôn tập cá nhân?',
             badge: 'Lịch sử làm bài',
-            message: 'Bạn có chắc chắn muốn xóa toàn bộ 10 bài làm gần nhất trong lịch sử cá nhân trên thiết bị này?',
+            message: 'Bạn có chắc chắn muốn xóa toàn bộ 8 bài làm gần nhất trong lịch sử cá nhân trên thiết bị này?',
             confirmText: 'Xóa lịch sử',
             cancelText: 'Giữ lại',
             variant: 'danger',
@@ -9384,7 +9439,8 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
             return;
         }
 
-        tbody.innerHTML = list.map(item => {
+        const displayList = list.slice(0, 8);
+        tbody.innerHTML = displayList.map((item, idx) => {
             const timeDate = item.submittedAt ? new Date(item.submittedAt).toLocaleString('vi-VN', {
                 month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
             }) : '—';
@@ -9393,10 +9449,14 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
             if (item.score < 50) scoreBadgeClass = "bg-rose-500/20 text-rose-300 border-rose-500/30";
             else if (item.score < 80) scoreBadgeClass = "bg-amber-500/20 text-amber-300 border-amber-500/30";
 
+            const latestBadge = idx === 0
+                ? `<span class="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wide align-middle">Mới nhất</span>`
+                : '';
+
             return `
                 <tr class="hover:bg-slate-800/40 transition">
                     <td class="py-2.5 px-3 font-mono text-[11px] text-slate-400">${this.escapeHtml(timeDate)}</td>
-                    <td class="py-2.5 px-3 font-bold text-white">${this.escapeHtml(item.subjectTitle || 'Chung')}</td>
+                    <td class="py-2.5 px-3 font-bold text-white">${this.escapeHtml(item.subjectTitle || 'Chung')}${latestBadge}</td>
                     <td class="py-2.5 px-3">
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
                             ${this.escapeHtml(item.mode || 'Luyện tập')}
@@ -9512,8 +9572,9 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
 
     initEventListeners() {
         document.addEventListener('visibilitychange', () => {
-            if (this.currentScreen !== 'quiz') return;
+            if (this.currentScreen !== 'quiz' || this.isReviewingResult) return;
             if (document.hidden) {
+                this.awaySwitchCount = (this.awaySwitchCount || 0) + 1;
                 this.startAwayAutoSubmitTimer('document hidden');
             } else {
                 this.cancelAwayAutoSubmitTimer('document visible');
@@ -9522,20 +9583,25 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
         }, { passive: true });
 
         window.addEventListener('blur', () => {
-            if (this.currentScreen === 'quiz') {
+            if (this.currentScreen === 'quiz' && !this.isReviewingResult) {
+                this.awaySwitchCount = (this.awaySwitchCount || 0) + 1;
                 this.startAwayAutoSubmitTimer('window blur');
             }
         }, { passive: true });
 
         window.addEventListener('focus', () => {
-            if (this.currentScreen === 'quiz') {
+            if (this.currentScreen === 'quiz' && !this.isReviewingResult) {
                 this.cancelAwayAutoSubmitTimer('window focus');
                 this.resetIdleAutoSubmitTimer('window focus');
             }
         }, { passive: true });
 
         ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach((eventName) => {
-            document.addEventListener(eventName, () => this.resetIdleAutoSubmitTimer(eventName), { passive: true });
+            document.addEventListener(eventName, () => {
+                if (this.currentScreen === 'quiz' && !this.isReviewingResult) {
+                    this.resetIdleAutoSubmitTimer(eventName);
+                }
+            }, { passive: true });
         });
 
         // Nhấn phím Enter hoặc thay đổi tên học sinh -> tự động ghi nhớ & ghi nhận trạng thái

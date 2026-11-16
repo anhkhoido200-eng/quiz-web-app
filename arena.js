@@ -424,6 +424,7 @@
         async pollRoomState() {
             const client = getClient();
             if (!client || !this.room?.id) return;
+            await this.flushPendingAnswers();
             const { data, error } = await client.rpc('arena_get_room_state', {
                 p_room_id: this.room.id,
                 p_attempt_id: this.attempt?.id || null,
@@ -443,7 +444,15 @@
                 }
             }
             if (data.attempt) {
+                let hasPending = false;
+                try {
+                    hasPending = Boolean(this.pendingQueueKey && JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]').length > 0);
+                } catch (e) {}
+                const preservedQuestionStartedAt = hasPending ? this.attempt?.question_started_at : null;
                 this.attempt = data.attempt;
+                if (preservedQuestionStartedAt) {
+                    this.attempt.question_started_at = preservedQuestionStartedAt;
+                }
                 if ((data.attempt.status === 'SUBMITTED' || data.attempt.status === 'FORCED') && document.getElementById('arena-exam-view')) {
                     this.renderLeaderboardView();
                 }
@@ -454,7 +463,6 @@
             ) {
                 this.refreshLobbyOrLeaderboard();
             }
-            await this.flushPendingAnswers();
         },
 
         routeByState() {
@@ -797,14 +805,21 @@
                 if (error) {
                     if (String(error.message || '').includes('SESSION_REPLACED')) return this.renderSessionReplaced();
                     if (String(error.message || '').includes('MATCH_TIME_UP')) return this.renderLeaderboardView();
-                    if (!isTerminalSubmitError(error)) {
-                        this.enqueuePendingAnswer({
-                            ...payload,
-                            p_is_offline_sync: true,
-                            p_client_elapsed_ms: clientElapsedMs,
-                            _retryCount: 0
-                        });
+                    if (isTerminalSubmitError(error)) {
+                        const warn = document.getElementById('arena-warning-banner');
+                        if (warn) {
+                            warn.textContent = `Không thể gửi đáp án: ${error.message || 'Lỗi dữ liệu từ máy chủ.'}`;
+                            warn.classList.remove('hidden');
+                        }
+                        this.setAnswerControlsDisabled(false);
+                        return;
                     }
+                    this.enqueuePendingAnswer({
+                        ...payload,
+                        p_is_offline_sync: true,
+                        p_client_elapsed_ms: clientElapsedMs,
+                        _retryCount: 0
+                    });
                     if (this.attempt) {
                         this.attempt.question_started_at = new Date(this.serverNowMs()).toISOString();
                     }
@@ -901,8 +916,15 @@
                         p_session_token: this.sessionToken,
                         p_reason: pendingFinishReason
                     });
-                    if (finErr && String(finErr.message || '').includes('SESSION_REPLACED')) {
-                        this.renderSessionReplaced();
+                    if (finErr) {
+                        if (String(finErr.message || '').includes('SESSION_REPLACED')) {
+                            try { localStorage.removeItem(this.pendingFinishKey); } catch (e) {}
+                            this.renderSessionReplaced();
+                            return;
+                        }
+                        if (isTerminalSubmitError(finErr)) {
+                            try { localStorage.removeItem(this.pendingFinishKey); } catch (e) {}
+                        }
                         return;
                     }
                     if (finData) this.attempt = finData;
@@ -1318,7 +1340,7 @@
                     </div>
                     <div class="actions" style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button type="button" class="button button-secondary compact" data-arena-copy="${esc(r.room_code)}"><i class="fa-solid fa-link"></i> Link</button>
-                        ${r.status !== 'FINISHED' ? `<button type="button" class="button button-danger-solid compact" data-arena-end="${esc(r.id)}"><i class="fa-solid fa-flag-checkered"></i> Đóng bài</button>` : ''}
+                        ${r.status === 'IN_PROGRESS' ? `<button type="button" class="button button-danger-solid compact" data-arena-end="${esc(r.id)}"><i class="fa-solid fa-flag-checkered"></i> Đóng bài</button>` : ''}
                         <button type="button" class="button button-secondary compact" data-arena-inspect="${esc(r.id)}"><i class="fa-solid fa-magnifying-glass"></i> Chi tiết</button>
                     </div>
                 </div>

@@ -278,3 +278,17 @@ VALUES (
     NOW()
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 9: Thư mục phân nhóm môn học hệ thống (ID: 00000000-0000-0000-0000-000000000009)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000009',
+    '__SYSTEM_FOLDERS__',
+    'SYSTEM',
+    'SYSTEM_FOLDERS',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;

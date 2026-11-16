@@ -862,6 +862,14 @@
         const val = $('admin-token-unlock-input')?.value.trim();
         if (!val) return notify('Vui lòng nhập hoặc dán mã IP-Token Admin.', true);
 
+        const isPlainIpAddress = (value) => {
+            const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+            return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
+        };
+        if (isPlainIpAddress(val)) {
+            return notify('Vui lòng nhập mã IP-Token Admin hợp lệ (không dùng địa chỉ IP thuần).', true);
+        }
+
         ensureSupabaseClient();
         state.clientIp = await getClientIp();
 
@@ -882,14 +890,19 @@
                 const clean = val.toLowerCase();
                 const cleanCode = normalizeAdminCode(clean);
                 isMatch = allowed.some(it => {
-                    if (!clean || clean.length < 6) return false;
-                    if (typeof it === 'string') return it.toLowerCase() === clean || normalizeAdminCode(it) === cleanCode;
+                    if (!clean || clean.length < 6 || isPlainIpAddress(clean)) return false;
+                    if (typeof it === 'string') {
+                        const str = it.trim().toLowerCase();
+                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
+                        const strCode = normalizeAdminCode(str);
+                        return str === clean || (Boolean(cleanCode) && cleanCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === cleanCode);
+                    }
                     const itTok = String(it.token || '').toLowerCase();
                     const itRaw = String(it.rawCode || '').toLowerCase();
-                    if (itTok && itTok === clean) return true;
-                    if (itRaw && itRaw === clean) return true;
-                    if (cleanCode && normalizeAdminCode(itTok) === cleanCode) return true;
-                    if (cleanCode && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
+                    if (itTok && !isPlainIpAddress(itTok) && itTok === clean) return true;
+                    if (itRaw && !isPlainIpAddress(itRaw) && itRaw === clean) return true;
+                    if (cleanCode && !isPlainIpAddress(cleanCode) && normalizeAdminCode(itTok) === cleanCode) return true;
+                    if (cleanCode && !isPlainIpAddress(cleanCode) && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
                     return false;
                 });
             }
@@ -1656,7 +1669,7 @@
             answer: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
             correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? acceptedValues[0] ?? '') : '',
             accepted_values: normalized.qType === 'short_answer' && acceptedValues.length > 0 ? acceptedValues : null,
-            explanation: normalized.explanation ?? '', image_url: normalized.image_url || normalized.imageUrl || '', is_deleted: false, deleted_at: null, updated_at: new Date().toISOString()
+            explanation: storageText(normalized.explanation ?? ''), image_url: normalized.image_url || normalized.imageUrl || '', is_deleted: false, deleted_at: null, updated_at: new Date().toISOString()
         };
         return record;
     }
@@ -1748,15 +1761,17 @@
         }
     }
 
-    async function saveTrash() {
+    async function saveTrash({ throwOnError = false } = {}) {
         updateTrashBadge();
         try {
             localStorage.setItem('quiz_trash_questions', JSON.stringify(state.trashQuestions));
-        } catch (e) {}
+        } catch (e) {
+            if (throwOnError) throw new Error('Không thể lưu bản sao vào bộ nhớ trình duyệt (LocalStorage).');
+        }
 
         if (state.client) {
             try {
-                await state.client.from('quiz_logins').upsert({
+                const { error } = await state.client.from('quiz_logins').upsert({
                     id: SYSTEM.trash,
                     player_name: '__TRASH_BIN__',
                     ip_address: 'SYSTEM',
@@ -1765,8 +1780,10 @@
                     score_summary: JSON.stringify(state.trashQuestions),
                     last_active: new Date().toISOString()
                 }, { onConflict: 'id' });
+                if (error) throw error;
             } catch (error) {
                 console.warn('[Quiz Studio Admin] Lỗi đồng bộ thùng rác lên Cloud:', error);
+                if (throwOnError) throw new Error(`Không thể lưu vào Thùng rác trên Cloud: ${error.message || error}`);
             }
         }
     }
@@ -1775,14 +1792,6 @@
         if (!Array.isArray(questionsToTrash) || questionsToTrash.length === 0) return;
         const total = questionsToTrash.length;
         const idsToDelete = questionsToTrash.map((q) => q.id).filter(Boolean);
-
-        // Xóa theo batch 50 câu trên Supabase
-        const chunkSize = 50;
-        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-            const chunk = idsToDelete.slice(i, i + chunkSize);
-            const { error } = await state.client.from('quiz_questions').delete().in('id', chunk);
-            if (error) throw error;
-        }
 
         const now = new Date().toISOString();
         const trashedItems = questionsToTrash.map((q) => ({
@@ -1793,11 +1802,27 @@
         }));
 
         const idSet = new Set(questionsToTrash.map((q) => String(q.id)));
+        const previousTrash = state.trashQuestions;
         state.trashQuestions = [
             ...trashedItems,
             ...state.trashQuestions.filter((q) => !idSet.has(String(q.id)))
         ];
-        await saveTrash();
+
+        try {
+            await saveTrash({ throwOnError: true });
+        } catch (error) {
+            state.trashQuestions = previousTrash;
+            updateTrashBadge();
+            throw error;
+        }
+
+        // Chỉ xóa trên Supabase sau khi đã lưu an toàn vào Thùng rác
+        const chunkSize = 50;
+        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+            const chunk = idsToDelete.slice(i, i + chunkSize);
+            const { error } = await state.client.from('quiz_questions').delete().in('id', chunk);
+            if (error) throw error;
+        }
 
         state.questions = state.questions.filter((q) => !idSet.has(String(q.id)));
         if (state.editingId && idSet.has(String(state.editingId))) resetForm();
@@ -2907,7 +2932,6 @@
             state.importSubject = draft.subject || state.importSubject;
             state.importIntegrity = draft.integrity || validateVerbatimQuestions(state.importQuestions, state.sourceText);
             state.importIndex = 0;
-            fillForm(state.importQuestions[0]);
             renderImportReview();
             return true;
         } catch (error) { return false; }
@@ -3045,6 +3069,7 @@
             // Quan trọng: dùng đúng giá trị mới nhất từ dropdown, không dùng
             // state cũ còn sót lại từ lần import trước.
             state.importSubject = selectedSubject;
+            let replaceIdsToDelete = [];
             if ($('import-replace')?.checked) {
                 const rawKeys = Array.from(new Set([
                     selectedSubject,
@@ -3053,17 +3078,27 @@
                         .map((q) => String(q.subject_key || q.subjectKey || '').trim())
                         .filter(Boolean)
                 ]));
-                const replaceQuery = rawKeys.length > 1
-                    ? state.client.from('quiz_questions').delete().in('subject_key', rawKeys)
-                    : state.client.from('quiz_questions').delete().eq('subject_key', selectedSubject);
-                const { error } = await replaceQuery;
-                if (error) throw error;
+                const oldRowsQuery = rawKeys.length > 1
+                    ? state.client.from('quiz_questions').select('id').in('subject_key', rawKeys)
+                    : state.client.from('quiz_questions').select('id').eq('subject_key', selectedSubject);
+                const { data: oldRows, error: oldErr } = await oldRowsQuery;
+                if (oldErr) throw oldErr;
+                replaceIdsToDelete = (oldRows || []).map((r) => r.id).filter(Boolean);
             }
             const firstId = await nextQuestionId();
             const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
             const verifiedCount = await upsertRestoredRows(records, { returnIds: true });
             if (verifiedCount < records.length) {
                 throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu vừa nhập ở môn ${selectedSubject}.`);
+            }
+            if (replaceIdsToDelete.length > 0) {
+                const newIdSet = new Set(records.map((r) => String(r.id)));
+                const safeDeleteIds = replaceIdsToDelete.filter((id) => !newIdSet.has(String(id)));
+                for (let i = 0; i < safeDeleteIds.length; i += 50) {
+                    const chunk = safeDeleteIds.slice(i, i + 50);
+                    const { error: delErr } = await state.client.from('quiz_questions').delete().in('id', chunk);
+                    if (delErr) throw delErr;
+                }
             }
             console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, verifiedCount });
             addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import');
@@ -3084,14 +3119,13 @@
             const source = await file.text();
             $('import-text').value = source;
             const list = parseJsonInput(source);
-            if (!list.length) throw new Error('File không chứa JSON câu hỏi hợp lệ.');
+            if (!list.length) throw new Error(state.importError || 'File không chứa JSON câu hỏi hợp lệ.');
             state.sourceText = source;
             state.importQuestions = list;
             state.importError = '';
             state.importIndex = 0;
             state.importIntegrity = validateVerbatimQuestions(list, source);
             persistImportDraft();
-            fillForm(list[0]);
             renderImportReview();
             notify(`Đã đọc ${list.length} câu từ ${file.name}.`);
         } catch (error) {
@@ -3867,13 +3901,14 @@
         return (!tRaw || tRaw === tIp) && (!tCode || tCode === tIp);
     }
 
-    function hasOtherTokenWithRoleOnIp(ip, excludeToken, roles) {
+    function hasOtherTokenWithRoleOnIp(ip, excludeToken, roles, ipOnlyOnly = false) {
         const cleanIp = String(ip || '').trim().toLowerCase();
         if (!cleanIp) return false;
         return (state.tokens || []).some(t =>
             t.token !== excludeToken &&
             String(t.ip || '').trim().toLowerCase() === cleanIp &&
-            roles.includes(t.role)
+            roles.includes(t.role) &&
+            (!ipOnlyOnly || isIpOnlyTokenRecord(t))
         );
     }
 
@@ -3920,7 +3955,7 @@
 
         if (item.role === 'ai') {
             item.role = 'all';
-            if (item.ip) {
+            if (item.ip && isIpOnlyTokenRecord(item)) {
                 state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
                 if (!state.geo.grade5Ips.includes(item.ip)) {
                     state.geo.grade5Ips.push(item.ip);
@@ -3941,7 +3976,7 @@
             if (!confirmed) return;
 
             item.role = 'ai';
-            if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'])) {
+            if (item.ip && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'], true)) {
                 state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
                 await saveGeo();
             }
@@ -3963,7 +3998,7 @@
             icon: 'fa-trash-can'
         }))) return;
 
-        if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'])) {
+        if (item.ip && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'], true)) {
             state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
             await saveGeo();
         }
@@ -3974,7 +4009,22 @@
             renderUnifiedAccess();
             notify(`Đã thu hồi quyền Lớp 5 của ${item.name}, vẫn giữ quyền AI.`);
         } else {
-            state.tokens = (state.tokens || []).filter(t => t.token !== token);
+            if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
+            }
+        }
+
+        state.tokens = (state.tokens || []).filter(t => t.token !== token);
             await saveTokens();
             renderUnifiedAccess();
             notify(`Đã thu hồi quyền Lớp 5 của ${item.name}.`);
@@ -4004,7 +4054,22 @@
             renderUnifiedAccess();
             notify(`Đã thu hồi quyền Trợ lý AI của ${item.name}, vẫn giữ quyền Lớp 5.`);
         } else {
-            state.tokens = (state.tokens || []).filter(t => t.token !== token);
+            if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
+            }
+        }
+
+        state.tokens = (state.tokens || []).filter(t => t.token !== token);
             await saveTokens();
             renderUnifiedAccess();
             notify(`Đã thu hồi quyền Trợ lý AI của ${item.name}.`);
@@ -4105,7 +4170,7 @@
         await saveTokens();
 
         if (ip) {
-            if (role === 'grade5' || role === 'all') {
+            if ((role === 'grade5' || role === 'all') && !detectedCode) {
                 state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
                 if (!state.geo.grade5Ips.includes(ip)) {
                     state.geo.grade5Ips.push(ip);
@@ -4164,13 +4229,28 @@
 
         if (item?.ip) {
             const cleanIp = item.ip;
-            if (state.geo?.grade5Ips && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['grade5', 'all'])) {
+            if (state.geo?.grade5Ips && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['grade5', 'all'], true)) {
                 state.geo.grade5Ips = state.geo.grade5Ips.filter(ip => ip !== cleanIp);
                 await saveGeo();
             }
             if (state.aiIps && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['ai', 'all'])) {
                 state.aiIps = state.aiIps.filter(i => (typeof i === 'string' ? i : i.ip) !== cleanIp);
                 await saveAiIps();
+            }
+        }
+
+        if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
             }
         }
 
@@ -4198,7 +4278,7 @@
         (state.geo.grade5Ips || []).forEach(ip => {
             const cleanIp = String(ip).trim().toLowerCase();
             if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
-                const existing = state.tokens.find(t => String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp);
+                const existing = state.tokens.find(t => isIpOnlyTokenRecord(t) && (String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp));
                 if (!existing) {
                     state.tokens.push({
                         token: cleanIp,
@@ -4342,7 +4422,7 @@
         await saveTokens();
 
         if (ip) {
-            if (role === 'grade5') {
+            if (role === 'grade5' && !deviceCode) {
                 if (!state.geo.grade5Ips.includes(ip)) {
                     state.geo.grade5Ips.push(ip);
                     await saveGeo();
@@ -4484,7 +4564,10 @@
         });
         await saveAdminConfig();
 
-        state.tokens = (state.tokens || []).filter(t => t.token !== identifier && t.rawCode !== identifier && t.ip !== identifier);
+        state.tokens = (state.tokens || []).filter((t) => {
+            if (t.role !== 'admin') return true;
+            return t.token !== identifier && t.rawCode !== identifier && t.ip !== identifier;
+        });
         await saveTokens();
 
         renderAccess();
@@ -6596,12 +6679,12 @@
         await loadStudents();
         await renderGrade5ProgressMonitor();
     }
-    async function banIp(ip, reason = '') { if (!ip) return; const cleanIp = String(ip).trim(); const cleanReason = reason || 'Vi phạm quy chế ôn tập'; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }).eq('ip_address', cleanIp).select(); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: cleanIp, device_info: 'Manual Ban', status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }); if (error) return notify(error.message, true); } if ($('ban-ip-input')) $('ban-ip-input').value = ''; if ($('ban-reason-input')) $('ban-reason-input').value = ''; state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã chặn IP ${cleanIp}.`); await loadStudents(); }
+    async function banIp(ip, reason = '') { if (!ip) return; const cleanIp = String(ip).trim(); const cleanReason = reason || 'Vi phạm quy chế ôn tập'; const now = new Date().toISOString(); const { data: updated, error: updateError } = await state.client.from('quiz_logins').update({ status: `BANNED: ${cleanReason}`, last_active: now }).eq('ip_address', cleanIp).select('id'); if (updateError) return notify(updateError.message, true); if (!updated?.length) { const { error } = await state.client.from('quiz_logins').insert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: cleanIp, device_info: 'Manual Ban', status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }); if (error) return notify(error.message, true); } if ($('ban-ip-input')) $('ban-ip-input').value = ''; if ($('ban-reason-input')) $('ban-reason-input').value = ''; state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã chặn IP ${cleanIp}.`); await loadStudents(); }
     async function unbanIp(ip) { const cleanIp = String(ip || '').trim(); if (!cleanIp) return; const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', cleanIp); if (error) return notify(error.message, true); await state.client.from('quiz_logins').update({ status: 'Đang ôn tập', last_active: new Date().toISOString() }).eq('ip_address', cleanIp).like('status', 'BANNED%'); state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã mở khóa IP ${cleanIp}.`); await loadStudents(); }
 
     function exportJson(name, payload) { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); URL.revokeObjectURL(link.href); }
-    function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
-    function exportExcel() { if (!window.XLSX) return exportJson('quiz-questions.json', state.questions); const rows = state.questions.map((q) => ({ ID: q.id, Mon: subjectName(q.subject_key), Loai: TYPE_LABELS[q.qType], CauHoi: q.question, DapAn: q.qType === 'mcq' ? 'ABCD'[q.correct] : q.qType === 'short_answer' ? q.correctValue : q.statements.map((s) => `${s.key}:${s.answer ? 'Đúng' : 'Sai'}`).join(', '), GiaiThich: q.explanation })); const book = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(book, window.XLSX.utils.json_to_sheet(rows), 'Questions'); window.XLSX.writeFile(book, `quiz-questions-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất bảng câu hỏi Excel.'); }
+    function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, subjects: state.subjects, subjectFolders: state.subjectFolders, tokens: state.tokens, trashQuestions: state.trashQuestions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
+    function exportExcel() { if (!window.XLSX) return exportJson('quiz-questions.json', state.questions); const rows = state.questions.map((q) => { const opts = Array.isArray(q.options) ? q.options.map(storageText) : []; return { ID: q.id, Mon: subjectName(q.subject_key), Loai: TYPE_LABELS[q.qType] || q.qType, CauHoi: storageText(q.question), PhuongAnA: q.qType === 'mcq' ? (opts[0] || '') : '', PhuongAnB: q.qType === 'mcq' ? (opts[1] || '') : '', PhuongAnC: q.qType === 'mcq' ? (opts[2] || '') : '', PhuongAnD: q.qType === 'mcq' ? (opts[3] || '') : '', DapAn: q.qType === 'mcq' ? ('ABCD'[q.correct] || '') : q.qType === 'short_answer' ? (q.correctValue || '') : (q.statements || []).map((s) => `${s.key}:${s.answer ? 'Đúng' : 'Sai'}`).join(', '), GiaiThich: storageText(q.explanation) }; }); const book = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(book, window.XLSX.utils.json_to_sheet(rows), 'Questions'); window.XLSX.writeFile(book, `quiz-questions-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất bảng câu hỏi Excel.'); }
 
     const reportNumber = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '—';
     const reportDate = (value) => {
@@ -6841,7 +6924,7 @@
         }
     }
     function exportScoreReport() {
-        if (!state.reportRows) return notify('Hãy tải báo cáo điểm trước khi xuất file.', true);
+        if (!state.reportRows || !state.reportRows.length) return notify('Hãy tải báo cáo điểm có dữ liệu trước khi xuất file.', true);
         const scores = state.reportRows.map((row) => row.score10);
         const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
         const ordered = [...scores].sort((a, b) => a - b);

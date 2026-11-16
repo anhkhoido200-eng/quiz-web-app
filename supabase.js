@@ -1230,40 +1230,55 @@ class DatabaseService {
                 // Query the legacy-compatible shape first. The deployed project
                 // may not yet contain the optional is_deleted migration; active
                 // rows are filtered below when the column is available.
-                let query = this.client
-                    .from('quiz_questions')
-                    .select('*')
-                    .order('id', { ascending: true });
+                const pageSize = 1000;
+                const allRows = [];
+                for (let page = 0; page < 200; page++) {
+                    const offset = page * pageSize;
+                    let query = this.client
+                        .from('quiz_questions')
+                        .select('*')
+                        .order('id', { ascending: true })
+                        .range(offset, offset + pageSize - 1);
 
-                if (subjectKey) {
-                    query = query.eq('subject_key', subjectKey);
-                }
-
-                let { data, error } = await query;
-
-                if (!error) {
-                    console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: (data || []).length });
-                    for (const row of (data || [])) {
-                        if (row && row.id !== undefined) this._updateMaxQuestionIdCache(row.id);
+                    if (subjectKey) {
+                        query = query.eq('subject_key', subjectKey);
                     }
-                    return (data || []).filter(row => row.is_deleted !== true).map(row => ({
-                        id: row.id,
-                        subjectKey: row.subject_key || 'history',
-                        category: row.category || 'Bài học',
-                        qType: row.q_type || 'mcq',
-                        question: row.question,
-                        options: row.options || [],
-                        statements: row.statements || [],
-                        correct: row.correct !== undefined ? row.correct : (row.answer || 0),
-                        answer: row.answer !== undefined ? row.answer : (row.correct || 0),
-                        correctValue: row.correct_value || '',
-                        acceptedValues: row.accepted_values || row.acceptedValues || [],
-                        explanation: row.explanation || '',
-                        imageUrl: row.image_url || ''
-                    }));
+
+                    const { data, error } = await query;
+                    if (error) {
+                        console.warn('[DatabaseService] Questions query failed:', { subjectKey, offset, error: error?.message, code: error?.code, details: error?.details });
+                        throw error;
+                    }
+                    if (!Array.isArray(data) || data.length === 0) break;
+                    allRows.push(...data);
+                    if (data.length < pageSize) break;
                 }
-                console.warn('[DatabaseService] Questions query failed:', { subjectKey, error: error?.message, code: error?.code, details: error?.details });
-                throw error;
+
+                console.debug('[DatabaseService] Questions query succeeded:', { subjectKey, count: allRows.length });
+                for (const row of allRows) {
+                    if (row && row.id !== undefined) this._updateMaxQuestionIdCache(row.id);
+                }
+                const mapped = allRows.filter(row => row.is_deleted !== true).map(row => ({
+                    id: row.id,
+                    subjectKey: row.subject_key || 'history',
+                    category: row.category || 'Bài học',
+                    qType: row.q_type || 'mcq',
+                    question: row.question,
+                    options: row.options || [],
+                    statements: row.statements || [],
+                    correct: row.correct !== undefined ? row.correct : (row.answer || 0),
+                    answer: row.answer !== undefined ? row.answer : (row.correct || 0),
+                    correctValue: row.correct_value || '',
+                    acceptedValues: row.accepted_values || row.acceptedValues || [],
+                    explanation: row.explanation || '',
+                    imageUrl: row.image_url || ''
+                }));
+                if (subjectKey) {
+                    try {
+                        localStorage.setItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${subjectKey}`, JSON.stringify(mapped));
+                    } catch (e) {}
+                }
+                return mapped;
             } catch (err) {
                 console.warn("[DatabaseService] Lỗi fetch questions từ Supabase, chuyển sang cache:", err);
             }
@@ -1436,37 +1451,15 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
-                const executeWrite = async (payload, useUpsert) => {
-                    if (useUpsert) {
-                        return await this.client
-                            .from('quiz_questions')
-                            .upsert([payload], { onConflict: 'id' })
-                            .select();
-                    }
-                    return await this.client
-                        .from('quiz_questions')
-                        .insert([payload])
-                        .select();
-                };
-
                 const writeWithSchemaFallback = async (basePayload, useUpsert) => {
-                    let res = await executeWrite(basePayload, useUpsert);
-                    if (res.error && (res.error.code === '42703' || res.error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(res.error.message || ''))) {
-                        const msg = res.error.message || '';
-                        if (/accepted_values/i.test(msg) && !/is_deleted|deleted_at/i.test(msg)) {
-                            const noAccepted = { ...basePayload };
-                            delete noAccepted.accepted_values;
-                            res = await executeWrite(noAccepted, useUpsert);
-                        }
-                        if (res.error && (res.error.code === '42703' || res.error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(res.error.message || ''))) {
-                            const legacyRecord = { ...basePayload };
-                            delete legacyRecord.accepted_values;
-                            delete legacyRecord.is_deleted;
-                            delete legacyRecord.deleted_at;
-                            res = await executeWrite(legacyRecord, useUpsert);
-                        }
-                    }
-                    return res;
+                    return await this._executeWriteWithSchemaFallback(
+                        'quiz_questions',
+                        OPTIONAL_QUESTION_COLUMNS,
+                        (candidate) => useUpsert
+                            ? this.client.from('quiz_questions').upsert([candidate], { onConflict: 'id' }).select()
+                            : this.client.from('quiz_questions').insert([candidate]).select(),
+                        basePayload
+                    );
                 };
 
                 let { data, error } = await writeWithSchemaFallback(record, isExistingSameSubjectRow);
@@ -1486,6 +1479,7 @@ class DatabaseService {
                     const item = data?.[0] || record;
                     if (item?.id !== undefined) this._updateMaxQuestionIdCache(item.id);
                     if (qObj.id === undefined || qObj.id === null || qObj.id === '') qObj.id = item.id;
+                    this._upsertQuestionInLocalCache(targetSubject, item);
                     return { success: true, item };
                 }
                 if (error) throw error;
@@ -1495,7 +1489,37 @@ class DatabaseService {
             }
         }
 
-        return { success: true, localOnly: true };
+        this._upsertQuestionInLocalCache(targetSubject, record);
+        return { success: true, localOnly: true, item: record };
+    }
+
+    _upsertQuestionInLocalCache(subjectKey, row) {
+        if (!subjectKey || !row || row.id === undefined) return;
+        try {
+            const cacheKey = `${STORAGE_KEYS.CUSTOM_QUESTIONS}_${subjectKey}`;
+            const raw = localStorage.getItem(cacheKey);
+            const list = raw ? JSON.parse(raw) : [];
+            const arr = Array.isArray(list) ? list : [];
+            const normalized = {
+                id: row.id,
+                subjectKey: row.subject_key || row.subjectKey || subjectKey,
+                category: row.category || 'Bài học',
+                qType: row.q_type || row.qType || 'mcq',
+                question: row.question,
+                options: row.options || [],
+                statements: row.statements || [],
+                correct: row.correct !== undefined ? row.correct : (row.answer || 0),
+                answer: row.answer !== undefined ? row.answer : (row.correct || 0),
+                correctValue: row.correct_value ?? row.correctValue ?? '',
+                acceptedValues: row.accepted_values || row.acceptedValues || [],
+                explanation: row.explanation || '',
+                imageUrl: row.image_url ?? row.imageUrl ?? ''
+            };
+            const idx = arr.findIndex(item => Number(item?.id) === Number(normalized.id));
+            if (idx !== -1) arr[idx] = normalized;
+            else arr.push(normalized);
+            localStorage.setItem(cacheKey, JSON.stringify(arr));
+        } catch (e) {}
     }
 
     /**
@@ -1608,7 +1632,20 @@ class DatabaseService {
 
         // Cập nhật lại bộ nhớ local của trình duyệt
         try {
-            localStorage.setItem(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`, JSON.stringify(questionsList));
+            const cacheKey = `${STORAGE_KEYS.CUSTOM_QUESTIONS}_${cleanSubject}`;
+            if (replaceAll) {
+                localStorage.setItem(cacheKey, JSON.stringify(questionsList));
+            } else {
+                const rawExisting = localStorage.getItem(cacheKey);
+                const existingList = rawExisting ? JSON.parse(rawExisting) : [];
+                const merged = Array.isArray(existingList) ? [...existingList] : [];
+                for (const item of questionsList) {
+                    const idx = merged.findIndex(m => Number(m?.id) === Number(item?.id));
+                    if (idx !== -1) merged[idx] = item;
+                    else merged.push(item);
+                }
+                localStorage.setItem(cacheKey, JSON.stringify(merged));
+            }
         } catch (e) { }
 
         if (this.isSupabaseActive && this.client) {
@@ -1618,27 +1655,15 @@ class DatabaseService {
                 let insertedCount = 0;
                 for (let i = 0; i < records.length; i += chunkSize) {
                     const chunk = records.slice(i, i + chunkSize);
-                    let { data, error } = await this.client
-                        .from('quiz_questions')
-                        .upsert(chunk, { onConflict: 'id' })
-                        .select('id');
-                    if (error && (error.code === '42703' || error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
-                        const msg = error.message || '';
-                        if (/accepted_values/i.test(msg) && !/is_deleted|deleted_at/i.test(msg)) {
-                            const noAcceptedChunk = chunk.map(({ accepted_values, ...rest }) => rest);
-                            ({ data, error } = await this.client
-                                .from('quiz_questions')
-                                .upsert(noAcceptedChunk, { onConflict: 'id' })
-                                .select('id'));
-                        }
-                        if (error && (error.code === '42703' || error.code === 'PGRST204' || /accepted_values|is_deleted|deleted_at|column .* does not exist/i.test(error.message || ''))) {
-                            const legacyChunk = chunk.map(({ accepted_values, is_deleted, deleted_at, ...rest }) => rest);
-                            ({ data, error } = await this.client
-                                .from('quiz_questions')
-                                .upsert(legacyChunk, { onConflict: 'id' })
-                                .select('id'));
-                        }
-                    }
+                    const { data, error } = await this._executeWriteWithSchemaFallback(
+                        'quiz_questions',
+                        OPTIONAL_QUESTION_COLUMNS,
+                        (candidateChunk) => this.client
+                            .from('quiz_questions')
+                            .upsert(candidateChunk, { onConflict: 'id' })
+                            .select('id'),
+                        chunk
+                    );
                     if (error) throw error;
                     (data || []).forEach((row, rowIndex) => {
                         if (questionsList[i + rowIndex] && row?.id !== undefined) questionsList[i + rowIndex].id = row.id;
@@ -1674,6 +1699,23 @@ class DatabaseService {
      */
     async deleteQuestion(qId) {
         this._updateMaxQuestionIdCache(qId);
+        let removedLocal = false;
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key || !key.startsWith(`${STORAGE_KEYS.CUSTOM_QUESTIONS}_`)) continue;
+                const raw = localStorage.getItem(key);
+                if (!raw) continue;
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) continue;
+                const filtered = parsed.filter(item => String(item?.id) !== String(qId));
+                if (filtered.length !== parsed.length) {
+                    localStorage.setItem(key, JSON.stringify(filtered));
+                    removedLocal = true;
+                }
+            }
+        } catch (e) {}
+
         if (this.isSupabaseActive && this.client && qId) {
             try {
                 const nowIso = this.getNowIso();
@@ -1691,7 +1733,7 @@ class DatabaseService {
                 throw e;
             }
         }
-        return false;
+        return removedLocal;
     }
 
     /**
@@ -1777,26 +1819,38 @@ class DatabaseService {
             try {
                 const { data: updated, error: updateErr } = await this.client
                     .from('quiz_logins')
-                    .update({ status: banStatus, score_summary: reason, last_active: nowIso })
+                    .update({ status: banStatus, last_active: nowIso })
                     .eq('ip_address', cleanIp)
-                    .select();
+                    .select('id, player_name');
                 if (updateErr) throw updateErr;
 
-                // Nếu IP này chưa từng đăng nhập (0 dòng được update), INSERT một bản ghi __BANNED_IP__
-                if (!updated || updated.length === 0) {
-                    const { error: insertErr } = await this.client
-                        .from('quiz_logins')
-                        .insert([{
-                            id: this.generateUUID(),
-                            player_name: '__BANNED_IP__',
-                            ip_address: cleanIp,
-                            device_info: 'Manual Ban',
-                            status: banStatus,
-                            score_summary: reason,
-                            last_active: nowIso,
-                            created_at: nowIso
-                        }]);
+                const hasManualBanRow = Array.isArray(updated) && updated.some(r => r.player_name === '__BANNED_IP__');
+                // Nếu chưa có bản ghi __BANNED_IP__ cho IP này, INSERT riêng để lưu lý do mà không ghi đè score_summary của học sinh
+                if (!hasManualBanRow) {
+                    const banPayload = {
+                        id: this.generateUUID(),
+                        player_name: '__BANNED_IP__',
+                        ip_address: cleanIp,
+                        device_info: 'Manual Ban',
+                        status: banStatus,
+                        score_summary: reason,
+                        last_active: nowIso,
+                        created_at: nowIso
+                    };
+                    const { error: insertErr } = await this._executeWriteWithSchemaFallback(
+                        'quiz_logins',
+                        OPTIONAL_LOGIN_COLUMNS,
+                        (candidate) => this.client.from('quiz_logins').insert([candidate]),
+                        banPayload
+                    );
                     if (insertErr) throw insertErr;
+                } else {
+                    const { error: banRowErr } = await this.client
+                        .from('quiz_logins')
+                        .update({ status: banStatus, score_summary: reason, last_active: nowIso })
+                        .eq('ip_address', cleanIp)
+                        .eq('player_name', '__BANNED_IP__');
+                    if (banRowErr) throw banRowErr;
                 }
             } catch (err) {
                 console.error("[DatabaseService] Lỗi khi chặn IP trên Supabase:", err);
@@ -1865,13 +1919,18 @@ class DatabaseService {
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
-                    .select('status, score_summary')
+                    .select('player_name, status, score_summary')
                     .eq('ip_address', cleanIp)
                     .like('status', 'BANNED%')
-                    .limit(1);
+                    .limit(5);
 
                 if (!error && data && data.length > 0) {
-                    const reason = data[0].score_summary || data[0].status.replace(/^BANNED:\s*/, "") || "Vi phạm quy chế";
+                    const manualRow = data.find(r => r.player_name === '__BANNED_IP__');
+                    const targetRow = manualRow || data[0];
+                    const statusReason = String(targetRow.status || '').replace(/^BANNED:\s*/, '').trim();
+                    const reason = (manualRow && manualRow.score_summary)
+                        ? manualRow.score_summary
+                        : (statusReason || "Vi phạm quy chế");
                     return { isBanned: true, reason: reason };
                 }
             } catch (err) {}
@@ -1921,7 +1980,10 @@ class DatabaseService {
                         const ip = (item.ip_address || '').trim();
                         if (ip && !seenIps.has(ip)) {
                             seenIps.add(ip);
-                            const reason = item.score_summary || (item.status ? item.status.replace(/^BANNED:\s*/, "") : "Vi phạm quy chế");
+                            const statusReason = item.status ? item.status.replace(/^BANNED:\s*/, "").trim() : "";
+                            const reason = item.player_name === '__BANNED_IP__'
+                                ? (item.score_summary || statusReason || "Vi phạm quy chế")
+                                : (statusReason || "Vi phạm quy chế");
                             bannedList.push({
                                 ip: ip,
                                 playerName: item.player_name === '__BANNED_IP__' ? 'Chặn thủ công' : item.player_name,
@@ -2526,20 +2588,21 @@ class DatabaseService {
                     .eq('id', SYSTEM_RECORDS.DYNAMIC_SUBJECTS)
                     .limit(1);
 
-                if (!error && data && data.length > 0 && data[0].score_summary) {
-                    try {
-                        const parsed = JSON.parse(data[0].score_summary);
-                        if (Array.isArray(parsed)) subjects = parsed;
-                    } catch (e) {}
+                if (!error && data && data.length > 0) {
+                    if (data[0].score_summary) {
+                        try {
+                            const parsed = JSON.parse(data[0].score_summary);
+                            if (Array.isArray(parsed)) subjects = parsed;
+                        } catch (e) {}
+                    }
                     try {
                         localStorage.setItem(STORAGE_KEYS.DYNAMIC_SUBJECTS, JSON.stringify(subjects));
                     } catch (e) {}
                     return subjects;
                 }
-                // Cloud là nguồn sự thật khi đang online; không phục hồi cache cũ sau khi Admin đã xóa dữ liệu.
-                if (error || !data || data.length === 0) return [];
+                // Nếu Cloud không lỗi và chưa có bản ghi thì trả rỗng; nếu có lỗi mạng/Supabase thì fallback sang localStorage bên dưới.
+                if (!error && (!data || data.length === 0)) return [];
             } catch (e) {}
-            return subjects;
         }
 
         try {
@@ -2635,7 +2698,7 @@ class DatabaseService {
      * Lấy dữ liệu Bảng Xếp Hạng Top N học sinh điểm cao & nhanh nhất
      */
     async fetchLeaderboard(subjectKey = '', limit = 10) {
-        const logins = await this.getLoginHistory(350);
+        const logins = await this.getLoginHistory(350, { excludeVisitors: true });
         let dynamicSubjectName = '';
         if (subjectKey) {
             const appSubjects = (typeof window !== 'undefined' && Array.isArray(window.app?.dynamicSubjects))
@@ -2763,7 +2826,7 @@ class DatabaseService {
      * Lấy toàn bộ bảng điểm đầy đủ để xuất file Excel
      */
     async fetchScoreboardForExport(subjectKey = '') {
-        const logins = await this.getLoginHistory(500);
+        const logins = await this.getLoginHistory(500, { excludeVisitors: true });
         return logins
             .filter(item => {
                 const s = (item.status || "").toLowerCase();
@@ -2842,8 +2905,8 @@ class DatabaseService {
      * Xuất toàn bộ dữ liệu lịch sử thành JSON Backup và xóa sạch dữ liệu học sinh cũ
      */
     async archiveAndClearExamData() {
-        // 1. Tải toàn bộ dữ liệu học sinh hiện có
-        const studentLogins = await this.getLoginHistory(1000);
+        // 1. Tải toàn bộ dữ liệu học sinh hiện có (phân trang đầy đủ để không mất dữ liệu vượt quá 1000 dòng)
+        const studentLogins = await this.getLoginHistory(Infinity, { paginate: true });
         const backupData = {
             archivedAt: new Date().toISOString(),
             totalStudents: studentLogins.length,
@@ -2859,9 +2922,20 @@ class DatabaseService {
                 ...(Array.isArray(adminConfig?.allowedIps) ? adminConfig.allowedIps.map(item => typeof item === 'string' ? item : item?.ip) : [])
             ].map(ip => String(ip || '').trim()).filter(Boolean));
             const systemIds = Object.values(SYSTEM_RECORDS);
-            const { data, error: selectError } = await this.client.from('quiz_logins').select('id, player_name, ip_address');
-            if (selectError) throw new Error(`Không thể đọc dữ liệu trước khi dọn: ${selectError.message}`);
-            const ids = (data || []).filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
+            const allRows = [];
+            const pageSize = 500;
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error: selectError } = await this.client
+                    .from('quiz_logins')
+                    .select('id, player_name, ip_address')
+                    .order('created_at', { ascending: true })
+                    .range(offset, offset + pageSize - 1);
+                if (selectError) throw new Error(`Không thể đọc dữ liệu trước khi dọn: ${selectError.message}`);
+                if (!Array.isArray(data) || data.length === 0) break;
+                allRows.push(...data);
+                if (data.length < pageSize) break;
+            }
+            const ids = allRows.filter(item => !systemIds.includes(item.id) && !String(item.player_name || '').startsWith('__') && !adminIps.has(String(item.ip_address || '').trim())).map(item => item.id).filter(Boolean);
             if (ids.length > 0) {
                 for (let offset = 0; offset < ids.length; offset += 100) {
                     const { error } = await this.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));

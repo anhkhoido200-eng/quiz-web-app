@@ -355,10 +355,25 @@ DECLARE
     v_q RECORD;
     v_perm JSONB;
     v_questions JSONB;
+    v_clean_name TEXT := NULLIF(TRIM(COALESCE(p_player_name, '')), '');
+    v_clean_key TEXT := NULLIF(LOWER(TRIM(COALESCE(p_player_key, ''))), '');
+    v_clean_token TEXT := NULLIF(TRIM(COALESCE(p_session_token, '')), '');
+    v_valid_q_order JSONB;
+    v_adjusted_idx INTEGER;
 BEGIN
+    IF v_clean_name IS NULL THEN
+        RAISE EXCEPTION 'Vui lòng nhập họ và tên thí sinh';
+    END IF;
+    IF LENGTH(v_clean_name) > 80 THEN
+        v_clean_name := LEFT(v_clean_name, 80);
+    END IF;
+    IF v_clean_key IS NULL OR v_clean_token IS NULL THEN
+        RAISE EXCEPTION 'Thiếu thông tin phiên thi hợp lệ';
+    END IF;
+
     SELECT * INTO v_room
     FROM public.match_rooms
-    WHERE room_code = UPPER(TRIM(p_room_code))
+    WHERE room_code = UPPER(TRIM(COALESCE(p_room_code, '')))
     FOR UPDATE;
 
     IF v_room.id IS NULL THEN
@@ -371,7 +386,7 @@ BEGIN
 
     SELECT * INTO v_attempt
     FROM public.match_attempts
-    WHERE room_id = v_room.id AND player_key = LOWER(TRIM(p_player_key))
+    WHERE room_id = v_room.id AND player_key = v_clean_key
     FOR UPDATE;
 
     IF v_attempt.id IS NOT NULL THEN
@@ -442,9 +457,9 @@ BEGIN
         )
         VALUES (
             v_room.id,
-            LOWER(TRIM(p_player_key)),
-            TRIM(p_player_name),
-            p_session_token,
+            v_clean_key,
+            v_clean_name,
+            v_clean_token,
             to_jsonb(v_q_ids),
             v_option_map,
             'IN_PROGRESS',
@@ -455,6 +470,22 @@ BEGIN
 
         INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
         VALUES (v_room.id, v_attempt.id, v_attempt.player_name, 'PLAYER_JOINED', '{}'::jsonb);
+    END IF;
+
+    -- Đồng bộ lại question_order & current_index nếu có câu hỏi bị xóa cứng khỏi quiz_questions
+    SELECT
+        COALESCE(jsonb_agg(q.id ORDER BY ord_q.ord), '[]'::jsonb),
+        COUNT(*) FILTER (WHERE ord_q.ord <= v_attempt.current_index)::INTEGER
+    INTO v_valid_q_order, v_adjusted_idx
+    FROM jsonb_array_elements_text(v_attempt.question_order) WITH ORDINALITY AS ord_q(qid, ord)
+    JOIN public.quiz_questions q ON q.id = ord_q.qid::INTEGER;
+
+    IF jsonb_array_length(v_valid_q_order) <> jsonb_array_length(v_attempt.question_order) THEN
+        UPDATE public.match_attempts
+        SET question_order = v_valid_q_order,
+            current_index = v_adjusted_idx
+        WHERE id = v_attempt.id
+        RETURNING * INTO v_attempt;
     END IF;
 
     -- Build sanitized question payload (KHÔNG trả correct/correct_value/explanation/statements.answer)
