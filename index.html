@@ -176,11 +176,72 @@
         </div>
     </div>
 
-    <!-- Background Glow Effects -->
-    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div class="absolute -top-40 -left-40 w-96 h-96 bg-sky-600/20 rounded-full blur-3xl"></div>
-        <div class="absolute top-1/2 -right-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
-        <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl"></div>
+    <!-- Floating Knowledge & Academic Background Motifs (Navy + Cream) -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0 select-none" aria-hidden="true">
+        <div class="absolute -top-36 -left-36 w-96 h-96 bg-sky-700/15 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 -right-36 w-96 h-96 bg-blue-800/15 rounded-full blur-3xl"></div>
+
+        <!-- 1. Open Book (Top-Left) -->
+        <div class="floating-motif motif-a hidden sm:block" style="top: 12%; left: 4%;">
+            <svg viewBox="0 0 64 48" class="w-16 h-12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M32 12C25 7 14 7 6 10V40C14 37 25 37 32 42C39 37 50 37 58 40V10C50 7 39 7 32 12Z" stroke="#eadbc4" stroke-width="2" stroke-linejoin="round" fill="#11223a" fill-opacity="0.45"/>
+                <path d="M32 12V42" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M13 18H24M13 25H24M40 18H51M40 25H51" stroke="#f5ede0" stroke-opacity="0.65" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <!-- 2. Atom / Chemistry Orbit (Top-Right) -->
+        <div class="floating-motif motif-b hidden sm:block" style="top: 15%; right: 5%;">
+            <svg viewBox="0 0 64 64" class="w-16 h-16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="32" cy="32" rx="24" ry="9" transform="rotate(28 32 32)" stroke="#38bdf8" stroke-width="1.8"/>
+                <ellipse cx="32" cy="32" rx="24" ry="9" transform="rotate(-28 32 32)" stroke="#eadbc4" stroke-width="1.8"/>
+                <ellipse cx="32" cy="32" rx="24" ry="9" transform="rotate(90 32 32)" stroke="#38bdf8" stroke-opacity="0.6" stroke-width="1.5"/>
+                <circle cx="32" cy="32" r="4" fill="#f5ede0"/>
+            </svg>
+        </div>
+
+        <!-- 3. Erlenmeyer Flask (Mid-Left) -->
+        <div class="floating-motif motif-c hidden md:block" style="top: 48%; left: 3.5%;">
+            <svg viewBox="0 0 56 64" class="w-14 h-16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22 10H34M24 10V24L11 49C9.8 51.3 11.4 54 14 54H42C44.6 54 46.2 51.3 45 49L32 24V10" stroke="#eadbc4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M15.5 41H40.5L43.5 48.5C44.2 50 43.1 51.5 41.5 51.5H14.5C12.9 51.5 11.8 50 12.5 48.5L15.5 41Z" fill="#38bdf8" fill-opacity="0.28"/>
+                <circle cx="24" cy="46" r="1.8" fill="#f5ede0"/>
+                <circle cx="32" cy="44" r="1.4" fill="#38bdf8"/>
+            </svg>
+        </div>
+
+        <!-- 4. Geometry Cube & Triangle (Mid-Right) -->
+        <div class="floating-motif motif-a hidden md:block" style="top: 46%; right: 4%;">
+            <svg viewBox="0 0 64 64" class="w-16 h-16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="32,8 54,20 54,44 32,56 10,44 10,20" stroke="#eadbc4" stroke-width="1.8" fill="#11223a" fill-opacity="0.35"/>
+                <path d="M10 20L32 32L54 20M32 32V56" stroke="#38bdf8" stroke-width="1.6"/>
+            </svg>
+        </div>
+
+        <!-- 5. Geometry Set Square / Ruler (Bottom-Left) -->
+        <div class="floating-motif motif-b hidden lg:block" style="bottom: 14%; left: 6%;">
+            <svg viewBox="0 0 60 60" class="w-14 h-14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="10,50 50,50 10,10" stroke="#38bdf8" stroke-width="2" stroke-linejoin="round" fill="#11223a" fill-opacity="0.35"/>
+                <polygon points="18,42 33,42 18,27" stroke="#eadbc4" stroke-width="1.6" stroke-linejoin="round"/>
+            </svg>
+        </div>
+
+        <!-- 6. Stacked Books (Bottom-Right) -->
+        <div class="floating-motif motif-c hidden lg:block" style="bottom: 12%; right: 6%;">
+            <svg viewBox="0 0 64 56" class="w-16 h-14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="34" width="44" height="12" rx="3" stroke="#eadbc4" stroke-width="1.8" fill="#11223a" fill-opacity="0.45"/>
+                <rect x="14" y="20" width="38" height="12" rx="3" stroke="#38bdf8" stroke-width="1.8" fill="#11223a" fill-opacity="0.45"/>
+                <path d="M18 40H46M21 26H45" stroke="#f5ede0" stroke-opacity="0.6" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <!-- Floating Formula Chips -->
+        <div class="floating-formula motif-b hidden md:flex" style="top: 28%; left: 7%;">E = mc²</div>
+        <div class="floating-formula motif-c hidden md:flex" style="top: 29%; right: 8%;">H₂O · CO₂</div>
+        <div class="floating-formula motif-a hidden lg:flex" style="top: 68%; left: 8%;">a² + b² = c²</div>
+        <div class="floating-formula motif-b hidden lg:flex" style="top: 66%; right: 7.5%;">F = m · a</div>
+        <div class="floating-formula motif-c hidden xl:flex" style="top: 84%; left: 16%;">π ≈ 3,14</div>
+        <div class="floating-formula motif-a hidden xl:flex" style="top: 83%; right: 16%;">Δ = b² - 4ac</div>
     </div>
 
     <!-- BANNER CHỈ BÁO KẾT NỐI MẠNG THỜI GIAN THỰC (OFFLINE / AUTO-SYNC TOAST) -->
@@ -196,11 +257,11 @@
         <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3 select-none">
                 <!-- ICON CHIẾC MŨ TỐT NGHIỆP: Mở Admin bí mật hoặc vào thẳng nếu IP Whitelisted -->
-                <div id="admin-brand-mark" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 via-blue-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/25" title="Quiz Studio">
+                <div id="admin-brand-mark" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#1e3a8a] via-[#0284c7] to-[#eadbc4] flex items-center justify-center text-[#0b192c] shadow-lg shadow-sky-900/30" title="Quiz Studio">
                     <i class="fa-solid fa-graduation-cap text-lg"></i>
                 </div>
                 <div class="cursor-pointer" onclick="app.showHome()">
-                    <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-sky-400 via-blue-300 to-pink-400 bg-clip-text text-transparent">
+                    <h1 id="navbar-subject-title" class="font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-[#fbf8f3] via-[#f5ede0] to-[#38bdf8] bg-clip-text text-transparent">
                         Ôn tập
                     </h1>
                     <p id="navbar-subject-subtitle" class="text-[11px] text-slate-400 font-medium">Hệ Thống Ôn Luyện Thông Minh</p>
@@ -255,45 +316,50 @@
     <!-- ============================================================== -->
     <!-- MAIN CONTENT CONTAINER                                         -->
     <!-- ============================================================== -->
-    <main class="relative z-10 flex-1 flex flex-col justify-center max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+    <main class="relative z-10 flex-1 flex flex-col justify-center max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
 
         <!-- ========================================== -->
         <!-- MÀN HÌNH 1: MÀN HÌNH CHÀO MỪNG (HOME/START) -->
         <!-- ========================================== -->
         <section id="screen-home" class="screen-view transition-all duration-300">
-            <div class="max-w-xl mx-auto glass-panel-pro rounded-3xl p-6 sm:p-9 shadow-2xl relative overflow-hidden">
-                <!-- Animated Navy + Ocean Blue Study Motif -->
-                <div class="navy-hero-motif mx-auto mb-3 flex items-center justify-center" aria-hidden="true">
-                    <svg viewBox="0 0 120 72" class="w-28 h-16 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <linearGradient id="navyMotifGrad" x1="0" y1="0" x2="120" y2="72" gradientUnits="userSpaceOnUse">
-                                <stop offset="0%" stop-color="#38bdf8" />
-                                <stop offset="55%" stop-color="#0284c7" />
-                                <stop offset="100%" stop-color="#1e3a8a" />
-                            </linearGradient>
-                        </defs>
-                        <ellipse cx="60" cy="36" rx="46" ry="20" stroke="#eadbc4" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="4 4" class="navy-orbit-ring" />
-                        <ellipse cx="60" cy="36" rx="34" ry="14" stroke="#38bdf8" stroke-opacity="0.38" stroke-width="1.2" class="navy-orbit-ring-rev" />
-                        <g class="navy-float-core">
-                            <rect x="42" y="18" width="36" height="36" rx="11" fill="#11223a" stroke="url(#navyMotifGrad)" stroke-width="1.8" />
-                            <path d="M51 33L60 27L69 33L60 39L51 33Z" fill="#f5ede0" fill-opacity="0.22" stroke="#fbf8f3" stroke-width="1.5" stroke-linejoin="round" />
-                            <path d="M54 37V43C54 44.5 56.7 46 60 46C63.3 46 66 44.5 66 43V37" stroke="#eadbc4" stroke-width="1.5" stroke-linecap="round" />
-                        </g>
-                        <circle cx="20" cy="24" r="3" fill="#f5ede0" class="navy-pulse-dot" />
-                        <circle cx="101" cy="48" r="2.5" fill="#38bdf8" class="navy-pulse-dot-delay" />
-                    </svg>
-                </div>
-                <div class="text-center mb-6">
-                    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#f5ede0]/10 border border-[#eadbc4]/30 text-[#f5ede0] text-xs font-bold mb-3 shadow-sm">
-                        <span class="w-2 h-2 rounded-full bg-[#eadbc4] animate-pulse"></span>
-                        ⚡ Ôn tập
-                    </div>
-                    <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-2 gradient-text-hero">Ôn tập</h2>
-                    <p class="text-slate-400 text-xs sm:text-sm">Hệ thống ôn luyện trắc nghiệm trực tuyến</p>
-                </div>
+            <div class="max-w-5xl mx-auto glass-panel-pro rounded-3xl p-5 sm:p-8 lg:p-9 shadow-2xl relative overflow-hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+                    <!-- CỘT TRÁI: TIÊU ĐỀ + CHỌN MÔN ÔN TẬP -->
+                    <div class="lg:col-span-7 space-y-5">
+                        <div class="flex flex-col sm:flex-row items-center sm:items-center gap-4 text-center sm:text-left pb-2 border-b border-[#eadbc4]/10">
+                            <!-- Animated Navy + Warm Cream Study Motif -->
+                            <div class="navy-hero-motif shrink-0 flex items-center justify-center" aria-hidden="true">
+                                <svg viewBox="0 0 120 72" class="w-28 h-16 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <linearGradient id="navyMotifGrad" x1="0" y1="0" x2="120" y2="72" gradientUnits="userSpaceOnUse">
+                                            <stop offset="0%" stop-color="#38bdf8" />
+                                            <stop offset="55%" stop-color="#0284c7" />
+                                            <stop offset="100%" stop-color="#1e3a8a" />
+                                        </linearGradient>
+                                    </defs>
+                                    <ellipse cx="60" cy="36" rx="46" ry="20" stroke="#eadbc4" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="4 4" class="navy-orbit-ring" />
+                                    <ellipse cx="60" cy="36" rx="34" ry="14" stroke="#38bdf8" stroke-opacity="0.38" stroke-width="1.2" class="navy-orbit-ring-rev" />
+                                    <g class="navy-float-core">
+                                        <rect x="42" y="18" width="36" height="36" rx="11" fill="#11223a" stroke="url(#navyMotifGrad)" stroke-width="1.8" />
+                                        <path d="M51 33L60 27L69 33L60 39L51 33Z" fill="#f5ede0" fill-opacity="0.22" stroke="#fbf8f3" stroke-width="1.5" stroke-linejoin="round" />
+                                        <path d="M54 37V43C54 44.5 56.7 46 60 46C63.3 46 66 44.5 66 43V37" stroke="#eadbc4" stroke-width="1.5" stroke-linecap="round" />
+                                    </g>
+                                    <circle cx="20" cy="24" r="3" fill="#f5ede0" class="navy-pulse-dot" />
+                                    <circle cx="101" cy="48" r="2.5" fill="#38bdf8" class="navy-pulse-dot-delay" />
+                                </svg>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f5ede0]/10 border border-[#eadbc4]/30 text-[#f5ede0] text-[11px] font-bold mb-2 shadow-sm">
+                                    <span class="w-2 h-2 rounded-full bg-[#eadbc4] animate-pulse"></span>
+                                    ⚡ Ôn tập
+                                </div>
+                                <h2 class="font-heading text-3xl sm:text-4xl font-black tracking-tight mb-1 gradient-text-hero">Ôn tập</h2>
+                                <p class="text-slate-300 text-xs sm:text-sm">Hệ thống ôn luyện trắc nghiệm trực tuyến</p>
+                            </div>
+                        </div>
 
                 <!-- Thẻ ghi nhớ thí sinh đã đăng nhập -->
-                <div id="saved-user-banner" class="hidden mb-5 p-4 rounded-2xl bg-gradient-to-r from-sky-950/90 via-slate-900 to-blue-950/90 border border-sky-500/40 shadow-xl transition-all">
+                <div id="saved-user-banner" class="hidden p-4 rounded-2xl bg-gradient-to-r from-sky-950/90 via-slate-900 to-blue-950/90 border border-sky-500/40 shadow-xl transition-all">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-lg shadow">
@@ -381,49 +447,71 @@
                             </span>
                         </div>
                     </div>
-                </div>
-
-                <!-- FORM THÔNG TIN NGƯỜI THAM GIA -->
-                <div class="space-y-4">
-                    <div>
-                        <label for="player-name-input" class="block text-xs font-heading font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                            Họ và Tên học sinh <span class="text-rose-400">*</span>
-                        </label>
-                        <div class="relative">
-                            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                                <i class="fa-regular fa-user text-sky-400"></i>
-                            </span>
-                            <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
-                                class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition shadow-inner">
-                        </div>
-                        <div class="mt-2.5 flex items-center gap-2 flex-wrap">
-                            <button type="button" onclick="app.showMyIp()" id="btn-show-ip" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 text-slate-300 text-xs font-semibold transition cursor-pointer shadow-inner hover:border-cyan-500/50" title="Nhấp để xem và sao chép địa chỉ IP của bạn">
-                                <i class="fa-solid fa-network-wired text-cyan-400"></i>
-                                <span id="btn-show-ip-text">Hiện IP</span>
-                            </button>
-                            <button type="button" onclick="app.openTokenModal()" id="btn-open-token-modal" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 text-slate-300 text-xs font-semibold transition cursor-pointer shadow-inner hover:border-amber-500/50" title="Nhập mã kích hoạt (Token) hoặc xem mã xác thực thiết bị">
-                                <i class="fa-solid fa-key text-amber-400"></i>
-                                <span>Nhập mã kích hoạt</span>
-                            </button>
-                            <span id="ip-permission-badge" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                <i class="fa-solid fa-circle-check mr-1 text-emerald-400"></i> Đã mở Lớp 5
-                            </span>
-                        </div>
-                        <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1 font-medium">
-                            <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
-                        </p>
+                    </div>
                     </div>
 
-                    <!-- Nút bắt đầu làm bài -->
-                    <div class="pt-2">
-                        <button type="button" id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-navy w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-sky-500/25">
-                            <span>Bắt Đầu Làm Bài Ngay</span>
-                            <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
-                        </button>
+                    <!-- CỘT PHẢI: THÔNG TIN HỌC SINH & NÚT BẮT ĐẦU -->
+                    <div class="lg:col-span-5 glass-card-pro rounded-2xl p-5 sm:p-6 space-y-5">
+                        <div class="flex items-center justify-between border-b border-[#eadbc4]/10 pb-3">
+                            <div>
+                                <h3 class="font-heading font-extrabold text-sm sm:text-base text-[#fbf8f3]">Thông tin làm bài</h3>
+                                <p class="text-[11px] text-slate-400">Nhập họ tên để lưu kết quả &amp; theo dõi tiến độ</p>
+                            </div>
+                            <div class="w-9 h-9 rounded-xl bg-[#f5ede0]/10 border border-[#eadbc4]/25 flex items-center justify-center text-[#f5ede0]">
+                                <i class="fa-solid fa-pen-to-square text-sm"></i>
+                            </div>
+                        </div>
 
-                        <p id="home-rules-count-text" class="text-center text-xs text-slate-400 mt-2.5 font-medium">
-                            Chế độ ôn luyện: Tự động chấm điểm &amp; xem đáp án ngay.
-                        </p>
+                        <!-- FORM THÔNG TIN NGƯỜI THAM GIA -->
+                        <div class="space-y-4">
+                            <div>
+                                <label for="player-name-input" class="block text-xs font-heading font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                                    Họ và Tên học sinh <span class="text-rose-400">*</span>
+                                </label>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                                        <i class="fa-regular fa-user text-sky-400"></i>
+                                    </span>
+                                    <input type="text" id="player-name-input" maxlength="40" placeholder="Ví dụ: Nguyễn Văn An - 11A1" 
+                                        class="w-full pl-10 pr-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition shadow-inner">
+                                </div>
+                                <div class="mt-2.5 flex items-center gap-2 flex-wrap">
+                                    <button type="button" onclick="app.showMyIp()" id="btn-show-ip" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 text-slate-300 text-xs font-semibold transition cursor-pointer shadow-inner hover:border-cyan-500/50" title="Nhấp để xem và sao chép địa chỉ IP của bạn">
+                                        <i class="fa-solid fa-network-wired text-cyan-400"></i>
+                                        <span id="btn-show-ip-text">Hiện IP</span>
+                                    </button>
+                                    <span id="ip-permission-badge" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        <i class="fa-solid fa-circle-check mr-1 text-emerald-400"></i> Đã mở Lớp 5
+                                    </span>
+                                </div>
+                                <p id="player-name-error" class="hidden text-rose-400 text-xs mt-1.5 flex items-center gap-1 font-medium">
+                                    <i class="fa-solid fa-circle-exclamation"></i> Vui lòng nhập họ và tên của bạn để bắt đầu.
+                                </p>
+                            </div>
+
+                            <!-- Nút bắt đầu làm bài -->
+                            <div class="pt-1">
+                                <button type="button" id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-navy w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-sky-500/25">
+                                    <span>Bắt Đầu Làm Bài Ngay</span>
+                                    <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
+                                </button>
+
+                                <p id="home-rules-count-text" class="text-center text-xs text-slate-400 mt-2.5 font-medium">
+                                    Chế độ ôn luyện: Tự động chấm điểm &amp; xem đáp án ngay.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="pt-3 border-t border-[#eadbc4]/10 grid grid-cols-2 gap-2.5 text-[11px] text-slate-300">
+                            <div class="p-2.5 rounded-xl bg-[#0b192c]/60 border border-[#eadbc4]/15 flex items-center gap-2">
+                                <i class="fa-solid fa-bolt text-[#eadbc4]"></i>
+                                <span>Chấm điểm tức thì</span>
+                            </div>
+                            <div class="p-2.5 rounded-xl bg-[#0b192c]/60 border border-[#eadbc4]/15 flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-sky-400"></i>
+                                <span>Lưu 8 bài gần nhất</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

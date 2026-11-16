@@ -2471,9 +2471,10 @@ body:not(.admin-body) {
 }
 
 .gradient-text-hero {
-    background: linear-gradient(135deg, #fbf8f3 0%, #eadbc4 48%, #38bdf8 100%);
+    background: linear-gradient(135deg, #fbf8f3 0%, #f5ede0 52%, #bae6fd 100%);
     -webkit-background-clip: text;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
     color: transparent;
 }
 
@@ -2574,12 +2575,69 @@ body.light-theme .gradient-text-hero {
     box-shadow: 0 8px 20px -10px rgba(56, 189, 248, 0.35);
 }
 
+/* Floating knowledge & academic background motifs */
+.floating-motif {
+    position: absolute;
+    opacity: 0.32;
+    filter: drop-shadow(0 8px 18px rgba(7, 17, 30, 0.45));
+    will-change: transform;
+}
+
+.floating-formula {
+    position: absolute;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    background: rgba(17, 34, 58, 0.55);
+    border: 1px solid rgba(234, 219, 196, 0.22);
+    color: rgba(245, 237, 224, 0.65);
+    font-family: "Be Vietnam Pro", ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    backdrop-filter: blur(4px);
+    will-change: transform;
+}
+
+body.light-theme .floating-motif {
+    opacity: 0.24;
+    filter: none;
+}
+
+body.light-theme .floating-formula {
+    background: rgba(255, 255, 255, 0.75);
+    border-color: rgba(30, 58, 138, 0.2);
+    color: rgba(30, 58, 138, 0.75);
+}
+
+@keyframes floatDriftA {
+    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(-3deg); }
+    50% { transform: translate3d(8px, -16px, 0) rotate(4deg); }
+}
+
+@keyframes floatDriftB {
+    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(3deg); }
+    50% { transform: translate3d(-10px, 14px, 0) rotate(-4deg); }
+}
+
+@keyframes floatDriftC {
+    0%, 100% { transform: translate3d(0px, 0px, 0) rotate(0deg); }
+    33% { transform: translate3d(9px, 10px, 0) rotate(5deg); }
+    66% { transform: translate3d(-7px, -12px, 0) rotate(-3deg); }
+}
+
+.motif-a { animation: floatDriftA 11s ease-in-out infinite; }
+.motif-b { animation: floatDriftB 14s ease-in-out infinite; }
+.motif-c { animation: floatDriftC 16s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
     .navy-orbit-ring,
     .navy-orbit-ring-rev,
     .navy-float-core,
     .navy-pulse-dot,
-    .navy-pulse-dot-delay {
+    .navy-pulse-dot-delay,
+    .motif-a,
+    .motif-b,
+    .motif-c {
         animation: none !important;
     }
     .btn-3d-navy::after,
