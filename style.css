@@ -2579,7 +2579,7 @@ body.light-theme .gradient-text-hero {
 
 /* Chalkboard / Blueprint Scientific Formulas Background */
 .chalkboard-bg {
-    opacity: 0.28;
+    opacity: 0.36;
     transition: opacity 0.3s ease;
 }
 

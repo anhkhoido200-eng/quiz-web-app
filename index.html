@@ -176,101 +176,182 @@
         </div>
     </div>
 
-    <!-- Chalkboard / Blueprint Scientific Formulas Background (Navy + Warm Cream Chalk) -->
+    <!-- Dense Chalkboard / Blueprint Scientific Formulas Background (Math + Physics + Chemistry) -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none z-0 select-none chalkboard-bg" aria-hidden="true">
         <svg class="w-full h-full object-cover chalkboard-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
-                <radialGradient id="chalkCenterVignette" cx="50%" cy="50%" r="58%">
+                <radialGradient id="chalkCenterVignette" cx="50%" cy="50%" r="54%">
                     <stop offset="0%" stop-color="#07111e" stop-opacity="0.72" />
-                    <stop offset="55%" stop-color="#07111e" stop-opacity="0.28" />
+                    <stop offset="58%" stop-color="#07111e" stop-opacity="0.22" />
                     <stop offset="100%" stop-color="#07111e" stop-opacity="0" />
                 </radialGradient>
             </defs>
 
-            <!-- LEFT MARGIN: Graphs, Integrals, Geometry & Physics -->
+            <!-- LAYER 1: Dense Diagrams (Math, Physics, Chemistry) -->
             <g class="chalk-group chalk-drift-a" stroke="#f5ede0" stroke-linecap="round" stroke-linejoin="round">
-                <!-- Top-left wave interference -->
-                <path d="M36 96 Q 68 56, 100 96 T 164 96 T 228 96 T 292 96" stroke-width="1.8" class="chalk-draw" />
-                <path d="M36 96 Q 68 136, 100 96 T 164 96 T 228 96 T 292 96" stroke="#38bdf8" stroke-width="1.4" stroke-dasharray="4 4" />
-                <line x1="28" y1="96" x2="304" y2="96" stroke-width="1" stroke-opacity="0.55" />
+                <!-- Top-left wave interference & axes -->
+                <path d="M24 72 Q 52 38, 80 72 T 136 72 T 192 72 T 248 72" stroke-width="1.7" class="chalk-draw" />
+                <path d="M24 72 Q 52 106, 80 72 T 136 72 T 192 72 T 248 72" stroke="#7dd3fc" stroke-width="1.3" stroke-dasharray="3 3" />
+                <line x1="18" y1="72" x2="262" y2="72" stroke-width="1" stroke-opacity="0.55" />
 
-                <!-- 3D Cone -->
-                <ellipse cx="92" cy="360" rx="44" ry="13" stroke-width="1.7" />
-                <path d="M48 360 L92 252 L136 360" stroke-width="1.8" />
-                <line x1="92" y1="252" x2="92" y2="360" stroke-width="1.2" stroke-dasharray="4 4" stroke="#38bdf8" />
+                <!-- Benzene Ring (Top-Left-Mid) -->
+                <polygon points="335,44 358,57 358,83 335,96 312,83 312,57" stroke-width="1.7" stroke="#eadbc4" />
+                <circle cx="335" cy="70" r="14" stroke-width="1.3" stroke-dasharray="3 2" stroke="#7dd3fc" />
 
-                <!-- 3D Vector Axes -->
-                <path d="M220 260 L220 185 M220 260 L295 260 M220 260 L175 298" stroke-width="1.6" />
-                <path d="M215 194 L220 183 L225 194 M286 255 L297 260 L286 265 M184 298 L173 299 L179 289" stroke-width="1.5" />
-                <path d="M220 260 L272 206" stroke="#38bdf8" stroke-width="1.8" />
+                <!-- Prism & Light Refraction (Top-Center-Left) -->
+                <polygon points="485,82 518,26 551,82" stroke-width="1.6" />
+                <path d="M446 60 L501 55 M535 55 L588 42 M535 55 L588 58 M535 55 L588 74" stroke="#7dd3fc" stroke-width="1.3" />
 
-                <!-- Right triangle with hatched integral area -->
-                <polygon points="44,615 44,505 210,615" stroke-width="1.8" />
-                <path d="M88 534 V615 M106 546 V615 M124 558 V615 M142 570 V615" stroke-width="1.2" stroke-opacity="0.7" />
+                <!-- Circuit / Pendulum (Top-Center-Right) -->
+                <line x1="990" y1="22" x2="990" y2="80" stroke-width="1.4" />
+                <line x1="990" y1="22" x2="1032" y2="72" stroke-width="1.5" stroke-dasharray="3 3" stroke="#7dd3fc" />
+                <circle cx="1034" cy="75" r="8" stroke-width="1.6" fill="#11223a" fill-opacity="0.4" />
 
-                <!-- Parabola & Tangent -->
-                <path d="M52 745 Q 112 855, 172 745" stroke-width="1.8" class="chalk-draw-slow" />
-                <line x1="112" y1="715" x2="112" y2="835" stroke-width="1.2" stroke-opacity="0.65" />
-                <line x1="40" y1="802" x2="190" y2="802" stroke-width="1.2" stroke-opacity="0.65" />
+                <!-- 3D Cone (Mid-Left) -->
+                <ellipse cx="78" cy="312" rx="40" ry="12" stroke-width="1.6" />
+                <path d="M38 312 L78 212 L118 312" stroke-width="1.7" />
+                <line x1="78" y1="212" x2="78" y2="312" stroke-width="1.1" stroke-dasharray="3 3" stroke="#7dd3fc" />
 
-                <!-- Integral Curve & Shaded Area -->
-                <path d="M196 842 C 235 838, 275 790, 315 725" stroke-width="1.9" stroke="#38bdf8" class="chalk-draw" />
-                <line x1="185" y1="848" x2="335" y2="848" stroke-width="1.3" />
-                <line x1="192" y1="715" x2="192" y2="855" stroke-width="1.3" />
-                <path d="M248 815 V848 M262 800 V848 M276 783 V848 M290 762 V848" stroke-width="1.2" stroke-opacity="0.7" />
+                <!-- 3D Vector Axes (Left) -->
+                <path d="M210 245 L210 175 M210 245 L280 245 M210 245 L168 282" stroke-width="1.5" />
+                <path d="M205 184 L210 173 L215 184 M271 240 L282 245 L271 250 M177 282 L166 283 L172 273" stroke-width="1.4" />
+                <path d="M210 245 L260 194" stroke="#7dd3fc" stroke-width="1.7" />
+
+                <!-- Erlenmeyer Flask & Bubbles (Left-Mid) -->
+                <path d="M44 378 H64 M47 378 V398 L27 438 C25 442 28 446 32 446 H76 C80 446 83 442 81 438 L61 398 V378" stroke-width="1.7" />
+                <path d="M34 426 H74" stroke="#7dd3fc" stroke-width="1.4" />
+                <circle cx="48" cy="435" r="2" fill="#f5ede0" />
+                <circle cx="59" cy="432" r="1.5" fill="#7dd3fc" />
+
+                <!-- Molecule Lattice (Left-Lower) -->
+                <circle cx="178" cy="422" r="7" stroke-width="1.5" />
+                <circle cx="222" cy="398" r="5" stroke-width="1.5" stroke="#7dd3fc" />
+                <circle cx="225" cy="448" r="5" stroke-width="1.5" stroke="#7dd3fc" />
+                <line x1="184" y1="418" x2="217" y2="401" stroke-width="1.4" />
+                <line x1="184" y1="426" x2="220" y2="445" stroke-width="1.4" />
+
+                <!-- Right Triangle with Hatched Area -->
+                <polygon points="36,595 36,492 195,595" stroke-width="1.7" />
+                <path d="M78 520 V595 M96 531 V595 M114 543 V595 M132 555 V595" stroke-width="1.1" stroke-opacity="0.7" />
+
+                <!-- Parabola & Integral Curve (Bottom-Left) -->
+                <path d="M40 735 Q 98 845, 156 735" stroke-width="1.7" class="chalk-draw-slow" />
+                <line x1="98" y1="705" x2="98" y2="825" stroke-width="1.1" stroke-opacity="0.65" />
+                <line x1="28" y1="792" x2="174" y2="792" stroke-width="1.1" stroke-opacity="0.65" />
+
+                <path d="M188 838 C 228 834, 268 784, 308 718" stroke-width="1.8" stroke="#7dd3fc" class="chalk-draw" />
+                <line x1="176" y1="844" x2="326" y2="844" stroke-width="1.2" />
+                <line x1="184" y1="708" x2="184" y2="852" stroke-width="1.2" />
+                <path d="M238 812 V844 M252 796 V844 M266 778 V844 M280 756 V844" stroke-width="1.1" stroke-opacity="0.7" />
+
+                <!-- Unit Circle + Tangent (Bottom-Center-Left) -->
+                <circle cx="465" cy="832" r="34" stroke-width="1.5" />
+                <line x1="422" y1="832" x2="508" y2="832" stroke-width="1.1" />
+                <line x1="465" y1="790" x2="465" y2="874" stroke-width="1.1" />
+                <line x1="465" y1="832" x2="492" y2="808" stroke="#7dd3fc" stroke-width="1.5" />
             </g>
 
-            <!-- RIGHT MARGIN: Orbital, Bell Curve, Feynman, Cube & Axes -->
+            <!-- LAYER 2: Right Side & Bottom Diagrams -->
             <g class="chalk-group chalk-drift-b" stroke="#f5ede0" stroke-linecap="round" stroke-linejoin="round">
-                <!-- Polar / Orbital System -->
-                <circle cx="1445" cy="185" r="72" stroke-width="1.6" />
-                <ellipse cx="1445" cy="185" rx="72" ry="26" transform="rotate(24 1445 185)" stroke="#38bdf8" stroke-width="1.4" class="chalk-draw" />
-                <ellipse cx="1445" cy="185" rx="72" ry="26" transform="rotate(-32 1445 185)" stroke-width="1.4" />
-                <line x1="1355" y1="185" x2="1535" y2="185" stroke-width="1.1" stroke-opacity="0.6" />
-                <line x1="1445" y1="95" x2="1445" y2="275" stroke-width="1.1" stroke-opacity="0.6" />
+                <!-- Polar / Orbital System (Top-Right) -->
+                <circle cx="1455" cy="155" r="66" stroke-width="1.5" />
+                <ellipse cx="1455" cy="155" rx="66" ry="23" transform="rotate(24 1455 155)" stroke="#7dd3fc" stroke-width="1.4" class="chalk-draw" />
+                <ellipse cx="1455" cy="155" rx="66" ry="23" transform="rotate(-32 1455 155)" stroke-width="1.4" />
+                <line x1="1372" y1="155" x2="1538" y2="155" stroke-width="1" stroke-opacity="0.6" />
+                <line x1="1455" y1="72" x2="1455" y2="238" stroke-width="1" stroke-opacity="0.6" />
 
-                <!-- Feynman Diagram -->
-                <path d="M1230 295 L1285 345 L1230 395" stroke-width="1.7" />
-                <path d="M1285 345 Q 1300 330, 1315 345 T 1345 345 T 1375 345" stroke="#38bdf8" stroke-width="1.7" class="chalk-draw" />
-                <path d="M1430 295 L1375 345 L1430 395" stroke-width="1.7" />
+                <!-- Feynman Diagram (Upper-Right) -->
+                <path d="M1235 245 L1285 290 L1235 335" stroke-width="1.6" />
+                <path d="M1285 290 Q 1300 276, 1315 290 T 1345 290 T 1375 290" stroke="#7dd3fc" stroke-width="1.6" class="chalk-draw" />
+                <path d="M1425 245 L1375 290 L1425 335" stroke-width="1.6" />
 
-                <!-- Normal Distribution / Bell Curve -->
-                <path d="M1275 565 C 1320 565, 1345 455, 1395 455 C 1445 455, 1470 565, 1515 565" stroke-width="1.9" class="chalk-draw-slow" />
-                <line x1="1265" y1="565" x2="1525" y2="565" stroke-width="1.3" />
-                <line x1="1395" y1="435" x2="1395" y2="575" stroke-width="1.2" stroke-dasharray="4 4" />
-                <path d="M1355 495 V565 M1370 472 V565 M1385 458 V565 M1410 462 V565 M1425 480 V565" stroke="#38bdf8" stroke-width="1.1" stroke-opacity="0.7" />
+                <!-- Benzene / Chemical Bond (Mid-Right) -->
+                <polygon points="1505,342 1528,355 1528,381 1505,394 1482,381 1482,355" stroke-width="1.6" />
+                <line x1="1505" y1="342" x2="1505" y2="318" stroke-width="1.5" stroke="#7dd3fc" />
+                <line x1="1528" y1="355" x2="1550" y2="342" stroke-width="1.5" />
+
+                <!-- Normal Distribution / Bell Curve (Right) -->
+                <path d="M1270 520 C 1315 520, 1340 412, 1390 412 C 1440 412, 1465 520, 1510 520" stroke-width="1.8" class="chalk-draw-slow" />
+                <line x1="1260" y1="520" x2="1520" y2="520" stroke-width="1.2" />
+                <line x1="1390" y1="395" x2="1390" y2="530" stroke-width="1.1" stroke-dasharray="3 3" />
+                <path d="M1352 452 V520 M1367 428 V520 M1382 415 V520 M1405 418 V520 M1420 436 V520" stroke="#7dd3fc" stroke-width="1.1" stroke-opacity="0.7" />
 
                 <!-- Coordinate Cubic Curve -->
-                <line x1="1470" y1="650" x2="1575" y2="650" stroke-width="1.3" />
-                <line x1="1522" y1="595" x2="1522" y2="705" stroke-width="1.3" />
-                <path d="M1480 695 C 1510 692, 1515 650, 1522 650 C 1529 650, 1535 608, 1565 605" stroke="#38bdf8" stroke-width="1.8" />
+                <line x1="1470" y1="620" x2="1578" y2="620" stroke-width="1.2" />
+                <line x1="1524" y1="565" x2="1524" y2="675" stroke-width="1.2" />
+                <path d="M1480 666 C 1510 662, 1516 620, 1524 620 C 1532 620, 1538 578, 1568 575" stroke="#7dd3fc" stroke-width="1.7" />
 
-                <!-- 3D Wireframe Cube -->
-                <rect x="1395" y="750" width="66" height="66" stroke-width="1.7" />
-                <rect x="1420" y="725" width="66" height="66" stroke-width="1.4" stroke-dasharray="4 3" />
-                <path d="M1395 750 L1420 725 M1461 750 L1486 725 M1395 816 L1420 791 M1461 816 L1486 791" stroke-width="1.4" />
+                <!-- 3D Wireframe Cube (Bottom-Right) -->
+                <rect x="1395" y="750" width="64" height="64" stroke-width="1.6" />
+                <rect x="1420" y="725" width="64" height="64" stroke-width="1.3" stroke-dasharray="4 3" />
+                <path d="M1395 750 L1420 725 M1459 750 L1484 725 M1395 814 L1420 789 M1459 814 L1484 789" stroke-width="1.3" />
+
+                <!-- Spring / Harmonic Oscillator (Bottom-Center-Right) -->
+                <path d="M1070 842 L1086 842 L1094 826 L1106 858 L1118 826 L1130 858 L1142 826 L1150 842 L1170 842" stroke-width="1.6" stroke="#7dd3fc" />
+                <rect x="1170" y="824" width="26" height="36" rx="3" stroke-width="1.6" />
             </g>
 
-            <!-- HANDWRITTEN-FEEL SCIENTIFIC FORMULAS (Left & Right Margins) -->
+            <!-- LAYER 3: Dense Mixed Math, Physics & Chemistry Formulas -->
             <g class="chalk-formulas chalk-drift-c" fill="#f5ede0" font-family="'Be Vietnam Pro', 'Segoe Print', cursive, sans-serif" font-style="italic" font-weight="600">
-                <text x="38" y="165" font-size="20">iℏ ∂Ψ/∂t = ĤΨ</text>
-                <text x="195" y="138" font-size="16" fill="#bae6fd">Δx · Δp ≥ ℏ/2</text>
-                <text x="48" y="232" font-size="18">E = mc²</text>
-                <text x="180" y="342" font-size="16">s = ut + ½at²</text>
-                <text x="42" y="425" font-size="19" fill="#bae6fd">a² + b² = c²</text>
-                <text x="155" y="472" font-size="17">F = G·m₁m₂ / r²</text>
-                <text x="58" y="680" font-size="18">∫ e⁻ᵃˣ² dx = √(π/a)</text>
-                <text x="200" y="660" font-size="16" fill="#bae6fd">H₂O + CO₂ ⇌ H₂CO₃</text>
+                <!-- Top strip -->
+                <text x="26" y="34" font-size="16" transform="rotate(-3 26 34)">Ψ(x) = A·e^(ikx)</text>
+                <text x="200" y="36" font-size="15" fill="#bae6fd" transform="rotate(2 200 36)">2H₂ + O₂ → 2H₂O</text>
+                <text x="382" y="38" font-size="16" transform="rotate(-2 382 38)">pH = -log[H⁺]</text>
+                <text x="580" y="34" font-size="15" fill="#bae6fd" transform="rotate(3 580 34)">e^(iπ) + 1 = 0</text>
+                <text x="720" y="42" font-size="16" transform="rotate(-2 720 42)">∑ n² = n(n+1)(2n+1)/6</text>
+                <text x="900" y="36" font-size="15" fill="#bae6fd">U = I · R</text>
+                <text x="1085" y="40" font-size="16" transform="rotate(3 1085 40)">CH₃COOH + NaOH → CH₃COONa + H₂O</text>
+                <text x="1395" y="38" font-size="17" transform="rotate(-3 1395 38)">S = c³kA / 4ℏG</text>
 
-                <text x="1225" y="102" font-size="19">∇ × E = -∂B/∂t</text>
-                <text x="1235" y="165" font-size="17" fill="#bae6fd">Δ = b² - 4ac</text>
-                <text x="1425" y="348" font-size="18">E² = (pc)² + (mc²)²</text>
-                <text x="1235" y="438" font-size="16">sin²α + cos²α = 1</text>
-                <text x="1455" y="425" font-size="17" fill="#bae6fd">pV = nRT</text>
-                <text x="1245" y="632" font-size="19">∮ B · dl = μ₀I</text>
-                <text x="1220" y="715" font-size="17" fill="#bae6fd">lim (1 + 1/n)ⁿ = e</text>
-                <text x="1260" y="832" font-size="18">r⃗ = r⃗(t)</text>
-                <text x="1498" y="765" font-size="16">π ≈ 3,14159</text>
+                <!-- Left dense cluster -->
+                <text x="24" y="142" font-size="18" transform="rotate(-4 24 142)">iℏ ∂Ψ/∂t = ĤΨ</text>
+                <text x="184" y="128" font-size="15" fill="#bae6fd" transform="rotate(3 184 128)">Δx · Δp ≥ ℏ/2</text>
+                <text x="28" y="182" font-size="16" transform="rotate(2 28 182)">Fe + 2HCl → FeCl₂ + H₂↑</text>
+                <text x="148" y="218" font-size="15" fill="#bae6fd">H₂SO₄ + BaCl₂</text>
+                <text x="28" y="248" font-size="18" transform="rotate(-2 28 248)">E = mc²</text>
+                <text x="142" y="316" font-size="15" transform="rotate(4 142 316)">s = v₀t + ½at²</text>
+                <text x="132" y="352" font-size="16" fill="#bae6fd">E_đ = ½mv²</text>
+                <text x="24" y="355" font-size="15" transform="rotate(-3 24 355)">Q = mcΔT</text>
+                <text x="98" y="404" font-size="17" transform="rotate(-2 98 404)">a² + b² = c²</text>
+                <text x="96" y="458" font-size="15" fill="#bae6fd" transform="rotate(3 96 458)">F = G·m₁m₂ / r²</text>
+                <text x="24" y="476" font-size="15">C₆H₁₂O₆ → 2C₂H₅OH + 2CO₂</text>
+                <text x="212" y="518" font-size="16" transform="rotate(-4 212 518)">λ = v / f</text>
+                <text x="195" y="562" font-size="15" fill="#bae6fd">1s² 2s² 2p⁶ 3s¹</text>
+                <text x="32" y="636" font-size="17" transform="rotate(2 32 636)">∫ e⁻ᵃˣ² dx = √(π/a)</text>
+                <text x="196" y="622" font-size="15" fill="#bae6fd">H₂O + CO₂ ⇌ H₂CO₃</text>
+                <text x="28" y="676" font-size="16" transform="rotate(-3 28 676)">Δ = b² - 4ac</text>
+                <text x="165" y="678" font-size="15">P = U · I · cosφ</text>
+                <text x="28" y="868" font-size="15" fill="#bae6fd" transform="rotate(-2 28 868)">v² - v₀² = 2as</text>
+                <text x="200" y="878" font-size="15">n = m / M</text>
+
+                <!-- Center-top / Center-bottom subtle formulas -->
+                <text x="615" y="76" font-size="14" transform="rotate(-2 615 76)">log_a(xy) = log_a x + log_a y</text>
+                <text x="820" y="82" font-size="15" fill="#bae6fd" transform="rotate(2 820 82)">f'(x) = lim Δy/Δx</text>
+                <text x="545" y="852" font-size="15" transform="rotate(-2 545 852)">V = ⁴⁄₃ πR³</text>
+                <text x="685" y="865" font-size="15" fill="#bae6fd" transform="rotate(2 685 865)">Cu + 2H₂SO₄ → CuSO₄ + SO₂↑ + 2H₂O</text>
+                <text x="955" y="868" font-size="15">T = 2π√(l/g)</text>
+
+                <!-- Right dense cluster -->
+                <text x="1215" y="76" font-size="18" transform="rotate(-3 1215 76)">∇ × E = -∂B/∂t</text>
+                <text x="1220" y="122" font-size="15" fill="#bae6fd" transform="rotate(2 1220 122)">CaCO₃ → CaO + CO₂↑</text>
+                <text x="1218" y="168" font-size="16" transform="rotate(-2 1218 168)">Δ = b² - 4ac</text>
+                <text x="1225" y="210" font-size="15">C_M = n / V</text>
+                <text x="1445" y="268" font-size="16" fill="#bae6fd" transform="rotate(3 1445 268)">E² = (pc)² + (mc²)²</text>
+                <text x="1450" y="305" font-size="15">NH₃ + HCl → NH₄Cl</text>
+                <text x="1220" y="378" font-size="16" transform="rotate(-3 1220 378)">sin²α + cos²α = 1</text>
+                <text x="1415" y="390" font-size="15" fill="#bae6fd">pV = nRT</text>
+                <text x="1215" y="420" font-size="15" transform="rotate(2 1215 420)">F_ht = mv² / R</text>
+                <text x="1215" y="472" font-size="15" fill="#bae6fd">2Na + 2H₂O → 2NaOH + H₂↑</text>
+                <text x="1235" y="562" font-size="18" transform="rotate(-2 1235 562)">∮ B · dl = μ₀I</text>
+                <text x="1378" y="572" font-size="15" fill="#bae6fd">R = ρ · l / S</text>
+                <text x="1215" y="618" font-size="16" transform="rotate(3 1215 618)">lim (1 + 1/n)ⁿ = e</text>
+                <text x="1222" y="672" font-size="15">CH₄ + 2O₂ → CO₂ + 2H₂O</text>
+                <text x="1385" y="688" font-size="16" fill="#bae6fd" transform="rotate(-2 1385 688)">W = A / t</text>
+                <text x="1230" y="732" font-size="17" transform="rotate(-3 1230 732)">r⃗ = r⃗(t) + v⃗·dt</text>
+                <text x="1225" y="786" font-size="15" fill="#bae6fd">NaCl + AgNO₃ → AgCl↓</text>
+                <text x="1238" y="858" font-size="16" transform="rotate(2 1238 858)">π ≈ 3,14159</text>
+                <text x="1488" y="848" font-size="15" fill="#bae6fd">E = h · f</text>
+                <text x="1398" y="878" font-size="15">M = F · d</text>
             </g>
 
             <!-- Soft center vignette so quiz/home cards stay crisp & readable -->
