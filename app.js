@@ -48,12 +48,9 @@ class QuizApp {
         this.userAnswers = {};      // { [qId]: selectedIndex hoặc { [stmtIdx]: boolean } hoặc string }
         this.currentFilter = 'all';
 
-        // Quyền Quản trị viên (Ghi nhớ vĩnh viễn trên thiết bị & Whitelist IP Cloud)
-        // Quyền Admin chỉ hợp lệ khi IP hiện tại có trong whitelist Cloud.
-        // Không dùng localStorage làm quyền truy cập vì người dùng có thể xóa/sửa giá trị này.
+        // Quyền Quản trị viên (Chỉ xác thực qua máy chủ / IP Whitelist Cloud)
         this.isAdminAuthenticated = false;
         this.adminCurrentTab = 'questions';
-        this.adminSecretPass = '034569';
         this.allowedAdminIps = [];
         this.masterAdminIp = '';
         this.adminIpConfig = { masterIp: '', allowedIps: [] };
@@ -878,6 +875,23 @@ class QuizApp {
         } catch (e) {
             return null;
         }
+    }
+
+    getOrCreateClientSessionId() {
+        if (this.clientSessionId) return this.clientSessionId;
+        try {
+            const existing = sessionStorage.getItem('quiz_client_session_id');
+            if (existing) {
+                this.clientSessionId = existing;
+                return existing;
+            }
+        } catch (e) {}
+        const generated = (window.dbService && typeof window.dbService.generateUUID === 'function')
+            ? window.dbService.generateUUID()
+            : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        this.clientSessionId = generated;
+        try { sessionStorage.setItem('quiz_client_session_id', generated); } catch (e) {}
+        return generated;
     }
 
     getOrCreateDeviceMachineCode() {
@@ -2351,7 +2365,22 @@ class QuizApp {
     }
 
     async verifyAdminPassword() {
-        // Mật khẩu cũ không còn là một đường cấp quyền. Chỉ whitelist IP Cloud mới được vào Admin.
+        const passInput = document.getElementById('admin-pass-input');
+        const password = passInput ? passInput.value : '';
+        if (password && window.dbService && typeof window.dbService.verifyAdminLogin === 'function') {
+            try {
+                const res = await window.dbService.verifyAdminLogin({ password, ip: this.clientIp });
+                if (res && (res.valid || res.ok || res.success || res.authenticated)) {
+                    this.isAdminAuthenticated = true;
+                    this.closeAdminAuthModal();
+                    this.updateAdminUIVisibility();
+                    this.navigateToAdminWithTransition();
+                    return;
+                }
+            } catch (e) {
+                console.warn('[QuizApp] verifyAdminLogin error:', e);
+            }
+        }
         this.promptAdminAuth();
     }
 
@@ -6213,6 +6242,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 deviceInfo: this.deviceInfo,
                 subjectTitle: this.getSubjectTitle(),
                 scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
+                sessionId: this.getOrCreateClientSessionId(),
                 attemptId,
                 newAttempt: !hasResumedAnswers
             })
@@ -7642,6 +7672,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 deviceInfo: this.deviceInfo,
                 subjectTitle: `[Phục thù] ${this.getSubjectTitle()}`,
                 scoreSummary: `[Bắt đầu Đề Phục Thù: ${mistakeQuestions.length} câu]`,
+                sessionId: this.getOrCreateClientSessionId(),
                 attemptId,
                 newAttempt: true
             }).then((res) => {
@@ -7795,6 +7826,7 @@ Giải thích: Biên độ A = 5 cm.`;
             deviceInfo: this.deviceInfo,
             subjectTitle: this.getSubjectTitle(),
             scoreSummary: `[${this.getSubjectTitle()}] Bắt đầu làm bài`,
+            sessionId: this.getOrCreateClientSessionId(),
             attemptId,
             newAttempt: true
         })
@@ -7970,7 +8002,7 @@ Giải thích: Biên độ A = 5 cm.`;
                     deviceInfo: this.deviceInfo,
                     subjectTitle: statusText,
                     scoreSummary: '',
-                    sessionId: this.visitorSessionId || (this.visitorSessionId = `visitor_${this.clientIp}_${this.deviceInfo}`),
+                    sessionId: this.getOrCreateClientSessionId(),
                     loginId: this.visitorLoginId || null
                 });
                 const loginId = (res && res.id) ? res.id : (typeof res === 'string' ? res : null);
@@ -8557,18 +8589,23 @@ Giải thích: Biên độ A = 5 cm.`;
             icon: 'fa-solid fa-key'
         });
         if (pass === null) return;
-        if (pass === this.adminSecretPass) {
-            try {
-                if (window.dbService && typeof window.dbService.unbanIp === 'function') {
-                    await window.dbService.unbanIp(this.clientIp);
-                    await this.showAlertModal("Đã gỡ chặn IP thành công! Đang tải lại trang...");
-                    location.reload();
-                }
-            } catch (e) {
-                this.showAlertModal("Lỗi mở khóa: " + e.message);
+        try {
+            if (!window.dbService || typeof window.dbService.verifyAdminLogin !== 'function') {
+                this.showAlertModal("Hệ thống xác thực máy chủ chưa sẵn sàng.");
+                return;
             }
-        } else {
-            this.showAlertModal("Mật khẩu không chính xác!");
+            const authRes = await window.dbService.verifyAdminLogin({ password: pass, ip: this.clientIp });
+            if (!authRes || !(authRes.valid || authRes.ok || authRes.success || authRes.authenticated)) {
+                this.showAlertModal("Mật khẩu không chính xác!");
+                return;
+            }
+            if (typeof window.dbService.unbanIp === 'function') {
+                await window.dbService.unbanIp(this.clientIp);
+                await this.showAlertModal("Đã gỡ chặn IP thành công! Đang tải lại trang...");
+                location.reload();
+            }
+        } catch (e) {
+            this.showAlertModal("Lỗi mở khóa: " + (e?.message || 'Không xác định'));
         }
     }
 
@@ -8927,49 +8964,26 @@ Giải thích: Biên độ A = 5 cm.`;
     /* 14. TRỢ LÝ AI GEMINI (GEMINI 2.5 FLASH API INTEGRATION)        */
     /* ============================================================== */
 
-    async loadGlobalGeminiApiKey(forceRefresh = false) {
-        if (this.geminiApiKey && !forceRefresh) return this.geminiApiKey;
-        try {
-            if (window.dbService && typeof window.dbService.fetchGeminiApiKey === 'function') {
-                const cloudKey = await window.dbService.fetchGeminiApiKey();
-                if (cloudKey) {
-                    this.geminiApiKey = cloudKey;
-                    return cloudKey;
-                }
-            }
-        } catch (e) {
-            console.warn('Không thể tải khóa Gemini từ Cloud:', e);
-        }
-        this.geminiApiKey = '';
-        return this.geminiApiKey;
+    getGeminiProxyUrl() {
+        return (typeof window !== 'undefined' && window.__QUIZ_CONFIG__?.geminiProxyUrl) || '/api/gemini';
     }
 
-    async getAvailableGeminiModels(apiKey) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        let response;
-        try {
-            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { cache: 'no-store', signal: controller.signal });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!response.ok) throw new Error(`Không thể đọc danh sách model Gemini (HTTP ${response.status}).`);
-        const data = await response.json();
-        return (data.models || [])
-            .filter((model) => Array.isArray(model.supportedGenerationMethods) && model.supportedGenerationMethods.includes('generateContent'))
-            .map((model) => String(model.name || '').replace(/^models\//, ''))
-            .filter((name) => /^gemini-.*flash/i.test(name) && !/image|audio|tts|live|robotics|embedding/i.test(name))
-            .sort((a, b) => a.localeCompare(b));
+    async loadGlobalGeminiApiKey() {
+        return '';
+    }
+
+    async getAvailableGeminiModels() {
+        return ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     }
 
     openAiSettingsModal() {
         if (!this.isAdminAuthenticated) {
-            this.showAlertModal("🔒 Tính năng cấu hình Gemini API Key chỉ dành riêng cho Quản trị viên (Admin).");
+            this.showAlertModal("🔒 Tính năng cấu hình Trợ lý AI chỉ dành riêng cho Quản trị viên (Admin).");
             return;
         }
         const modal = document.getElementById('modal-ai-settings');
         const input = document.getElementById('gemini-api-key-input');
-        if (input) input.value = this.geminiApiKey || '';
+        if (input) input.value = '';
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -8990,60 +9004,22 @@ Giải thích: Biên độ A = 5 cm.`;
 
     async saveAiApiKey() {
         if (!this.isAdminAuthenticated) {
-            this.showAlertModal("🔒 Chỉ Quản trị viên mới được thay đổi Gemini API Key.");
+            this.showAlertModal("🔒 Chỉ Quản trị viên mới được cấu hình Trợ lý AI.");
             return;
         }
-        const input = document.getElementById('gemini-api-key-input');
-        const key = (input ? input.value : '').trim();
-        if (!key) {
-            this.showAlertModal("Vui lòng dán mã Google Gemini API Key để lưu.");
-            return;
-        }
-        this.geminiApiKey = key;
-
-        let cloudSuccess = false;
-        try {
-            if (window.dbService && typeof window.dbService.saveGeminiApiKey === 'function') {
-                cloudSuccess = await window.dbService.saveGeminiApiKey(key);
-            }
-        } catch (e) {
-            console.warn("Lỗi lưu API key lên Cloud:", e);
-        }
-
-        if (cloudSuccess) {
-            this.showAlertModal("✅ Đã lưu khóa AI trên Cloud. Học sinh chỉ sử dụng được khi IP đã được cấp quyền AI.");
-        } else {
-            this.showAlertModal("✅ Đã lưu khóa Gemini API Key lên Cloud.");
-        }
+        this.showAlertModal("🔐 Khóa Gemini API được bảo mật trên máy chủ qua biến môi trường (GEMINI_API_KEY) và proxy /api/gemini, không lưu trên trình duyệt.");
         this.closeAiSettingsModal();
     }
 
     async clearAiApiKey() {
         if (!this.isAdminAuthenticated) {
-            this.showAlertModal("🔒 Chỉ Quản trị viên mới được xóa Gemini API Key.");
+            this.showAlertModal("🔒 Chỉ Quản trị viên mới được thao tác cấu hình AI.");
             return;
         }
-        if (!(await this.showConfirmModal({
-            title: 'Xóa khóa AI khỏi hệ thống?',
-            badge: 'Cấu hình Gemini AI',
-            message: 'Bạn có chắc chắn muốn xóa Gemini API Key khỏi toàn bộ hệ thống?',
-            confirmText: 'Xóa API Key',
-            cancelText: 'Hủy bỏ',
-            variant: 'danger',
-            icon: 'fa-solid fa-key'
-        }))) return;
         localStorage.removeItem('gemini_api_key');
-        this.geminiApiKey = '';
         const input = document.getElementById('gemini-api-key-input');
         if (input) input.value = '';
-
-        try {
-            if (window.dbService && typeof window.dbService.saveGeminiApiKey === 'function') {
-                await window.dbService.saveGeminiApiKey('');
-            }
-        } catch (e) {}
-
-        this.showAlertModal("Đã xóa API Key khỏi hệ thống.");
+        this.showAlertModal("🔐 Khóa Gemini API được quản lý trên máy chủ (GEMINI_API_KEY). Đã xóa cache cục bộ (nếu có).");
     }
 
     async askAiExplanation(qId) {
@@ -9066,17 +9042,7 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        let apiKey = await this.loadGlobalGeminiApiKey(true);
-
-        if (!apiKey) {
-            if (this.isAdminAuthenticated) {
-                this.showAlertModal("✨ Chưa cấu hình Gemini API Key. Hãy nhập khóa trong khu vực Admin, sau đó cấp quyền AI cho từng IP.");
-                this.openAiSettingsModal();
-            } else {
-                this.showAlertModal("✨ Trợ lý AI đang chờ giáo viên/quản trị viên cấu hình khóa API chung. Vui lòng báo quản trị viên cài đặt!");
-            }
-            return;
-        }
+        const proxyUrl = this.getGeminiProxyUrl();
 
         const q = (this.allQuestions || []).find(item => String(item.id) === String(qId));
         if (!q) {
@@ -9142,15 +9108,7 @@ Học sinh chọn: ${studentAnswerText}
 Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo nhớ nhanh. Không lan man.`;
 
         try {
-            let candidateModels = [];
-            try {
-                candidateModels = await this.getAvailableGeminiModels(apiKey);
-            } catch (modelListError) {
-                console.warn('[QuizMaster AI] Không đọc được model list, dùng model mặc định:', modelListError.message);
-                candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-            }
-            candidateModels = candidateModels.slice(0, 3);
-            if (!candidateModels.length) candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+            const candidateModels = await this.getAvailableGeminiModels();
 
             let res = null;
             let lastErrMsg = "";
@@ -9162,11 +9120,13 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                     const startedAt = performance.now();
                     let callResp;
                     try {
-                        callResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                        callResp = await fetch(proxyUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             signal: controller.signal,
                             body: JSON.stringify({
+                                model,
+                                prompt,
                                 contents: [{ parts: [{ text: prompt }] }],
                                 generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
                             })
@@ -9174,24 +9134,21 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
                     } finally {
                         clearTimeout(timeoutId);
                     }
-                    console.debug('[QuizMaster AI] Gemini response timing:', { model, elapsedMs: Math.round(performance.now() - startedAt), status: callResp?.status || 'network-error' });
+                    console.debug('[QuizMaster AI] Gemini proxy timing:', { model, elapsedMs: Math.round(performance.now() - startedAt), status: callResp?.status || 'network-error' });
 
                     if (callResp.ok) {
                         res = callResp;
                         break;
                     } else {
                         const errData = await callResp.json().catch(() => ({}));
-                        lastErrMsg = errData?.error?.message || `Lỗi HTTP ${callResp.status} (${model})`;
-                        console.debug('[QuizMaster AI] Gemini diagnostic:', { model, status: callResp.status, message: lastErrMsg, isAdmin: this.isAdminAuthenticated, currentIp: this.clientIp });
+                        lastErrMsg = errData?.error?.message || errData?.error || `Lỗi HTTP ${callResp.status} (${model})`;
+                        console.debug('[QuizMaster AI] Gemini proxy diagnostic:', { model, status: callResp.status, message: lastErrMsg, isAdmin: this.isAdminAuthenticated, currentIp: this.clientIp });
                         console.warn(`[QuizMaster AI] Model ${model} gặp lỗi (${callResp.status}):`, lastErrMsg);
 
-                        // Dừng lặp chỉ khi API Key sai định dạng hoàn toàn
-                        const isApiKeyInvalid = callResp.status === 400 && (lastErrMsg.includes('API_KEY_INVALID') || lastErrMsg.includes('API key not valid'));
-                        if (isApiKeyInvalid) {
+                        if (callResp.status === 401 || callResp.status === 403) {
                             break;
                         }
 
-                        // Nếu do lỗi server bận/quá tải (503), quota (429), chờ nhẹ rồi fallback
                         if (callResp.status === 429 || callResp.status === 503) await new Promise(resolve => setTimeout(resolve, 250));
                         continue;
                     }
@@ -9203,11 +9160,11 @@ Trả về đúng 3 mục: Vì sao đúng; Bẫy cần tránh (nếu có); Mẹo
 
             if (!res || !res.ok) {
                 const quota = /quota exceeded|resource_exhausted|rate limit|free tier/i.test(lastErrMsg);
-                throw new Error(quota ? 'Model Gemini đã thử đang hết quota hoặc bị giới hạn tốc độ. Kiểm tra quota theo model và project trong Google AI Studio; các key cùng project dùng chung quota.' : (lastErrMsg || "Không thể kết nối đến máy chủ Google Gemini."));
+                throw new Error(quota ? 'Model Gemini đã thử đang hết quota hoặc bị giới hạn tốc độ.' : (lastErrMsg || "Không thể kết nối đến máy chủ Trợ lý AI (/api/gemini)."));
             }
 
             const data = await res.json();
-            const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Không nhận được phản hồi từ AI.";
+            const replyText = data?.text || data?.candidates?.[0]?.content?.parts?.[0]?.text || "Không nhận được phản hồi từ AI.";
 
             let formattedHtml = this.formatScientificNotation(replyText)
                 .replace(/^### (.*$)/gim, '<h4 class="font-bold text-amber-300 mt-2 mb-1">$1</h4>')

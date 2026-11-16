@@ -813,30 +813,6 @@
         if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
     }
 
-    const BOOTSTRAP_PASSWORD_SHA256 = '2c6c59eb3f31265a50f43c2814e47c4a945a6a31d43bc32cf751dbc1a954be60';
-    const BOOTSTRAP_PASSWORD_FALLBACK = '6:a2bcaee6:df5161c8';
-
-    async function verifyBootstrapPassword(input) {
-        const clean = String(input ?? '');
-        try {
-            if (window.crypto?.subtle?.digest && typeof TextEncoder !== 'undefined') {
-                const bytes = new TextEncoder().encode(clean);
-                const digest = await window.crypto.subtle.digest('SHA-256', bytes);
-                const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-                return hex === BOOTSTRAP_PASSWORD_SHA256;
-            }
-        } catch (e) {}
-        let h1 = 0x811c9dc5;
-        let h2 = 5381;
-        for (let i = 0; i < clean.length; i++) {
-            const c = clean.charCodeAt(i);
-            h1 ^= c;
-            h1 = Math.imul(h1, 0x01000193) >>> 0;
-            h2 = (Math.imul(h2, 33) ^ c) >>> 0;
-        }
-        return `${clean.length}:${h1.toString(16).padStart(8, '0')}:${h2.toString(16).padStart(8, '0')}` === BOOTSTRAP_PASSWORD_FALLBACK;
-    }
-
     async function bootstrapAdmin() {
         ensureSupabaseClient();
         if (!state.clientIp) state.clientIp = await getClientIp();
@@ -848,9 +824,20 @@
         const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
         const masterIp = String(config.masterIp || '').trim();
         if (masterIp || allowed.length) return notify('Hệ thống đã có whitelist Admin. Hãy dùng tài khoản/IP được cấp.', true);
-        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để thiết lập quyền Master lần đầu cho thiết bị này:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
+        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để xác thực qua máy chủ và thiết lập quyền Master lần đầu:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
         if (password === null) return;
-        if (!(await verifyBootstrapPassword(password))) return notify('Mật khẩu Admin không đúng.', true);
+        let verified = false;
+        if (typeof window.dbService?.verifyAdminLogin === 'function') {
+            const authRes = await window.dbService.verifyAdminLogin({ password, ip: state.clientIp });
+            verified = Boolean(authRes?.valid || authRes?.ok || authRes?.verified || authRes === true);
+        } else {
+            const { data: rpcData, error: rpcErr } = await state.client.rpc('admin_verify_login', { p_password: String(password ?? ''), p_ip: state.clientIp || null }).catch((e) => ({ data: null, error: e }));
+            if (rpcErr) {
+                return notify('Chưa kích hoạt RPC xác thực Admin trên máy chủ (supabase_security_migration.sql).', true);
+            }
+            verified = Boolean(rpcData === true || rpcData?.valid || rpcData?.ok || rpcData?.verified);
+        }
+        if (!verified) return notify('Mật khẩu Admin không đúng.', true);
         const payload = { masterIp: state.clientIp, allowedIps: [{ ip: state.clientIp, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
         if (error) throw error;
@@ -2985,72 +2972,9 @@
         return errors;
     }
 
-    /* Gemini is intentionally not used for question import. */
+    /* Gemini is intentionally not used for question import; AI calls route through the backend proxy. */
     async function analyzeWithGemini() {
         return notify('Gemini phân tích đề đã được tắt. Hãy dán JSON rồi bấm Đọc JSON.', true);
-        /* if (false) {
-        const source = $('import-text')?.value || state.sourceText;
-        if (!source) return notify('Chưa có văn bản đề để phân tích.', true);
-        if (state.geminiQuotaBlocked) return notify(geminiQuotaMessage, true);
-        const apiKey = await fetchGeminiKey();
-        if (!apiKey) return notify('Chưa cấu hình Gemini API Key trong mục Báo cáo & dữ liệu.', true);
-        const button = $('ai-analyze-import');
-        if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gemini đang phân tích...'; }
-        const schemaInstruction = `[
-  { "type": "multiple_choice", "question": "Giữ nguyên 100% câu chữ đề bài", "options": ["Nội dung A", "Nội dung B", "Nội dung C", "Nội dung D"], "correctAnswer": 0, "explanation": "Giải thích ngắn gọn 1-2 câu" },
-  { "type": "true_false", "question": "Đoạn thông tin / ngữ liệu dẫn của đề bài", "subQuestions": [ { "id": "a", "content": "Nội dung ý a", "correctAnswer": true }, { "id": "b", "content": "Nội dung ý b", "correctAnswer": false }, { "id": "c", "content": "Nội dung ý c", "correctAnswer": true }, { "id": "d", "content": "Nội dung ý d", "correctAnswer": false } ], "explanation": "Giải thích ngắn gọn 1-2 câu" },
-  { "type": "short_answer", "question": "Nội dung câu hỏi tính toán hoặc điền từ", "correctAnswer": "Giá trị số hoặc từ khóa chính xác", "explanation": "Giải thích ngắn gọn 1-2 câu" }
-]`;
-        const prompt = `Bạn là bộ phân tích đề thi. Trả về DUY NHẤT một mảng JSON hợp lệ, không markdown, không lời dẫn.\n\nSCHEMA BẮT BUỘC (mỗi phần tử chỉ dùng đúng một type):\n${schemaInstruction}\n\nSTRICT PRESERVATION RULES:\n1. Sao chép nguyên văn tuyệt đối câu hỏi, phương án và từng ý từ SOURCE. Không sửa chính tả, không chuẩn hóa dấu câu, không tóm tắt, không dịch, không viết lại, không bỏ ký hiệu, số, đơn vị, xuống dòng có ý nghĩa.\n2. Giữ nguyên thứ tự câu hỏi và giữ nguyên thứ tự A/B/C/D hoặc a/b/c/d. Không xáo trộn.\n3. Chỉ được tự suy luận correctAnswer và explanation để giải đáp; tuyệt đối không suy luận rồi sửa phần văn bản.\n4. Với multiple_choice, correctAnswer là số nguyên 0-3. Với true_false, luôn trả đủ bốn subQuestions theo đúng thứ tự a,b,c,d và correctAnswer là boolean. Với short_answer, correctAnswer là chuỗi đáp án chính xác.\n5. Nếu không chắc chắn, vẫn giữ nguyên văn bản và chọn đáp án tốt nhất theo kiến thức; không thêm câu chữ vào question/options/content.\n\nSOURCE (copy nguyên văn, không chỉnh sửa):\n<<<SOURCE_START>>>\n${source}\n<<<SOURCE_END>>>`;
-        const models = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-pro-preview'];
-        const enforcedPrompt = `${prompt}\n\nBẮT BUỘC: Phân loại đúng từng câu theo đề gốc. Câu có A/B/C/D phải là multiple_choice, giữ nguyên đúng vị trí A/B/C/D và tự chọn correctAnswer 0-3. Câu có a/b/c/d phải là true_false với đủ bốn ý và tự chọn boolean đúng/sai. Câu yêu cầu tính hoặc điền đáp án phải là short_answer với correctAnswer chính xác. Không được biến tất cả thành MCQ. Explanation chỉ tối đa 1-2 câu.`;
-        try {
-            let response; let lastError = '';
-            const maxOutputTokens = Math.min(24576, Math.max(4096, Math.ceil(source.length / 2.2)));
-            for (const model of models) {
-                try {
-                    response = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: enforcedPrompt }] }], generationConfig: { temperature: 0, maxOutputTokens, responseMimeType: 'application/json' } }) }, 60000);
-                    if (response.ok) break;
-                    const errorData = await response.json().catch(() => ({}));
-                    lastError = errorData?.error?.message || `HTTP ${response.status}`;
-                    if (isGeminiQuotaError(response.status, lastError)) {
-                        state.geminiQuotaBlocked = true;
-                        throw new Error(geminiQuotaMessage);
-                    }
-                    if (response.status === 400 || response.status === 401 || response.status === 403) break;
-                } catch (error) {
-                    if (error.message === geminiQuotaMessage) throw error;
-                    lastError = error.name === 'AbortError' ? `${model} phản hồi quá 60 giây.` : error.message;
-                }
-            }
-            if (!response?.ok) throw new Error(lastError || 'Gemini không phản hồi.');
-            const data = await response.json();
-            const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
-            const parsedList = extractJsonPayload(raw);
-            state.importQuestions = parsedList.map(normalizeAiQuestion);
-            const structureErrors = validateAiQuestionSet(state.importQuestions);
-            if (structureErrors.length) throw new Error(`AI trả về đề chưa đủ cấu trúc: ${structureErrors.slice(0, 3).join('; ')}`);
-            state.importIndex = 0;
-            state.importIntegrity = validateVerbatimQuestions(state.importQuestions, source);
-            state.importError = '';
-            persistImportDraft();
-            if (state.importQuestions.length) fillForm(state.importQuestions[0]);
-            renderImportReview();
-            notify(`Gemini đã phân tích ${state.importQuestions.length} câu. Hãy duyệt trước khi lưu.`);
-        } catch (error) {
-            const detail = isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : /api key|api_key|invalid argument|permission denied/i.test(error.message)
-                ? 'Gemini API Key không hợp lệ hoặc đã hết hạn. Vào Báo cáo & dữ liệu, xóa key cũ, nhập key mới rồi bấm Kiểm tra key.'
-                : error.message;
-            state.importError = detail;
-            notify(`AI phân tích thất bại: ${detail}`, true);
-        }
-        finally {
-            if (button) {
-                button.disabled = false;
-                button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini phân tích & giải';
-            }
-        }
-        } */
     }
 
     async function saveImportQuestions() {
@@ -3133,66 +3057,37 @@
         }
     }
 
-    async function fetchGeminiKey() {
-        let key = '';
-        const row = await systemRow(SYSTEM.gemini);
-        if (row?.status === 'ACTIVE' && row?.score_summary) key = row.score_summary;
-        return cleanGeminiKey(key);
-    }
-
-    async function saveGeminiKey() {
-        const key = cleanGeminiKey($('gemini-key-input')?.value);
-        if (!key) return notify('Hãy nhập Gemini API Key.', true);
-        if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng Google Gemini. Key thường bắt đầu bằng AIza hoặc AQ.', true);
-        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'ACTIVE', score_summary: key, last_active: new Date().toISOString() }, { onConflict: 'id' });
-        if (error) return notify(`Không thể lưu API Key: ${error.message}`, true);
-        $('gemini-key-input').value = ''; notify('Đã lưu Gemini API Key lên Cloud. Hãy tải lại trang học sinh để nhận key mới.');
-    }
-
-    async function clearGeminiKey() {
-        if (!(await confirmDialog({ title: 'Xóa Gemini API Key?', message: 'Xóa Gemini API Key dùng chung khỏi toàn hệ thống?', confirmText: 'Xóa API Key', variant: 'danger', icon: 'fa-key' }))) return;
-        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.gemini, player_name: '__GEMINI_CONFIG__', ip_address: 'SYSTEM', device_info: 'GEMINI_AI', status: 'INACTIVE', score_summary: '', last_active: new Date().toISOString() }, { onConflict: 'id' });
-        if (error) return notify(error.message, true);
-        localStorage.removeItem('gemini_api_key'); notify('Đã xóa Gemini API Key.');
+    function getGeminiProxyUrl() {
+        return window.__QUIZ_CONFIG__?.geminiProxyUrl || '/api/gemini';
     }
 
     async function testGeminiKey() {
-        const key = await fetchGeminiKey();
-        if (!key) return notify('Chưa có Gemini API Key để kiểm tra.', true);
-        if (!isValidGeminiKey(key)) return notify('API Key không đúng định dạng. Key thường bắt đầu bằng AIza hoặc AQ...', true);
         const button = $('test-gemini-key');
         if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
         try {
-            const testModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-            let ok = false;
-            let lastError = '';
-            for (const model of testModels) {
-                try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply only with OK.' }] }], generationConfig: { temperature: 0, maxOutputTokens: 4 } })
-                    });
-                    if (response.ok) {
-                        ok = true;
-                        break;
-                    }
-                    const data = await response.json().catch(() => ({}));
-                    lastError = data?.error?.message || `HTTP ${response.status}`;
-                    if (isGeminiQuotaError(response.status, lastError)) throw new Error(geminiQuotaMessage);
-                    if (response.status === 400 || response.status === 401 || response.status === 403) break;
-                } catch (err) {
-                    lastError = err.message;
-                }
+            const proxyUrl = getGeminiProxyUrl();
+            const response = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'gemini-2.5-flash',
+                    contents: [{ parts: [{ text: 'Reply only with OK.' }] }],
+                    generationConfig: { temperature: 0, maxOutputTokens: 4 }
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = data?.error?.message || data?.error || `HTTP ${response.status}`;
+                if (isGeminiQuotaError(response.status, msg)) throw new Error(geminiQuotaMessage);
+                throw new Error(msg);
             }
-            if (!ok) throw new Error(lastError || 'Không thể kết nối đến Gemini');
-            notify('Gemini API Key hợp lệ và đang hoạt động.');
-            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key hợp lệ';
+            notify('Gemini Proxy đang hoạt động bình thường.');
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Proxy hoạt động';
         } catch (error) {
-            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Key không hợp lệ';
-            notify(isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : `Gemini API Key không hợp lệ: ${error.message}`, true);
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Proxy lỗi / chưa cấu hình';
+            notify(isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : `Không thể kết nối Gemini Proxy: ${error.message}`, true);
         } finally {
-            if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra key'; }
+            if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra Proxy AI'; }
         }
     }
 
@@ -3324,8 +3219,8 @@
         if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, cấu hình giải thích bài tập, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
         const aiHeading = document.querySelector('.ai-config-panel h2');
         const aiDescription = document.querySelector('.ai-config-panel .muted-copy');
-        if (aiHeading) aiHeading.textContent = 'Cấu hình giải thích bài tập';
-        if (aiDescription) aiDescription.textContent = 'Nhập Gemini API key để dùng nút “Hỏi AI giải thích chi tiết” trên bài tập. API key được lưu trên Cloud.';
+        if (aiHeading) aiHeading.textContent = 'Cấu hình giải thích bài tập (Proxy)';
+        if (aiDescription) aiDescription.textContent = 'AI giải thích bài tập chạy qua Backend Proxy (/api/gemini). API key được giữ bí mật trên máy chủ.';
         const quickImport = $('quick-import');
         if (quickImport) {
             const title = quickImport.querySelector('b');
@@ -5534,6 +5429,7 @@
 
         return {
             id: row.id,
+            sessionId: row.session_id || detail?.sessionId || '',
             name: row.player_name || 'Học sinh',
             ip: row.ip_address || '',
             device: row.device_info || '',
@@ -7478,7 +7374,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
          reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
          $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
-         $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey)); $('clear-gemini-key')?.addEventListener('click', () => runAction(clearGeminiKey)); $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
+         $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
           reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
          $('new-folder-button')?.addEventListener('click', openFolderDialog);
          $('hub-add-question-button')?.addEventListener('click', () => jumpToAddQuestion());

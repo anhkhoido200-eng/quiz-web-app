@@ -30,6 +30,7 @@ CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins(ip_address);
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_player_name ON public.quiz_logins(player_name);
 ALTER TABLE public.quiz_logins ADD COLUMN IF NOT EXISTS session_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_quiz_logins_session_id ON public.quiz_logins(session_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_session_created ON public.quiz_logins(session_id, created_at DESC);
 
 -- 3. BẢNG 2: QUIZ_QUESTIONS (Ngân hàng câu hỏi động đa môn học: Sử, Lí, Địa, Toán, Hóa...)
 CREATE TABLE IF NOT EXISTS public.quiz_questions (
@@ -292,3 +293,6 @@ VALUES (
     NOW()
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- Sau khi chạy script khởi tạo này, chạy tiếp supabase_security_migration.sql để bật RLS thu hẹp và Admin RPCs.
+NOTIFY pgrst, 'reload schema';

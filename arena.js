@@ -1290,6 +1290,7 @@
                 const rawDuration = Number(document.getElementById('arena-host-duration')?.value);
                 const rawMaxV = Number(document.getElementById('arena-host-maxv')?.value);
 
+                const adminToken = window.dbService?.getAdminSessionToken?.() || localStorage.getItem('quiz_admin_session_token') || null;
                 const { data, error } = await client.rpc('arena_create_room', {
                     p_title: document.getElementById('arena-host-title')?.value?.trim() || 'Bài kiểm tra',
                     p_subject_key: document.getElementById('arena-host-subject')?.value || 'history',
@@ -1297,7 +1298,8 @@
                     p_per_question_sec: perQRaw ? Number(perQRaw) : null,
                     p_max_violations: Number.isFinite(rawMaxV) && rawMaxV >= 0 ? rawMaxV : 3,
                     p_concurrent_policy: document.getElementById('arena-host-concurrent')?.value || 'KICK_OLD',
-                    p_require_fullscreen: Boolean(document.getElementById('arena-host-fs')?.checked)
+                    p_require_fullscreen: Boolean(document.getElementById('arena-host-fs')?.checked),
+                    p_admin_token: adminToken
                 });
                 if (error) {
                     alert(isMissingSchemaError(error)
@@ -1372,7 +1374,11 @@
                 btn.addEventListener('click', async () => {
                     btn.disabled = true;
                     try {
-                        const { error } = await client.rpc('arena_end_room', { p_room_id: btn.dataset.arenaEnd });
+                        const adminToken = window.dbService?.getAdminSessionToken?.() || localStorage.getItem('quiz_admin_session_token') || null;
+                        const { error } = await client.rpc('arena_end_room', {
+                            p_room_id: btn.dataset.arenaEnd,
+                            p_admin_token: adminToken
+                        });
                         if (error) {
                             alert(`Không thể đóng phòng: ${error.message}`);
                             return;
@@ -1399,9 +1405,10 @@
             const detailEl = document.getElementById('arena-host-detail');
             if (!client || !detailEl || !roomId) return;
 
+            const adminToken = window.dbService?.getAdminSessionToken?.() || localStorage.getItem('quiz_admin_session_token') || null;
             const [{ data: attempts, error: lbErr }, { data: logs, error: logErr }] = await Promise.all([
                 client.rpc('arena_get_leaderboard', { p_room_id: roomId }),
-                client.rpc('arena_get_audit_logs', { p_room_id: roomId })
+                client.rpc('arena_get_audit_logs', { p_room_id: roomId, p_admin_token: adminToken })
             ]);
             if (lbErr || logErr) {
                 detailEl.innerHTML = `<p class="muted-copy">Không thể tải dữ liệu phòng: ${esc(lbErr?.message || logErr?.message || 'Lỗi không xác định')}</p>`;

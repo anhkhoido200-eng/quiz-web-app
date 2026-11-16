@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ôn tập</title>
     <meta name="description" content="Hệ thống ôn luyện trắc nghiệm thông minh, đa môn học.">
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="shortcut icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="./favicon.ico" sizes="any">
+    <link rel="shortcut icon" href="./favicon.ico">
     <meta property="og:title" content="Ôn tập">
     <meta property="og:description" content="Ôn luyện trắc nghiệm thông minh: Đa môn học, nhận diện tự động, xếp hạng Top 10 và xuất bảng điểm Excel!">
 
@@ -15,31 +16,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Be Vietnam Pro"', '"Plus Jakarta Sans"', 'sans-serif'],
-                        heading: ['"Be Vietnam Pro"', '"Outfit"', 'sans-serif'],
-                    },
-                    colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            100: '#e0e7ff',
-                            400: '#818cf8',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Tailwind CSS Production -->
+    <link rel="stylesheet" href="./tailwind.prod.css?v=20261116a">
 
     <!-- FontAwesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -70,7 +48,7 @@
     </a>
 
     <!-- NÚT NỔI GỌN GÀNG GÓC PHẢI DƯỚI CHO NGƯỜI THEO DÕI ĐƯỢC CẤP QUYỀN -->
-    <button id="floating-observer-btn" onclick="app.enterObserverMode()" class="hidden fixed bottom-6 right-6 z-[9985] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-xs shadow-2xl shadow-amber-500/40 items-center gap-2 cursor-pointer transition-all transform hover:scale-105 active:scale-95 select-none" title="Xem tiến trình làm bài">
+    <button type="button" id="floating-observer-btn" onclick="app.enterObserverMode()" class="hidden fixed bottom-6 right-6 z-[9985] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-xs shadow-2xl shadow-amber-500/40 items-center gap-2 cursor-pointer transition-all transform hover:scale-105 active:scale-95 select-none" title="Xem tiến trình làm bài">
         <i class="fa-solid fa-eye text-sm"></i>
         <span>Xem Tiến Trình</span>
     </button>
@@ -99,10 +77,10 @@
             </div>
             <!-- Nút mở khóa khẩn cấp dành cho Admin khi lỡ tay tự chặn mình -->
             <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                <button onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition">
+                <button type="button" onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition">
                     <i class="fa-solid fa-rotate-right mr-1"></i> Tải lại trang
                 </button>
-                <button onclick="app.adminEmergencyUnban()" class="px-3.5 py-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/50 text-xs font-bold cursor-pointer transition">
+                <button type="button" onclick="app.adminEmergencyUnban()" class="px-3.5 py-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/50 text-xs font-bold cursor-pointer transition">
                     <i class="fa-solid fa-key mr-1 text-amber-400"></i> Mở khóa khẩn cấp (Admin)
                 </button>
             </div>
@@ -155,10 +133,10 @@
 
             <!-- Cửa thoát hiểm Admin (Bí mật / Nhỏ gọn) -->
             <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-                <button onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer flex items-center gap-1.5">
+                <button type="button" onclick="location.reload()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer flex items-center gap-1.5">
                     <i class="fa-solid fa-rotate-right text-xs"></i> Tải lại trang
                 </button>
-                <button onclick="app.openAdminAuthFromMaintenance()" class="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] text-slate-500 hover:text-amber-400 transition cursor-pointer border border-slate-800/80 flex items-center gap-1.5" title="Dành cho Quản trị viên quản lý">
+                <button type="button" onclick="app.openAdminAuthFromMaintenance()" class="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] text-slate-500 hover:text-amber-400 transition cursor-pointer border border-slate-800/80 flex items-center gap-1.5" title="Dành cho Quản trị viên quản lý">
                     <i class="fa-solid fa-shield-halved text-amber-400/80"></i> Dành cho Quản trị viên
                 </button>
             </div>
@@ -187,7 +165,7 @@
             </div>
 
             <!-- Nút đóng nhanh -->
-            <button onclick="app.hideStudentNotice()" aria-label="Đóng thông báo" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white p-1 text-sm cursor-pointer transition">
+            <button type="button" onclick="app.hideStudentNotice()" aria-label="Đóng thông báo" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white p-1 text-sm cursor-pointer transition">
                 <i class="fa-solid fa-xmark"></i>
             </button>
 
@@ -230,37 +208,37 @@
             </div>
 
             <!-- Các nút điều hướng góc phải header -->
-            <div class="flex items-center space-x-1.5 sm:space-x-2">
+            <nav aria-label="Điều hướng chính" class="flex items-center space-x-1.5 sm:space-x-2">
                 <!-- Nút chuyển đổi Dark / Light Mode -->
-                <button id="theme-toggle-btn" onclick="app.toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
+                <button type="button" id="theme-toggle-btn" onclick="app.toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
                     <i id="theme-toggle-icon" class="fa-solid fa-moon text-amber-300 theme-toggle-icon-sync"></i>
                 </button>
 
                 <!-- Nút bật/tắt âm thanh Ting/Bíp -->
-                <button id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng" aria-label="Bật/Tắt âm thanh hiệu ứng">
+                <button type="button" id="header-sound-btn" onclick="app.toggleSound()" class="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh hiệu ứng" aria-label="Bật/Tắt âm thanh hiệu ứng">
                     <i id="header-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                 </button>
 
                 <!-- Nút tham gia Đấu Trường (Arena) -->
-                <button id="header-arena-join-btn" onclick="window.ArenaClient && window.ArenaClient.openJoinModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Tham gia phòng thi Đấu Trường">
+                <button type="button" id="header-arena-join-btn" onclick="window.ArenaClient && window.ArenaClient.openJoinModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Tham gia phòng thi Đấu Trường">
                     <i class="fa-solid fa-bolt text-rose-400"></i>
                     <span class="hidden sm:inline">Đấu Trường</span>
                 </button>
 
                 <!-- Nút Nhật ký Ôn tập cá nhân (10 bài gần nhất) -->
-                <button onclick="app.openMyHistoryModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Lịch sử bài làm cá nhân">
+                <button type="button" onclick="app.openMyHistoryModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Lịch sử bài làm cá nhân">
                     <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i>
                     <span class="hidden sm:inline">Lịch Sử</span>
                 </button>
 
                 <!-- Nút mở Bảng Xếp Hạng Top 10 -->
-                <button onclick="app.openLeaderboardModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                <button type="button" onclick="app.openLeaderboardModal()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-trophy text-amber-400"></i>
                     <span class="hidden sm:inline">Top 10</span>
                 </button>
 
                 <!-- Nút mở Bảng Tiến Trình Lớp 5 cho Người Theo Dõi -->
-                <button id="header-parent-monitor-btn" onclick="app.enterObserverMode()" class="hidden px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Theo dõi tiến trình làm bài Lớp 5">
+                <button type="button" id="header-parent-monitor-btn" onclick="app.enterObserverMode()" class="hidden px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Theo dõi tiến trình làm bài Lớp 5">
                     <i class="fa-solid fa-eye text-amber-400"></i>
                     <span class="hidden sm:inline">Tiến Trình Trực Tiếp</span>
                 </button>
@@ -270,7 +248,7 @@
                     <i class="fa-solid fa-crown text-amber-400"></i>
                     <span class="hidden sm:inline">Bảng Admin</span>
                 </a>
-            </div>
+            </nav>
         </div>
     </header>
 
@@ -350,13 +328,13 @@
                                 <i class="fa-solid fa-shield-halved"></i> Quản lý Đề & Môn (Admin)
                             </span>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <button onclick="app.openSmartImporter()" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Nạp nhanh file Word (.docx), PDF (.pdf), Excel vào môn đang chọn">
+                                <button type="button" onclick="app.openSmartImporter()" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Nạp nhanh file Word (.docx), PDF (.pdf), Excel vào môn đang chọn">
                                     <i class="fa-solid fa-file-arrow-up text-sky-400"></i> Nạp Đề Word/PDF
                                 </button>
-                                <button onclick="app.openNewQuestionModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Tạo câu hỏi thủ công cho môn này">
+                                <button type="button" onclick="app.openNewQuestionModal()" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm" title="Tạo câu hỏi thủ công cho môn này">
                                     <i class="fa-solid fa-plus text-emerald-400"></i> Thêm Câu Hỏi
                                 </button>
-                                <button onclick="app.openSubjectEditor()" class="btn-3d btn-3d-amber px-2.5 py-1.5 rounded-xl text-slate-950 font-heading font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
+                                <button type="button" onclick="app.openSubjectEditor()" class="btn-3d btn-3d-amber px-2.5 py-1.5 rounded-xl text-slate-950 font-heading font-bold text-[11px] transition flex items-center gap-1 cursor-pointer">
                                     <i class="fa-solid fa-folder-plus"></i> + Môn Mới
                                 </button>
                             </div>
@@ -417,7 +395,7 @@
 
                     <!-- Nút bắt đầu làm bài -->
                     <div class="pt-2">
-                        <button id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-indigo-500/25">
+                        <button type="button" id="btn-start-quiz" onclick="app.startQuiz()" class="btn-3d btn-3d-indigo w-full py-4 px-6 rounded-2xl text-white font-heading font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 group cursor-pointer shadow-lg hover:shadow-indigo-500/25">
                             <span>Bắt Đầu Làm Bài Ngay</span>
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1.5 transition-transform"></i>
                         </button>
@@ -466,30 +444,30 @@
 
                     <div class="flex items-center gap-1.5 sm:gap-2">
                         <!-- Bật/Tắt âm thanh trong phòng thi -->
-                        <button id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
+                        <button type="button" id="quiz-sound-toggle-btn" onclick="app.toggleSound()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Bật/Tắt âm thanh ting/bíp">
                             <i id="quiz-sound-icon" class="fa-solid fa-volume-high text-indigo-400"></i>
                         </button>
                         <!-- Nút Dark/Light Mode -->
-                        <button onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
+                        <button type="button" onclick="app.toggleTheme()" class="btn-3d btn-3d-slate w-8 h-8 rounded-xl text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer text-xs" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">
                             <i id="quiz-theme-toggle-icon" class="fa-solid fa-moon text-amber-300 theme-toggle-icon-sync"></i>
                         </button>
-                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-sky-400 hover:text-sky-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
+                        <button type="button" onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-sky-400 hover:text-sky-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Quay về chọn môn khác">
                             <i class="fa-solid fa-house text-[11px]"></i>
                             <span class="hidden sm:inline">Đổi môn</span>
                         </button>
-                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-amber-400 hover:text-amber-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Làm lại từ đầu">
+                        <button type="button" onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-slate px-2.5 sm:px-3 py-1.5 rounded-xl text-amber-400 hover:text-amber-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer" title="Làm lại từ đầu">
                             <i class="fa-solid fa-rotate-left text-[11px]"></i>
                             <span>Làm lại</span>
                         </button>
-                        <button onclick="app.filterQuestions('wrong')" id="btn-filter-wrong" class="btn-3d px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer">
+                        <button type="button" onclick="app.filterQuestions('wrong')" id="btn-filter-wrong" class="btn-3d px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-heading font-bold transition flex items-center gap-1 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark text-[11px]"></i>
                             <span>Sai (<span id="wrong-count-badge">0</span>)</span>
                         </button>
-                        <button onclick="app.backToResultScreen()" id="btn-back-to-result" class="hidden btn-3d px-3 sm:px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.backToResultScreen()" id="btn-back-to-result" class="hidden btn-3d px-3 sm:px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-trophy text-xs"></i>
                             <span>Bảng Điểm</span>
                         </button>
-                        <button onclick="app.confirmSubmit()" id="btn-submit-quiz" class="btn-3d btn-3d-emerald px-3.5 sm:px-4 py-2 rounded-xl text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.confirmSubmit()" id="btn-submit-quiz" class="btn-3d btn-3d-emerald px-3.5 sm:px-4 py-2 rounded-xl text-white text-xs font-heading font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-check text-xs"></i>
                             <span>Nộp Bài</span>
                         </button>
@@ -579,7 +557,7 @@
                                     </p>
                                 </div>
                             </div>
-                            <button id="btn-revenge-quiz-result" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge w-full sm:w-auto px-6 py-3 rounded-xl font-heading font-extrabold text-xs sm:text-sm text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-xl shrink-0">
+                            <button type="button" id="btn-revenge-quiz-result" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge w-full sm:w-auto px-6 py-3 rounded-xl font-heading font-extrabold text-xs sm:text-sm text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-xl shrink-0">
                                 <i class="fa-solid fa-bolt text-amber-300"></i>
                                 <span id="revenge-btn-text">🔥 Vào Làm Lại Các Câu Sai Ngay</span>
                             </button>
@@ -599,27 +577,27 @@
 
                     <!-- Nút thao tác sau khi xong bài -->
                     <div class="result-actions flex flex-wrap items-center justify-center gap-2.5 pt-2">
-                        <button id="btn-result-action-revenge" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
+                        <button type="button" id="btn-result-action-revenge" onclick="app.startMistakeQuiz()" class="btn-3d btn-3d-revenge px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-white transition flex items-center gap-2 cursor-pointer shadow-lg">
                             <i class="fa-solid fa-fire text-amber-300 animate-pulse"></i>
                             <span id="btn-result-action-revenge-text">🔥 Làm lại các câu sai</span>
                         </button>
-                        <button onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.resetCurrentQuiz()" class="btn-3d btn-3d-indigo px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-rotate-left"></i>
                             <span>Làm lại từ đầu</span>
                         </button>
-                        <button onclick="app.filterQuestions('wrong')" class="btn-3d px-4 sm:px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.filterQuestions('wrong')" class="btn-3d px-4 sm:px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-heading font-bold text-rose-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-circle-xmark"></i>
                             <span>Xem các câu làm sai</span>
                         </button>
-                        <button onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
+                        <button type="button" onclick="app.openLeaderboardModal()" class="btn-3d btn-3d-amber px-4 sm:px-5 py-2.5 rounded-xl font-heading font-extrabold text-xs text-slate-950 transition flex items-center gap-2 cursor-pointer shadow-md">
                             <i class="fa-solid fa-trophy text-slate-950"></i>
                             <span>Xem Bảng Xếp Hạng</span>
                         </button>
-                        <button onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.returnToHome()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-sky-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-house"></i>
                             <span>Chọn môn khác</span>
                         </button>
-                        <button onclick="app.switchUser()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.switchUser()" class="btn-3d btn-3d-slate px-4 sm:px-5 py-2.5 rounded-xl text-xs font-heading font-bold text-slate-300 transition flex items-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-user-pen"></i>
                             <span>Đổi người thi</span>
                         </button>
@@ -653,10 +631,10 @@
                     <p class="text-xs sm:text-sm text-slate-400 mt-1">Theo dõi trực tiếp số câu đã làm, tỷ lệ đúng/sai và trạng thái làm bài của học sinh Lớp 5.</p>
                 </div>
                 <div class="flex items-center gap-2.5 self-start sm:self-center">
-                    <button id="btn-observer-refresh" onclick="app.fetchAndRenderObserverFullscreen()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                    <button type="button" id="btn-observer-refresh" onclick="app.fetchAndRenderObserverFullscreen()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
                         <i class="fa-solid fa-rotate"></i> Làm mới
                     </button>
-                    <button onclick="app.exitObserverMode()" class="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Thoát chế độ theo dõi">
+                    <button type="button" onclick="app.exitObserverMode()" class="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Thoát chế độ theo dõi">
                         <i class="fa-solid fa-arrow-left"></i> Quay lại
                     </button>
                 </div>
@@ -745,7 +723,7 @@
                     <i class="fa-solid fa-shield-halved text-amber-400"></i>
                     <span>Xác Thực Quyền Admin</span>
                 </h3>
-                <button onclick="app.closeAdminAuthModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
+                <button type="button" onclick="app.closeAdminAuthModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -777,18 +755,18 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="app.adminLogout()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Đăng xuất quyền Admin trên thiết bị này">
+                    <button type="button" onclick="app.adminLogout()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Đăng xuất quyền Admin trên thiết bị này">
                         <i class="fa-solid fa-arrow-right-from-bracket text-rose-400"></i>
                         <span class="hidden sm:inline">Đăng Xuất Admin</span>
                     </button>
-                    <button onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
+                    <button type="button" onclick="app.openAiSettingsModal()" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer" title="Cấu hình Google Gemini API Key">
                         <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
                         <span class="hidden sm:inline">Cài Đặt API Key</span>
                     </button>
-                    <button onclick="app.openSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer" title="Cấu hình Supabase Cloud">
+                    <button type="button" onclick="app.openSettingsModal()" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer" title="Cấu hình Supabase Cloud">
                         <i class="fa-solid fa-gear text-sm"></i>
                     </button>
-                    <button onclick="app.closeAdminDashboard()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
+                    <button type="button" onclick="app.closeAdminDashboard()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -813,13 +791,13 @@
                 </div>
 
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button onclick="app.adminEditMaintenanceMsg()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 cursor-pointer" title="Đổi lời nhắn bảo trì hiển thị cho học sinh">
+                    <button type="button" onclick="app.adminEditMaintenanceMsg()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 cursor-pointer" title="Đổi lời nhắn bảo trì hiển thị cho học sinh">
                         <i class="fa-solid fa-pen-to-square text-amber-400 text-[11px]"></i>
                         <span>Đổi lời nhắn</span>
                     </button>
                     <!-- Toggle Switch Bật/Tắt Bảo Trì -->
                     <label class="relative inline-flex items-center cursor-pointer select-none">
-                        <input type="checkbox" id="admin-maintenance-toggle" onchange="app.adminToggleMaintenance(this.checked)" class="sr-only peer">
+                        <input type="checkbox" id="admin-maintenance-toggle" aria-label="Bật tắt chế độ bảo trì hệ thống" onchange="app.adminToggleMaintenance(this.checked)" class="sr-only peer">
                         <span class="block w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></span>
                         <span class="ml-2 text-xs font-bold text-slate-300 peer-checked:text-rose-400" id="admin-maintenance-toggle-label">Khóa Web (Bảo Trì)</span>
                     </label>
@@ -828,23 +806,23 @@
 
             <!-- THANH ĐIỀU HƯỚNG 5 TAB ADMIN -->
             <div class="bg-slate-800/80 px-4 pt-2.5 border-b border-slate-700 flex items-end gap-2 text-xs font-semibold overflow-x-auto shrink-0 select-none no-scrollbar min-h-[48px]">
-                <button id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                <button type="button" id="admin-tab-btn-questions" onclick="app.switchAdminTab('questions')" class="px-4 py-2.5 rounded-t-xl bg-slate-900 text-amber-400 border-t-2 border-amber-500 transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-file-lines"></i>
                     <span>Ngân Hàng Đề (<span id="admin-badge-q-count">0</span>)</span>
                 </button>
-                <button id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                <button type="button" id="admin-tab-btn-students" onclick="app.switchAdminTab('students')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-desktop"></i>
                     <span>Giám Sát Máy (<span id="admin-badge-login-count">0</span>)</span>
                 </button>
-                <button id="admin-tab-btn-admin-ips" onclick="app.switchAdminTab('admin-ips')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                <button type="button" id="admin-tab-btn-admin-ips" onclick="app.switchAdminTab('admin-ips')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-user-shield text-amber-400"></i>
                     <span>Quyền Admin Theo IP (<span id="admin-badge-admin-count">0</span>)</span>
                 </button>
-                <button id="admin-tab-btn-subjects" onclick="app.switchAdminTab('subjects')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                <button type="button" id="admin-tab-btn-subjects" onclick="app.switchAdminTab('subjects')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-layer-group text-emerald-400"></i>
                     <span>Quản Lý Môn Học (<span id="admin-badge-subject-count">0</span>)</span>
                 </button>
-                <button id="admin-tab-btn-reports" onclick="app.switchAdminTab('reports')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                <button type="button" id="admin-tab-btn-reports" onclick="app.switchAdminTab('reports')" class="px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-white transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-chart-pie text-sky-400"></i>
                     <span>Xuất Excel & Dọn Dẹp</span>
                 </button>
@@ -855,7 +833,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/60">
                     <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
                         <!-- Chọn môn học để xem đề -->
-                        <select id="admin-subject-select" onchange="app.onAdminChangeSubject(this.value)" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-amber-300 font-bold outline-none">
+                        <select id="admin-subject-select" aria-label="Chọn môn học trong ngân hàng đề" onchange="app.onAdminChangeSubject(this.value)" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-amber-300 font-bold outline-none">
                             <!-- Render bởi app.js -->
                         </select>
                         <div class="relative flex-1 max-w-sm">
@@ -863,22 +841,22 @@
                             <input type="text" id="admin-search-q-input" oninput="app.debouncedSearchAdminQuestions()" placeholder="Tìm câu hỏi theo từ khóa..." 
                                 class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
                         </div>
-                        <select id="admin-filter-category" onchange="app.renderAdminQuestionsList()" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-300 outline-none">
+                        <select id="admin-filter-category" aria-label="Lọc câu hỏi theo bài học" onchange="app.renderAdminQuestionsList()" class="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-300 outline-none">
                             <option value="all">Tất cả bài học</option>
                         </select>
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <button onclick="app.openSmartImporter()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md">
+                        <button type="button" onclick="app.openSmartImporter()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md">
                             <i class="fa-solid fa-file-import"></i> Nạp Đề Word/Excel
                         </button>
-                        <button onclick="app.seedCurrentSubjectToCloud()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Lưu đề môn này lên Supabase Cloud">
+                        <button type="button" onclick="app.seedCurrentSubjectToCloud()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Lưu đề môn này lên Supabase Cloud">
                             <i class="fa-solid fa-cloud-arrow-up"></i> Lưu Lên Cloud
                         </button>
-                        <button onclick="app.openNewQuestionModal()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.openNewQuestionModal()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-plus"></i> Thêm Câu Hỏi
                         </button>
-                        <button onclick="app.clearSubjectQuestions()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Xóa toàn bộ câu hỏi môn này">
+                        <button type="button" onclick="app.clearSubjectQuestions()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Xóa toàn bộ câu hỏi môn này">
                             <i class="fa-solid fa-trash-can"></i> Xóa Hết Đề Môn Này
                         </button>
                     </div>
@@ -898,10 +876,10 @@
                         <p class="text-xs font-semibold text-slate-200">Giám Sát Thí Sinh Thời Gian Thực & Phân Quyền:</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="app.renderAdminStudentsList()" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.renderAdminStudentsList()" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-rotate"></i> Làm mới
                         </button>
-                        <button onclick="app.adminClearAllLogins()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.adminClearAllLogins()" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-trash-can"></i> Xóa hết lịch sử
                         </button>
                     </div>
@@ -919,7 +897,7 @@
                     <div class="flex flex-col sm:flex-row gap-2">
                         <input type="text" id="admin-notice-input" maxlength="160" placeholder="Ví dụ: Còn 10 phút nữa hết giờ làm bài! / Giữ trật tự nghiêm túc..." 
                             class="flex-1 px-3.5 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 font-medium placeholder-slate-500 transition">
-                        <button onclick="app.adminBroadcastNotice()" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                        <button type="button" onclick="app.adminBroadcastNotice()" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
                             <i class="fa-solid fa-paper-plane"></i>
                             <span>Gửi Toàn Phòng</span>
                         </button>
@@ -927,10 +905,10 @@
                     <!-- Mẫu tin nhắn nhanh có sẵn -->
                     <div class="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800 text-[11px]">
                         <span class="text-slate-500 text-[10px] mr-1">Mẫu nhanh:</span>
-                        <button onclick="app.adminQuickNotice('Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-200 border border-slate-700 transition cursor-pointer">⏳ Còn 10 phút</button>
-                        <button onclick="app.adminQuickNotice('Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition cursor-pointer">⚠️ Còn 5 phút</button>
-                        <button onclick="app.adminQuickNotice('Các em tập trung làm bài, nghiêm túc, không trao đổi!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700 transition cursor-pointer">🤫 Nghiêm túc</button>
-                        <button onclick="app.adminQuickNotice('Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-200 border border-slate-700 transition cursor-pointer">🛑 Hết giờ - Nộp bài</button>
+                        <button type="button" onclick="app.adminQuickNotice('Còn 10 phút nữa hết giờ làm bài, các em chú ý rà soát lại nhé!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-200 border border-slate-700 transition cursor-pointer">⏳ Còn 10 phút</button>
+                        <button type="button" onclick="app.adminQuickNotice('Còn 5 phút cuối, các em hoàn thành và chuẩn bị nộp bài!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition cursor-pointer">⚠️ Còn 5 phút</button>
+                        <button type="button" onclick="app.adminQuickNotice('Các em tập trung làm bài, nghiêm túc, không trao đổi!')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700 transition cursor-pointer">🤫 Nghiêm túc</button>
+                        <button type="button" onclick="app.adminQuickNotice('Hết giờ làm bài! Tất cả các em bấm nút Nộp Bài ngay lập tức.')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-200 border border-slate-700 transition cursor-pointer">🛑 Hết giờ - Nộp bài</button>
                     </div>
                 </div>
 
@@ -943,7 +921,7 @@
                     <div class="flex items-center gap-2 flex-1 max-w-md">
                         <input type="text" id="admin-ban-ip-input" placeholder="Dán hoặc nhập địa chỉ IP cần chặn..." 
                             class="flex-1 px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white outline-none font-mono focus:border-rose-500">
-                        <button onclick="app.adminBanManualIp()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer shrink-0">
+                        <button type="button" onclick="app.adminBanManualIp()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer shrink-0">
                             <i class="fa-solid fa-ban"></i> Chặn Liền
                         </button>
                     </div>
@@ -956,7 +934,7 @@
                             <i class="fa-solid fa-shield-halved text-rose-400"></i>
                             <span>Danh Sách Địa Chỉ IP Đang Bị Chặn (<span id="admin-banned-ips-count" class="text-rose-400 font-bold font-mono">0</span> IP):</span>
                         </div>
-                        <button onclick="app.loadBannedIpsList().then(() => app.renderAdminBannedIpsList())" class="text-slate-400 hover:text-white text-xs flex items-center gap-1 transition cursor-pointer">
+                        <button type="button" onclick="app.loadBannedIpsList().then(() => app.renderAdminBannedIpsList())" class="text-slate-400 hover:text-white text-xs flex items-center gap-1 transition cursor-pointer">
                             <i class="fa-solid fa-rotate"></i> Làm mới
                         </button>
                     </div>
@@ -1013,7 +991,7 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                        <button onclick="app.adminSaveCurrentIpAsMaster()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <button type="button" onclick="app.adminSaveCurrentIpAsMaster()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                             <i class="fa-solid fa-star"></i>
                             <span>Lưu IP Máy Này Làm Master Admin</span>
                         </button>
@@ -1042,7 +1020,7 @@
                                 class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-amber-400">
                         </div>
                         <div class="sm:col-span-2">
-                            <button onclick="app.adminAddManualAdminIp()" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
+                            <button type="button" onclick="app.adminAddManualAdminIp()" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
                                 <i class="fa-solid fa-check"></i>
                                 <span>Cấp Quyền</span>
                             </button>
@@ -1088,7 +1066,7 @@
                                 class="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-purple-400">
                         </div>
                         <div class="sm:col-span-2">
-                            <button onclick="app.adminAddManualAiIp()" class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
+                            <button type="button" onclick="app.adminAddManualAiIp()" class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1 cursor-pointer">
                                 <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
                                 <span>Cấp Quyền</span>
                             </button>
@@ -1112,7 +1090,7 @@
                         </h3>
                         <p class="text-[11px] text-slate-400 mt-0.5">Thêm, sửa, đổi màu, thay icon và thiết lập chế độ Công khai / Riêng tư theo từng môn</p>
                     </div>
-                    <button onclick="app.openSubjectEditor()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="app.openSubjectEditor()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer">
                         <i class="fa-solid fa-plus"></i> + Thêm Môn Học Mới
                     </button>
                 </div>
@@ -1137,7 +1115,7 @@
                                 Xuất toàn bộ danh sách kết quả làm bài của học sinh (Tên, IP, Môn thi, Điểm số, Tỉ lệ đúng, Thời gian làm bài, Ngày thi) ra tệp Excel chuẩn bằng SheetJS.
                             </p>
                         </div>
-                        <button onclick="app.adminExportScoreboardExcel()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.adminExportScoreboardExcel()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-download"></i> Tải Bảng Điểm Excel (.xlsx)
                         </button>
                     </div>
@@ -1153,7 +1131,7 @@
                                 Xem bảng vinh danh những thí sinh có điểm cao nhất và thời gian hoàn thành nhanh nhất theo từng môn học, với hiệu ứng cúp Vàng, Bạc, Đồng.
                             </p>
                         </div>
-                        <button onclick="app.openLeaderboardModal()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.openLeaderboardModal()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-award"></i> Mở Bảng Top 10
                         </button>
                     </div>
@@ -1169,7 +1147,7 @@
                                 Tải về toàn bộ cấu hình hệ thống, danh sách môn học, câu hỏi và dữ liệu thí sinh ra file JSON để lưu trữ an toàn trước khi dọn dẹp.
                             </p>
                         </div>
-                        <button onclick="app.adminExportFullBackupJson()" class="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.adminExportFullBackupJson()" class="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-cloud-arrow-down"></i> Tải File Backup JSON
                         </button>
                     </div>
@@ -1185,7 +1163,7 @@
                                 Tự động sao lưu và xóa sạch bảng điểm của kỳ thi trước, giữ nguyên cấu hình IP Admin, môn học và ngân hàng đề thi sẵn sàng cho kỳ thi mới.
                             </p>
                         </div>
-                        <button onclick="app.adminArchiveAndClearExam()" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                        <button type="button" onclick="app.adminArchiveAndClearExam()" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
                             <i class="fa-solid fa-trash-can"></i> Dọn Dẹp Kỳ Thi Cũ
                         </button>
                     </div>
@@ -1209,7 +1187,7 @@
                         <p class="text-[11px] text-slate-400">Dán trực tiếp văn bản Word hoặc tải tệp Excel lên để hệ thống tự động bóc tách câu hỏi</p>
                     </div>
                 </div>
-                <button onclick="app.closeSmartImporter()" class="text-slate-400 hover:text-white cursor-pointer p-1">
+                <button type="button" onclick="app.closeSmartImporter()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer p-1">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
@@ -1219,12 +1197,12 @@
                 <div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
                     <div class="flex items-center gap-2">
                         <label class="font-bold text-white uppercase text-[11px]">Nạp Đề Cho Môn:</label>
-                        <select id="importer-subject-select" class="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-amber-300 font-bold outline-none">
+                        <select id="importer-subject-select" aria-label="Chọn môn học đích để nạp đề" class="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-amber-300 font-bold outline-none">
                             <!-- Render bởi app.js -->
                         </select>
                     </div>
                     <label class="flex items-center gap-2 cursor-pointer select-none text-slate-300">
-                        <input type="checkbox" id="importer-replace-checkbox" class="accent-indigo-500 rounded">
+                        <input type="checkbox" id="importer-replace-checkbox" aria-label="Xóa câu hỏi cũ của môn này trước khi lưu" class="accent-indigo-500 rounded">
                         <span class="text-[11px] font-semibold text-rose-300">Xóa hết câu hỏi cũ của môn này trước khi lưu</span>
                     </label>
                 </div>
@@ -1237,7 +1215,7 @@
                             <label class="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
                                 <i class="fa-solid fa-paste text-indigo-400"></i> Dán Văn Bản Đề Thi (Từ Word):
                             </label>
-                            <button onclick="app.importerInsertSampleText()" class="text-[11px] text-indigo-400 hover:underline">Chèn đề mẫu</button>
+                            <button type="button" onclick="app.importerInsertSampleText()" class="text-[11px] text-indigo-400 hover:underline">Chèn đề mẫu</button>
                         </div>
                         <textarea id="importer-text-input" rows="11" placeholder="Dán nội dung đề thi từ Word vào đây...
 Ví dụ:
@@ -1284,7 +1262,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
                         <!-- NÚT BÓC TÁCH ĐỀ THI TỰ ĐỘNG -->
                         <div>
-                            <button id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
+                            <button type="button" id="btn-importer-parse-regex" onclick="app.parseImporterInput()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
                                 <i class="fa-solid fa-bolt text-amber-300"></i>
                                 <span>Phân Tích & Bóc Tách Đề Thi Tự Động</span>
                             </button>
@@ -1325,8 +1303,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
             <!-- Footer Modal -->
             <div class="p-4 bg-slate-800/90 border-t border-slate-700 flex items-center justify-between shrink-0">
-                <button onclick="app.closeSmartImporter()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy bỏ</button>
-                <button id="btn-importer-save" onclick="app.saveParsedQuestionsToSubject()" class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="button" onclick="app.closeSmartImporter()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy bỏ</button>
+                <button type="button" id="btn-importer-save" onclick="app.saveParsedQuestionsToSubject()" class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                     <i class="fa-solid fa-floppy-disk"></i>
                     <span>Lưu Vào Cơ Sở Dữ Liệu Ngay</span>
                 </button>
@@ -1344,7 +1322,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <i class="fa-solid fa-layer-group text-emerald-400"></i>
                     <span id="subject-editor-title">Thêm Môn Học Mới</span>
                 </h3>
-                <button onclick="app.closeSubjectEditor()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
+                <button type="button" onclick="app.closeSubjectEditor()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1364,7 +1342,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">Kỳ Thi / Đợt Kiểm Tra <span class="text-emerald-400">*</span></label>
-                        <select id="edit-sub-semester-select" onchange="app.onSemesterSelectChange(this.value)" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
+                        <select id="edit-sub-semester-select" aria-label="Chọn kỳ thi hoặc đợt kiểm tra" onchange="app.onSemesterSelectChange(this.value)" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
                             <option value="Giữa Kì 1">📚 Giữa Kì 1</option>
                             <option value="Cuối Kì 1">🎯 Cuối Kì 1</option>
                             <option value="Giữa Kì 2">📚 Giữa Kì 2</option>
@@ -1383,7 +1361,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">Biểu Tượng (FontAwesome)</label>
-                        <select id="edit-sub-icon" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none">
+                        <select id="edit-sub-icon" aria-label="Chọn biểu tượng môn học" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none">
                             <option value="fa-book">📚 Sách Giáo Khoa (fa-book)</option>
                             <option value="fa-landmark">🏛️ Lịch Sử (fa-landmark)</option>
                             <option value="fa-atom">⚛️ Vật Lí (fa-atom)</option>
@@ -1399,7 +1377,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">Tông Màu Gradient</label>
-                        <select id="edit-sub-gradient" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none">
+                        <select id="edit-sub-gradient" aria-label="Chọn tông màu gradient" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none">
                             <option value="indigo">Xanh Indigo Hiện Đại</option>
                             <option value="purple">Tím Vũ Trụ (Purple)</option>
                             <option value="emerald">Xanh Ngọc Lục Bảo (Emerald)</option>
@@ -1412,7 +1390,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">Khối Lớp <span class="text-emerald-400">*</span></label>
-                    <select id="edit-sub-grade" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
+                    <select id="edit-sub-grade" aria-label="Chọn khối lớp" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-emerald-400">
                         <option value="5">Lớp 5</option>
                         <option value="11">Lớp 11</option>
                     </select>
@@ -1441,8 +1419,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             </div>
 
             <div class="pt-2 flex justify-end gap-2 border-t border-slate-800">
-                <button onclick="app.closeSubjectEditor()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy</button>
-                <button onclick="app.saveSubjectFromEditor()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition cursor-pointer">
+                <button type="button" onclick="app.closeSubjectEditor()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold cursor-pointer">Hủy</button>
+                <button type="button" onclick="app.saveSubjectFromEditor()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition cursor-pointer">
                     Lưu Môn Học
                 </button>
             </div>
@@ -1464,7 +1442,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-amber-300/80">Xếp hạng theo điểm số cao nhất và thời gian hoàn thành sớm nhất</p>
                     </div>
                 </div>
-                <button onclick="app.closeLeaderboardModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer p-1">
+                <button type="button" onclick="app.closeLeaderboardModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer p-1">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
@@ -1473,7 +1451,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <!-- Bộ lọc môn học -->
                 <div class="flex items-center justify-between gap-3">
                     <label class="font-bold text-slate-300 text-xs">Xem Top 10 Theo Môn:</label>
-                    <select id="leaderboard-subject-select" onchange="app.renderLeaderboard(this.value)" class="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-amber-300 font-bold outline-none">
+                    <select id="leaderboard-subject-select" aria-label="Chọn môn học xem bảng xếp hạng" onchange="app.renderLeaderboard(this.value)" class="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-amber-300 font-bold outline-none">
                         <!-- Render bởi app.js -->
                     </select>
                 </div>
@@ -1507,7 +1485,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             </div>
 
             <div class="p-3 bg-slate-800/90 border-t border-slate-700 flex justify-end shrink-0">
-                <button onclick="app.closeLeaderboardModal()" class="px-5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs cursor-pointer">
+                <button type="button" onclick="app.closeLeaderboardModal()" class="px-5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs cursor-pointer">
                     Đóng
                 </button>
             </div>
@@ -1526,9 +1504,9 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         Đang sửa Câu 1
                     </span>
                     <input type="text" id="edit-q-category" placeholder="Bài 1: Cân bằng hoá học" class="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs outline-none focus:border-emerald-500 transition">
-                    <select id="edit-q-subject" class="hidden"></select>
+                    <select id="edit-q-subject" aria-label="Môn học của câu hỏi" class="hidden"></select>
                 </div>
-                <button onclick="app.closeQuestionEditor()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button type="button" onclick="app.closeQuestionEditor()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
@@ -1594,8 +1572,8 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
 
             <!-- Footer Modal -->
             <div class="p-4 bg-slate-950/80 border-t border-slate-800 flex justify-end gap-2.5 shrink-0">
-                <button onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Hủy</button>
-                <button onclick="app.saveQuestionFromEditor()" class="px-6 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer">
+                <button type="button" onclick="app.closeQuestionEditor()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Hủy</button>
+                <button type="button" onclick="app.saveQuestionFromEditor()" class="px-6 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer">
                     <span>Lưu thay đổi</span>
                 </button>
             </div>
@@ -1614,7 +1592,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                     <h3 class="font-heading font-bold text-white text-base">Cấu Hình Supabase Cloud</h3>
                     <div id="supabase-modal-status-badge"></div>
                 </div>
-                <button onclick="app.closeSettingsModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
+                <button type="button" onclick="app.closeSettingsModal()" aria-label="Đóng" class="text-slate-400 hover:text-white cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1635,13 +1613,13 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
-                    <button onclick="app.clearSupabaseConfig()" class="text-rose-400 hover:text-rose-300 hover:underline cursor-pointer flex items-center gap-1" title="Khôi phục thông số kết nối mặc định của hệ thống">
+                    <button type="button" onclick="app.clearSupabaseConfig()" class="text-rose-400 hover:text-rose-300 hover:underline cursor-pointer flex items-center gap-1" title="Khôi phục thông số kết nối mặc định của hệ thống">
                         <i class="fa-solid fa-arrow-rotate-left text-[10px]"></i>
                         <span>Khôi phục mặc định</span>
                     </button>
                     <div class="flex gap-2">
-                        <button onclick="app.closeSettingsModal()" class="px-3 py-1.5 text-slate-400 hover:text-white cursor-pointer">Đóng</button>
-                        <button onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
+                        <button type="button" onclick="app.closeSettingsModal()" class="px-3 py-1.5 text-slate-400 hover:text-white cursor-pointer">Đóng</button>
+                        <button type="button" onclick="app.saveSupabaseConfig()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow cursor-pointer">Lưu cấu hình</button>
                     </div>
                 </div>
             </div>
@@ -1663,7 +1641,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-emerald-400">4 câu tự luận trọng tâm - Giữa Kì 1 (Có thể học thuộc ngay)</p>
                     </div>
                 </div>
-                <button onclick="app.closeGeographyEssayModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition">
+                <button type="button" onclick="app.closeGeographyEssayModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1671,7 +1649,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <!-- Nội dung 4 câu tự luận render tự động từ geography_questions.js -->
             </div>
             <div class="p-3 bg-slate-800/80 border-t border-slate-700 flex justify-end">
-                <button onclick="app.closeGeographyEssayModal()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition cursor-pointer">
+                <button type="button" onclick="app.closeGeographyEssayModal()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition cursor-pointer">
                     Đã hiểu, quay lại làm trắc nghiệm
                 </button>
             </div>
@@ -1693,7 +1671,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-slate-400">Gửi mã xác thực cho Admin để mở khóa đề nâng cao</p>
                     </div>
                 </div>
-                <button onclick="app.closeTokenModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button type="button" onclick="app.closeTokenModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1725,7 +1703,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <i class="fa-solid fa-circle-check text-emerald-400"></i>
                         <span>Đã kích hoạt thành công</span>
                     </span>
-                    <button onclick="app.removeToken()" class="text-rose-400 hover:text-rose-300 text-[11px] font-semibold underline cursor-pointer">
+                    <button type="button" onclick="app.removeToken()" class="text-rose-400 hover:text-rose-300 text-[11px] font-semibold underline cursor-pointer">
                         Gỡ mã này
                     </button>
                 </div>
@@ -1779,7 +1757,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-purple-300">Đồng bộ đám mây • Cấp khóa API dùng chung cho toàn bộ học sinh</p>
                     </div>
                 </div>
-                <button onclick="app.closeAiSettingsModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button type="button" onclick="app.closeAiSettingsModal()" aria-label="Đóng" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1792,7 +1770,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 <!-- CHỌN LOẠI NHÀ CUNG CẤP AI -->
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">Nhà Cung Cấp AI:</label>
-                    <select id="ai-provider-select" onchange="app.toggleAiProviderFields()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none text-xs focus:border-purple-500 transition cursor-pointer">
+                    <select id="ai-provider-select" aria-label="Chọn nhà cung cấp AI" onchange="app.toggleAiProviderFields()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none text-xs focus:border-purple-500 transition cursor-pointer">
                         <option value="gemini">Google Gemini (Mặc định - Nhanh, Miễn phí)</option>
                         <option value="openai_compatible">Chuẩn OpenAI / DeepSeek / Custom (/v1/chat/completions)</option>
                     </select>
@@ -1830,12 +1808,12 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
 
                 <div class="pt-3 flex items-center justify-between border-t border-slate-700/60">
-                    <button onclick="app.clearAiApiKey()" class="text-rose-400 hover:text-rose-300 transition text-xs font-semibold cursor-pointer">
+                    <button type="button" onclick="app.clearAiApiKey()" class="text-rose-400 hover:text-rose-300 transition text-xs font-semibold cursor-pointer">
                         <i class="fa-solid fa-trash-can mr-1"></i> Xóa Key
                     </button>
                     <div class="flex gap-2">
-                        <button onclick="app.closeAiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Đóng</button>
-                        <button onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu & Chia Sẻ Toàn Hệ Thống</button>
+                        <button type="button" onclick="app.closeAiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer">Đóng</button>
+                        <button type="button" onclick="app.saveAiApiKey()" class="btn-3d btn-3d-indigo px-4 py-1.5 rounded-xl text-white font-bold text-xs transition cursor-pointer">Lưu & Chia Sẻ Toàn Hệ Thống</button>
                     </div>
                 </div>
             </div>
@@ -1857,7 +1835,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                         <p class="text-[11px] text-cyan-300">Lưu lại tối đa 8 bài thi gần nhất trên thiết bị này</p>
                     </div>
                 </div>
-                <button onclick="app.closeMyHistoryModal()" aria-label="Đóng" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
+                <button type="button" onclick="app.closeMyHistoryModal()" aria-label="Đóng" class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -1900,10 +1878,10 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
             </div>
 
             <div class="p-3.5 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between shrink-0">
-                <button onclick="app.clearPersonalHistory()" class="px-3.5 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition cursor-pointer">
+                <button type="button" onclick="app.clearPersonalHistory()" class="px-3.5 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition cursor-pointer">
                     <i class="fa-solid fa-trash-can mr-1"></i> Xóa Lịch Sử
                 </button>
-                <button onclick="app.closeMyHistoryModal()" class="btn-3d btn-3d-slate px-5 py-2 rounded-xl text-slate-200 font-bold text-xs cursor-pointer">
+                <button type="button" onclick="app.closeMyHistoryModal()" class="btn-3d btn-3d-slate px-5 py-2 rounded-xl text-slate-200 font-bold text-xs cursor-pointer">
                     Đóng
                 </button>
             </div>
@@ -1941,7 +1919,7 @@ Giải thích: Hà Nội là thủ đô của nước CHXHCN Việt Nam." class=
                 </div>
                 <div id="custom-confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/70 border border-slate-800/90 rounded-2xl p-3.5"></div>
                 <div id="custom-confirm-input-wrap" class="hidden">
-                    <input id="custom-confirm-input" type="text" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white text-xs sm:text-sm focus:outline-none focus:border-amber-400 font-medium" autocomplete="off">
+                    <input id="custom-confirm-input" aria-label="Nhập thông tin xác nhận" type="text" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white text-xs sm:text-sm focus:outline-none focus:border-amber-400 font-medium" autocomplete="off">
                 </div>
                 <div class="flex items-center justify-end gap-2.5 pt-1">
                     <button type="button" id="custom-confirm-cancel-btn" class="btn-3d btn-3d-slate px-4 py-2.5 rounded-xl text-slate-200 font-heading font-bold text-xs sm:text-sm transition cursor-pointer">

@@ -366,6 +366,112 @@ class DatabaseService {
         return new Date(Date.now() + (this.serverClockOffsetMs || 0)).toISOString();
     }
 
+    _isMissingRpcError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').trim();
+        if (code === 'PGRST202' || code === '42883') return true;
+        const msg = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+        return /Could not find the function|function .* does not exist/i.test(msg);
+    }
+
+    getAdminSessionToken() {
+        try {
+            return sessionStorage.getItem('quiz_admin_session_token')
+                || localStorage.getItem('quiz_admin_session_token')
+                || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    setAdminSessionToken(token) {
+        const clean = String(token || '').trim();
+        try {
+            if (clean) {
+                sessionStorage.setItem('quiz_admin_session_token', clean);
+                localStorage.setItem('quiz_admin_session_token', clean);
+            } else {
+                sessionStorage.removeItem('quiz_admin_session_token');
+                localStorage.removeItem('quiz_admin_session_token');
+            }
+        } catch (e) {}
+    }
+
+    async verifyAdminLogin(credentialsOrPassword, clientIp = '') {
+        const opts = (credentialsOrPassword && typeof credentialsOrPassword === 'object')
+            ? credentialsOrPassword
+            : { password: credentialsOrPassword, ip: clientIp };
+        const p_password = opts.password ? String(opts.password) : null;
+        const p_admin_token = opts.token || opts.adminToken || this.getAdminSessionToken() || null;
+        const p_ip = String(opts.ip || clientIp || '').trim();
+
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data, error } = await this.client.rpc('admin_verify_login', {
+                    p_password,
+                    p_admin_token,
+                    p_ip
+                });
+                if (!error && data) {
+                    if (data.valid && data.token) {
+                        this.setAdminSessionToken(data.token);
+                    }
+                    return {
+                        valid: Boolean(data.valid),
+                        token: data.token || '',
+                        expiresAt: data.expires_at || null,
+                        label: data.label || 'Admin',
+                        error: data.error || ''
+                    };
+                }
+                if (error && !this._isMissingRpcError(error)) {
+                    return { valid: false, error: error.message || 'Xác thực quản trị thất bại.' };
+                }
+            } catch (err) {
+                return { valid: false, error: err?.message || 'Lỗi kết nối xác thực quản trị.' };
+            }
+        }
+
+        // Fallback cho môi trường chưa chạy supabase_security_migration.sql (chỉ kiểm tra IP / token)
+        if (p_ip) {
+            const isIpAdmin = await this.checkIsAdminIp(p_ip);
+            if (isIpAdmin) return { valid: true, token: p_admin_token || '', label: 'IP Admin' };
+        }
+        if (p_admin_token) {
+            const matched = await this.verifyAccessToken(p_admin_token, p_ip);
+            if (matched && matched.role === 'admin') {
+                return { valid: true, token: p_admin_token, label: 'Token Admin' };
+            }
+        }
+        return { valid: false, error: 'Chưa chạy supabase_security_migration.sql hoặc thông tin đăng nhập không hợp lệ.' };
+    }
+
+    async logoutAdmin() {
+        const token = this.getAdminSessionToken();
+        this.setAdminSessionToken('');
+        if (this.isSupabaseActive && this.client && token) {
+            try {
+                await this.client.rpc('admin_logout', { p_admin_token: token });
+            } catch (e) {}
+        }
+    }
+
+    async callGeminiProxy(payload, options = {}) {
+        const endpoint = options.endpoint
+            || (typeof window !== 'undefined' && window.__QUIZ_CONFIG__?.geminiProxyUrl)
+            || '/api/gemini';
+        const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {})
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            throw new Error(data?.error || `Gemini proxy error (${resp.status})`);
+        }
+        return data;
+    }
+
     saveConfig(url, anonKey) {
         if (!url || !anonKey) {
             throw new Error("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
@@ -593,17 +699,23 @@ class DatabaseService {
                     const nextSummary = (scoreSummary && /điểm/i.test(scoreSummary))
                         ? scoreSummary
                         : (existingScored?.score_summary || scoreSummary || targetRow.score_summary || '');
-                    const { error: updateError } = await this.client
-                        .from('quiz_logins')
-                        .update({
-                            player_name: cleanName,
-                            ip_address: cleanIp,
-                            device_info: cleanDevice,
-                            status: nextStatus,
-                            score_summary: nextSummary,
-                            last_active: nowIso
-                        })
-                        .eq('id', targetRow.id);
+                    const updatePayload = {
+                        player_name: cleanName,
+                        ip_address: cleanIp,
+                        device_info: cleanDevice,
+                        status: nextStatus,
+                        score_summary: nextSummary,
+                        last_active: nowIso
+                    };
+                    if (!this._isColumnMissing('quiz_logins', 'session_id') && record.session_id) {
+                        updatePayload.session_id = record.session_id;
+                    }
+                    const { error: updateError } = await this._executeWriteWithSchemaFallback(
+                        'quiz_logins',
+                        OPTIONAL_LOGIN_COLUMNS,
+                        (candidate) => this.client.from('quiz_logins').update(candidate).eq('id', targetRow.id),
+                        updatePayload
+                    );
 
                     // Chỉ xóa các dòng hiện diện trùng lặp (không phải bài thi) của thiết bị này
                     if (sameDeviceRows.length > 1) {
@@ -618,7 +730,7 @@ class DatabaseService {
                     }
 
                     if (!updateError) {
-                        const resObj = { id: targetRow.id, success: true };
+                        const resObj = { id: targetRow.id, sessionId: record.session_id, attemptId: record.session_id, success: true };
                         resObj.toString = () => targetRow.id;
                         return resObj;
                     }
@@ -639,12 +751,28 @@ class DatabaseService {
                 if (!this._isColumnMissing('quiz_logins', 'session_id') && record.session_id) {
                     payload.session_id = record.session_id;
                 }
-                const { data: inserted, error } = await this._executeWriteWithSchemaFallback(
+                let { data: inserted, error } = await this._executeWriteWithSchemaFallback(
                     'quiz_logins',
                     OPTIONAL_LOGIN_COLUMNS,
                     (candidate) => this.client.from('quiz_logins').insert([candidate]).select('id'),
                     payload
                 );
+
+                if (error) {
+                    const { data: rpcId, error: rpcErr } = await this.client.rpc('student_record_login', {
+                        p_id: cloudId,
+                        p_player_name: cleanName,
+                        p_ip_address: cleanIp,
+                        p_device_info: cleanDevice,
+                        p_status: status,
+                        p_score_summary: scoreSummary,
+                        p_session_id: record.session_id || null
+                    });
+                    if (!rpcErr && rpcId) {
+                        inserted = [{ id: rpcId }];
+                        error = null;
+                    }
+                }
 
                 if (error && /policy|permission|not allowed/i.test(error.message || '')) {
                     console.warn('[DatabaseService] Supabase từ chối ghi phiên, không dùng fallback giả online.');
@@ -660,7 +788,7 @@ class DatabaseService {
                             localStorage.setItem(STORAGE_KEYS.LOCAL_LOGINS, JSON.stringify(localMirror));
                         }
                     } catch (e) {}
-                    const resObj = { id: finalId, success: true };
+                    const resObj = { id: finalId, sessionId: record.session_id, attemptId: record.session_id, success: true };
                     resObj.toString = () => finalId;
                     return resObj;
                 }
@@ -959,7 +1087,10 @@ class DatabaseService {
         const excludeSystem = opts.excludeSystem !== undefined ? Boolean(opts.excludeSystem) : true;
         const excludeAdmin = Boolean(opts.excludeAdmin);
         const ascending = Boolean(opts.ascending);
-        const selectCols = String(opts.select || 'id, player_name, ip_address, device_info, status, score_summary, last_active, created_at');
+        const defaultSelectCols = this._isColumnMissing('quiz_logins', 'session_id')
+            ? 'id, player_name, ip_address, device_info, status, score_summary, last_active, created_at'
+            : 'id, player_name, ip_address, device_info, status, score_summary, session_id, last_active, created_at';
+        let selectCols = String(opts.select || defaultSelectCols);
         const shouldPaginate = Boolean(opts.paginate || excludeVisitors || isUncapped || maxRows > 1000);
         const pageSize = Math.min(1000, Math.max(1, Math.floor(Number(opts.pageSize) || 1000)));
 
@@ -993,7 +1124,9 @@ class DatabaseService {
                     ip_address: item.ip_address || item.client_ip || 'Chưa xác định',
                     client_ip: item.ip_address || item.client_ip || 'Chưa xác định',
                     player_name: (item.player_name && item.player_name.trim()) ? item.player_name.trim() : 'Khách truy cập',
-                    device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web'
+                    device_info: (item.device_info && item.device_info !== 'Chưa rõ') ? item.device_info : 'Trình duyệt Web',
+                    session_id: item.session_id || '',
+                    attempt_id: item.attempt_id || item.session_id || ''
                 };
                 if (row.id !== undefined && row.id !== null) {
                     const idKey = String(row.id);
@@ -1017,11 +1150,21 @@ class DatabaseService {
         if (this.isSupabaseActive && this.client) {
             try {
                 if (!shouldPaginate) {
-                    const { data, error } = await this.client
+                    let { data, error } = await this.client
                         .from('quiz_logins')
                         .select(selectCols)
                         .order('last_active', { ascending })
                         .limit(maxRows);
+
+                    if (error && this._isMissingColumnError(error) && /\bsession_id\b/i.test(selectCols)) {
+                        this._markColumnMissing('quiz_logins', 'session_id');
+                        selectCols = selectCols.replace(/,?\s*session_id\b/gi, '');
+                        ({ data, error } = await this.client
+                            .from('quiz_logins')
+                            .select(selectCols)
+                            .order('last_active', { ascending })
+                            .limit(maxRows));
+                    }
 
                     if (!error && Array.isArray(data)) {
                         console.debug('[DatabaseService] Student monitor records loaded:', { count: data.length, dedupeByStudent });
@@ -1039,24 +1182,31 @@ class DatabaseService {
                             ? Math.min(pageSize, Math.max(1, maxRows - collected.length))
                             : pageSize;
 
-                        let query = this.client
-                            .from('quiz_logins')
-                            .select(selectCols);
-                        if (excludeVisitors) {
-                            query = query
-                                .neq('player_name', '')
-                                .neq('player_name', 'Khách truy cập')
-                                .neq('player_name', 'visitor')
-                                .not('player_name', 'like', '\\_\\_%');
-                        } else if (excludeSystem) {
-                            query = query.not('player_name', 'like', '\\_\\_%');
-                        }
-                        query = query
-                            .order('last_active', { ascending })
-                            .order('id', { ascending: true })
-                            .range(offset, offset + batchSize - 1);
+                        const buildPagedQuery = (cols) => {
+                            let q = this.client
+                                .from('quiz_logins')
+                                .select(cols);
+                            if (excludeVisitors) {
+                                q = q
+                                    .neq('player_name', '')
+                                    .neq('player_name', 'Khách truy cập')
+                                    .neq('player_name', 'visitor')
+                                    .not('player_name', 'like', '\\_\\_%');
+                            } else if (excludeSystem) {
+                                q = q.not('player_name', 'like', '\\_\\_%');
+                            }
+                            return q
+                                .order('last_active', { ascending })
+                                .order('id', { ascending: true })
+                                .range(offset, offset + batchSize - 1);
+                        };
 
-                        const { data, error } = await query;
+                        let { data, error } = await buildPagedQuery(selectCols);
+                        if (error && this._isMissingColumnError(error) && /\bsession_id\b/i.test(selectCols)) {
+                            this._markColumnMissing('quiz_logins', 'session_id');
+                            selectCols = selectCols.replace(/,?\s*session_id\b/gi, '');
+                            ({ data, error } = await buildPagedQuery(selectCols));
+                        }
                         if (error) {
                             queryFailed = true;
                             console.warn('[DatabaseService] Paginated student monitor query failed:', {
@@ -1126,8 +1276,20 @@ class DatabaseService {
      */
     async deleteLoginRecord(loginId) {
         if (this.isSupabaseActive && this.client && loginId && !String(loginId).startsWith('local_')) {
-            const { error } = await this.client.from('quiz_logins').delete().eq('id', loginId);
-            if (error) throw new Error(`Không thể xóa lịch sử đăng nhập: ${error.message}`);
+            const adminToken = this.getAdminSessionToken();
+            let handledByRpc = false;
+            if (adminToken) {
+                const { error: rpcErr } = await this.client.rpc('admin_delete_login_record', {
+                    p_admin_token: adminToken,
+                    p_login_id: loginId
+                });
+                if (!rpcErr) handledByRpc = true;
+                else if (!this._isMissingRpcError(rpcErr)) throw new Error(`Không thể xóa lịch sử đăng nhập: ${rpcErr.message}`);
+            }
+            if (!handledByRpc) {
+                const { error } = await this.client.from('quiz_logins').delete().eq('id', loginId);
+                if (error) throw new Error(`Không thể xóa lịch sử đăng nhập: ${error.message}`);
+            }
         }
         let list = this._getLocalLogins();
         list = list.filter(item => item.id !== loginId);
@@ -1139,6 +1301,17 @@ class DatabaseService {
      */
     async clearAllLogins() {
         if (this.isSupabaseActive && this.client) {
+            const adminToken = this.getAdminSessionToken();
+            let handledByRpc = false;
+            if (adminToken) {
+                const { error: rpcErr } = await this.client.rpc('admin_clear_all_logins', {
+                    p_admin_token: adminToken,
+                    p_admin_ips: []
+                });
+                if (!rpcErr) handledByRpc = true;
+                else if (!this._isMissingRpcError(rpcErr)) throw new Error(`Không thể xóa lịch sử đăng nhập: ${rpcErr.message}`);
+            }
+            if (!handledByRpc) {
             const pageSize = 500;
             const rows = [];
             for (let offset = 0; ; offset += pageSize) {
@@ -1165,6 +1338,7 @@ class DatabaseService {
                 const { data: remaining, error: verifyError } = await this.client.from('quiz_logins').select('id').in('id', chunk);
                 if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
                 if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`);
+            }
             }
         }
         localStorage.removeItem(STORAGE_KEYS.LOCAL_LOGINS);
@@ -1305,6 +1479,14 @@ class DatabaseService {
     async getNextQuestionId() {
         let maxId = this._getLocalMaxQuestionId();
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcNext, error: rpcErr } = await this.client.rpc('admin_get_next_question_id');
+                if (!rpcErr && Number.isInteger(Number(rpcNext)) && Number(rpcNext) > 0) {
+                    const nextId = Math.max(maxId + 1, Number(rpcNext));
+                    this._updateMaxQuestionIdCache(nextId);
+                    return nextId;
+                }
+            } catch (e) {}
             try {
                 // Truy vấn tất cả ID (bao gồm cả các câu hỏi đã xóa mềm is_deleted = true)
                 let { data, error } = await this.client
@@ -1718,6 +1900,16 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client && qId) {
             try {
+                const adminToken = this.getAdminSessionToken();
+                if (adminToken) {
+                    const { error: rpcErr } = await this.client.rpc('admin_delete_question', {
+                        p_admin_token: adminToken,
+                        p_question_id: Number(qId),
+                        p_hard: false
+                    });
+                    if (!rpcErr) return true;
+                    if (!this._isMissingRpcError(rpcErr)) throw rpcErr;
+                }
                 const nowIso = this.getNowIso();
                 let { error } = await this.client
                     .from('quiz_questions')
@@ -1817,6 +2009,16 @@ class DatabaseService {
         // 2. Đồng bộ Supabase Cloud
         if (this.isSupabaseActive && this.client) {
             try {
+                const adminToken = this.getAdminSessionToken();
+                if (adminToken) {
+                    const { error: rpcErr } = await this.client.rpc('admin_ban_ip', {
+                        p_admin_token: adminToken,
+                        p_ip: cleanIp,
+                        p_reason: reason
+                    });
+                    if (!rpcErr) return { success: true, ip: cleanIp, reason: reason };
+                    if (!this._isMissingRpcError(rpcErr)) throw rpcErr;
+                }
                 const { data: updated, error: updateErr } = await this.client
                     .from('quiz_logins')
                     .update({ status: banStatus, last_active: nowIso })
@@ -1882,6 +2084,15 @@ class DatabaseService {
         // 2. Cập nhật trên Supabase Cloud
         if (this.isSupabaseActive && this.client) {
             try {
+                const adminToken = this.getAdminSessionToken();
+                if (adminToken) {
+                    const { error: rpcErr } = await this.client.rpc('admin_unban_ip', {
+                        p_admin_token: adminToken,
+                        p_ip: cleanIp
+                    });
+                    if (!rpcErr) return { success: true, ip: cleanIp };
+                    if (!this._isMissingRpcError(rpcErr)) throw rpcErr;
+                }
                 // Phục hồi trạng thái bình thường
                 const { error: updateErr } = await this.client
                     .from('quiz_logins')
@@ -1916,6 +2127,12 @@ class DatabaseService {
         }
 
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcRes, error: rpcErr } = await this.client.rpc('public_check_ip_banned', { p_ip: cleanIp });
+                if (!rpcErr && rpcRes && typeof rpcRes.isBanned === 'boolean') {
+                    return rpcRes;
+                }
+            } catch (e) {}
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
@@ -2053,6 +2270,25 @@ class DatabaseService {
 
         if (this.isSupabaseActive && this.client) {
             try {
+                const adminToken = this.getAdminSessionToken();
+                if (adminToken) {
+                    const { error: rpcErr } = await this.client.rpc('admin_manage_config', {
+                        p_admin_token: adminToken,
+                        p_action: 'broadcast_notice',
+                        p_record_id: null,
+                        p_payload: { id: noticeId, message: cleanMsg, targetIp: cleanTargetIp, targetName: cleanTargetName }
+                    });
+                    if (!rpcErr) {
+                        try {
+                            localStorage.setItem('quiz_latest_system_notice', JSON.stringify({
+                                id: noticeId, message: cleanMsg, targetIp: cleanTargetIp,
+                                targetName: cleanTargetName, timestamp: Date.now()
+                            }));
+                        } catch (e) {}
+                        return { success: true, id: noticeId, message: cleanMsg, targetIp: cleanTargetIp, targetName: cleanTargetName };
+                    }
+                    if (!this._isMissingRpcError(rpcErr)) throw rpcErr;
+                }
                 // Chỉ dọn thông báo cũ của cùng đối tượng nhận (cùng targetIp/targetName hoặc cùng nhóm broadcast),
                 // bảo toàn các thông báo riêng chưa đọc của những học sinh khác.
                 let deleteQuery = this.client
@@ -2109,6 +2345,26 @@ class DatabaseService {
         };
 
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcNotice, error: rpcNoticeErr } = await this.client.rpc('public_get_latest_notice', {
+                    p_ip: validIp,
+                    p_player_name: normPlayer
+                });
+                if (!rpcNoticeErr && rpcNotice && rpcNotice.message) {
+                    const serverTime = new Date(rpcNotice.createdAt || Date.now()).getTime() || Date.now();
+                    return {
+                        id: rpcNotice.id,
+                        message: String(rpcNotice.message || '').trim(),
+                        targetIp: rpcNotice.targetIp,
+                        targetName: rpcNotice.targetName,
+                        createdAt: rpcNotice.createdAt,
+                        timestamp: serverTime
+                    };
+                }
+                if (!rpcNoticeErr && rpcNotice === null) {
+                    return null;
+                }
+            } catch (e) {}
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
@@ -2187,6 +2443,21 @@ class DatabaseService {
         let grade5Ips = [];
 
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcGeo, error: rpcGeoErr } = await this.client.rpc('public_get_geo_config');
+                if (!rpcGeoErr && rpcGeo && typeof rpcGeo === 'object') {
+                    const gMode = rpcGeo.mode === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
+                    const gIps = Array.isArray(rpcGeo.ips) ? rpcGeo.ips : [];
+                    const g5 = (Array.isArray(rpcGeo.grade5Ips) ? rpcGeo.grade5Ips : []).map(ip => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase()).filter(Boolean);
+                    try {
+                        localStorage.setItem(STORAGE_KEYS.GEO_CONFIG_CACHE, JSON.stringify({ mode: gMode, ips: gIps, grade5Ips: g5 }));
+                        localStorage.setItem('quiz_geo_mode', gMode);
+                        localStorage.setItem('quiz_allowed_geo_ips', JSON.stringify(gIps));
+                        localStorage.setItem('quiz_allowed_grade5_ips', JSON.stringify(g5));
+                    } catch (e) {}
+                    return { mode: gMode, ips: gIps, grade5Ips: g5 };
+                }
+            } catch (e) {}
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
@@ -2373,6 +2644,18 @@ class DatabaseService {
         let message = "Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!";
 
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcMaint, error: rpcMaintErr } = await this.client.rpc('public_get_maintenance_status');
+                if (!rpcMaintErr && rpcMaint && typeof rpcMaint.isActive === 'boolean') {
+                    isActive = rpcMaint.isActive;
+                    if (rpcMaint.message) message = rpcMaint.message;
+                    try {
+                        localStorage.setItem(STORAGE_KEYS.MAINTENANCE, isActive ? 'true' : 'false');
+                        localStorage.setItem(STORAGE_KEYS.MAINTENANCE_MSG, message);
+                    } catch (e) {}
+                    return { isActive, message };
+                }
+            } catch (e) {}
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
@@ -2581,6 +2864,15 @@ class DatabaseService {
         let subjects = [];
 
         if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcSubs, error: rpcSubsErr } = await this.client.rpc('public_get_dynamic_subjects');
+                if (!rpcSubsErr && Array.isArray(rpcSubs)) {
+                    try {
+                        localStorage.setItem(STORAGE_KEYS.DYNAMIC_SUBJECTS, JSON.stringify(rpcSubs));
+                    } catch (e) {}
+                    return rpcSubs;
+                }
+            } catch (e) {}
             try {
                 const { data, error } = await this.client
                     .from('quiz_logins')
@@ -3132,6 +3424,17 @@ class DatabaseService {
      * Xác thực nhanh một mã token trên Cloud / Cache (kết hợp theo Token, Mã máy hoặc IP)
      */
     async verifyAccessToken(rawToken, clientIp = '') {
+        if (this.isSupabaseActive && this.client) {
+            try {
+                const { data: rpcTok, error: rpcTokErr } = await this.client.rpc('public_verify_access_token', {
+                    p_token: String(rawToken || ''),
+                    p_ip: String(clientIp || '')
+                });
+                if (!rpcTokErr) {
+                    return rpcTok || null;
+                }
+            } catch (e) {}
+        }
         const tokens = await this.fetchAccessTokens();
         if (!Array.isArray(tokens) || tokens.length === 0) return null;
 
