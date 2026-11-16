@@ -9615,7 +9615,7 @@ window.app = new QuizApp();
 (function initSpaceChalkboard() {
     const canvas = document.getElementById('space-chalk-canvas');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
     const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -9633,21 +9633,35 @@ window.app = new QuizApp();
     const shapes = [
         'atom', 'benzene', 'benzenes', 'glucose', 'testtube', 'cylinder',
         'pyramid', 'plane3d', 'pencil', 'paper', 'cloud', 'piechart',
-        'ruler', 'graph', 'star', 'flask', 'cube', 'cone'
+        'ruler', 'graph', 'star', 'flask', 'cube', 'cone',
+        'dna', 'compass', 'protractor', 'magnet', 'lightbulb', 'circuit',
+        'pendulum', 'spring', 'prism', 'book', 'gradcap', 'venn',
+        'sigma', 'integral'
     ];
 
+    const FRAME_INTERVAL = 1000 / 26;
+    const FORMULA_FONT = 'italic 700 21px "Be Vietnam Pro", system-ui, sans-serif';
     let width = 0;
     let height = 0;
-    let dpr = 1;
     let particles = [];
+    let spriteCache = new Map();
+    let cachedThemeIsLight = null;
+    let rafId = null;
+    let lastFrameTime = 0;
+
+    function getTargetParticleCount() {
+        if (width >= 1024) return 105;
+        if (width >= 640) return 65;
+        return 45;
+    }
 
     function createParticles() {
-        const count = width < 640 ? 30 : 54;
+        const count = getTargetParticleCount();
         particles = [];
         for (let i = 0; i < count; i++) {
             const isFormula = i % 2 === 0;
             const angle = Math.random() * Math.PI * 2;
-            const speed = 0.16 + Math.random() * 0.34;
+            const speed = 0.2 + Math.random() * 0.42;
             particles.push({
                 kind: isFormula ? 'formula' : 'shape',
                 text: formulas[i % formulas.length],
@@ -9657,8 +9671,8 @@ window.app = new QuizApp();
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 rot: (Math.random() - 0.5) * Math.PI * 2,
-                vRot: (Math.random() - 0.5) * 0.0042,
-                scale: 0.95 + Math.random() * 0.55,
+                vRot: (Math.random() - 0.5) * 0.005,
+                scale: 0.9 + Math.random() * 0.55,
                 alpha: 0.2 + Math.random() * 0.26,
                 tint: i % 2 === 0 ? 'cream' : 'sky'
             });
@@ -9666,233 +9680,419 @@ window.app = new QuizApp();
     }
 
     function resize() {
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
         width = window.innerWidth;
         height = window.innerHeight;
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (!particles.length) createParticles();
+        // Cap dpr = 1 for background chalk to cut GPU fill-rate by up to 4x on HiDPI
+        canvas.width = Math.max(1, Math.floor(width));
+        canvas.height = Math.max(1, Math.floor(height));
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const targetCount = getTargetParticleCount();
+        if (!particles.length || particles.length !== targetCount) {
+            createParticles();
+        }
     }
 
-    function drawHexagon(cx, cy, r) {
-        ctx.beginPath();
+    function drawHexagon(sCtx, cx, cy, r) {
+        sCtx.beginPath();
         for (let k = 0; k < 6; k++) {
             const ang = (k * Math.PI) / 3;
             const px = cx + Math.cos(ang) * r;
             const py = cy + Math.sin(ang) * r;
-            if (k === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+            if (k === 0) sCtx.moveTo(px, py);
+            else sCtx.lineTo(px, py);
         }
-        ctx.closePath();
-        ctx.stroke();
+        sCtx.closePath();
+        sCtx.stroke();
     }
 
-    function drawShape(type) {
-        ctx.lineWidth = 2.0;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+    function drawShape(sCtx, type) {
+        sCtx.lineWidth = 2.0;
+        sCtx.lineCap = 'round';
+        sCtx.lineJoin = 'round';
         switch (type) {
             case 'atom':
                 for (let a = 0; a < 3; a++) {
-                    ctx.save();
-                    ctx.rotate((a * Math.PI) / 3);
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, 26, 10, 0, 0, Math.PI * 2);
-                    ctx.stroke();
-                    ctx.restore();
+                    sCtx.save();
+                    sCtx.rotate((a * Math.PI) / 3);
+                    sCtx.beginPath();
+                    sCtx.ellipse(0, 0, 26, 10, 0, 0, Math.PI * 2);
+                    sCtx.stroke();
+                    sCtx.restore();
                 }
-                ctx.beginPath();
-                ctx.arc(0, 0, 4, 0, Math.PI * 2);
-                ctx.fill();
+                sCtx.beginPath();
+                sCtx.arc(0, 0, 4, 0, Math.PI * 2);
+                sCtx.fill();
                 break;
             case 'benzene':
-                drawHexagon(0, 0, 20);
-                ctx.beginPath();
-                ctx.arc(0, 0, 11, 0, Math.PI * 2);
-                ctx.stroke();
+                drawHexagon(sCtx, 0, 0, 20);
+                sCtx.beginPath();
+                sCtx.arc(0, 0, 11, 0, Math.PI * 2);
+                sCtx.stroke();
                 break;
             case 'benzenes':
-                drawHexagon(-14, -6, 14);
-                drawHexagon(14, 10, 14);
-                ctx.beginPath();
-                ctx.arc(-14, -6, 7, 0, Math.PI * 2);
-                ctx.moveTo(-2, 1); ctx.lineTo(2, 3);
-                ctx.moveTo(26, 3); ctx.lineTo(34, -2);
-                ctx.stroke();
+                drawHexagon(sCtx, -14, -6, 14);
+                drawHexagon(sCtx, 14, 10, 14);
+                sCtx.beginPath();
+                sCtx.arc(-14, -6, 7, 0, Math.PI * 2);
+                sCtx.moveTo(-2, 1); sCtx.lineTo(2, 3);
+                sCtx.moveTo(26, 3); sCtx.lineTo(34, -2);
+                sCtx.stroke();
                 break;
             case 'glucose':
-                drawHexagon(0, 0, 18);
-                ctx.beginPath();
-                ctx.moveTo(0, -18); ctx.lineTo(0, -28);
-                ctx.moveTo(18, 0); ctx.lineTo(27, -6);
-                ctx.moveTo(10, 16); ctx.lineTo(16, 25);
-                ctx.moveTo(-18, 0); ctx.lineTo(-27, 6);
-                ctx.stroke();
+                drawHexagon(sCtx, 0, 0, 18);
+                sCtx.beginPath();
+                sCtx.moveTo(0, -18); sCtx.lineTo(0, -28);
+                sCtx.moveTo(18, 0); sCtx.lineTo(27, -6);
+                sCtx.moveTo(10, 16); sCtx.lineTo(16, 25);
+                sCtx.moveTo(-18, 0); sCtx.lineTo(-27, 6);
+                sCtx.stroke();
                 break;
             case 'testtube':
-                ctx.beginPath();
-                ctx.moveTo(-8, -24); ctx.lineTo(8, -24);
-                ctx.moveTo(-5, -24); ctx.lineTo(-5, 16);
-                ctx.arc(0, 16, 5, Math.PI, 0, true);
-                ctx.lineTo(5, -24);
-                ctx.moveTo(-5, 2); ctx.lineTo(5, 2);
-                ctx.moveTo(-2, -14); ctx.lineTo(2, -14);
-                ctx.moveTo(-2, -6); ctx.lineTo(2, -6);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-8, -24); sCtx.lineTo(8, -24);
+                sCtx.moveTo(-5, -24); sCtx.lineTo(-5, 16);
+                sCtx.arc(0, 16, 5, Math.PI, 0, true);
+                sCtx.lineTo(5, -24);
+                sCtx.moveTo(-5, 2); sCtx.lineTo(5, 2);
+                sCtx.moveTo(-2, -14); sCtx.lineTo(2, -14);
+                sCtx.moveTo(-2, -6); sCtx.lineTo(2, -6);
+                sCtx.stroke();
                 break;
             case 'cylinder':
-                ctx.beginPath();
-                ctx.ellipse(0, -16, 16, 6, 0, 0, Math.PI * 2);
-                ctx.moveTo(-16, -16); ctx.lineTo(-16, 16);
-                ctx.ellipse(0, 16, 16, 6, 0, 0, Math.PI);
-                ctx.moveTo(16, 16); ctx.lineTo(16, -16);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.ellipse(0, -16, 16, 6, 0, 0, Math.PI * 2);
+                sCtx.moveTo(-16, -16); sCtx.lineTo(-16, 16);
+                sCtx.ellipse(0, 16, 16, 6, 0, 0, Math.PI);
+                sCtx.moveTo(16, 16); sCtx.lineTo(16, -16);
+                sCtx.stroke();
                 break;
             case 'pyramid':
-                ctx.beginPath();
-                ctx.moveTo(0, -22); ctx.lineTo(-20, 16); ctx.lineTo(20, 16); ctx.closePath();
-                ctx.moveTo(0, -22); ctx.lineTo(2, 8); ctx.lineTo(-20, 16);
-                ctx.moveTo(2, 8); ctx.lineTo(20, 16);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(0, -22); sCtx.lineTo(-20, 16); sCtx.lineTo(20, 16); sCtx.closePath();
+                sCtx.moveTo(0, -22); sCtx.lineTo(2, 8); sCtx.lineTo(-20, 16);
+                sCtx.moveTo(2, 8); sCtx.lineTo(20, 16);
+                sCtx.stroke();
                 break;
             case 'plane3d':
-                ctx.beginPath();
-                ctx.moveTo(-24, 12); ctx.lineTo(-12, -10); ctx.lineTo(22, -10); ctx.lineTo(10, 12); ctx.closePath();
-                ctx.moveTo(-2, 1); ctx.lineTo(-2, -24);
-                ctx.moveTo(-2, 1); ctx.lineTo(26, 1);
-                ctx.moveTo(-2, 1); ctx.lineTo(-16, 20);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-24, 12); sCtx.lineTo(-12, -10); sCtx.lineTo(22, -10); sCtx.lineTo(10, 12); sCtx.closePath();
+                sCtx.moveTo(-2, 1); sCtx.lineTo(-2, -24);
+                sCtx.moveTo(-2, 1); sCtx.lineTo(26, 1);
+                sCtx.moveTo(-2, 1); sCtx.lineTo(-16, 20);
+                sCtx.stroke();
                 break;
             case 'pencil':
-                ctx.beginPath();
-                ctx.moveTo(-16, 10); ctx.lineTo(8, -14); ctx.lineTo(16, -6); ctx.lineTo(-8, 18); ctx.lineTo(-20, 22); ctx.closePath();
-                ctx.moveTo(3, -9); ctx.lineTo(11, -1);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-16, 10); sCtx.lineTo(8, -14); sCtx.lineTo(16, -6); sCtx.lineTo(-8, 18); sCtx.lineTo(-20, 22); sCtx.closePath();
+                sCtx.moveTo(3, -9); sCtx.lineTo(11, -1);
+                sCtx.stroke();
                 break;
             case 'paper':
-                ctx.beginPath();
-                ctx.moveTo(-14, -18); ctx.lineTo(12, -22); ctx.lineTo(16, 18); ctx.lineTo(-10, 22); ctx.closePath();
-                ctx.moveTo(-7, -10); ctx.lineTo(7, -12);
-                ctx.moveTo(-6, -2); ctx.lineTo(8, -4);
-                ctx.moveTo(-5, 6); ctx.lineTo(9, 4);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-14, -18); sCtx.lineTo(12, -22); sCtx.lineTo(16, 18); sCtx.lineTo(-10, 22); sCtx.closePath();
+                sCtx.moveTo(-7, -10); sCtx.lineTo(7, -12);
+                sCtx.moveTo(-6, -2); sCtx.lineTo(8, -4);
+                sCtx.moveTo(-5, 6); sCtx.lineTo(9, 4);
+                sCtx.stroke();
                 break;
             case 'cloud':
-                ctx.beginPath();
-                ctx.arc(-10, 2, 9, Math.PI * 0.5, Math.PI * 1.5);
-                ctx.arc(0, -6, 11, Math.PI, 0);
-                ctx.arc(11, 2, 9, Math.PI * 1.5, Math.PI * 0.5);
-                ctx.closePath();
-                ctx.stroke();
-                ctx.font = 'bold 13px "Be Vietnam Pro", sans-serif';
-                ctx.fillText('??', 0, 2);
+                sCtx.beginPath();
+                sCtx.arc(-10, 2, 9, Math.PI * 0.5, Math.PI * 1.5);
+                sCtx.arc(0, -6, 11, Math.PI, 0);
+                sCtx.arc(11, 2, 9, Math.PI * 1.5, Math.PI * 0.5);
+                sCtx.closePath();
+                sCtx.stroke();
+                sCtx.font = 'bold 13px "Be Vietnam Pro", sans-serif';
+                sCtx.textAlign = 'center';
+                sCtx.textBaseline = 'middle';
+                sCtx.fillText('??', 0, 2);
                 break;
             case 'piechart':
-                ctx.beginPath();
-                ctx.arc(0, 0, 18, 0, Math.PI * 2);
-                ctx.moveTo(0, 0); ctx.arc(0, 0, 6, 0, Math.PI * 2);
-                ctx.moveTo(0, -18); ctx.lineTo(0, -6);
-                ctx.moveTo(-15, 9); ctx.lineTo(-5, 3);
-                ctx.moveTo(15, 9); ctx.lineTo(5, 3);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.arc(0, 0, 18, 0, Math.PI * 2);
+                sCtx.moveTo(0, 0); sCtx.arc(0, 0, 6, 0, Math.PI * 2);
+                sCtx.moveTo(0, -18); sCtx.lineTo(0, -6);
+                sCtx.moveTo(-15, 9); sCtx.lineTo(-5, 3);
+                sCtx.moveTo(15, 9); sCtx.lineTo(5, 3);
+                sCtx.stroke();
                 break;
             case 'star':
-                ctx.beginPath();
+                sCtx.beginPath();
                 for (let s = 0; s < 5; s++) {
                     const a1 = (s * 4 * Math.PI) / 5 - Math.PI / 2;
                     const px = Math.cos(a1) * 14;
                     const py = Math.sin(a1) * 14;
-                    if (s === 0) ctx.moveTo(px, py);
-                    else ctx.lineTo(px, py);
+                    if (s === 0) sCtx.moveTo(px, py);
+                    else sCtx.lineTo(px, py);
                 }
-                ctx.closePath();
-                ctx.stroke();
+                sCtx.closePath();
+                sCtx.stroke();
                 break;
             case 'flask':
-                ctx.beginPath();
-                ctx.moveTo(-7, -22); ctx.lineTo(7, -22);
-                ctx.moveTo(-4, -22); ctx.lineTo(-4, -9); ctx.lineTo(-20, 18);
-                ctx.lineTo(20, 18); ctx.lineTo(4, -9); ctx.lineTo(4, -22);
-                ctx.moveTo(-13, 8); ctx.lineTo(13, 8);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-7, -22); sCtx.lineTo(7, -22);
+                sCtx.moveTo(-4, -22); sCtx.lineTo(-4, -9); sCtx.lineTo(-20, 18);
+                sCtx.lineTo(20, 18); sCtx.lineTo(4, -9); sCtx.lineTo(4, -22);
+                sCtx.moveTo(-13, 8); sCtx.lineTo(13, 8);
+                sCtx.stroke();
                 break;
             case 'cube':
-                ctx.strokeRect(-15, -10, 22, 22);
-                ctx.strokeRect(-6, -19, 22, 22);
-                ctx.beginPath();
-                ctx.moveTo(-15, -10); ctx.lineTo(-6, -19);
-                ctx.moveTo(7, -10); ctx.lineTo(16, -19);
-                ctx.moveTo(-15, 12); ctx.lineTo(-6, 3);
-                ctx.moveTo(7, 12); ctx.lineTo(16, 3);
-                ctx.stroke();
+                sCtx.strokeRect(-15, -10, 22, 22);
+                sCtx.strokeRect(-6, -19, 22, 22);
+                sCtx.beginPath();
+                sCtx.moveTo(-15, -10); sCtx.lineTo(-6, -19);
+                sCtx.moveTo(7, -10); sCtx.lineTo(16, -19);
+                sCtx.moveTo(-15, 12); sCtx.lineTo(-6, 3);
+                sCtx.moveTo(7, 12); sCtx.lineTo(16, 3);
+                sCtx.stroke();
                 break;
             case 'cone':
-                ctx.beginPath();
-                ctx.ellipse(0, 14, 18, 6, 0, 0, Math.PI * 2);
-                ctx.moveTo(-18, 14); ctx.lineTo(0, -20); ctx.lineTo(18, 14);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.ellipse(0, 14, 18, 6, 0, 0, Math.PI * 2);
+                sCtx.moveTo(-18, 14); sCtx.lineTo(0, -20); sCtx.lineTo(18, 14);
+                sCtx.stroke();
                 break;
             case 'graph':
-                ctx.beginPath();
-                ctx.moveTo(-20, -18); ctx.lineTo(-20, 18); ctx.lineTo(22, 18);
-                ctx.moveTo(-18, 16); ctx.lineTo(-6, -4); ctx.lineTo(4, 6); ctx.lineTo(18, -14);
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-20, -18); sCtx.lineTo(-20, 18); sCtx.lineTo(22, 18);
+                sCtx.moveTo(-18, 16); sCtx.lineTo(-6, -4); sCtx.lineTo(4, 6); sCtx.lineTo(18, -14);
+                sCtx.stroke();
                 break;
             case 'ruler':
-                ctx.beginPath();
-                ctx.moveTo(-18, 16); ctx.lineTo(18, 16); ctx.lineTo(-18, -18); ctx.closePath();
-                ctx.moveTo(-11, 9); ctx.lineTo(3, 9); ctx.lineTo(-11, -5); ctx.closePath();
-                ctx.stroke();
+                sCtx.beginPath();
+                sCtx.moveTo(-18, 16); sCtx.lineTo(18, 16); sCtx.lineTo(-18, -18); sCtx.closePath();
+                sCtx.moveTo(-11, 9); sCtx.lineTo(3, 9); sCtx.lineTo(-11, -5); sCtx.closePath();
+                sCtx.stroke();
+                break;
+            case 'dna':
+                sCtx.beginPath();
+                for (let y = -22; y <= 22; y += 2) {
+                    const x1 = Math.sin(y * 0.16) * 11;
+                    const x2 = -x1;
+                    if (y === -22) sCtx.moveTo(x1, y);
+                    else sCtx.lineTo(x1, y);
+                    if (y % 8 === 0) {
+                        sCtx.moveTo(x1, y);
+                        sCtx.lineTo(x2, y);
+                        sCtx.moveTo(x1, y);
+                    }
+                }
+                for (let y = -22; y <= 22; y += 2) {
+                    const x2 = -Math.sin(y * 0.16) * 11;
+                    if (y === -22) sCtx.moveTo(x2, y);
+                    else sCtx.lineTo(x2, y);
+                }
+                sCtx.stroke();
+                break;
+            case 'compass':
+                sCtx.beginPath();
+                sCtx.arc(0, -16, 4, 0, Math.PI * 2);
+                sCtx.moveTo(-2, -12); sCtx.lineTo(-13, 18);
+                sCtx.moveTo(2, -12); sCtx.lineTo(13, 18);
+                sCtx.moveTo(-9, 4); sCtx.lineTo(9, 4);
+                sCtx.stroke();
+                break;
+            case 'protractor':
+                sCtx.beginPath();
+                sCtx.arc(0, 10, 22, Math.PI, 0);
+                sCtx.closePath();
+                sCtx.moveTo(-11, 10); sCtx.arc(0, 10, 11, Math.PI, 0);
+                sCtx.moveTo(0, 10); sCtx.lineTo(0, -12);
+                sCtx.moveTo(-11, 0); sCtx.lineTo(-16, -5);
+                sCtx.moveTo(11, 0); sCtx.lineTo(16, -5);
+                sCtx.stroke();
+                break;
+            case 'magnet':
+                sCtx.beginPath();
+                sCtx.arc(0, 4, 15, 0, Math.PI);
+                sCtx.moveTo(-15, 4); sCtx.lineTo(-15, -16); sCtx.lineTo(-8, -16); sCtx.lineTo(-8, 4);
+                sCtx.arc(0, 4, 8, Math.PI, 0, true);
+                sCtx.lineTo(8, -16); sCtx.lineTo(15, -16); sCtx.lineTo(15, 4);
+                sCtx.moveTo(-15, -10); sCtx.lineTo(-8, -10);
+                sCtx.moveTo(8, -10); sCtx.lineTo(15, -10);
+                sCtx.stroke();
+                break;
+            case 'lightbulb':
+                sCtx.beginPath();
+                sCtx.arc(0, -6, 13, Math.PI * 0.75, Math.PI * 0.25);
+                sCtx.lineTo(7, 10); sCtx.lineTo(-7, 10); sCtx.closePath();
+                sCtx.moveTo(-5, 14); sCtx.lineTo(5, 14);
+                sCtx.moveTo(-4, 18); sCtx.lineTo(4, 18);
+                sCtx.moveTo(-4, -5); sCtx.lineTo(0, -1); sCtx.lineTo(4, -5);
+                sCtx.stroke();
+                break;
+            case 'circuit':
+                sCtx.beginPath();
+                sCtx.moveTo(-26, 0); sCtx.lineTo(-14, 0);
+                sCtx.lineTo(-10, -8); sCtx.lineTo(-4, 8); sCtx.lineTo(2, -8); sCtx.lineTo(8, 8); sCtx.lineTo(12, 0);
+                sCtx.lineTo(18, 0);
+                sCtx.moveTo(18, -10); sCtx.lineTo(18, 10);
+                sCtx.moveTo(23, -10); sCtx.lineTo(23, 10);
+                sCtx.moveTo(23, 0); sCtx.lineTo(30, 0);
+                sCtx.stroke();
+                break;
+            case 'pendulum':
+                sCtx.beginPath();
+                sCtx.moveTo(-16, -22); sCtx.lineTo(16, -22);
+                sCtx.moveTo(0, -22); sCtx.lineTo(11, 10);
+                sCtx.arc(13, 15, 6, 0, Math.PI * 2);
+                sCtx.stroke();
+                break;
+            case 'spring':
+                sCtx.beginPath();
+                sCtx.moveTo(0, -22); sCtx.lineTo(0, -16);
+                for (let k = 0; k < 5; k++) {
+                    const y = -16 + k * 6.5;
+                    sCtx.lineTo(11, y + 1.8);
+                    sCtx.lineTo(-11, y + 4.8);
+                }
+                sCtx.lineTo(0, 18); sCtx.lineTo(0, 24);
+                sCtx.stroke();
+                break;
+            case 'prism':
+                sCtx.beginPath();
+                sCtx.moveTo(0, -20); sCtx.lineTo(-20, 16); sCtx.lineTo(20, 16); sCtx.closePath();
+                sCtx.moveTo(-26, 4); sCtx.lineTo(-9, -2);
+                sCtx.moveTo(9, -2); sCtx.lineTo(26, -7);
+                sCtx.moveTo(10, 1); sCtx.lineTo(27, 2);
+                sCtx.moveTo(11, 4); sCtx.lineTo(26, 10);
+                sCtx.stroke();
+                break;
+            case 'book':
+                sCtx.beginPath();
+                sCtx.moveTo(0, -14); sCtx.lineTo(0, 16);
+                sCtx.quadraticCurveTo(-11, 10, -22, 16); sCtx.lineTo(-22, -14); sCtx.quadraticCurveTo(-11, -20, 0, -14);
+                sCtx.quadraticCurveTo(11, -20, 22, -14); sCtx.lineTo(22, 16); sCtx.quadraticCurveTo(11, 10, 0, 16);
+                sCtx.stroke();
+                break;
+            case 'gradcap':
+                sCtx.beginPath();
+                sCtx.moveTo(0, -18); sCtx.lineTo(-24, -6); sCtx.lineTo(0, 6); sCtx.lineTo(24, -6); sCtx.closePath();
+                sCtx.moveTo(-14, -1); sCtx.lineTo(-14, 12);
+                sCtx.quadraticCurveTo(0, 19, 14, 12); sCtx.lineTo(14, -1);
+                sCtx.moveTo(24, -6); sCtx.lineTo(24, 10);
+                sCtx.stroke();
+                break;
+            case 'venn':
+                sCtx.beginPath();
+                sCtx.arc(-8, 0, 14, 0, Math.PI * 2);
+                sCtx.moveTo(22, 0);
+                sCtx.arc(8, 0, 14, 0, Math.PI * 2);
+                sCtx.stroke();
+                break;
+            case 'sigma':
+                sCtx.beginPath();
+                sCtx.moveTo(14, -18); sCtx.lineTo(-14, -18); sCtx.lineTo(2, 0); sCtx.lineTo(-14, 18); sCtx.lineTo(14, 18);
+                sCtx.stroke();
+                break;
+            case 'integral':
+                sCtx.beginPath();
+                sCtx.moveTo(8, -20);
+                sCtx.bezierCurveTo(2, -24, -1, -18, 0, 0);
+                sCtx.bezierCurveTo(1, 18, -2, 24, -8, 20);
+                sCtx.stroke();
                 break;
         }
     }
 
-    function renderFrame() {
+    function getSprite(p, isLight) {
+        if (cachedThemeIsLight !== isLight) {
+            spriteCache.clear();
+            cachedThemeIsLight = isLight;
+        }
+        const key = `${p.kind}:${p.kind === 'formula' ? p.text : p.shape}:${p.tint}`;
+        const existing = spriteCache.get(key);
+        if (existing) return existing;
+
+        const color = isLight
+            ? (p.tint === 'cream' ? 'rgba(30, 58, 138, 0.72)' : 'rgba(2, 132, 199, 0.72)')
+            : (p.tint === 'cream' ? '#f5ede0' : '#7dd3fc');
+
+        const off = document.createElement('canvas');
+        const oCtx = off.getContext('2d');
+        if (p.kind === 'formula') {
+            oCtx.font = FORMULA_FONT;
+            const textW = Math.ceil(oCtx.measureText(p.text).width);
+            off.width = Math.max(48, textW + 24);
+            off.height = 44;
+            oCtx.font = FORMULA_FONT;
+            oCtx.textAlign = 'center';
+            oCtx.textBaseline = 'middle';
+            oCtx.fillStyle = color;
+            oCtx.fillText(p.text, off.width / 2, off.height / 2);
+        } else {
+            off.width = 96;
+            off.height = 96;
+            oCtx.translate(48, 48);
+            oCtx.strokeStyle = color;
+            oCtx.fillStyle = color;
+            drawShape(oCtx, p.shape);
+        }
+
+        spriteCache.set(key, off);
+        return off;
+    }
+
+    function renderFrame(now = 0) {
+        if (document.hidden) {
+            rafId = null;
+            return;
+        }
+        if (!prefersReducedMotion && lastFrameTime && (now - lastFrameTime) < FRAME_INTERVAL) {
+            rafId = window.requestAnimationFrame(renderFrame);
+            return;
+        }
+        const dt = lastFrameTime ? Math.min((now - lastFrameTime) / 16.6667, 2.5) : 1;
+        lastFrameTime = now;
+
         const isLight = document.body.classList.contains('light-theme');
         ctx.clearRect(0, 0, width, height);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
 
         const pad = 80;
         for (let i = 0; i < particles.length; i++) {
             const p = particles[i];
             if (!prefersReducedMotion) {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.rot += p.vRot;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.rot += p.vRot * dt;
                 if (p.x < -pad) p.x = width + pad;
                 else if (p.x > width + pad) p.x = -pad;
                 if (p.y < -pad) p.y = height + pad;
                 else if (p.y > height + pad) p.y = -pad;
             }
 
-            const color = isLight
-                ? (p.tint === 'cream' ? `rgba(30, 58, 138, ${p.alpha * 0.72})` : `rgba(2, 132, 199, ${p.alpha * 0.72})`)
-                : (p.tint === 'cream' ? `rgba(245, 237, 224, ${p.alpha})` : `rgba(125, 211, 252, ${p.alpha})`);
-
+            const sprite = getSprite(p, isLight);
             ctx.save();
+            ctx.globalAlpha = p.alpha;
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rot);
             ctx.scale(p.scale, p.scale);
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color;
-
-            if (p.kind === 'formula') {
-                ctx.font = 'italic 700 21px "Be Vietnam Pro", system-ui, sans-serif';
-                ctx.fillText(p.text, 0, 0);
-            } else {
-                drawShape(p.shape);
-            }
+            ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
             ctx.restore();
         }
 
         if (!prefersReducedMotion) {
-            window.requestAnimationFrame(renderFrame);
+            rafId = window.requestAnimationFrame(renderFrame);
         }
     }
 
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (rafId) {
+                window.cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+        } else if (!prefersReducedMotion && !rafId) {
+            lastFrameTime = performance.now();
+            rafId = window.requestAnimationFrame(renderFrame);
+        }
+    }, { passive: true });
+
     resize();
     window.addEventListener('resize', resize, { passive: true });
-    renderFrame();
+    if (prefersReducedMotion) {
+        renderFrame(performance.now());
+    } else {
+        rafId = window.requestAnimationFrame(renderFrame);
+    }
 })();
