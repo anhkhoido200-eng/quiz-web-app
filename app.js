@@ -3679,7 +3679,7 @@ Giải thích: Biên độ A = 5 cm.`;
             return;
         }
 
-        const optChars = ['A', 'B', 'C', 'D'];
+        const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
 
         this.parsedImportQuestions.forEach((q, idx) => {
             const tr = document.createElement('tr');
@@ -4046,7 +4046,7 @@ Giải thích: Biên độ A = 5 cm.`;
             card.id = `admin-q-card-${q.id}`;
             card.className = "p-4 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-2";
 
-            const optChars = ['A', 'B', 'C', 'D'];
+            const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
             const correctIdx = q.correct !== undefined ? q.correct : (q.answer !== undefined ? q.answer : 0);
             let correctLetter = optChars[correctIdx] || 'A';
             if (q.qType === 'tf_group' && q.statements) {
@@ -4131,7 +4131,7 @@ Giải thích: Biên độ A = 5 cm.`;
         const q = this.allQuestions.find(item => item.id === qId);
         if (!q) return;
 
-        const optChars = ['A', 'B', 'C', 'D'];
+        const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
         const optLetter = optChars[newCorrectIdx] || 'A';
         const previousAnswer = { correct: q.correct, answer: q.answer, correctAnswer: q.correctAnswer };
         q.correct = newCorrectIdx;
@@ -6472,7 +6472,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
             // 1. Dạng Trắc Nghiệm 4 Đáp Án (MCQ)
             if (q.qType !== 'tf_group' && q.qType !== 'short_answer') {
-                const optChars = ['A', 'B', 'C', 'D'];
+                const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
                 const selected = this.userAnswers[q.id];
                 const isAnswered = selected !== undefined;
                 const showGrading = !this.isExamMode || this.isReviewingResult;
@@ -7351,7 +7351,7 @@ Giải thích: Biên độ A = 5 cm.`;
         reviewContainer.innerHTML = '';
 
         const questions = this.allQuestions || [];
-        const optChars = ['A', 'B', 'C', 'D'];
+        const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
 
         questions.forEach((q, idx) => {
             const card = document.createElement('div');
@@ -8773,7 +8773,7 @@ Giải thích: Biên độ A = 5 cm.`;
 
     setEditorCorrectAnswer(idx) {
         this._editorSelectedCorrect = idx;
-        const optChars = ['A', 'B', 'C', 'D'];
+        const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
         for (let i = 0; i < 4; i++) {
             const btn = document.getElementById(`btn-edit-ans-${i}`);
             if (btn) {
@@ -9096,7 +9096,7 @@ Giải thích: Biên độ A = 5 cm.`;
             studentAnswerText = (q.statements || []).map((st, i) => `${String.fromCharCode(97 + i)}) ${ansObj[i] === true ? 'Đúng' : (ansObj[i] === false ? 'Sai' : 'Chưa chọn')}`).join(', ');
             correctText = "Đã liệt kê theo từng ý.";
         } else {
-            const optChars = ['A', 'B', 'C', 'D'];
+            const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
             optionsText = (q.options || []).map((opt, i) => `${optChars[i]}. ${opt}`).join('\n');
             const cIdx = q.correct !== undefined ? q.correct : q.answer;
             correctText = `${optChars[cIdx]}. ${(q.options && q.options[cIdx]) || ''}`;
