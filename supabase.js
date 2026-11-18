@@ -1445,7 +1445,8 @@ class DatabaseService {
                     correctValue: row.correct_value || '',
                     acceptedValues: row.accepted_values || row.acceptedValues || [],
                     explanation: row.explanation || '',
-                    imageUrl: row.image_url || ''
+                    imageUrl: row.image_url || '',
+                    image_url: row.image_url || ''
                 }));
                 if (subjectKey) {
                     try {

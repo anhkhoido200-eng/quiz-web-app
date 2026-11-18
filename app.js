@@ -5481,7 +5481,7 @@ Giải thích: Biên độ A = 5 cm.`;
             ? `<div class="text-sm font-semibold text-white leading-relaxed break-words">${this.formatScientificNotation(qObj.question)}</div>`
             : `<div class="text-xs text-slate-400 italic">${isLoadingQuestions ? '<i class="fa-solid fa-circle-notch fa-spin mr-1.5 text-sky-400"></i>Đang tải nội dung đề bài...' : `Câu hỏi số ${idx + 1}${catLabel ? ` (${this.escapeHtml(catLabel)})` : ''} — xem lựa chọn và đáp án đúng bên dưới.`}</div>`;
 
-        const safeImgUrl = this.sanitizeMediaUrl(qObj?.image_url);
+        const safeImgUrl = this.sanitizeMediaUrl(qObj?.image_url || qObj?.imageUrl);
         const imgHtml = safeImgUrl ? `
             <div class="rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950/70 p-2 flex justify-center">
                 <img src="${this.escapeHtml(safeImgUrl)}" alt="Hình minh họa câu ${idx + 1}" class="max-h-52 w-auto object-contain rounded-lg" loading="lazy">
@@ -6451,7 +6451,7 @@ Giải thích: Biên độ A = 5 cm.`;
             card.style.setProperty('--question-index', Math.min(idx, 6));
 
             // Render hình ảnh đính kèm nếu có
-            const safeImgUrl = this.sanitizeMediaUrl(q.image_url);
+            const safeImgUrl = this.sanitizeMediaUrl(q.image_url || q.imageUrl);
             const imgHtml = safeImgUrl ? `
                 <div class="my-3 rounded-xl overflow-hidden border border-slate-700 max-w-md mx-auto">
                     <img src="${this.escapeHtml(safeImgUrl)}" alt="Hình minh họa" class="w-full object-contain max-h-64">
@@ -7397,7 +7397,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 `;
             }
 
-            const safeReviewImg = this.sanitizeMediaUrl(q.image_url);
+            const safeReviewImg = this.sanitizeMediaUrl(q.image_url || q.imageUrl);
             const reviewImgHtml = safeReviewImg ? `
                 <div class="rounded-xl overflow-hidden border border-slate-700/70 bg-slate-950/50 p-2 flex justify-center">
                     <img src="${this.escapeHtml(safeReviewImg)}" alt="Hình minh họa câu ${idx + 1}" class="max-h-56 w-auto object-contain rounded-lg" loading="lazy">
@@ -8738,7 +8738,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 const rawText = (val) => (val && typeof val === 'object') ? (val.math ?? val.latex ?? val.formula ?? val.text ?? val.value ?? val.content ?? '') : (val ?? '');
                 if (catInput) catInput.value = q.category || 'Ôn tập';
                 if (textInput) textInput.value = rawText(q.question);
-                if (imgInput) imgInput.value = q.image_url || '';
+                if (imgInput) imgInput.value = q.image_url || q.imageUrl || '';
                 if (expInput) expInput.value = rawText(q.explanation);
 
                 if (q.options && q.options.length >= 4) {
