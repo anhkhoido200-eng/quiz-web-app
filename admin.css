@@ -2856,3 +2856,51 @@ body.dark .security-chip {
     background: rgba(234, 219, 196, 0.12);
     border: 1px solid rgba(234, 219, 196, 0.22);
 }
+
+/* Folder card rename action */
+.subject-card-foot {
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.folder-card-foot-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.folder-rename-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    transition: color 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+.folder-rename-btn:hover,
+.folder-rename-btn:focus-visible {
+    color: var(--primary);
+    border-color: rgba(29, 78, 216, 0.45);
+    background: var(--primary-soft);
+    outline: none;
+}
+body.dark .folder-rename-btn:hover,
+body.dark .folder-rename-btn:focus-visible {
+    color: var(--primary-2);
+    border-color: rgba(56, 189, 248, 0.48);
+    background: rgba(56, 189, 248, 0.12);
+}
+.folder-open-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--amber, #f59e0b);
+    white-space: nowrap;
+}

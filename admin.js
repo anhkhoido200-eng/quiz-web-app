@@ -366,7 +366,7 @@
                             <button type="button" id="admin-confirm-close" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
                         </div>
                         <div id="admin-confirm-message" class="admin-confirm-message"></div>
-                         <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
+                         <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-top:12px;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
                         <div class="admin-confirm-actions">
                             <button type="button" id="admin-confirm-cancel" class="button button-secondary">Hủy bỏ</button>
                             <button type="button" id="admin-confirm-ok" class="button button-primary"><i class="fa-solid fa-check"></i> <span id="admin-confirm-ok-text">Xác nhận</span></button>
@@ -431,6 +431,7 @@
                 }
             };
             const onKey = (e) => {
+                if (e.isComposing) return;
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
                 else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
             };
@@ -4545,21 +4546,7 @@
         return { folderKey: `${grade}::${cleanBase.toLowerCase()}`, folderLabel };
     }
 
-    function renderSubjectCatalog() {
-        const subjects = mergeSubjectCatalog(state.subjects);
-        const questionCounts = (state.questions || []).reduce((counts, question) => {
-            const key = subjectMatchKey(question.subject_key || question.subjectKey);
-            if (key) counts[key] = (counts[key] || 0) + 1;
-            return counts;
-        }, {});
-        const legacyCount = questionCounts.history || 0;
-        console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
-            key: subject.key,
-            storedCount: Number(subject.count || 0),
-            loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
-        })));
-        $('subject-count') && ($('subject-count').textContent = subjects.length);
-
+    function getAdminSubjectFolders(subjects = mergeSubjectCatalog(state.subjects)) {
         const folderMap = new Map();
         (state.subjectFolders || []).forEach((f) => {
             const label = String(f?.name || f?.label || '').trim();
@@ -4583,15 +4570,34 @@
             }
             folderMap.get(info.folderKey).items.push(subject);
         });
+        const activeFolders = new Map();
+        folderMap.forEach((group, key) => {
+            if (group.explicit || group.items.length >= 2) activeFolders.set(key, group);
+        });
+        return { folderMap, activeFolders };
+    }
+
+    function renderSubjectCatalog() {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        const legacyCount = questionCounts.history || 0;
+        console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
+            key: subject.key,
+            storedCount: Number(subject.count || 0),
+            loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
+        })));
+        $('subject-count') && ($('subject-count').textContent = subjects.length);
+
+        const { folderMap, activeFolders } = getAdminSubjectFolders(subjects);
         const datalist = $('subject-folder-datalist');
         if (datalist) {
             const uniqueLabels = Array.from(new Set(Array.from(folderMap.values()).map((g) => g.label)));
             datalist.innerHTML = uniqueLabels.map((lbl) => `<option value="${esc(lbl)}"></option>`).join('');
         }
-        const activeFolders = new Map();
-        folderMap.forEach((group, key) => {
-            if (group.explicit || group.items.length >= 2) activeFolders.set(key, group);
-        });
         if (state.adminOpenSubjectFolder && !activeFolders.has(state.adminOpenSubjectFolder)) {
             state.adminOpenSubjectFolder = null;
         }
@@ -4615,7 +4621,10 @@
                 <p>Thư mục gom nhóm · <b>${totalCount} câu</b></p>
                 <div class="subject-card-foot">
                     <small>${group.items.length ? (allPrivate ? 'Riêng tư' : 'Công khai') : 'Thư mục trống'}</small>
-                    <span style="font-size:11px;font-weight:700;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
+                    <div class="folder-card-foot-right">
+                        <button type="button" class="folder-rename-btn" data-rename-folder="${esc(group.key)}" title="Đổi tên thư mục" aria-label="Đổi tên thư mục ${esc(group.label)}"><i class="fa-solid fa-pen"></i> Đổi tên</button>
+                        <span class="folder-open-hint"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
+                    </div>
                 </div>
             </article>`;
         };
@@ -4659,6 +4668,7 @@
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <button type="button" class="button button-primary compact" data-add-subject-to-folder="${esc(group.label)}" data-folder-grade="${esc(group.grade)}"><i class="fa-solid fa-plus"></i> Thêm đề vào đây</button>
                             ${group.items.length ? `<button type="button" class="button button-secondary compact" data-add-question-to-folder="${esc(group.key)}"><i class="fa-solid fa-circle-plus"></i> Thêm câu hỏi</button>` : ''}
+                            <button type="button" class="button button-secondary compact" data-rename-folder="${esc(group.key)}" title="Đổi tên thư mục"><i class="fa-solid fa-pen"></i> Đổi tên thư mục</button>
                             <button type="button" class="button button-secondary compact" data-delete-folder="${esc(group.key)}" title="Giải tán thư mục (không xóa đề hay câu hỏi)"><i class="fa-solid fa-folder-minus"></i> Bỏ thư mục</button>
                         </div>
                     </div>
@@ -4958,6 +4968,161 @@
         state.adminOpenSubjectFolder = null;
         renderSubjectCatalog();
         notify(`Đã bỏ thư mục (Lớp ${gradePart || '11'} · ${namePart || ''}).`);
+    }
+
+    async function renameFolder(folderKey) {
+        const { activeFolders } = getAdminSubjectFolders();
+        const group = activeFolders.get(folderKey);
+        if (!group) return notify('Không tìm thấy thư mục cần đổi tên.', true);
+
+        const rawInput = await promptDialog({
+            title: 'Đổi tên thư mục',
+            eyebrow: 'RENAME FOLDER',
+            icon: 'fa-pen',
+            message: group.items.length > 0
+                ? `Nhập tên mới cho thư mục "${group.label}" (Lớp ${group.grade}). Toàn bộ ${group.items.length} đề bên trong sẽ tự động cập nhật theo tên mới.`
+                : `Nhập tên mới cho thư mục trống "${group.label}" (Lớp ${group.grade}).`,
+            placeholder: 'VD: Môn Toán, Ôn thi Giữa Kì...',
+            defaultValue: group.label,
+            confirmText: 'Lưu tên mới'
+        });
+        if (rawInput === null) return;
+        const newName = String(rawInput).trim();
+        if (!newName) return notify('Tên thư mục không được để trống.', true);
+        if (newName === group.label) return;
+
+        const grade = group.grade;
+        const oldFolderKey = group.key;
+        const oldLabel = group.label;
+        const oldLabelLower = oldLabel.toLowerCase();
+        const newNameLower = newName.toLowerCase();
+        const newFolderKey = `${grade}::${newNameLower}`;
+
+        const targetGroup = Array.from(activeFolders.values()).find(
+            (g) => g.key !== oldFolderKey && g.grade === grade && (g.key === newFolderKey || g.label.trim().toLowerCase() === newNameLower)
+        );
+        const isMerging = Boolean(targetGroup);
+        let finalName = newName;
+        if (isMerging) {
+            const confirmed = await confirmDialog({
+                title: 'Gộp vào thư mục đã có?',
+                eyebrow: 'MERGE FOLDER',
+                icon: 'fa-code-merge',
+                variant: 'warning',
+                message: `Thư mục "${targetGroup.label}" (Lớp ${grade}) đã tồn tại. Bạn có muốn gộp toàn bộ đề từ "${oldLabel}" vào "${targetGroup.label}" không?`,
+                confirmText: 'Gộp thư mục'
+            });
+            if (!confirmed) return;
+            finalName = targetGroup.label;
+        }
+        const finalNameLower = finalName.toLowerCase();
+        const finalFolderKey = `${grade}::${finalNameLower}`;
+
+        const previousFolders = (state.subjectFolders || []).map((f) => ({ ...f }));
+        const previousSubjects = (state.subjects || []).map((s) => ({ ...s }));
+        const previousOpenFolder = state.adminOpenSubjectFolder || null;
+
+        const normGrade = (g) => (String(g || '11') === '5' ? '5' : '11');
+        const matchesOldEntry = (f) => {
+            if (normGrade(f?.grade) !== grade) return false;
+            const fn = String(f?.name || f?.label || '').trim().toLowerCase();
+            return Boolean(fn) && (`${grade}::${fn}` === oldFolderKey || fn === oldLabelLower);
+        };
+        const matchesFinalEntry = (f) => {
+            if (normGrade(f?.grade) !== grade) return false;
+            const fn = String(f?.name || f?.label || '').trim().toLowerCase();
+            return Boolean(fn) && fn === finalNameLower;
+        };
+        const hasSeparateTarget = (state.subjectFolders || []).some((f) => matchesFinalEntry(f) && !matchesOldEntry(f));
+        const nextFolders = [];
+        let oldCreatedAt = '';
+        let placedFinal = false;
+        (state.subjectFolders || []).forEach((f) => {
+            if (matchesOldEntry(f)) {
+                oldCreatedAt = oldCreatedAt || f?.createdAt || '';
+                if (hasSeparateTarget || placedFinal) return;
+                const updated = { ...f, name: finalName, grade };
+                delete updated.label;
+                nextFolders.push(updated);
+                placedFinal = true;
+            } else if (matchesFinalEntry(f)) {
+                if (!placedFinal) {
+                    const updated = { ...f, name: finalName, grade };
+                    delete updated.label;
+                    nextFolders.push(updated);
+                    placedFinal = true;
+                }
+            } else {
+                nextFolders.push(f);
+            }
+        });
+        if (!placedFinal) {
+            nextFolders.push({ name: finalName, grade, createdAt: oldCreatedAt || new Date().toISOString() });
+        }
+        state.subjectFolders = nextFolders;
+
+        const memberKeys = new Set(group.items.map((s) => s.key || s.subject_key));
+        if (isMerging && targetGroup) {
+            targetGroup.items.forEach((s) => memberKeys.add(s.key || s.subject_key));
+        }
+        let subjectsChanged = false;
+        const nextSubjects = mergeSubjectCatalog(state.subjects).map((s) => {
+            const k = s.key || s.subject_key;
+            const sGrade = subjectGrade(s);
+            const explicitRaw = String(s.folder || s.group || '').trim();
+            const explicitLower = explicitRaw.toLowerCase();
+            const info = getAdminSubjectFolderInfo(s);
+            const matchesFolder = memberKeys.has(k)
+                || (info && info.folderKey === oldFolderKey)
+                || (sGrade === grade && Boolean(explicitLower) && (explicitLower === oldLabelLower || `${grade}::${explicitLower}` === oldFolderKey));
+            if (matchesFolder) {
+                if (String(s.folder || '').trim() !== finalName || String(s.group || '').trim() !== '') {
+                    subjectsChanged = true;
+                }
+                return { ...s, folder: finalName, group: '' };
+            }
+            return s;
+        });
+        if (subjectsChanged) {
+            state.subjects = nextSubjects;
+        }
+
+        if (state.adminOpenSubjectFolder === oldFolderKey) {
+            state.adminOpenSubjectFolder = finalFolderKey;
+        }
+
+        let foldersSaved = false;
+        try {
+            await saveSubjectFolders();
+            foldersSaved = true;
+            if (subjectsChanged) {
+                await saveSubjects();
+            } else {
+                renderSubjectCatalog();
+            }
+            addActivityLog(
+                isMerging ? `Gộp thư mục: ${oldLabel} → ${finalName}` : `Đổi tên thư mục: ${oldLabel} → ${finalName}`,
+                `Khối Lớp ${grade}${group.items.length ? ` · Cập nhật ${group.items.length} đề` : ''}`,
+                'subject'
+            );
+            notify(
+                isMerging
+                    ? `Đã gộp "${oldLabel}" vào thư mục "${finalName}" (Lớp ${grade}).`
+                    : `Đã đổi tên thư mục "${oldLabel}" thành "${finalName}"${group.items.length ? ` (${group.items.length} đề đã cập nhật)` : ''}.`
+            );
+        } catch (error) {
+            state.subjectFolders = previousFolders;
+            state.subjects = previousSubjects;
+            state.adminOpenSubjectFolder = previousOpenFolder;
+            try {
+                localStorage.setItem('quiz_subject_folders', JSON.stringify(previousFolders));
+            } catch (e) {}
+            if (foldersSaved) {
+                await saveSubjectFolders().catch(() => {});
+            }
+            renderSubjectCatalog();
+            notify(`Không thể đổi tên thư mục: ${error.message}`, true);
+        }
     }
 
     function jumpToAddQuestion(subjectKey = '') {
@@ -7385,7 +7550,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
          $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
         $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
         $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
-         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const assignOrphan = event.target.closest('[data-assign-orphan]'); if (assignOrphan) { const gk = assignOrphan.dataset.assignOrphan; const sel = $('subjects-list')?.querySelector(`[data-orphan-target="${CSS.escape(gk)}"]`); runAction(() => assignOrphanQuestions(gk, sel?.value || '')); return; } const createOrphan = event.target.closest('[data-create-orphan-subject]'); if (createOrphan) { runAction(() => createSubjectFromOrphan(createOrphan.dataset.createOrphanSubject)); return; } const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const assignOrphan = event.target.closest('[data-assign-orphan]'); if (assignOrphan) { const gk = assignOrphan.dataset.assignOrphan; const sel = $('subjects-list')?.querySelector(`[data-orphan-target="${CSS.escape(gk)}"]`); runAction(() => assignOrphanQuestions(gk, sel?.value || '')); return; } const createOrphan = event.target.closest('[data-create-orphan-subject]'); if (createOrphan) { runAction(() => createSubjectFromOrphan(createOrphan.dataset.createOrphanSubject)); return; } const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const renameFolderBtn = event.target.closest('[data-rename-folder]'); if (renameFolderBtn) { event.stopPropagation(); runAction(() => renameFolder(renameFolderBtn.dataset.renameFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
         $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
     }
 
