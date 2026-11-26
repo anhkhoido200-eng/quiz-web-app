@@ -1,0 +1,307 @@
+-- =========================================================================
+-- QUIZMASTER PRO v4.0 - SUPABASE DATABASE INITIALIZATION SCRIPT
+-- =========================================================================
+-- Hướng dẫn chạy:
+-- 1. Mở trang quản trị Supabase (https://supabase.com/dashboard)
+-- 2. Chọn dự án của bạn -> Chọn mục "SQL Editor" ở menu bên trái.
+-- 3. Nhấp "New Query", dán toàn bộ nội dung script này vào và bấm "Run".
+-- =========================================================================
+
+-- 1. BẬT TIỆN ÍCH TỰ ĐỘNG SINH UUID CHUẨN
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. BẢNG 1: QUIZ_LOGINS (Quản lý lượt đăng nhập, giám sát, phân quyền & cấu hình hệ thống)
+CREATE TABLE IF NOT EXISTS public.quiz_logins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    player_name TEXT NOT NULL,
+    ip_address TEXT DEFAULT 'Chưa xác định',
+    device_info TEXT DEFAULT 'Chưa rõ',
+    status TEXT DEFAULT 'Đang ôn tập',
+    score_summary TEXT DEFAULT '',
+    session_id TEXT,
+    last_active TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Chỉ mục tối ưu tốc độ tra cứu tức thì cho Heartbeat & Bảng Admin
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_last_active ON public.quiz_logins(last_active DESC);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_created_at ON public.quiz_logins(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_ip ON public.quiz_logins(ip_address);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_player_name ON public.quiz_logins(player_name);
+ALTER TABLE public.quiz_logins ADD COLUMN IF NOT EXISTS session_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_session_id ON public.quiz_logins(session_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_logins_session_created ON public.quiz_logins(session_id, created_at DESC);
+
+-- 3. BẢNG 2: QUIZ_QUESTIONS (Ngân hàng câu hỏi động đa môn học: Sử, Lí, Địa, Toán, Hóa...)
+CREATE TABLE IF NOT EXISTS public.quiz_questions (
+    id SERIAL PRIMARY KEY,
+    subject_key TEXT DEFAULT 'history',           -- 'history', 'physics', 'geography', hoặc mã môn động
+    category TEXT DEFAULT 'Bài học',              -- Tên bài học / Chuyên đề
+    q_type TEXT DEFAULT 'mcq',                    -- 'mcq' (4 lựa chọn), 'tf_group' (Đúng/Sai), 'short_answer' (Điền số)
+    question TEXT NOT NULL,                       -- Nội dung câu hỏi (hỗ trợ KaTeX & HTML)
+    options JSONB DEFAULT '[]'::jsonb,            -- Danh sách lựa chọn ["A", "B", "C", "D"]
+    statements JSONB DEFAULT '[]'::jsonb,         -- Danh sách ý Đúng/Sai [{"text":"...", "answer":true}]
+    correct INTEGER DEFAULT 0,                    -- Index đáp án đúng (0 = A, 1 = B, 2 = C, 3 = D)
+    answer INTEGER DEFAULT 0,                     -- Tương thích ngược
+    correct_value TEXT DEFAULT '',                -- Giá trị điền số (dành cho câu hỏi short_answer)
+    explanation TEXT DEFAULT '',                  -- Lời giải thích chi tiết
+    image_url TEXT DEFAULT '',                    -- Đường dẫn ảnh minh họa (nếu có)
+    grade TEXT DEFAULT '11',                      -- Khối lớp ('5', '11', ...)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- TỰ ĐỘNG BỔ SUNG CỘT CHO BẢNG CŨ (SỬA TRIỆT ĐỂ LỖI THIẾU CỘT subject_key & LỖI NULL ID)
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS subject_key TEXT DEFAULT 'history';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS answer INTEGER DEFAULT 0;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS correct_value TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS accepted_values JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS grade TEXT DEFAULT '11';
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'practice';
+UPDATE public.quiz_questions SET subject_key = 'history' WHERE subject_key IS NULL;
+UPDATE public.quiz_questions SET is_deleted = false WHERE is_deleted IS NULL;
+
+-- TRIGGER TỰ ĐỘNG CẬP NHẬT updated_at KHI SỬA CÂU HỎI
+CREATE OR REPLACE FUNCTION public.set_quiz_questions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_quiz_questions_updated_at ON public.quiz_questions;
+CREATE TRIGGER trg_quiz_questions_updated_at
+    BEFORE UPDATE ON public.quiz_questions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_quiz_questions_updated_at();
+
+-- TẠO SEQUENCE TỰ ĐỘNG TĂNG ID NẾU BẢNG BỊ THIẾU AUTO INCREMENT
+CREATE SEQUENCE IF NOT EXISTS quiz_questions_id_seq;
+ALTER TABLE public.quiz_questions ALTER COLUMN id SET DEFAULT nextval('quiz_questions_id_seq');
+SELECT setval('quiz_questions_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM public.quiz_questions), 0) + 1, 1), false);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_subject ON public.quiz_questions(subject_key);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_category ON public.quiz_questions(category);
+
+-- 4. BẬT BẢO MẬT HÀNG (ROW LEVEL SECURITY - RLS)
+ALTER TABLE public.quiz_logins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
+
+-- 5. RLS DENY-BY-DEFAULT CHO CLIENT PUBLIC
+DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public read quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public access to quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public read student quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public insert student quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Public update student quiz_logins" ON public.quiz_logins;
+DROP POLICY IF EXISTS "Authenticated delete quiz_logins" ON public.quiz_logins;
+REVOKE ALL ON TABLE public.quiz_logins FROM anon, authenticated;
+REVOKE ALL ON TABLE public.quiz_questions FROM anon;
+
+DROP POLICY IF EXISTS "Public access to quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Public access active quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin manage quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin insert quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin update quiz_questions" ON public.quiz_questions;
+DROP POLICY IF EXISTS "Admin delete quiz_questions" ON public.quiz_questions;
+REVOKE INSERT, UPDATE, DELETE, SELECT ON TABLE public.quiz_questions FROM anon;
+
+-- Public clients must use public_get_quiz_questions(); it never exposes sensitive
+-- answer fields for subjects/questions marked mode = 'exam'.
+CREATE OR REPLACE FUNCTION public.public_get_quiz_questions(p_subject_key TEXT DEFAULT NULL)
+RETURNS SETOF JSONB
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT jsonb_build_object(
+        'id', q.id, 'subject_key', q.subject_key, 'category', q.category,
+        'q_type', q.q_type, 'question', q.question, 'options', COALESCE(q.options, '[]'::jsonb),
+        'statements', CASE WHEN LOWER(COALESCE(q.mode, 'practice')) = 'exam'
+            THEN COALESCE((SELECT jsonb_agg(jsonb_build_object('text', s->>'text')) FROM jsonb_array_elements(COALESCE(q.statements, '[]'::jsonb)) s), '[]'::jsonb)
+            ELSE COALESCE(q.statements, '[]'::jsonb) END,
+        'image_url', q.image_url, 'grade', q.grade,
+        'mode', LOWER(COALESCE(q.mode, 'practice')),
+        'correct', CASE WHEN LOWER(COALESCE(q.mode, 'practice')) = 'exam' THEN NULL ELSE to_jsonb(q.correct) END,
+        'answer', CASE WHEN LOWER(COALESCE(q.mode, 'practice')) = 'exam' THEN NULL ELSE to_jsonb(q.answer) END,
+        'correct_value', CASE WHEN LOWER(COALESCE(q.mode, 'practice')) = 'exam' THEN NULL ELSE to_jsonb(q.correct_value) END,
+        'explanation', CASE WHEN LOWER(COALESCE(q.mode, 'practice')) = 'exam' THEN NULL ELSE to_jsonb(q.explanation) END
+    )
+    FROM public.quiz_questions q
+    WHERE COALESCE(q.is_deleted, false) = false
+      AND (p_subject_key IS NULL OR TRIM(p_subject_key) = '' OR LOWER(q.subject_key) = LOWER(TRIM(p_subject_key)))
+    ORDER BY q.id;
+$$;
+GRANT EXECUTE ON FUNCTION public.public_get_quiz_questions(TEXT) TO anon, authenticated;
+
+-- BẬT SUPABASE REALTIME CHO CẢ 2 BẢNG (ĐỒNG BỘ TRỰC TIẾP TỨC THÌ)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'quiz_questions'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_questions;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'quiz_logins'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_logins;
+    END IF;
+END $$;
+
+-- Lưu ý bảo mật: thao tác quản trị (INSERT/UPDATE/DELETE trên câu hỏi,
+-- cấu hình và lịch sử) cần được chuyển sang Auth/RPC/Edge Function có quyền
+-- server-side trước khi gỡ các policy FOR ALL hiện hữu trên môi trường cũ.
+
+-- 6. KHỞI TẠO CÁC BẢN GHI HỆ THỐNG CỐ ĐỊNH (SYSTEM CONFIG RECORDS)
+-- Bản ghi 1: Cấu hình Whitelist IP Admin (ID: 00000000-0000-0000-0000-000000000001)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    '__ADMIN_IPS_CONFIG__',
+    'SYSTEM',
+    'PASSWORDLESS_AUTH',
+    'ACTIVE',
+    '{"masterIp":"","allowedIps":[]}',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 2: Phân quyền & Chế độ môn Địa Lí 11 (ID: 00000000-0000-0000-0000-000000000002)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000002',
+    '__ALLOWED_GEO_IPS__',
+    'SYSTEM',
+    'PUBLIC',
+    'ACTIVE',
+    '{"mode":"PUBLIC","ips":[],"grade5Ips":[]}',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 3: Chế độ Bảo trì Hệ thống (ID: 00000000-0000-0000-0000-000000000003)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000003',
+    '__SYSTEM_MAINTENANCE__',
+    'SYSTEM',
+    'OFF',
+    'INACTIVE',
+    'Trang web đang tạm dừng để cập nhật đề cương và dữ liệu mới. Vui lòng quay lại sau!',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 4: Danh sách Môn học Động tùy biến (ID: 00000000-0000-0000-0000-000000000004)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000004',
+    '__DYNAMIC_SUBJECTS__',
+    'SYSTEM',
+    'DYNAMIC_HUB',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 5: Cấu hình Khóa AI Toàn Hệ Thống (ID: 00000000-0000-0000-0000-000000000005)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000005',
+    '__GEMINI_CONFIG__',
+    'SYSTEM',
+    'GEMINI_AI_1_5_FLASH',
+    'ACTIVE',
+    '',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 6: Phân Quyền Danh Sách IP Sử Dụng AI (ID: 00000000-0000-0000-0000-000000000006)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000006',
+    '__AI_IPS_CONFIG__',
+    'SYSTEM',
+    'AI_IP_WHITELIST',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 7: Thùng rác câu hỏi tạm xóa (ID: 00000000-0000-0000-0000-000000000007)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000007',
+    '__TRASH_QUESTIONS__',
+    'SYSTEM',
+    '__TRASH_BIN__',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 8: Danh sách Token phân quyền học sinh & Quản trị (ID: 00000000-0000-0000-0000-000000000008)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000008',
+    '__ACCESS_TOKENS_CONFIG__',
+    'SYSTEM',
+    'TOKEN_AUTH',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 9: Thư mục phân nhóm môn học hệ thống (ID: 00000000-0000-0000-0000-000000000009)
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000009',
+    '__SYSTEM_FOLDERS__',
+    'SYSTEM',
+    'SYSTEM_FOLDERS',
+    'ACTIVE',
+    '[]',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bản ghi 10: Cấu hình roster học sinh theo khối và mã máy
+INSERT INTO public.quiz_logins (id, player_name, ip_address, device_info, status, score_summary, last_active, created_at)
+VALUES (
+    '00000000-0000-0000-0000-000000000010',
+    '__SYSTEM_ROSTER__',
+    'SYSTEM',
+    'ROSTER_CONFIG',
+    'ACTIVE',
+    '{"grade5":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"grade11":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"devicePins":{}}',
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Sau khi chạy script khởi tạo này, chạy tiếp supabase_security_migration.sql để bật RLS thu hẹp và Admin RPCs.
+NOTIFY pgrst, 'reload schema';

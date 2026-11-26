@@ -1,0 +1,2175 @@
+/* style.css - Hệ thống thiết kế Trang Học Sinh ("Giấy trắng & Mực xanh học đường")
+   Light Mode mặc định (#F8FAFC / #FFFFFF / #2563EB) + Dark Mode xám than (#111214 / #181A1F / #3B82F6) */
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+    --font-sans: 'Be Vietnam Pro', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: 'Be Vietnam Pro', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --motion-fast: 150ms;
+    --motion-standard: 220ms;
+
+    /* Light Mode mặc định */
+    --st-bg: #F6F8FB;
+    --st-surface: #FFFFFF;
+    --st-surface-2: #F1F5F9;
+    --st-border: #E2E8F0;
+    --st-border-strong: #CBD5E1;
+    --st-text: #0F172A;
+    --st-text-secondary: #334155;
+    --st-text-muted: #64748B;
+    --st-accent: #2563EB;
+    --st-accent-hover: #1D4ED8;
+    --st-accent-soft: #EFF6FF;
+    --st-accent-border: #BFDBFE;
+    --st-success: #059669;
+    --st-success-bg: #ECFDF5;
+    --st-success-border: #A7F3D0;
+    --st-danger: #DC2626;
+    --st-danger-bg: #FEF2F2;
+    --st-danger-border: #FECACA;
+    --st-warning: #B45309;
+    --st-warning-bg: #FFFBEB;
+    --st-warning-border: #FDE68A;
+    --st-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --st-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
+    --st-shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+/* Dark Mode: xám than trung tính (Linear / GitHub Dark) */
+html.dark,
+body.dark,
+html.dark body:not(.admin-body),
+body.dark:not(.admin-body) {
+    --st-bg: #0F1115;
+    --st-surface: #171A21;
+    --st-surface-2: #1E222B;
+    --st-border: #2B313D;
+    --st-border-strong: #3B4252;
+    --st-text: #F1F5F9;
+    --st-text-secondary: #CBD5E1;
+    --st-text-muted: #94A3B8;
+    --st-accent: #3B82F6;
+    --st-accent-hover: #2563EB;
+    --st-accent-soft: rgba(59, 130, 246, 0.14);
+    --st-accent-border: rgba(59, 130, 246, 0.35);
+    --st-success: #34D399;
+    --st-success-bg: rgba(5, 150, 105, 0.18);
+    --st-success-border: rgba(52, 211, 153, 0.35);
+    --st-danger: #F87171;
+    --st-danger-bg: rgba(220, 38, 38, 0.18);
+    --st-danger-border: rgba(248, 113, 113, 0.35);
+    --st-warning: #FBBF24;
+    --st-warning-bg: rgba(180, 83, 9, 0.18);
+    --st-warning-border: rgba(251, 191, 36, 0.35);
+    --st-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+    --st-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.36);
+    --st-shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ==========================================================================
+   BASE & SCROLLBAR
+   ========================================================================== */
+html {
+    scroll-padding-top: 125px;
+    overflow-x: clip;
+    max-width: 100%;
+}
+
+body {
+    overflow-x: clip;
+    max-width: 100%;
+}
+
+body:not(.admin-body) {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: var(--st-bg) !important;
+    background-image: none !important;
+    color: var(--st-text) !important;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, .font-heading {
+    font-family: var(--font-heading);
+}
+
+button, .btn-3d, .quiz-option-tile, .tf-choice-button {
+    touch-action: manipulation;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--st-surface-2);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--st-border-strong);
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--st-text-muted);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ==========================================================================
+   HEADER, STICKY QUIZ HEADER & FOOTER
+   ========================================================================== */
+body:not(.admin-body) #main-header,
+body:not(.admin-body) footer {
+    background-color: var(--st-surface) !important;
+    border-color: var(--st-border) !important;
+    color: var(--st-text);
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+body:not(.admin-body) #main-header {
+    box-shadow: var(--st-shadow-sm);
+}
+
+#quiz-sticky-header,
+.quiz-sticky-header {
+    position: sticky !important;
+    top: 0;
+    z-index: 50;
+    width: 100%;
+    background-color: var(--st-surface) !important;
+    border-bottom: 1px solid var(--st-border) !important;
+    box-shadow: var(--st-shadow-sm) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    contain: layout style;
+}
+
+/* ==========================================================================
+   SURFACES, CARDS & SEMANTIC HELPERS
+   ========================================================================== */
+body:not(.admin-body) .glass-panel-pro,
+body:not(.admin-body) .glass-card-pro,
+.student-surface,
+.confirm-modal-card,
+body:not(.admin-body) .obs-student-card,
+#player-name-roster-dropdown {
+    background: var(--st-surface) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 12px;
+    color: var(--st-text);
+    box-shadow: var(--st-shadow-sm) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+body:not(.admin-body) .glass-card-pro:hover,
+body:not(.admin-body) .obs-student-card:hover {
+    transform: none !important;
+    border-color: var(--st-border-strong) !important;
+}
+
+.student-surface-muted {
+    background-color: var(--st-surface-2) !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 10px;
+    color: var(--st-text-secondary);
+}
+
+.student-divider {
+    height: 1px;
+    background: var(--st-border);
+    border: 0;
+}
+
+.student-brand-mark {
+    background-color: var(--st-accent) !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border-radius: 10px;
+    box-shadow: none !important;
+}
+
+.student-hero-icon {
+    background-color: var(--st-accent-soft) !important;
+    color: var(--st-accent) !important;
+    border: 1px solid var(--st-accent-border) !important;
+    border-radius: 12px;
+}
+
+.student-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid var(--st-border);
+    background-color: var(--st-surface-2);
+    color: var(--st-text-secondary);
+}
+
+.student-badge-accent {
+    background-color: var(--st-accent-soft) !important;
+    border-color: var(--st-accent-border) !important;
+    color: var(--st-accent) !important;
+}
+
+.student-badge-success {
+    background-color: var(--st-success-bg) !important;
+    border-color: var(--st-success-border) !important;
+    color: var(--st-success) !important;
+}
+
+.student-badge-warning {
+    background-color: var(--st-warning-bg) !important;
+    border-color: var(--st-warning-border) !important;
+    color: var(--st-warning) !important;
+}
+
+.student-badge-danger {
+    background-color: var(--st-danger-bg) !important;
+    border-color: var(--st-danger-border) !important;
+    color: var(--st-danger) !important;
+}
+
+.student-input {
+    width: 100%;
+    border: 1px solid var(--st-border-strong);
+    border-radius: 10px;
+    background-color: var(--st-surface);
+    color: var(--st-text);
+}
+
+.student-modal-backdrop {
+    background-color: rgba(15, 23, 42, 0.55) !important;
+    backdrop-filter: none !important;
+}
+
+html.dark .student-modal-backdrop,
+body.dark .student-modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.72) !important;
+}
+
+.student-modal-card,
+#modal-force-rename > div,
+#observer-detail-modal > div,
+#arena-modal-card {
+    background-color: var(--st-surface) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 12px;
+    color: var(--st-text);
+    box-shadow: var(--st-shadow-lg) !important;
+}
+
+#inapp-browser-banner > div {
+    background-color: var(--st-warning-bg) !important;
+    border: 1px solid var(--st-warning-border) !important;
+    border-radius: 12px;
+    color: var(--st-text) !important;
+    box-shadow: var(--st-shadow-sm) !important;
+}
+
+/* ==========================================================================
+   FLAT MODERN BUTTONS (Bỏ 3D dày, bỏ shimmer, bỏ hover nảy)
+   ========================================================================== */
+.btn-3d,
+.student-nav-btn,
+.student-nav-btn-accent,
+.student-floating-btn,
+.answer-submit-button,
+button[id^="ai-btn-"] {
+    position: relative;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, color var(--motion-fast) ease, opacity var(--motion-fast) ease;
+}
+
+.btn-3d:hover,
+.btn-3d:active,
+.student-nav-btn:hover,
+.student-nav-btn-accent:hover,
+.student-floating-btn:hover,
+.answer-submit-button:hover,
+button[id^="ai-btn-"]:hover {
+    transform: none !important;
+}
+
+.btn-3d::before,
+.btn-3d::after,
+.btn-3d-navy::before,
+.btn-3d-navy::after,
+.btn-3d-emerald::before,
+.btn-3d-emerald::after,
+.btn-revenge-glowing::before,
+.btn-revenge-glowing::after {
+    display: none !important;
+}
+
+.btn-3d-navy,
+.student-nav-btn-accent,
+.answer-submit-button,
+button[id^="ai-btn-"] {
+    background: var(--st-accent) !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border-color: var(--st-accent) !important;
+}
+
+.btn-3d-navy:hover:not(:disabled),
+.student-nav-btn-accent:hover:not(:disabled),
+.answer-submit-button:hover:not(:disabled),
+button[id^="ai-btn-"]:hover:not(:disabled) {
+    background: var(--st-accent-hover) !important;
+    border-color: var(--st-accent-hover) !important;
+    color: #FFFFFF !important;
+}
+
+.btn-3d-emerald {
+    background: #059669 !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border-color: #059669 !important;
+}
+
+.btn-3d-emerald:hover:not(:disabled) {
+    background: #047857 !important;
+    border-color: #047857 !important;
+}
+
+.btn-3d-amber,
+.student-floating-btn {
+    background: #D97706 !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border-color: #D97706 !important;
+}
+
+.btn-3d-amber:hover:not(:disabled),
+.student-floating-btn:hover:not(:disabled) {
+    background: #B45309 !important;
+    border-color: #B45309 !important;
+    color: #FFFFFF !important;
+}
+
+.btn-3d-rose,
+.btn-3d-revenge {
+    background: #DC2626 !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border-color: #DC2626 !important;
+}
+
+.btn-3d-rose:hover:not(:disabled),
+.btn-3d-revenge:hover:not(:disabled) {
+    background: #B91C1C !important;
+    border-color: #B91C1C !important;
+    color: #FFFFFF !important;
+}
+
+.btn-3d-slate,
+.student-nav-btn {
+    background: var(--st-surface-2) !important;
+    background-image: none !important;
+    color: var(--st-text-secondary) !important;
+    border: 1px solid var(--st-border) !important;
+}
+
+.btn-3d-slate:hover:not(:disabled),
+.student-nav-btn:hover:not(:disabled) {
+    background: var(--st-border) !important;
+    color: var(--st-text) !important;
+    border-color: var(--st-border-strong) !important;
+}
+
+.admin-floating-glow,
+.btn-revenge-glowing {
+    animation: none !important;
+    box-shadow: var(--st-shadow-md) !important;
+}
+
+/* ==========================================================================
+   HOME GRADE TABS (SEGMENTED CONTROL + SLIDING INDICATOR)
+   ========================================================================== */
+.home-grade-tabs,
+#home-semester-tabs.home-grade-tabs {
+    position: relative;
+    isolation: isolate;
+    scrollbar-width: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--st-border);
+    border-radius: 10px;
+    background: var(--st-surface-2);
+}
+
+#home-semester-tabs .sliding-tab-indicator {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 0;
+    z-index: 0;
+    box-sizing: border-box;
+    border-radius: 8px;
+    background: var(--st-accent);
+    border: 1px solid transparent;
+    box-shadow: none;
+    pointer-events: none;
+    transition: transform 0.24s cubic-bezier(0.25, 1, 0.5, 1), width 0.24s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease;
+    will-change: transform, width;
+}
+
+.home-grade-tab,
+#home-semester-tabs .home-grade-tab {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+    padding: 0.45rem 0.72rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--st-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-height: 2.35rem;
+    white-space: nowrap;
+    transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.home-grade-tab b {
+    min-width: 1.2rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 999px;
+    background: var(--st-border);
+    color: var(--st-text-secondary);
+    font-size: 0.65rem;
+    text-align: center;
+}
+
+.home-grade-tab:hover:not(.is-active):not(:disabled) {
+    color: var(--st-accent);
+    background: var(--st-accent-soft);
+    transform: none;
+}
+
+.home-grade-tab.is-active {
+    color: #FFFFFF !important;
+    background: var(--st-accent);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.home-grade-tab.is-active b {
+    background: rgba(255, 255, 255, 0.22);
+    color: #FFFFFF;
+}
+
+#home-semester-tabs.has-sliding-indicator .home-grade-tab.is-active {
+    color: #FFFFFF !important;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.home-grade-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.home-grade-tab.is-locked {
+    border-style: dashed;
+    border-color: var(--st-border-strong);
+}
+
+.home-grade-lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.72rem;
+    border: 1px solid var(--st-border);
+    border-radius: 8px;
+    background: var(--st-surface-2);
+    color: var(--st-text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+/* ==========================================================================
+   SUBJECT & FOLDER CARDS
+   ========================================================================== */
+.subject-card-interactive {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px !important;
+    background: var(--st-surface) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-border) !important;
+    color: var(--st-text);
+    box-shadow: var(--st-shadow-sm) !important;
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.subject-card-interactive::after {
+    display: none !important;
+}
+
+.subject-card-interactive:hover {
+    transform: translateY(-2px) !important;
+    border-color: var(--st-accent-border) !important;
+    background: var(--st-surface) !important;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08) !important;
+}
+
+.subject-card-interactive.selected-indigo,
+.subject-card-interactive.selected-purple,
+.subject-card-interactive.selected-emerald,
+.subject-card-interactive.selected-rose,
+.subject-card-interactive.selected-amber,
+.subject-card-interactive.selected-5,
+.subject-card-interactive.selected-11 {
+    background: var(--st-accent-soft) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-accent) !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.10) !important;
+}
+
+/* ==========================================================================
+   QUIZ SCREEN, QUESTION CARDS & ANSWER TILES
+   ========================================================================== */
+#screen-quiz {
+    position: relative;
+}
+
+#screen-quiz::before {
+    display: none !important;
+}
+
+#questions-container {
+    padding-top: var(--quiz-header-spacing, 1.5rem);
+    padding-bottom: 4rem;
+}
+
+.quiz-question-card {
+    position: relative;
+    overflow: hidden;
+    background: var(--st-surface) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 12px !important;
+    color: var(--st-text);
+    box-shadow: var(--st-shadow-sm) !important;
+    scroll-margin-top: calc(var(--quiz-header-height, 120px) + 20px);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 340px;
+}
+
+.quiz-question-card::after {
+    display: none !important;
+}
+
+.quiz-question-card img {
+    display: block;
+    max-width: 100%;
+    object-fit: contain;
+    background: var(--st-surface-2);
+    border-radius: 8px;
+}
+
+.quiz-card-meta {
+    color: var(--st-text-muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.quiz-number {
+    color: var(--st-accent);
+    font-family: var(--font-heading);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.quiz-number span {
+    color: var(--st-text-muted);
+    font-weight: 500;
+}
+
+.quiz-category {
+    color: var(--st-text-muted);
+    font-weight: 600;
+}
+
+.quiz-question-title {
+    color: var(--st-text) !important;
+    font-size: clamp(1rem, 1.8vw, 1.18rem);
+    letter-spacing: -0.01em;
+    line-height: 1.55;
+}
+
+/* Keep interface labels readable without decorative tracking or all-caps. */
+.quiz-card-meta {
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.quiz-option-tile {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px !important;
+    display: grid !important;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    align-items: center !important;
+    min-height: 3.5rem;
+    padding: 0.75rem 0.95rem;
+    background: var(--st-surface) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-border) !important;
+    color: var(--st-text) !important;
+    box-shadow: none !important;
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.quiz-option-tile::before,
+.quiz-option-tile::after {
+    display: none !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .quiz-option-tile:hover:not(:disabled) {
+        transform: none !important;
+        border-color: var(--st-accent) !important;
+        background: var(--st-accent-soft) !important;
+        box-shadow: none !important;
+    }
+
+    .quiz-option-tile:hover:not(:disabled) .quiz-option-letter {
+        background: var(--st-accent);
+        border-color: var(--st-accent);
+        color: #FFFFFF;
+    }
+}
+
+.quiz-option-tile:active:not(:disabled) {
+    transform: scale(0.992) !important;
+}
+
+.quiz-option-tile:focus-visible {
+    transform: none !important;
+}
+
+.quiz-option-tile:focus-visible {
+    outline: 2px solid var(--st-accent);
+    outline-offset: 2px;
+}
+
+.quiz-option-tile:disabled {
+    pointer-events: none;
+    cursor: default;
+}
+
+.quiz-option-letter {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--st-text-secondary);
+    background: var(--st-surface-2);
+    border: 1px solid var(--st-border);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 0.85rem;
+    transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.quiz-option-content {
+    min-width: 0;
+    padding-top: 0 !important;
+    line-height: 1.48;
+    color: inherit;
+}
+
+.quiz-option-tile .answer-feedback-icon {
+    justify-self: end;
+}
+
+.answer-feedback-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    flex: 0 0 1.35rem;
+    border-radius: 999px;
+    color: #FFFFFF !important;
+    background: #15803D;
+    font-size: 0.7rem;
+}
+
+/* Trạng thái chọn đáp án (chế độ Thi) */
+.quiz-option-tile.option-selected-user,
+.quiz-option-tile.bg-sky-600\/30,
+.quiz-option-tile.border-sky-500 {
+    background: var(--st-accent-soft) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-accent) !important;
+    color: var(--st-text) !important;
+    box-shadow: none !important;
+}
+
+.quiz-option-tile.option-selected-user .quiz-option-letter,
+.quiz-option-tile.bg-sky-600\/30 .quiz-option-letter,
+.quiz-option-tile.border-sky-500 .quiz-option-letter {
+    background: var(--st-accent) !important;
+    border-color: var(--st-accent) !important;
+    color: #FFFFFF !important;
+}
+
+/* Trạng thái ĐÚNG / SAI (mạch lạc, không chói mắt) */
+.quiz-option-tile.option-selected-correct,
+.option-selected-correct {
+    background: var(--st-success-bg) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-success) !important;
+    color: var(--st-success) !important;
+    box-shadow: none !important;
+    animation: none !important;
+}
+
+.quiz-option-tile.option-selected-correct .quiz-option-letter {
+    background: #15803D !important;
+    border-color: #15803D !important;
+    color: #FFFFFF !important;
+}
+
+.quiz-option-tile.option-selected-wrong,
+.option-selected-wrong {
+    background: var(--st-danger-bg) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-danger) !important;
+    color: var(--st-danger) !important;
+    box-shadow: none !important;
+}
+
+.quiz-option-tile.option-selected-wrong .quiz-option-letter {
+    background: #DC2626 !important;
+    border-color: #DC2626 !important;
+    color: #FFFFFF !important;
+}
+
+.option-selected-correct::after,
+.tf-choice-button.is-selected-correct::after {
+    display: none !important;
+}
+
+/* ==========================================================================
+   TRUE / FALSE & SHORT ANSWER
+   ========================================================================== */
+.tf-statement-row {
+    align-items: center;
+    background: var(--st-surface-2) !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 10px !important;
+    color: var(--st-text);
+}
+
+.tf-statement-row > div:first-child {
+    min-width: 0;
+}
+
+.tf-choice-button {
+    min-width: 4.2rem;
+    min-height: 2.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px !important;
+    border: 1px solid var(--st-border-strong) !important;
+    background: var(--st-surface) !important;
+    color: var(--st-text-secondary) !important;
+    box-shadow: none !important;
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, color var(--motion-fast) ease, opacity var(--motion-fast) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .tf-choice-button:hover:not(:disabled) {
+        transform: none !important;
+        border-color: var(--st-accent) !important;
+        color: var(--st-accent) !important;
+        background: var(--st-accent-soft) !important;
+        box-shadow: none !important;
+    }
+}
+
+.tf-choice-button:active:not(:disabled) {
+    transform: none !important;
+}
+
+.tf-choice-button:disabled {
+    pointer-events: none;
+    cursor: default;
+}
+
+.tf-choice-button.is-locked {
+    opacity: 0.42;
+}
+
+.tf-choice-button.is-exam-selected {
+    background: var(--st-accent) !important;
+    background-image: none !important;
+    border-color: var(--st-accent) !important;
+    color: #FFFFFF !important;
+}
+
+.tf-choice-button.is-selected-correct {
+    background: #15803D !important;
+    background-image: none !important;
+    border-color: #15803D !important;
+    color: #FFFFFF !important;
+}
+
+.tf-choice-button.is-selected-wrong {
+    background: #DC2626 !important;
+    background-image: none !important;
+    border-color: #DC2626 !important;
+    color: #FFFFFF !important;
+}
+
+.answer-text-input {
+    border-radius: 10px !important;
+    background: var(--st-surface) !important;
+    border: 1px solid var(--st-border-strong) !important;
+    color: var(--st-text) !important;
+    transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.answer-text-input:focus {
+    border-color: var(--st-accent) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
+}
+
+.answer-text-input.is-submitted {
+    border-color: var(--st-success-border) !important;
+    background: var(--st-success-bg) !important;
+    color: var(--st-success) !important;
+}
+
+.answer-submit-button.is-submitted,
+.answer-submit-button:disabled {
+    background: #15803D !important;
+    border-color: #15803D !important;
+    color: #FFFFFF !important;
+    cursor: default;
+    pointer-events: none;
+}
+
+.short-answer-feedback {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.8rem 0.95rem;
+    border: 1px solid var(--st-border);
+    border-radius: 10px;
+    background: var(--st-surface-2);
+    color: var(--st-text-secondary);
+}
+
+.short-answer-feedback.is-correct {
+    border-color: var(--st-success-border);
+    background: var(--st-success-bg);
+}
+
+.short-answer-feedback.is-wrong {
+    border-color: var(--st-danger-border);
+    background: var(--st-danger-bg);
+}
+
+.short-answer-feedback.is-pending {
+    border-color: var(--st-warning-border);
+    background: var(--st-warning-bg);
+}
+
+.short-answer-feedback-title,
+.short-answer-feedback-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.short-answer-feedback-title {
+    justify-content: flex-start;
+    color: var(--st-text);
+    font-weight: 700;
+}
+
+.short-answer-feedback.is-correct .short-answer-feedback-title {
+    color: var(--st-success);
+}
+
+.short-answer-feedback.is-wrong .short-answer-feedback-title {
+    color: var(--st-danger);
+}
+
+.short-answer-feedback-line {
+    color: var(--st-text-muted);
+    font-size: 0.75rem;
+}
+
+.short-answer-feedback-line strong {
+    color: var(--st-text);
+    text-align: right;
+    word-break: break-word;
+}
+
+/* ==========================================================================
+   PROGRESS BAR, AI EXPLANATION, PODIUM, RESULT HERO & KATEX
+   ========================================================================== */
+#quiz-progress-bar,
+.quiz-progress-bar {
+    position: relative;
+    background: var(--st-accent) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    transition: width 0.16s ease-out !important;
+    will-change: width;
+}
+
+#quiz-progress-bar::before,
+#quiz-progress-bar::after,
+.quiz-progress-bar::before,
+.quiz-progress-bar::after {
+    display: none !important;
+}
+
+.ai-explanation-box {
+    position: relative;
+    overflow: hidden;
+    background: var(--st-accent-soft) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-accent-border) !important;
+    border-left: 3px solid var(--st-accent) !important;
+    border-radius: 10px !important;
+    color: var(--st-text) !important;
+    box-shadow: none !important;
+}
+
+.ai-explanation-box::before {
+    display: none !important;
+}
+
+.ai-explanation-box p {
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+}
+
+.ai-explanation-box strong {
+    color: var(--st-accent);
+}
+
+.ai-explanation-box ul {
+    list-style-type: disc;
+    padding-left: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.ai-explanation-box li {
+    margin-bottom: 0.25rem;
+}
+
+.gradient-text-hero {
+    color: var(--st-accent) !important;
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.gradient-text-gold {
+    color: var(--st-warning) !important;
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.podium-gold,
+.podium-silver,
+.podium-bronze {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: none !important;
+}
+
+.podium-gold {
+    background: var(--st-warning-bg) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-warning-border) !important;
+    color: var(--st-warning);
+}
+
+.podium-gold::after {
+    display: none !important;
+}
+
+.podium-silver {
+    background: var(--st-surface-2) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-border-strong) !important;
+    color: var(--st-text-secondary);
+}
+
+.podium-bronze {
+    background: var(--st-danger-bg) !important;
+    background-image: none !important;
+    border: 1.5px solid var(--st-danger-border) !important;
+    color: var(--st-danger);
+}
+
+.result-revenge-hero {
+    background: var(--st-danger-bg) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-danger-border) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+.result-revenge-hero:hover {
+    border-color: var(--st-danger) !important;
+    box-shadow: none !important;
+}
+
+.result-revenge-hero h3 {
+    color: var(--st-danger) !important;
+}
+
+.result-revenge-hero p {
+    color: var(--st-text-secondary) !important;
+}
+
+#badge-all-correct-result {
+    background: var(--st-success-bg) !important;
+    border: 1px solid var(--st-success-border) !important;
+    border-radius: 12px !important;
+    color: var(--st-success) !important;
+    box-shadow: none !important;
+}
+
+#result-badge-container {
+    background: var(--st-accent-soft) !important;
+    background-image: none !important;
+    border: 1px solid var(--st-accent-border) !important;
+    color: var(--st-accent) !important;
+    box-shadow: none !important;
+}
+
+#quiz-admin-mark {
+    background: var(--st-accent) !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+}
+
+#custom-confirm-accent-bar {
+    background-image: none !important;
+    background-color: var(--st-accent) !important;
+}
+
+.katex {
+    font-size: 1.08em !important;
+    text-rendering: optimizeLegibility;
+}
+
+.quiz-option-content .katex {
+    font-size: 1.18em !important;
+}
+
+.quiz-question-title .katex {
+    font-size: 1.12em !important;
+}
+
+.katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.65rem 0.85rem;
+    margin: 0.65rem 0 !important;
+    background: var(--st-surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--st-border);
+}
+
+/* ==========================================================================
+   FLASHCARD STUDY UI & STUDENT ROSTER DROPDOWN
+   ========================================================================== */
+.fc-card-stage {
+    perspective: 1200px;
+}
+
+.fc-card {
+    position: relative;
+    width: 100%;
+    min-height: 320px;
+    transform-style: preserve-3d;
+    transition: transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+}
+
+.fc-card.is-flipped {
+    transform: rotateY(180deg);
+}
+
+.fc-card-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 12px;
+    border: 1px solid var(--st-border);
+    background: var(--st-surface);
+    color: var(--st-text);
+}
+
+.fc-card-front {
+    position: relative;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.fc-card-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--st-surface-2);
+}
+
+.fc-card-content {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    color: var(--st-text);
+}
+
+.fc-card-content .katex,
+.fc-card-content .katex-display {
+    max-width: 100%;
+}
+
+.fc-card-content .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin-inline: 0 !important;
+}
+
+#player-name-roster-dropdown {
+    position: relative;
+}
+
+#player-name-roster-dropdown > * {
+    display: block;
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    color: var(--st-text-secondary);
+    text-align: left;
+    transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+#player-name-roster-dropdown > *:hover,
+#player-name-roster-dropdown > *.is-selected,
+#player-name-roster-dropdown > *[aria-selected="true"] {
+    color: var(--st-accent);
+    background: var(--st-accent-soft);
+}
+
+#screen-flashcard button:focus-visible,
+#fc-card:focus-visible,
+#btn-start-flashcard:focus-visible,
+#btn-toggle-outside-guest:focus-visible {
+    outline: 2px solid var(--st-accent);
+    outline-offset: 2px;
+}
+
+/* ==========================================================================
+   ACCORDION, TRANSITIONS, PROGRESS MONITOR, SKELETON & FEEDBACK
+   ========================================================================== */
+.ui-accordion-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-top: 0 !important;
+    pointer-events: none;
+    transition: grid-template-rows 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
+}
+
+.ui-accordion-wrap.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-top: 0.625rem !important;
+    pointer-events: auto;
+}
+
+.ui-accordion-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.screen-view {
+    animation: screenFadeEnter 0.18s ease-out;
+}
+
+@keyframes screenFadeEnter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.screen-view-enter {
+    animation: screenFadeEnter 0.2s var(--motion-ease) both;
+}
+
+.question-card-enter {
+    animation: screenFadeEnter 0.2s var(--motion-ease) both;
+}
+
+.question-list-exit .quiz-question-card {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.arena-question-enter {
+    animation: screenFadeEnter 0.18s ease-out both;
+}
+
+.obs-progress-fill,
+.g5-progress-fill {
+    transition: width 0.5s ease !important;
+    will-change: width;
+}
+
+.obs-progress-segments {
+    display: flex;
+    align-items: stretch;
+    gap: 1.5px;
+    width: 100%;
+    height: 100%;
+}
+
+.obs-progress-seg {
+    flex: 1 1 0;
+    min-width: 2px;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--st-border);
+}
+
+.obs-progress-seg.is-ok,
+.obs-progress-fill.is-ok {
+    background: #15803D;
+}
+
+.obs-progress-seg.is-bad,
+.obs-progress-fill.is-bad {
+    background: #DC2626;
+}
+
+.obs-progress-split {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 999px;
+}
+
+.obs-progress-fill.is-ok,
+.obs-progress-fill.is-bad {
+    height: 100%;
+}
+
+.skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--st-surface-2);
+    border: 1px solid var(--st-border);
+}
+
+.skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.16) 50%, transparent 100%);
+    animation: skeletonShimmerSweep 1.5s infinite linear;
+    pointer-events: none;
+}
+
+@keyframes skeletonShimmerSweep {
+    100% { transform: translateX(100%); }
+}
+
+.skeleton-block {
+    border-radius: 6px;
+    background: var(--st-border);
+}
+
+.is-copied-feedback {
+    border-color: var(--st-success-border) !important;
+    background-color: var(--st-success-bg) !important;
+    color: var(--st-success) !important;
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
+}
+
+.is-copied-feedback i,
+.is-copied-feedback .copy-feedback-icon {
+    color: var(--st-success) !important;
+}
+
+.live-dot-pulse {
+    position: relative;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #15803D;
+}
+
+.live-dot-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid #15803D;
+    animation: liveRingPulse 2s ease-out infinite;
+}
+
+@keyframes liveRingPulse {
+    0% { opacity: 0.75; }
+    100% { opacity: 0; }
+}
+
+@keyframes timerCriticalPulse {
+    0%, 100% {
+        border-color: #DC2626;
+        background-color: var(--st-danger-bg);
+    }
+    50% {
+        border-color: #F87171;
+        background-color: rgba(220, 38, 38, 0.22);
+    }
+}
+
+.timer-critical-pulse {
+    display: inline-flex;
+    align-items: center;
+    color: var(--st-danger) !important;
+    border: 1px solid var(--st-danger) !important;
+    background: var(--st-danger-bg) !important;
+    border-radius: 8px;
+    padding: 0.08rem 0.42rem;
+    animation: timerCriticalPulse 1s infinite ease-in-out !important;
+}
+
+div:has(> .timer-critical-pulse),
+span:has(> .timer-critical-pulse) {
+    border-color: var(--st-danger) !important;
+    background: var(--st-danger-bg) !important;
+}
+
+/* Workspace Transition Overlay (fixed, mặc định ẩn) */
+.workspace-transition-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(15, 23, 42, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+}
+
+.workspace-transition-overlay.is-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.workspace-transition-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1.25rem;
+    border-radius: 9999px;
+    background: var(--st-surface);
+    border: 1px solid var(--st-border);
+    box-shadow: var(--st-shadow-lg);
+    color: var(--st-text);
+    font-family: var(--font-heading);
+    font-size: 0.88rem;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.workspace-transition-overlay.is-active .workspace-transition-badge {
+    opacity: 1;
+}
+
+.workspace-transition-spinner {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 9999px;
+    background: var(--st-accent-soft);
+    border: 1px solid var(--st-accent-border);
+    color: var(--st-accent);
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+
+.workspace-transition-text {
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+body.workspace-leaving {
+    opacity: 0.92;
+    transition: opacity 0.2s ease;
+}
+
+body.workspace-entering {
+    animation: screenFadeEnter 0.22s ease both;
+}
+
+.vt-subject-icon {
+    view-transition-name: active-subject-icon;
+}
+
+.vt-subject-title {
+    view-transition-name: active-subject-title;
+}
+
+.is-spinning {
+    animation: adminSpin 0.9s linear infinite;
+}
+
+@keyframes adminSpin {
+    to { transform: rotate(360deg); }
+}
+
+.admin-tab-enter {
+    animation: screenFadeEnter 0.2s ease both;
+}
+
+/* ==========================================================================
+   DYNAMIC TAILWIND HARMONIZATION — LIGHT MODE MẶC ĐỊNH
+   (Đảm bảo mọi HTML do index.html / app.js / arena.js render đều sạch, dễ đọc)
+   ========================================================================== */
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="bg-slate-900"],
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="bg-slate-950"] {
+    background-color: var(--st-surface) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="bg-slate-800"],
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="bg-slate-700"] {
+    background-color: var(--st-surface-2) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="border-slate-"],
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="border-white"] {
+    border-color: var(--st-border) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html:not(.dark) body:not(.admin-body):not(.dark) [class*="divide-slate-"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--st-border) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-slate-100,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-slate-200 {
+    color: var(--st-text) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-slate-300 {
+    color: var(--st-text-secondary) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-slate-400,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-slate-500 {
+    color: var(--st-text-muted) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-sky-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-sky-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-sky-400,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-blue-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-blue-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-cyan-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-cyan-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-cyan-400 {
+    color: #2563EB !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-emerald-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-emerald-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-emerald-400 {
+    color: #15803D !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-rose-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-rose-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-rose-400 {
+    color: #DC2626 !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .text-amber-200,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-amber-300,
+html:not(.dark) body:not(.admin-body):not(.dark) .text-amber-400 {
+    color: #B45309 !important;
+}
+
+/* Nền gradient cũ trên banner/card trong Light Mode -> nền phẳng sạch */
+html:not(.dark) body:not(.admin-body):not(.dark) div[class*="bg-gradient-to-"],
+html:not(.dark) body:not(.admin-body):not(.dark) #saved-user-banner,
+html:not(.dark) body:not(.admin-body):not(.dark) #student-notice-banner > div,
+html:not(.dark) body:not(.admin-body):not(.dark) #custom-confirm-copy-box {
+    background-image: none !important;
+    background-color: var(--st-surface-2) !important;
+    border-color: var(--st-border) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) #student-notice-banner > div {
+    background-color: var(--st-warning-bg) !important;
+    border-color: var(--st-warning-border) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) #saved-user-banner {
+    background-color: var(--st-accent-soft) !important;
+    border-color: var(--st-accent-border) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) input:not([type="checkbox"]):not([type="radio"]),
+html:not(.dark) body:not(.admin-body):not(.dark) select,
+html:not(.dark) body:not(.admin-body):not(.dark) textarea {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    border-color: #CBD5E1 !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) input::placeholder,
+html:not(.dark) body:not(.admin-body):not(.dark) textarea::placeholder {
+    color: #94A3B8 !important;
+}
+
+/* Bảo vệ màu nền & chữ trắng cho các nút/huy hiệu/icon/banner nền đậm trong Light Mode */
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-navy,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-emerald,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-amber,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-rose,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-revenge,
+html:not(.dark) body:not(.admin-body):not(.dark) .student-brand-mark,
+html:not(.dark) body:not(.admin-body):not(.dark) .student-floating-btn,
+html:not(.dark) body:not(.admin-body):not(.dark) .answer-submit-button,
+html:not(.dark) body:not(.admin-body):not(.dark) .tf-choice-button.is-selected-correct,
+html:not(.dark) body:not(.admin-body):not(.dark) .tf-choice-button.is-selected-wrong,
+html:not(.dark) body:not(.admin-body):not(.dark) .tf-choice-button.is-exam-selected,
+html:not(.dark) body:not(.admin-body):not(.dark) button[id^="ai-btn-"],
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-blue-600.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-blue-700.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-sky-600.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-sky-500.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-emerald-600.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-emerald-500.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-rose-600.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-rose-500.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-amber-600.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-amber-500.text-white,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-emerald-600"],
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-amber-600"],
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-rose-600"],
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-sky-600"],
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-blue-600"],
+html:not(.dark) body:not(.admin-body):not(.dark) #arena-join-submit {
+    color: #FFFFFF !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-navy *,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-emerald *,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-amber *,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-rose *,
+html:not(.dark) body:not(.admin-body):not(.dark) .btn-3d-revenge *,
+html:not(.dark) body:not(.admin-body):not(.dark) .student-brand-mark *,
+html:not(.dark) body:not(.admin-body):not(.dark) .student-floating-btn *,
+html:not(.dark) body:not(.admin-body):not(.dark) button[id^="ai-btn-"] *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-blue-600.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-blue-700.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-sky-600.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-sky-500.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-emerald-600.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-emerald-500.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-rose-600.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-rose-500.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-amber-600.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) .bg-amber-500.text-white *,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-emerald-600"] *,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-amber-600"] *,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-rose-600"] *,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-sky-600"] *,
+html:not(.dark) body:not(.admin-body):not(.dark) #network-status-banner[class*="bg-blue-600"] * {
+    color: #FFFFFF !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) #arena-join-submit {
+    background: var(--st-accent) !important;
+    background-image: none !important;
+    border-color: var(--st-accent) !important;
+}
+
+html:not(.dark) body:not(.admin-body):not(.dark) #force-rename-confirm,
+html:not(.dark) body:not(.admin-body):not(.dark) #arena-shield-resume {
+    background: var(--st-accent) !important;
+    color: #FFFFFF !important;
+}
+
+/* Modal backdrops toàn màn hình trong Light Mode (phải nằm sau rule bg-slate-950) */
+html:not(.dark) body:not(.admin-body):not(.dark) [id^="modal-"].fixed,
+html:not(.dark) body:not(.admin-body):not(.dark) #observer-detail-modal,
+html:not(.dark) body:not(.admin-body):not(.dark) #blocked-screen,
+html:not(.dark) body:not(.admin-body):not(.dark) #screen-maintenance,
+html:not(.dark) body:not(.admin-body):not(.dark) #arena-modal,
+html:not(.dark) body:not(.admin-body):not(.dark) #arena-privacy-shield,
+html:not(.dark) body:not(.admin-body):not(.dark) #modal-force-rename {
+    background-color: rgba(15, 23, 42, 0.55) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ==========================================================================
+   DYNAMIC TAILWIND HARMONIZATION — DARK MODE XÁM THAN TRUNG TÍNH
+   (Thay thế toàn bộ nền tối cũ sang bảng màu xám than #111214 / #181A1F / #1F2229)
+   ========================================================================== */
+html.dark body:not(.admin-body) [class*="bg-slate-950"],
+body.dark:not(.admin-body) [class*="bg-slate-950"] {
+    background-color: #0F1115 !important;
+}
+
+html.dark body:not(.admin-body) [class*="bg-slate-900"],
+body.dark:not(.admin-body) [class*="bg-slate-900"] {
+    background-color: #171A21 !important;
+}
+
+html.dark body:not(.admin-body) [class*="bg-slate-800"],
+html.dark body:not(.admin-body) [class*="bg-slate-700"],
+body.dark:not(.admin-body) [class*="bg-slate-800"],
+body.dark:not(.admin-body) [class*="bg-slate-700"] {
+    background-color: #1E222B !important;
+}
+
+html.dark body:not(.admin-body) [class*="border-slate-"],
+html.dark body:not(.admin-body) [class*="border-white"],
+body.dark:not(.admin-body) [class*="border-slate-"],
+body.dark:not(.admin-body) [class*="border-white"] {
+    border-color: #2B313D !important;
+}
+
+html.dark body:not(.admin-body) .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+body.dark:not(.admin-body) .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #2B313D !important;
+}
+
+html.dark body:not(.admin-body) div[class*="bg-gradient-to-"],
+html.dark body:not(.admin-body) #saved-user-banner,
+html.dark body:not(.admin-body) #student-notice-banner > div,
+html.dark body:not(.admin-body) #custom-confirm-copy-box,
+body.dark:not(.admin-body) div[class*="bg-gradient-to-"],
+body.dark:not(.admin-body) #saved-user-banner,
+body.dark:not(.admin-body) #student-notice-banner > div,
+body.dark:not(.admin-body) #custom-confirm-copy-box {
+    background-image: none !important;
+    background-color: #1E222B !important;
+    border-color: #2B313D !important;
+}
+
+html.dark body:not(.admin-body) input:not([type="checkbox"]):not([type="radio"]),
+html.dark body:not(.admin-body) select,
+html.dark body:not(.admin-body) textarea,
+body.dark:not(.admin-body) input:not([type="checkbox"]):not([type="radio"]),
+body.dark:not(.admin-body) select,
+body.dark:not(.admin-body) textarea {
+    background-color: #1E222B !important;
+    color: #F1F5F9 !important;
+    border-color: #2B313D !important;
+}
+
+html.dark body:not(.admin-body) [id^="modal-"].fixed,
+html.dark body:not(.admin-body) #observer-detail-modal,
+html.dark body:not(.admin-body) #blocked-screen,
+html.dark body:not(.admin-body) #screen-maintenance,
+html.dark body:not(.admin-body) #arena-modal,
+html.dark body:not(.admin-body) #arena-privacy-shield,
+html.dark body:not(.admin-body) #modal-force-rename,
+body.dark:not(.admin-body) [id^="modal-"].fixed,
+body.dark:not(.admin-body) #observer-detail-modal,
+body.dark:not(.admin-body) #blocked-screen,
+body.dark:not(.admin-body) #screen-maintenance,
+body.dark:not(.admin-body) #arena-modal,
+body.dark:not(.admin-body) #arena-privacy-shield,
+body.dark:not(.admin-body) #modal-force-rename {
+    background-color: rgba(0, 0, 0, 0.72) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ==========================================================================
+   SHARED UTILITIES FOR ADMIN.HTML (KHÔNG GHI ĐÈ NAVY LÊN ADMIN.CSS)
+   ========================================================================== */
+body.admin-body.dark {
+    --bg: #111214;
+    --surface: #181A1F;
+    --surface-2: #1F2229;
+    --line: #2C303A;
+    --text: #F3F4F6;
+    --muted: #9CA3AF;
+    --primary: #3B82F6;
+    --primary-2: #60A5FA;
+    background: var(--bg);
+    background-image: none;
+    color: var(--text);
+}
+
+.maintenance-panel.is-locked {
+    border-color: rgba(220, 38, 38, 0.45);
+}
+
+.maintenance-toggle-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #334155);
+    transition: color 0.15s ease;
+}
+
+.maintenance-toggle-label.is-active {
+    color: #DC2626;
+    font-weight: 700;
+}
+
+body.dark .maintenance-toggle-label {
+    color: #D1D5DB;
+}
+
+body.dark .maintenance-toggle-label.is-active {
+    color: #F87171;
+}
+
+.maintenance-message-preview {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface-2, #F1F5F9);
+    border: 1px dashed var(--line, #E2E8F0);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.maintenance-message-preview:hover {
+    border-color: var(--primary, #2563EB);
+}
+
+.maintenance-panel.is-locked .maintenance-message-preview {
+    border-style: solid;
+    border-color: rgba(220, 38, 38, 0.35);
+    background: rgba(220, 38, 38, 0.08);
+}
+
+.maintenance-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted, #64748B);
+    margin-bottom: 4px;
+}
+
+.maintenance-message-preview p {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--text, #0F172A);
+}
+
+.status-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.status-action-btn .health-recheck-icon {
+    opacity: 0.6;
+    font-size: 9px;
+    margin-left: 2px;
+}
+
+.status-action-btn:hover .health-recheck-icon {
+    opacity: 1;
+}
+
+.health-retry-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 5px;
+    margin-left: 3px;
+    border-left: 1px solid currentColor;
+    font-weight: 800;
+}
+
+.activity-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px 18px;
+    border: 1px dashed var(--line, #E2E8F0);
+    border-radius: 12px;
+    background: var(--surface-2, #F1F5F9);
+}
+
+.activity-empty-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 17px;
+    color: var(--muted, #64748B);
+    background: var(--surface, #FFFFFF);
+    border: 1px solid var(--line, #E2E8F0);
+    margin-bottom: 10px;
+}
+
+.activity-empty-state h3 {
+    margin: 0 0 4px;
+    font: 700 13.5px var(--font-heading);
+    color: var(--text, #0F172A);
+}
+
+.activity-empty-state p {
+    margin: 0;
+    max-width: 340px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--muted, #64748B);
+}
+
+.admin-identity-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-ip-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    max-width: 100%;
+}
+
+.ip-copy-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--line, #E2E8F0);
+    border-radius: 6px;
+    background: var(--surface-2, #F1F5F9);
+    color: var(--muted, #64748B);
+    font-size: 10px;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.ip-copy-btn:hover {
+    color: var(--primary, #2563EB);
+    border-color: var(--primary, #2563EB);
+}
+
+.ip-copy-btn.is-copied {
+    color: #15803D;
+    border-color: #BBF7D0;
+    background: #F0FDF4;
+}
+
+.data-table tbody tr {
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.table-status {
+    transition: color 0.15s ease;
+}
+
+/* ==========================================================================
+   RESPONSIVE MOBILE & REDUCED MOTION
+   ========================================================================== */
+@media (max-width: 768px) {
+    body:not(.admin-body) input,
+    body:not(.admin-body) textarea,
+    body:not(.admin-body) select,
+    body:not(.admin-body) .answer-text-input {
+        font-size: 16px !important;
+    }
+}
+
+@media (max-width: 640px) {
+    #questions-container {
+        padding-top: var(--quiz-header-spacing-sm, 1rem);
+        padding-inline: 0.75rem;
+    }
+
+    .quiz-question-card {
+        padding: 1rem;
+        scroll-margin-top: calc(var(--quiz-header-height, 140px) + 16px);
+    }
+
+    .quiz-option-tile {
+        min-height: 3.35rem;
+        grid-template-columns: 1.85rem minmax(0, 1fr) auto;
+        padding-inline: 0.75rem;
+    }
+
+    .tf-choice-button {
+        min-width: 3.5rem;
+        min-height: 2rem;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.72rem;
+    }
+
+    #screen-quiz {
+        padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .fc-card,
+    .fc-card-front {
+        min-height: 280px;
+    }
+
+    .fc-card-content {
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .home-grade-tabs,
+    #home-semester-tabs.home-grade-tabs {
+        gap: 3px;
+    }
+
+    .home-grade-tab,
+    #home-semester-tabs .home-grade-tab {
+        padding-inline: 0.45rem;
+        font-size: 0.68rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
+
+    .skeleton-shimmer::after,
+    .live-dot-pulse::after {
+        animation: none !important;
+    }
+}
+
+/* ==========================================================================
+   STUDY DESK POLISH, HEADER HARMONY & PASTEL ICON BOXES
+   ========================================================================== */
+body.student-body #screen-home > .glass-panel-pro {
+    border-top: 3px solid var(--st-accent) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.dark body.student-body #screen-home > .glass-panel-pro,
+body.dark.student-body #screen-home > .glass-panel-pro {
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45) !important;
+}
+
+body.student-body #screen-home .glass-card-pro {
+    background: var(--st-surface-2) !important;
+    border-radius: 14px !important;
+}
+
+/* Thanh Header gọn gàng, thanh lịch trong Light Mode (hết ngũ sắc gắt) */
+html:not(.dark) body.student-body #main-header nav button,
+html:not(.dark) body.student-body #main-header nav a {
+    background-color: var(--st-surface) !important;
+    border-color: var(--st-border) !important;
+    color: var(--st-text-secondary) !important;
+}
+
+html:not(.dark) body.student-body #main-header nav button:hover,
+html:not(.dark) body.student-body #main-header nav a:hover {
+    background-color: var(--st-surface-2) !important;
+    border-color: var(--st-border-strong) !important;
+    color: var(--st-text) !important;
+}
+
+html:not(.dark) body.student-body #header-arena-join-btn:hover {
+    background-color: var(--st-danger-bg) !important;
+    border-color: var(--st-danger-border) !important;
+    color: var(--st-danger) !important;
+}
+
+html:not(.dark) body.student-body #main-header nav button[onclick*="openMyHistoryModal"]:hover {
+    background-color: var(--st-accent-soft) !important;
+    border-color: var(--st-accent-border) !important;
+    color: var(--st-accent) !important;
+}
+
+html:not(.dark) body.student-body #main-header nav button[onclick*="openLeaderboardModal"]:hover,
+html:not(.dark) body.student-body #nav-admin-btn:hover {
+    background-color: var(--st-warning-bg) !important;
+    border-color: var(--st-warning-border) !important;
+    color: var(--st-warning) !important;
+}
+
+/* Hộp icon môn học pastel trong trẻo ở Light Mode thay cho màu /30 tối đục */
+html:not(.dark) body.student-body .subject-card-icon-box.bg-sky-600\/30,
+html:not(.dark) body.student-body .subject-card-icon-box.bg-blue-600\/30 {
+    background-color: #EFF6FF !important;
+    color: #2563EB !important;
+    border-color: #BFDBFE !important;
+}
+
+html:not(.dark) body.student-body .subject-card-icon-box.bg-emerald-600\/30 {
+    background-color: #ECFDF5 !important;
+    color: #059669 !important;
+    border-color: #A7F3D0 !important;
+}
+
+html:not(.dark) body.student-body .subject-card-icon-box.bg-rose-600\/30 {
+    background-color: #FFF1F2 !important;
+    color: #E11D48 !important;
+    border-color: #FECDD3 !important;
+}
+
+html:not(.dark) body.student-body .subject-card-icon-box.bg-amber-600\/30 {
+    background-color: #FFFBEB !important;
+    color: #D97706 !important;
+    border-color: #FDE68A !important;
+}
+
+html:not(.dark) body.student-body #home-subjects-grid .text-sky-200,
+html:not(.dark) body.student-body #home-subjects-grid .bg-sky-500\/30 {
+    background-color: #EFF6FF !important;
+    color: #1D4ED8 !important;
+    border-color: #BFDBFE !important;
+}
+
+/* Bảo đảm độ tương phản rõ nét cho nút nổi Admin / Người theo dõi */
+#floating-admin-btn,
+#floating-observer-btn {
+    background-color: #D97706 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #B45309 !important;
+}
+
+#floating-admin-btn:hover,
+#floating-observer-btn:hover {
+    background-color: #B45309 !important;
+    color: #FFFFFF !important;
+}
+
+/* Màu vàng tươi (Golden Folder) cho thẻ thư mục ở Light Mode & Dark Mode */
+html:not(.dark) body.student-body .folder-card-icon-box {
+    background-color: #FEF9C3 !important;
+    color: #EAB308 !important;
+    border-color: #FDE047 !important;
+    box-shadow: none !important;
+}
+
+html:not(.dark) body.student-body .folder-card-count-badge {
+    background-color: #FEF9C3 !important;
+    color: #A16207 !important;
+    border-color: #FDE047 !important;
+}
+
+html:not(.dark) body.student-body #home-subjects-grid .text-amber-300,
+html:not(.dark) body.student-body #home-subjects-grid .text-amber-400 {
+    color: #D97706 !important;
+}
+
+html.dark body.student-body .folder-card-icon-box,
+body.dark.student-body .folder-card-icon-box {
+    background-color: rgba(250, 204, 21, 0.16) !important;
+    color: #FACC15 !important;
+    border-color: rgba(250, 204, 21, 0.35) !important;
+    box-shadow: none !important;
+}
+
+html.dark body.student-body .folder-card-count-badge,
+body.dark.student-body .folder-card-count-badge {
+    background-color: rgba(250, 204, 21, 0.14) !important;
+    color: #FDE047 !important;
+    border-color: rgba(250, 204, 21, 0.3) !important;
+}
+
+/* Đảm bảo trạng thái chọn / đúng / sai & hover (chỉ máy tính có chuột) luôn thắng quy tắc bg-slate trong Light Mode */
+@media (hover: hover) and (pointer: fine) {
+    html:not(.dark) body.student-body .quiz-option-tile:hover:not(:disabled) {
+        background-color: var(--st-accent-soft) !important;
+        border-color: var(--st-accent) !important;
+    }
+}
+
+html:not(.dark) body.student-body .quiz-option-tile.option-selected-user {
+    background-color: var(--st-accent-soft) !important;
+    border: 1.5px solid var(--st-accent) !important;
+}
+
+html:not(.dark) body.student-body .quiz-option-tile.option-selected-correct {
+    background-color: var(--st-success-bg) !important;
+    border: 1.5px solid var(--st-success) !important;
+}
+
+html:not(.dark) body.student-body .quiz-option-tile.option-selected-wrong {
+    background-color: var(--st-danger-bg) !important;
+    border: 1.5px solid var(--st-danger) !important;
+}

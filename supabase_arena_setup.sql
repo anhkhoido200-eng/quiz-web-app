@@ -1,0 +1,967 @@
+-- =========================================================================
+-- QUIZMASTER PRO - COMPETITIVE ARENA SETUP (SUPABASE / POSTGRESQL)
+-- =========================================================================
+-- Chạy script này trong Supabase SQL Editor để kích hoạt chế độ Thi đấu trực tuyến:
+-- 1. Bảng: match_rooms, match_attempts, match_answers, match_audit_logs
+-- 2. RPC Server-Authoritative: đồng hồ máy chủ, xáo trộn đề/đáp án, chống gian lận,
+--    một phiên hợp lệ, tính điểm + tốc độ và bảng xếp hạng công bằng.
+-- =========================================================================
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS public.admin_sessions (
+    token TEXT PRIMARY KEY,
+    admin_label TEXT NOT NULL DEFAULT 'Admin',
+    ip_address TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.admin_sessions ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION public.is_valid_admin_session(p_admin_token TEXT DEFAULT NULL)
+RETURNS BOOLEAN LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+    IF auth.role() = 'service_role' OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' THEN RETURN true; END IF;
+    IF p_admin_token IS NULL OR LENGTH(TRIM(p_admin_token)) < 16 THEN RETURN false; END IF;
+    RETURN EXISTS (SELECT 1 FROM public.admin_sessions WHERE token = TRIM(p_admin_token) AND expires_at > NOW());
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END; $$;
+
+CREATE TABLE IF NOT EXISTS public.rpc_rate_limits (
+    bucket TEXT NOT NULL, rate_key TEXT NOT NULL,
+    window_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), hit_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket, rate_key)
+);
+ALTER TABLE public.rpc_rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.rpc_rate_limits FROM anon, authenticated;
+CREATE OR REPLACE FUNCTION public.enforce_rate_limit(p_bucket TEXT, p_key TEXT, p_max_hits INTEGER, p_window_seconds INTEGER)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_row public.rpc_rate_limits; v_now TIMESTAMPTZ := NOW();
+BEGIN
+    IF p_max_hits < 1 OR p_window_seconds < 1 THEN RAISE EXCEPTION 'Invalid rate limit'; END IF;
+    DELETE FROM public.rpc_rate_limits WHERE window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now;
+    SELECT * INTO v_row FROM public.rpc_rate_limits WHERE bucket = COALESCE(p_bucket, '') AND rate_key = COALESCE(p_key, '') FOR UPDATE;
+    IF v_row.bucket IS NULL OR v_row.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN
+        INSERT INTO public.rpc_rate_limits(bucket, rate_key, window_started_at, hit_count) VALUES (COALESCE(p_bucket, ''), COALESCE(p_key, ''), v_now, 1)
+        ON CONFLICT (bucket, rate_key) DO UPDATE SET window_started_at = EXCLUDED.window_started_at, hit_count = 1;
+    ELSIF v_row.hit_count >= p_max_hits THEN RAISE EXCEPTION 'Rate limit exceeded';
+    ELSE UPDATE public.rpc_rate_limits SET hit_count = hit_count + 1 WHERE bucket = v_row.bucket AND rate_key = v_row.rate_key;
+    END IF;
+    RETURN true;
+END; $$;
+
+-- 1. PHÒNG KIỂM TRA (Mở ngay cho học sinh vào làm bài, không cần phòng chờ/ghép cặp)
+CREATE TABLE IF NOT EXISTS public.match_rooms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_code TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL DEFAULT 'Bài kiểm tra',
+    subject_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK (status IN ('IN_PROGRESS', 'FINISHED', 'CANCELLED')),
+    match_duration_sec INTEGER NOT NULL DEFAULT 600 CHECK (match_duration_sec >= 30),
+    per_question_sec INTEGER DEFAULT NULL CHECK (per_question_sec IS NULL OR per_question_sec >= 5),
+    max_violations INTEGER NOT NULL DEFAULT 3 CHECK (max_violations >= 0),
+    concurrent_policy TEXT NOT NULL DEFAULT 'KICK_OLD' CHECK (concurrent_policy IN ('KICK_OLD', 'BLOCK_NEW')),
+    require_fullscreen BOOLEAN NOT NULL DEFAULT false,
+    is_locked BOOLEAN NOT NULL DEFAULT false,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_rooms_code ON public.match_rooms(room_code);
+CREATE INDEX IF NOT EXISTS idx_match_rooms_status ON public.match_rooms(status, created_at DESC);
+
+-- 2. PHIÊN THI CỦA THÍ SINH
+CREATE TABLE IF NOT EXISTS public.match_attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id UUID NOT NULL REFERENCES public.match_rooms(id) ON DELETE CASCADE,
+    player_key TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    active_session_token TEXT NOT NULL,
+    question_order JSONB NOT NULL DEFAULT '[]'::jsonb,
+    option_map JSONB NOT NULL DEFAULT '{}'::jsonb,
+    current_index INTEGER NOT NULL DEFAULT 0,
+    question_started_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'JOINED' CHECK (status IN ('JOINED', 'IN_PROGRESS', 'SUBMITTED', 'FORCED')),
+    correct_count INTEGER NOT NULL DEFAULT 0,
+    wrong_count INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    total_time_ms BIGINT NOT NULL DEFAULT 0,
+    violation_count INTEGER NOT NULL DEFAULT 0,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
+    finish_reason TEXT,
+    UNIQUE (room_id, player_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_attempts_room ON public.match_attempts(room_id, correct_count DESC, score DESC, total_time_ms ASC);
+
+-- 3. LỊCH SỬ TRẢ LỜI TỪNG CÂU
+CREATE TABLE IF NOT EXISTS public.match_answers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    attempt_id UUID NOT NULL REFERENCES public.match_attempts(id) ON DELETE CASCADE,
+    question_id INTEGER NOT NULL,
+    question_shown_at TIMESTAMPTZ,
+    answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    response_time_ms INTEGER NOT NULL DEFAULT 0,
+    selected_display INTEGER,
+    selected_original INTEGER,
+    text_answer TEXT,
+    is_correct BOOLEAN NOT NULL DEFAULT false,
+    points_awarded INTEGER NOT NULL DEFAULT 0,
+    submission_seq INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (attempt_id, question_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_answers_attempt ON public.match_answers(attempt_id, answered_at ASC);
+
+-- 4. NHẬT KÝ KIỂM TOÁN & CHỐNG GIAN LẬN
+CREATE TABLE IF NOT EXISTS public.match_audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id UUID NOT NULL REFERENCES public.match_rooms(id) ON DELETE CASCADE,
+    attempt_id UUID REFERENCES public.match_attempts(id) ON DELETE CASCADE,
+    player_name TEXT NOT NULL DEFAULT '',
+    event_type TEXT NOT NULL,
+    meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_audit_logs_room ON public.match_audit_logs(room_id, created_at DESC);
+
+-- RLS CƠ BẢN (Truy cập ghi/chấm qua RPC SECURITY DEFINER; không cho anon đọc trực tiếp token/option_map)
+ALTER TABLE public.match_rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match_audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read rooms" ON public.match_rooms;
+CREATE POLICY "Public read rooms" ON public.match_rooms FOR SELECT TO anon, authenticated USING (true);
+
+-- Thu hồi quyền đọc trực tiếp match_attempts & match_audit_logs của anon để tránh lộ active_session_token, question_order, option_map
+DROP POLICY IF EXISTS "Public read leaderboard attempts" ON public.match_attempts;
+DROP POLICY IF EXISTS "Public read audit logs" ON public.match_audit_logs;
+
+-- Bật Realtime cho phòng (match_attempts không broadcast công khai để bảo vệ active_session_token)
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.match_rooms;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS accepted_values JSONB DEFAULT '[]'::jsonb;
+
+-- Helper: trả về thông tin attempt an toàn (không lộ active_session_token, question_order, option_map)
+CREATE OR REPLACE FUNCTION public.arena_safe_attempt(p_attempt public.match_attempts)
+RETURNS JSONB
+ LANGUAGE SQL
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+    SELECT jsonb_build_object(
+        'id', p_attempt.id,
+        'room_id', p_attempt.room_id,
+        'player_name', p_attempt.player_name,
+        'current_index', p_attempt.current_index,
+        'question_started_at', p_attempt.question_started_at,
+        'status', p_attempt.status,
+        'correct_count', p_attempt.correct_count,
+        'wrong_count', p_attempt.wrong_count,
+        'score', p_attempt.score,
+        'total_time_ms', p_attempt.total_time_ms,
+        'violation_count', p_attempt.violation_count,
+        'started_at', p_attempt.started_at,
+        'submitted_at', p_attempt.submitted_at,
+        'finish_reason', p_attempt.finish_reason
+    );
+$$;
+
+-- =========================================================================
+-- RPC 1: ĐỒNG BỘ ĐỒNG HỒ MÁY CHỦ
+-- =========================================================================
+CREATE OR REPLACE FUNCTION public.arena_get_server_time()
+RETURNS TIMESTAMPTZ
+LANGUAGE SQL
+STABLE
+SET search_path = public, pg_temp
+AS $$
+    SELECT NOW();
+$$;
+
+-- =========================================================================
+-- RPC 2: TẠO BÀI KIỂM TRA (Mở ngay để học sinh vào làm tự do theo khung giờ)
+-- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_create_room(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, BOOLEAN);
+CREATE OR REPLACE FUNCTION public.arena_create_room(
+    p_title TEXT,
+    p_subject_key TEXT,
+    p_match_duration_sec INTEGER DEFAULT 600,
+    p_per_question_sec INTEGER DEFAULT NULL,
+    p_max_violations INTEGER DEFAULT 3,
+    p_concurrent_policy TEXT DEFAULT 'KICK_OLD',
+    p_require_fullscreen BOOLEAN DEFAULT false,
+    p_admin_token TEXT DEFAULT NULL
+)
+RETURNS public.match_rooms
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_code TEXT;
+    v_room public.match_rooms;
+    v_title TEXT := COALESCE(NULLIF(TRIM(p_title), ''), 'Bài kiểm tra');
+    v_subject_key TEXT := NULLIF(TRIM(COALESCE(p_subject_key, '')), '');
+BEGIN
+    IF NOT public.is_valid_admin_session(p_admin_token) THEN RAISE EXCEPTION 'Chỉ quản trị viên mới có quyền tạo phòng thi đấu'; END IF;
+    IF v_subject_key IS NULL OR LENGTH(v_subject_key) > 64 THEN
+        RAISE EXCEPTION 'Mã môn học không hợp lệ';
+    END IF;
+    IF LENGTH(v_title) > 200 THEN
+        RAISE EXCEPTION 'Tên bài kiểm tra quá dài (tối đa 200 ký tự)';
+    END IF;
+    IF p_match_duration_sec IS NOT NULL AND (p_match_duration_sec < 30 OR p_match_duration_sec > 14400) THEN
+        RAISE EXCEPTION 'Thời gian làm bài phải từ 30 đến 14400 giây';
+    END IF;
+    IF p_per_question_sec IS NOT NULL AND (p_per_question_sec < 5 OR p_per_question_sec > 3600) THEN
+        RAISE EXCEPTION 'Thời gian mỗi câu phải từ 5 đến 3600 giây';
+    END IF;
+    IF p_max_violations IS NOT NULL AND (p_max_violations < 0 OR p_max_violations > 100) THEN
+        RAISE EXCEPTION 'Số lần vi phạm tối đa không hợp lệ';
+    END IF;
+
+    LOOP
+        v_code := UPPER(SUBSTRING(REPLACE(gen_random_uuid()::TEXT, '-', '') FROM 1 FOR 6));
+        EXIT WHEN NOT EXISTS (SELECT 1 FROM public.match_rooms WHERE room_code = v_code);
+    END LOOP;
+
+    INSERT INTO public.match_rooms (
+        room_code, title, subject_key,
+        match_duration_sec, per_question_sec,
+        max_violations, concurrent_policy, require_fullscreen,
+        status, started_at
+    )
+    VALUES (
+        v_code,
+        v_title,
+        v_subject_key,
+        GREATEST(30, LEAST(14400, COALESCE(p_match_duration_sec, 600))),
+        CASE WHEN p_per_question_sec IS NOT NULL AND p_per_question_sec >= 5 THEN LEAST(3600, p_per_question_sec) ELSE NULL END,
+        GREATEST(0, LEAST(100, COALESCE(p_max_violations, 3))),
+        CASE WHEN p_concurrent_policy = 'BLOCK_NEW' THEN 'BLOCK_NEW' ELSE 'KICK_OLD' END,
+        COALESCE(p_require_fullscreen, false),
+        'IN_PROGRESS',
+        NOW()
+    )
+    RETURNING * INTO v_room;
+
+    INSERT INTO public.match_audit_logs (room_id, player_name, event_type, meta)
+    VALUES (v_room.id, 'HOST', 'ROOM_CREATED', jsonb_build_object('room_code', v_room.room_code, 'subject_key', v_room.subject_key));
+
+    RETURN v_room;
+END;
+$$;
+
+-- =========================================================================
+-- RPC 3: TRA CỨU BẢNG XẾP HẠNG, TRẠNG THÁI PHIÊN & NHẬT KÝ AN TOÀN
+-- =========================================================================
+CREATE OR REPLACE FUNCTION public.arena_get_leaderboard(p_room_id UUID)
+RETURNS TABLE (
+    id UUID,
+    player_name TEXT,
+    status TEXT,
+    correct_count INTEGER,
+    wrong_count INTEGER,
+    score INTEGER,
+    total_time_ms BIGINT,
+    violation_count INTEGER,
+    finish_reason TEXT
+)
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        a.id,
+        a.player_name,
+        a.status,
+        a.correct_count,
+        a.wrong_count,
+        a.score,
+        a.total_time_ms,
+        a.violation_count,
+        a.finish_reason
+    FROM public.match_attempts a
+    WHERE a.room_id = p_room_id
+    ORDER BY a.correct_count DESC, a.score DESC, a.total_time_ms ASC, a.violation_count ASC;
+$$;
+
+CREATE OR REPLACE FUNCTION public.arena_get_room_state(
+    p_room_id UUID,
+    p_attempt_id UUID DEFAULT NULL,
+    p_session_token TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_room public.match_rooms;
+    v_attempt public.match_attempts;
+    v_session_replaced BOOLEAN := false;
+    v_safe_attempt JSONB := NULL;
+BEGIN
+    SELECT * INTO v_room FROM public.match_rooms WHERE id = p_room_id;
+    IF v_room.id IS NULL THEN
+        RETURN jsonb_build_object('room', NULL, 'attempt', NULL, 'session_replaced', false);
+    END IF;
+
+    IF p_attempt_id IS NOT NULL THEN
+        SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id AND room_id = p_room_id;
+        IF v_attempt.id IS NOT NULL THEN
+            IF p_session_token IS NOT NULL AND v_attempt.active_session_token <> p_session_token THEN
+                v_session_replaced := true;
+            ELSE
+                v_safe_attempt := jsonb_build_object(
+                    'id', v_attempt.id,
+                    'room_id', v_attempt.room_id,
+                    'player_name', v_attempt.player_name,
+                    'current_index', v_attempt.current_index,
+                    'question_started_at', v_attempt.question_started_at,
+                    'status', v_attempt.status,
+                    'correct_count', v_attempt.correct_count,
+                    'wrong_count', v_attempt.wrong_count,
+                    'score', v_attempt.score,
+                    'total_time_ms', v_attempt.total_time_ms,
+                    'violation_count', v_attempt.violation_count,
+                    'started_at', v_attempt.started_at,
+                    'submitted_at', v_attempt.submitted_at,
+                    'finish_reason', v_attempt.finish_reason
+                );
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'room', to_jsonb(v_room),
+        'attempt', v_safe_attempt,
+        'session_replaced', v_session_replaced
+    );
+END;
+$$;
+
+DROP FUNCTION IF EXISTS public.arena_get_audit_logs(UUID);
+CREATE OR REPLACE FUNCTION public.arena_get_audit_logs(p_room_id UUID, p_admin_token TEXT DEFAULT NULL)
+RETURNS TABLE (
+    player_name TEXT,
+    event_type TEXT,
+    meta JSONB,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NOT public.is_valid_admin_session(p_admin_token) THEN RAISE EXCEPTION 'Chỉ quản trị viên mới có quyền xem nhật ký kiểm toán'; END IF;
+    RETURN QUERY
+    SELECT l.player_name, l.event_type, l.meta - 'attempted_token' - 'new_token', l.created_at
+    FROM public.match_audit_logs l WHERE l.room_id = p_room_id ORDER BY l.created_at DESC LIMIT 40;
+END;
+$$;
+
+-- =========================================================================
+-- RPC 4: THAM GIA PHÒNG THI + XÁO TRỘN ĐỀ & ĐÁP ÁN KHÔNG LỘ ĐÁP ÁN ĐÚNG
+-- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_join_room(TEXT, TEXT, TEXT, TEXT);
+CREATE OR REPLACE FUNCTION public.arena_join_room(
+    p_room_code TEXT,
+    p_player_name TEXT,
+    p_player_key TEXT,
+    p_session_token TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_room public.match_rooms;
+    v_attempt public.match_attempts;
+    v_now TIMESTAMPTZ := NOW();
+    v_q_ids INTEGER[];
+    v_option_map JSONB := '{}'::jsonb;
+    v_q RECORD;
+    v_perm JSONB;
+    v_questions JSONB;
+    v_clean_name TEXT := NULLIF(TRIM(COALESCE(p_player_name, '')), '');
+    v_clean_key TEXT := NULLIF(LOWER(TRIM(COALESCE(p_player_key, ''))), '');
+    v_clean_token TEXT := NULLIF(TRIM(COALESCE(p_session_token, '')), '');
+    v_valid_q_order JSONB;
+    v_adjusted_idx INTEGER;
+BEGIN
+    PERFORM public.enforce_rate_limit('arena_join_room', COALESCE(NULLIF(TRIM(p_player_key), ''), 'anonymous'), 30, 60);
+    IF v_clean_name IS NULL THEN
+        RAISE EXCEPTION 'Vui lòng nhập họ và tên thí sinh';
+    END IF;
+    IF LENGTH(v_clean_name) > 80 THEN
+        v_clean_name := LEFT(v_clean_name, 80);
+    END IF;
+    IF v_clean_key IS NULL OR v_clean_token IS NULL THEN
+        RAISE EXCEPTION 'Thiếu thông tin phiên thi hợp lệ';
+    END IF;
+
+    SELECT * INTO v_room
+    FROM public.match_rooms
+    WHERE room_code = UPPER(TRIM(COALESCE(p_room_code, '')))
+    FOR SHARE;
+
+    IF v_room.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy mã phòng %', p_room_code;
+    END IF;
+
+    IF v_room.status IN ('FINISHED', 'CANCELLED') OR v_room.is_locked THEN
+        RAISE EXCEPTION 'Bài kiểm tra đã đóng';
+    END IF;
+
+    SELECT * INTO v_attempt
+    FROM public.match_attempts
+    WHERE room_id = v_room.id AND player_key = v_clean_key
+    FOR UPDATE;
+
+    IF v_attempt.id IS NOT NULL THEN
+        IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
+            RAISE EXCEPTION 'Bạn đã hoàn thành bài kiểm tra này';
+        END IF;
+
+        IF v_attempt.started_at IS NOT NULL
+           AND v_now > (v_attempt.started_at + (v_room.match_duration_sec * INTERVAL '1 second') + INTERVAL '3 seconds') THEN
+            UPDATE public.match_attempts
+            SET status = 'SUBMITTED',
+                submitted_at = COALESCE(submitted_at, v_now),
+                finish_reason = 'TIME_UP'
+            WHERE id = v_attempt.id
+            RETURNING * INTO v_attempt;
+
+            RETURN jsonb_build_object(
+                'error', 'MATCH_TIME_UP',
+                'match_time_up', true,
+                'message', 'Hết thời gian làm bài',
+                'server_now', v_now,
+                'room', to_jsonb(v_room),
+                'attempt', public.arena_safe_attempt(v_attempt),
+                'questions', '[]'::jsonb
+            );
+        END IF;
+
+        IF v_attempt.active_session_token <> v_clean_token THEN
+            IF v_room.concurrent_policy = 'BLOCK_NEW' THEN
+                INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+                VALUES (v_room.id, v_attempt.id, v_clean_name, 'CONCURRENT_LOGIN_BLOCKED', '{}'::jsonb);
+                RAISE EXCEPTION 'Tài khoản đang làm bài ở một thiết bị khác';
+            ELSE
+                UPDATE public.match_attempts
+                SET active_session_token = v_clean_token
+                WHERE id = v_attempt.id
+                RETURNING * INTO v_attempt;
+
+                INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+                VALUES (v_room.id, v_attempt.id, v_clean_name, 'CONCURRENT_LOGIN_REPLACED', '{}'::jsonb);
+            END IF;
+        END IF;
+    ELSE
+        SELECT ARRAY_AGG(id ORDER BY RANDOM()) INTO v_q_ids
+        FROM public.quiz_questions
+        WHERE subject_key = v_room.subject_key AND COALESCE(is_deleted, false) = false;
+
+        IF v_q_ids IS NULL OR ARRAY_LENGTH(v_q_ids, 1) = 0 THEN
+            RAISE EXCEPTION 'Môn học này chưa có câu hỏi nào trên hệ thống';
+        END IF;
+
+        FOR v_q IN
+            SELECT id, q_type, options
+            FROM public.quiz_questions
+            WHERE id = ANY(v_q_ids)
+        LOOP
+            IF COALESCE(v_q.q_type, 'mcq') = 'mcq' AND jsonb_array_length(COALESCE(v_q.options, '[]'::jsonb)) > 1 THEN
+                SELECT jsonb_agg(idx ORDER BY RANDOM()) INTO v_perm
+                FROM generate_series(0, jsonb_array_length(v_q.options) - 1) AS idx;
+                v_option_map := jsonb_set(v_option_map, ARRAY[v_q.id::TEXT], v_perm);
+            END IF;
+        END LOOP;
+
+        INSERT INTO public.match_attempts (
+            room_id, player_key, player_name, active_session_token,
+            question_order, option_map, status,
+            started_at, question_started_at
+        )
+        VALUES (
+            v_room.id,
+            v_clean_key,
+            v_clean_name,
+            v_clean_token,
+            to_jsonb(v_q_ids),
+            v_option_map,
+            'IN_PROGRESS',
+            v_now,
+            v_now
+        )
+        RETURNING * INTO v_attempt;
+
+        INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+        VALUES (v_room.id, v_attempt.id, v_attempt.player_name, 'PLAYER_JOINED', '{}'::jsonb);
+    END IF;
+
+    -- Đồng bộ lại question_order & current_index nếu có câu hỏi bị xóa cứng khỏi quiz_questions
+    SELECT
+        COALESCE(jsonb_agg(q.id ORDER BY ord_q.ord), '[]'::jsonb),
+        COUNT(*) FILTER (WHERE ord_q.ord <= v_attempt.current_index)::INTEGER
+    INTO v_valid_q_order, v_adjusted_idx
+    FROM jsonb_array_elements_text(v_attempt.question_order) WITH ORDINALITY AS ord_q(qid, ord)
+    JOIN public.quiz_questions q ON q.id = ord_q.qid::INTEGER;
+
+    IF jsonb_array_length(v_valid_q_order) <> jsonb_array_length(v_attempt.question_order) THEN
+        UPDATE public.match_attempts
+        SET question_order = v_valid_q_order,
+            current_index = v_adjusted_idx
+        WHERE id = v_attempt.id
+        RETURNING * INTO v_attempt;
+    END IF;
+
+    -- Build sanitized question payload (KHÔNG trả correct/correct_value/explanation/statements.answer)
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'id', q.id,
+            'qType', COALESCE(q.q_type, 'mcq'),
+            'category', q.category,
+            'question', q.question,
+            'image_url', q.image_url,
+            'statements', CASE
+                WHEN q.q_type = 'tf_group' THEN (
+                    SELECT COALESCE(jsonb_agg(jsonb_build_object('text', s->>'text')), '[]'::jsonb)
+                     FROM jsonb_array_elements(COALESCE(q.statements, '[]'::jsonb)) WITH ORDINALITY AS s(stmt, ord)
+                     ORDER BY s.ord
+                )
+                ELSE '[]'::jsonb
+            END,
+            'options', CASE
+                WHEN COALESCE(q.q_type, 'mcq') = 'mcq' AND (v_attempt.option_map ? q.id::TEXT) THEN (
+                    SELECT jsonb_agg(q.options->(perm_idx::INT) ORDER BY ord)
+                    FROM jsonb_array_elements_text(v_attempt.option_map->(q.id::TEXT)) WITH ORDINALITY AS t(perm_idx, ord)
+                )
+                ELSE COALESCE(q.options, '[]'::jsonb)
+            END
+        )
+        ORDER BY ord_q.ord
+    ) INTO v_questions
+    FROM jsonb_array_elements_text(v_attempt.question_order) WITH ORDINALITY AS ord_q(qid, ord)
+    JOIN public.quiz_questions q ON q.id = ord_q.qid::INTEGER;
+
+    RETURN jsonb_build_object(
+        'server_now', v_now,
+        'room', to_jsonb(v_room),
+        'attempt', jsonb_build_object(
+            'id', v_attempt.id,
+            'room_id', v_attempt.room_id,
+            'player_name', v_attempt.player_name,
+            'current_index', v_attempt.current_index,
+            'question_started_at', v_attempt.question_started_at,
+            'status', v_attempt.status,
+            'correct_count', v_attempt.correct_count,
+            'wrong_count', v_attempt.wrong_count,
+            'score', v_attempt.score,
+            'total_time_ms', v_attempt.total_time_ms,
+            'violation_count', v_attempt.violation_count,
+            'started_at', v_attempt.started_at,
+            'submitted_at', v_attempt.submitted_at,
+            'finish_reason', v_attempt.finish_reason
+        ),
+        'questions', COALESCE(v_questions, '[]'::jsonb)
+    );
+END;
+$$;
+
+-- =========================================================================
+-- RPC 5: GỬI ĐÁP ÁN + CHẤM ĐIỂM TRÊN MÁY CHỦ (Idempotent & Grace Window)
+-- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_submit_answer(UUID, TEXT, INTEGER, INTEGER, TEXT, INTEGER, JSONB, BOOLEAN, INTEGER);
+CREATE OR REPLACE FUNCTION public.arena_submit_answer(
+    p_attempt_id UUID,
+    p_session_token TEXT,
+    p_question_id INTEGER,
+    p_selected_display INTEGER DEFAULT NULL,
+    p_text_answer TEXT DEFAULT NULL,
+    p_submission_seq INTEGER DEFAULT 1,
+    p_tf_answers JSONB DEFAULT NULL,
+    p_is_offline_sync BOOLEAN DEFAULT false,
+    p_client_elapsed_ms INTEGER DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_attempt public.match_attempts;
+    v_room public.match_rooms;
+    v_q public.quiz_questions;
+    v_existing public.match_answers;
+    v_now TIMESTAMPTZ := NOW();
+    v_orig_idx INTEGER := NULL;
+    v_is_correct BOOLEAN := false;
+    v_points INTEGER := 0;
+    v_resp_ms INTEGER := 0;
+    v_speed_bonus INTEGER := 0;
+    v_ref_start TIMESTAMPTZ;
+    v_tf_arr JSONB;
+    v_total_stmts INTEGER := 0;
+    v_matched_stmts INTEGER := 0;
+    v_idx INTEGER;
+    v_user_val TEXT;
+    v_expected_val BOOLEAN;
+    v_timed_out BOOLEAN := false;
+BEGIN
+    PERFORM public.enforce_rate_limit('arena_submit_answer', COALESCE(NULLIF(TRIM(p_session_token), ''), 'anonymous'), 120, 60);
+    SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
+    IF v_attempt.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy phiên thi';
+    END IF;
+    IF v_attempt.active_session_token <> p_session_token THEN
+        RAISE EXCEPTION 'SESSION_REPLACED';
+    END IF;
+    IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
+        RETURN jsonb_build_object('already_submitted', true, 'attempt', public.arena_safe_attempt(v_attempt));
+    END IF;
+
+    SELECT * INTO v_room FROM public.match_rooms WHERE id = v_attempt.room_id;
+    IF v_room.status IN ('FINISHED', 'CANCELLED')
+       OR (v_attempt.started_at IS NOT NULL AND v_now > (v_attempt.started_at + (v_room.match_duration_sec * INTERVAL '1 second') + CASE WHEN COALESCE(p_is_offline_sync, false) THEN INTERVAL '15 seconds' ELSE INTERVAL '3 seconds' END)) THEN
+        UPDATE public.match_attempts
+        SET status = 'SUBMITTED',
+            submitted_at = COALESCE(submitted_at, v_now),
+            finish_reason = 'TIME_UP'
+        WHERE id = v_attempt.id
+        RETURNING * INTO v_attempt;
+        RETURN jsonb_build_object(
+            'error', 'MATCH_TIME_UP',
+            'match_time_up', true,
+            'message', 'Hết thời gian làm bài',
+            'attempt', public.arena_safe_attempt(v_attempt)
+        );
+    END IF;
+
+    -- Idempotency check
+    SELECT * INTO v_existing FROM public.match_answers WHERE attempt_id = p_attempt_id AND question_id = p_question_id;
+    IF v_existing.id IS NOT NULL THEN
+        RETURN jsonb_build_object('duplicate', true, 'attempt', public.arena_safe_attempt(v_attempt), 'answer', to_jsonb(v_existing));
+    END IF;
+
+    IF v_attempt.current_index < jsonb_array_length(COALESCE(v_attempt.question_order, '[]'::jsonb)) AND (v_attempt.question_order->>v_attempt.current_index)::INTEGER <> p_question_id THEN
+        RAISE EXCEPTION 'Câu hỏi không đúng thứ tự phiên thi';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(COALESCE(v_attempt.question_order, '[]'::jsonb)) AS qid
+        WHERE qid = p_question_id::TEXT
+    ) THEN
+        RAISE EXCEPTION 'Câu hỏi không thuộc phiên thi này';
+    END IF;
+
+    v_ref_start := COALESCE(v_attempt.question_started_at, v_attempt.started_at, v_room.started_at, v_now);
+    v_resp_ms := GREATEST(0, ROUND(EXTRACT(EPOCH FROM (v_now - v_ref_start)) * 1000)::INTEGER);
+
+    IF COALESCE(p_is_offline_sync, false) AND p_client_elapsed_ms IS NOT NULL THEN
+        v_resp_ms := GREATEST(500, LEAST(p_client_elapsed_ms, v_room.match_duration_sec * 1000));
+    END IF;
+
+    IF v_room.per_question_sec IS NOT NULL THEN
+        IF COALESCE(p_is_offline_sync, false) AND p_client_elapsed_ms IS NOT NULL THEN
+            v_timed_out := (p_client_elapsed_ms > ((v_room.per_question_sec + 2) * 1000));
+        ELSE
+            v_timed_out := (v_now > (v_ref_start + ((v_room.per_question_sec + 2) * INTERVAL '1 second')));
+        END IF;
+    END IF;
+
+    IF v_timed_out THEN
+        INSERT INTO public.match_answers (attempt_id, question_id, question_shown_at, answered_at, response_time_ms, is_correct, points_awarded, submission_seq)
+        VALUES (p_attempt_id, p_question_id, v_ref_start, v_now, v_resp_ms, false, 0, p_submission_seq);
+
+        UPDATE public.match_attempts
+        SET current_index = current_index + 1,
+            question_started_at = v_now,
+            wrong_count = wrong_count + 1,
+            total_time_ms = total_time_ms + v_resp_ms
+        WHERE id = p_attempt_id
+        RETURNING * INTO v_attempt;
+
+        RETURN jsonb_build_object('question_timeout', true, 'attempt', public.arena_safe_attempt(v_attempt));
+    END IF;
+
+    SELECT * INTO v_q FROM public.quiz_questions WHERE id = p_question_id;
+    IF v_q.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy câu hỏi';
+    END IF;
+    IF COALESCE(v_q.q_type, 'mcq') = 'mcq' AND p_selected_display IS NOT NULL THEN
+        IF v_attempt.option_map ? p_question_id::TEXT THEN
+            v_orig_idx := (v_attempt.option_map->(p_question_id::TEXT)->>p_selected_display)::INTEGER;
+        ELSE
+            v_orig_idx := p_selected_display;
+        END IF;
+        v_is_correct := COALESCE(v_orig_idx = COALESCE(v_q.correct, v_q.answer, 0), false);
+    ELSIF v_q.q_type = 'short_answer' THEN
+        v_is_correct := (
+            (TRIM(COALESCE(v_q.correct_value, '')) <> '' AND LOWER(TRIM(REPLACE(COALESCE(p_text_answer, ''), ',', '.'))) = LOWER(TRIM(REPLACE(COALESCE(v_q.correct_value, ''), ',', '.'))))
+            OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(COALESCE(v_q.accepted_values, '[]'::jsonb)) AS av
+                 WHERE TRIM(av) <> '' AND LOWER(TRIM(REPLACE(av, ',', '.'))) = LOWER(TRIM(REPLACE(COALESCE(p_text_answer, ''), ',', '.')))
+            )
+        );
+    ELSIF v_q.q_type = 'tf_group' THEN
+        v_total_stmts := jsonb_array_length(COALESCE(v_q.statements, '[]'::jsonb));
+        IF p_tf_answers IS NOT NULL THEN
+            v_tf_arr := p_tf_answers;
+        ELSIF p_text_answer IS NOT NULL AND LEFT(TRIM(p_text_answer), 1) = '[' THEN
+            BEGIN
+                v_tf_arr := p_text_answer::jsonb;
+            EXCEPTION WHEN OTHERS THEN
+                v_tf_arr := '[]'::jsonb;
+            END;
+        ELSE
+            v_tf_arr := '[]'::jsonb;
+        END IF;
+        IF v_total_stmts > 0 AND jsonb_typeof(v_tf_arr) = 'array' THEN
+            FOR v_idx IN 0 .. (v_total_stmts - 1) LOOP
+                v_user_val := LOWER(TRIM(COALESCE(v_tf_arr->>v_idx, '')));
+                v_expected_val := COALESCE((v_q.statements->v_idx->>'answer')::BOOLEAN, false);
+                IF (v_user_val = 'true' AND v_expected_val = true) OR (v_user_val = 'false' AND v_expected_val = false) THEN
+                    v_matched_stmts := v_matched_stmts + 1;
+                END IF;
+            END LOOP;
+            v_is_correct := (v_matched_stmts = v_total_stmts);
+        END IF;
+    END IF;
+
+    IF v_is_correct THEN
+        IF COALESCE(p_is_offline_sync, false) THEN
+            -- Không cộng speed bonus cho bài đồng bộ offline để tránh sửa p_client_elapsed_ms trong localStorage
+            v_speed_bonus := 0;
+        ELSIF v_room.per_question_sec IS NOT NULL THEN
+            v_speed_bonus := GREATEST(0, LEAST(20, ROUND(20.0 * (1.0 - (v_resp_ms / (v_room.per_question_sec * 1000.0))))::INTEGER));
+        ELSE
+            v_speed_bonus := GREATEST(0, LEAST(20, 20 - FLOOR(v_resp_ms / 3000.0)::INTEGER));
+        END IF;
+        v_points := 100 + v_speed_bonus;
+    END IF;
+
+    INSERT INTO public.match_answers (
+        attempt_id, question_id, question_shown_at, answered_at,
+        response_time_ms, selected_display, selected_original,
+        text_answer, is_correct, points_awarded, submission_seq
+    )
+    VALUES (
+        p_attempt_id, p_question_id, v_ref_start, v_now,
+        v_resp_ms, p_selected_display, v_orig_idx,
+        COALESCE(p_text_answer, p_tf_answers::TEXT), v_is_correct, v_points, p_submission_seq
+    );
+
+    UPDATE public.match_attempts
+    SET current_index = current_index + 1,
+        question_started_at = v_now,
+        correct_count = correct_count + CASE WHEN v_is_correct THEN 1 ELSE 0 END,
+        wrong_count = wrong_count + CASE WHEN NOT v_is_correct THEN 1 ELSE 0 END,
+        score = score + v_points,
+        total_time_ms = total_time_ms + v_resp_ms
+    WHERE id = p_attempt_id
+    RETURNING * INTO v_attempt;
+
+    RETURN jsonb_build_object(
+        'recorded', true,
+        'attempt', public.arena_safe_attempt(v_attempt),
+        'server_now', v_now
+    );
+END;
+$$;
+
+-- =========================================================================
+-- RPC 6: GHI NHẬN VI PHẠM & TỰ ĐỘNG NỘP BÀI KHI VƯỢT NGƯỠNG
+-- =========================================================================
+CREATE OR REPLACE FUNCTION public.arena_log_violation(
+    p_attempt_id UUID,
+    p_session_token TEXT,
+    p_event_type TEXT,
+    p_meta JSONB DEFAULT '{}'::jsonb
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_attempt public.match_attempts;
+    v_room public.match_rooms;
+    v_forced BOOLEAN := false;
+BEGIN
+    PERFORM public.enforce_rate_limit('arena_report_violation', COALESCE(NULLIF(TRIM(p_session_token), ''), 'anonymous'), 30, 60);
+    SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
+    IF v_attempt.id IS NULL THEN RAISE EXCEPTION 'Không tìm thấy phiên thi'; END IF;
+    IF v_attempt.active_session_token <> p_session_token THEN RAISE EXCEPTION 'SESSION_REPLACED'; END IF;
+    IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
+        RETURN jsonb_build_object('forced', v_attempt.status = 'FORCED', 'attempt', public.arena_safe_attempt(v_attempt));
+    END IF;
+
+    SELECT * INTO v_room FROM public.match_rooms WHERE id = v_attempt.room_id;
+
+    UPDATE public.match_attempts
+    SET violation_count = violation_count + 1
+    WHERE id = p_attempt_id
+    RETURNING * INTO v_attempt;
+
+    INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+    VALUES (v_room.id, v_attempt.id, v_attempt.player_name, p_event_type, COALESCE(p_meta, '{}'::jsonb));
+
+    IF v_room.max_violations > 0 AND v_attempt.violation_count >= v_room.max_violations THEN
+        v_forced := true;
+        UPDATE public.match_attempts
+        SET status = 'FORCED',
+            submitted_at = NOW(),
+            finish_reason = 'FORCED_VIOLATION'
+        WHERE id = p_attempt_id
+        RETURNING * INTO v_attempt;
+
+        INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+        VALUES (v_room.id, v_attempt.id, v_attempt.player_name, 'FORCED_SUBMIT', jsonb_build_object('violation_count', v_attempt.violation_count));
+    END IF;
+
+    RETURN jsonb_build_object('forced', v_forced, 'attempt', public.arena_safe_attempt(v_attempt));
+END;
+$$;
+
+-- =========================================================================
+-- RPC 7: NỘP BÀI / KẾT THÚC PHIÊN / KẾT THÚC PHÒNG
+-- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_finish_attempt(UUID, TEXT, TEXT);
+CREATE OR REPLACE FUNCTION public.arena_finish_attempt(
+    p_attempt_id UUID,
+    p_session_token TEXT,
+    p_reason TEXT DEFAULT 'USER_SUBMIT'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_attempt public.match_attempts;
+BEGIN
+    SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
+    IF v_attempt.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy phiên thi';
+    END IF;
+    IF v_attempt.active_session_token <> p_session_token THEN
+        RAISE EXCEPTION 'SESSION_REPLACED';
+    END IF;
+    IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
+        RETURN public.arena_safe_attempt(v_attempt);
+    END IF;
+
+    UPDATE public.match_attempts
+    SET status = 'SUBMITTED',
+        submitted_at = COALESCE(submitted_at, NOW()),
+        finish_reason = COALESCE(finish_reason, p_reason)
+    WHERE id = p_attempt_id
+    RETURNING * INTO v_attempt;
+
+    INSERT INTO public.match_audit_logs (room_id, attempt_id, player_name, event_type, meta)
+    VALUES (v_attempt.room_id, v_attempt.id, v_attempt.player_name, 'ATTEMPT_SUBMITTED', jsonb_build_object('reason', p_reason, 'score', v_attempt.score, 'correct_count', v_attempt.correct_count));
+
+    RETURN public.arena_safe_attempt(v_attempt);
+END;
+$$;
+
+DROP FUNCTION IF EXISTS public.arena_end_room(UUID, TEXT);
+DROP FUNCTION IF EXISTS public.arena_end_room(UUID);
+CREATE OR REPLACE FUNCTION public.arena_end_room(p_room_id UUID, p_admin_token TEXT DEFAULT NULL)
+RETURNS public.match_rooms
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_room public.match_rooms;
+BEGIN
+    IF NOT public.is_valid_admin_session(p_admin_token) THEN RAISE EXCEPTION 'Chỉ quản trị viên mới có quyền đóng phòng thi đấu'; END IF;
+    IF p_room_id IS NULL THEN
+        RAISE EXCEPTION 'Thiếu mã định danh phòng thi (p_room_id)';
+    END IF;
+
+    UPDATE public.match_rooms
+    SET status = 'FINISHED',
+        is_locked = true,
+        ended_at = COALESCE(ended_at, NOW())
+    WHERE id = p_room_id
+    RETURNING * INTO v_room;
+
+    IF v_room.id IS NULL THEN
+        RAISE EXCEPTION 'Không tìm thấy phòng thi cần đóng';
+    END IF;
+
+    UPDATE public.match_attempts
+    SET status = 'SUBMITTED',
+        submitted_at = COALESCE(submitted_at, NOW()),
+        finish_reason = COALESCE(finish_reason, 'HOST_ENDED')
+    WHERE room_id = p_room_id AND status IN ('JOINED', 'IN_PROGRESS');
+
+    INSERT INTO public.match_audit_logs (room_id, player_name, event_type)
+    VALUES (p_room_id, 'HOST', 'ROOM_ENDED');
+
+    RETURN v_room;
+END;
+$$;
+
+-- =========================================================================
+-- RPC 8: THỐNG KÊ TOP CÂU HỎI HAY SAI NHẤT (THEO LỊCH SỬ ĐẤU TRƯỜNG)
+-- =========================================================================
+DROP FUNCTION IF EXISTS public.arena_get_wrong_question_stats(TEXT, INTEGER);
+CREATE OR REPLACE FUNCTION public.arena_get_wrong_question_stats(
+    p_subject_key TEXT DEFAULT NULL,
+    p_limit INTEGER DEFAULT 15
+)
+RETURNS TABLE (
+    subject_key TEXT,
+    category TEXT,
+    question TEXT,
+    wrong_attempts BIGINT,
+    total_attempts BIGINT,
+    wrong_rate NUMERIC
+)
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        q.subject_key,
+        COALESCE(q.category, 'Bài học') AS category,
+        q.question,
+        COUNT(*) FILTER (WHERE NOT a.is_correct)::BIGINT AS wrong_attempts,
+        COUNT(*)::BIGINT AS total_attempts,
+        ROUND((COUNT(*) FILTER (WHERE NOT a.is_correct)::NUMERIC * 100.0) / GREATEST(1, COUNT(*)), 1) AS wrong_rate
+    FROM public.match_answers a
+    JOIN public.quiz_questions q ON q.id = a.question_id
+    WHERE COALESCE(q.is_deleted, false) = false
+      AND (p_subject_key IS NULL OR TRIM(p_subject_key) = '' OR LOWER(TRIM(q.subject_key)) = LOWER(TRIM(p_subject_key)))
+    GROUP BY q.id, q.subject_key, q.category, q.question
+    HAVING COUNT(*) FILTER (WHERE NOT a.is_correct) > 0
+    ORDER BY wrong_attempts DESC, wrong_rate DESC, total_attempts DESC
+    LIMIT GREATEST(1, LEAST(50, COALESCE(p_limit, 15)));
+$$;
+
+GRANT EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_create_room(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_audit_logs(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.arena_create_room(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, BOOLEAN, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.arena_get_audit_logs(UUID, TEXT) TO anon, authenticated;

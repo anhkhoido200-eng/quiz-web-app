@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quiz Studio | Control Center</title>
+    <meta name="description" content="Bảng điều khiển vận hành Quiz Studio">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="./favicon.ico" sizes="any">
+    <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <script src="math-format.js?v=20261110a"></script>
+    <link rel="stylesheet" href="./tailwind.prod.css">
+    <script>try{var _admDark=localStorage.getItem('quiz_admin_dark');if(_admDark==='true'||(_admDark===null&&localStorage.getItem('quiz_theme')==='dark')){document.documentElement.classList.add('dark');}}catch(e){}</script>
+    <link rel="stylesheet" href="admin.css?v=20261124f">
+    <link rel="stylesheet" href="style.css?v=20261124f">
+</head>
+<body class="admin-body">
+    <script>try{if(document.documentElement.classList.contains('dark')){document.body.classList.add('dark');}}catch(e){}</script>
+    <div id="access-denied" class="access-denied hidden">
+        <div class="access-card" style="max-width:480px;text-align:center;">
+            <span class="access-icon"><i class="fa-solid fa-lock"></i></span>
+            <h1>Thiết bị chưa được cấp quyền</h1>
+            <p>Control Center chỉ mở khi mã Admin đã được cấp quyền. Mã vẫn dùng được khi bạn đổi mạng hoặc IP.</p>
+
+            <!-- Ô nhập IP-Token mở khóa trực tiếp -->
+            <div style="margin:16px 0;background:var(--surface-2);padding:14px;border-radius:12px;border:1px solid var(--border);">
+                <p style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:8px;">
+                    <i class="fa-solid fa-key"></i> Bạn đã có mã Admin?
+                </p>
+                <div class="inline-form" style="gap:6px;">
+                    <input id="admin-token-unlock-input" aria-label="Mã IP-Token Admin" placeholder="Dán mã Admin hoặc phần mã sau dấu -..." style="text-align:center;font-weight:700;font-family:monospace;letter-spacing:0.5px;">
+                    <button id="btn-unlock-admin-token" class="button button-primary" type="button"><i class="fa-solid fa-unlock"></i> Mở khóa</button>
+                </div>
+            </div>
+
+            <div class="access-actions" style="justify-content:center;">
+                <button id="bootstrap-admin" class="button button-secondary" type="button"><i class="fa-solid fa-shield-halved"></i> Đăng nhập mật khẩu Master</button>
+                <a class="button button-secondary" href="index.html"><i class="fa-solid fa-arrow-left"></i> Về trang chính</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-shell" class="app-shell hidden">
+        <aside class="sidebar" id="sidebar">
+            <a class="brand" href="index.html"><span class="brand-mark"><i class="fa-solid fa-graduation-cap"></i></span><span><strong>Quiz Studio</strong><small>Control Center</small></span></a>
+            <div class="admin-identity">
+                <span class="avatar"><i class="fa-solid fa-crown"></i></span>
+                <span class="admin-identity-info">
+                    <b>Admin workspace</b>
+                    <span class="admin-ip-row">
+                        <small id="current-ip" title="Địa chỉ IP đã được ẩn bảo mật">Đang nhận diện IP...</small>
+                        <button id="copy-admin-ip" class="ip-copy-btn" type="button" title="Sao chép IP đầy đủ" aria-label="Sao chép địa chỉ IP đầy đủ">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </span>
+                </span>
+                <i class="fa-solid fa-circle-check identity-check" title="Thiết bị hợp lệ"></i>
+            </div>
+            <nav class="side-nav" aria-label="Khu vực quản trị">
+                <p class="nav-label">Quản lý học tập</p>
+                <button class="nav-item is-active" data-view="overview" type="button"><i class="fa-solid fa-grid-2"></i><span>Tổng quan</span></button>
+                <button class="nav-item" data-view="questions" type="button"><i class="fa-solid fa-file-pen"></i><span>Đề thi &amp; môn học</span><em id="nav-question-count">0</em></button>
+                <button class="nav-item" data-view="progress" type="button"><i class="fa-solid fa-tower-broadcast"></i><span>Lớp học trực tiếp</span><em id="nav-progress-count">0</em></button>
+                <p class="nav-label nav-label-gap">Hệ thống</p>
+                 <button class="nav-item" data-view="access" type="button"><i class="fa-solid fa-user-shield"></i><span>Quyền truy cập</span></button>
+                 <button class="nav-item" data-view="reports" type="button"><i class="fa-solid fa-chart-line"></i><span>Báo cáo &amp; dữ liệu</span></button>
+                 <button class="nav-item nav-item-ai" data-view="ai-assistant" type="button"><i class="fa-solid fa-comments"></i><span>Trợ lý AI</span><em class="nav-ai-badge">AI</em></button>
+            </nav>
+            <div class="sidebar-footer"><div class="maintenance-mini" id="sidebar-maintenance-mini"><span id="maintenance-dot"></span><span><b id="maintenance-mini-label">Hệ thống đang mở</b><small id="maintenance-mini-message">Sẵn sàng phục vụ học sinh</small></span></div><a href="index.html" class="side-home"><i class="fa-solid fa-arrow-up-right-from-square"></i> Trang học sinh</a></div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar"><button id="mobile-menu" class="icon-button mobile-menu" type="button" aria-label="Mở menu điều hướng"><i class="fa-solid fa-bars"></i></button><div class="breadcrumb"><span>Control Center</span><i class="fa-solid fa-chevron-right"></i><b id="view-title">Tổng quan</b></div><div class="topbar-actions"><span id="connection-status" class="connection-status"><i class="fa-solid fa-circle-notch fa-spin"></i> Đang kết nối</span><button id="ai-drawer-toggle-btn" class="button button-secondary compact ai-topbar-btn" type="button" title="Mở nhanh Trợ lý AI (Ctrl + K)"><i class="fa-solid fa-comments"></i><span class="hide-mobile">Trợ lý AI</span><kbd class="ai-kbd hide-mobile">Ctrl K</kbd><span id="ai-topbar-alert-badge" class="ai-alert-pill hidden">0</span></button><button id="theme-toggle" class="icon-button" type="button" title="Đổi giao diện" aria-label="Đổi giao diện sáng/tối"><i class="fa-solid fa-moon"></i></button><button id="refresh-button" class="button button-secondary compact" type="button"><i class="fa-solid fa-arrows-rotate"></i><span class="hide-mobile">Đồng bộ</span></button></div></header>
+
+            <div class="content-wrap">
+                <section class="view is-visible" data-view-panel="overview">
+                     <div class="page-heading admin-hero-motif"><div><h1>Tổng quan hệ thống</h1><p>Quản lý nội dung, học sinh và vận hành hệ thống từ một nơi</p></div><div class="heading-actions"><span class="last-sync" id="last-sync">Chưa đồng bộ</span><button class="button button-primary" data-go-view="questions" type="button"><i class="fa-solid fa-plus"></i> Tạo câu hỏi</button></div></div>
+                    <div class="stat-grid">
+                        <article id="metric-card-total" class="metric-card metric-purple" data-metric-grade="all" role="button" tabindex="0" title="Xem toàn bộ câu hỏi trong Content Library">
+                            <span class="metric-icon"><i class="fa-solid fa-layer-group"></i></span>
+                            <div><small>Tổng câu hỏi</small><strong id="stat-total">0</strong><span id="stat-total-note">Toàn hệ thống</span></div>
+                        </article>
+                        <article id="metric-card-grade5" class="metric-card metric-green" data-metric-grade="5" role="button" tabindex="0" title="Lọc câu hỏi Ngân hàng Lớp 5">
+                            <span class="metric-icon"><i class="fa-solid fa-seedling"></i></span>
+                            <div><small>Ngân hàng Lớp 5</small><strong id="stat-grade5">0</strong><span>câu hỏi</span></div>
+                        </article>
+                        <article id="metric-card-grade11" class="metric-card metric-cyan" data-metric-grade="11" role="button" tabindex="0" title="Lọc câu hỏi Ngân hàng Lớp 11">
+                            <span class="metric-icon"><i class="fa-solid fa-atom"></i></span>
+                            <div><small>Ngân hàng Lớp 11</small><strong id="stat-grade11">0</strong><span>câu hỏi</span></div>
+                        </article>
+                        <article id="metric-card-online" class="metric-card metric-orange" data-metric-view="students" role="button" tabindex="0" title="Mở bảng giám sát học sinh trực tuyến">
+                            <span class="metric-icon"><i class="fa-solid fa-users"></i></span>
+                            <div><small>Đang trực tuyến</small><strong id="stat-online">0</strong><span id="stat-visitor-note">0 lượt truy cập</span></div>
+                        </article>
+                    </div>
+                    <div class="overview-grid">
+                        <section class="panel system-panel">
+                            <div class="panel-title">
+                                 <div><h2>Trạng thái hệ thống</h2></div>
+                                <span class="live-pill"><i class="fa-solid fa-signal"></i> Live</span>
+                            </div>
+                            <div class="health-list">
+                                <div class="health-row">
+                                    <span class="health-icon green"><i class="fa-solid fa-database"></i></span>
+                                    <span><b>Kết nối dữ liệu</b><small id="health-database">Đang kiểm tra kết nối Supabase...</small></span>
+                                    <button id="health-database-badge" class="status-badge status-action-btn pending" type="button" title="Bấm để kiểm tra lại kết nối Supabase">
+                                        <i class="fa-solid fa-arrows-rotate is-spinning"></i>
+                                        <span>Đang kiểm tra</span>
+                                    </button>
+                                </div>
+                                <div class="health-row">
+                                    <span class="health-icon purple"><i class="fa-solid fa-cloud"></i></span>
+                                    <span><b>Đồng bộ nội dung</b><small id="health-content">Đang tải ngân hàng câu hỏi...</small></span>
+                                    <button id="health-content-badge" class="status-badge status-action-btn pending" type="button" title="Bấm để tải lại dữ liệu nội dung">
+                                        <i class="fa-solid fa-arrows-rotate is-spinning"></i>
+                                        <span>Đang tải</span>
+                                    </button>
+                                </div>
+                                <div class="health-row">
+                                    <span class="health-icon orange"><i class="fa-solid fa-shield-halved"></i></span>
+                                    <span><b>Chế độ bảo trì</b><small id="health-maintenance">Website đang mở</small></span>
+                                    <strong id="health-maintenance-badge" class="status-badge safe">Tắt</strong>
+                                </div>
+                            </div>
+                        </section>
+                        <section id="maintenance-panel" class="panel maintenance-panel">
+                            <div class="panel-title">
+                                 <div><h2>Bảo trì hệ thống</h2></div>
+                                <span id="maintenance-badge" class="status-badge safe">Đang tắt</span>
+                            </div>
+                            <p id="maintenance-copy">Trang web đang mở công khai cho học sinh.</p>
+                            <div class="maintenance-control">
+                                <label class="lock-switch" title="Bật/tắt chế độ khóa web bảo trì">
+                                    <input type="checkbox" id="maintenance-toggle" class="lock-switch-input">
+                                    <div class="lock-switch-track" aria-hidden="true">
+                                        <svg class="lock-switch-icon is-unlocked" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M50,18A19.9,19.9,0,0,0,30,38v8a8,8,0,0,0-8,8V74a8,8,0,0,0,8,8H70a8,8,0,0,0,8-8V54a8,8,0,0,0-8-8H38V38a12,12,0,0,1,23.6-3,4,4,0,1,0,7.8-2A20.1,20.1,0,0,0,50,18Z"></path>
+                                        </svg>
+                                        <svg class="lock-switch-icon is-locked" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M30,46V38a20,20,0,0,1,40,0v8a8,8,0,0,1,8,8V74a8,8,0,0,1-8,8H30a8,8,0,0,1-8-8V54A8,8,0,0,1,30,46Zm32-8v8H38V38a12,12,0,0,1,24,0Z" fill-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                </label>
+                                <b id="maintenance-toggle-label" class="maintenance-toggle-label">Khóa Web</b>
+                                <button id="edit-maintenance" class="text-button" type="button"><i class="fa-solid fa-pen"></i> Đổi lời nhắn</button>
+                            </div>
+                            <div class="maintenance-message-preview" id="maintenance-preview-box">
+                                <div class="maintenance-preview-header">
+                                    <span><i class="fa-regular fa-eye"></i> Lời nhắn học sinh sẽ thấy khi khóa:</span>
+                                </div>
+                                 <p id="maintenance-message-preview">Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau</p>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="overview-grid lower">
+                        <section class="panel quick-panel">
+                             <div class="panel-title"><div><h2>Thao tác nhanh</h2></div></div>
+                            <div class="shortcut-grid">
+                                <button data-go-view="questions" class="shortcut purple" type="button">
+                                    <i class="fa-solid fa-file-circle-plus"></i>
+                                    <span><b>Soạn câu hỏi</b><small>Thêm hoặc sửa nội dung</small></span>
+                                </button>
+                                <button id="quick-import" class="shortcut blue" type="button">
+                                    <i class="fa-solid fa-file-import"></i>
+                                    <span><b>Nạp JSON câu hỏi</b><small>JSON hoặc TXT hàng loạt</small></span>
+                                </button>
+                                <button data-go-view="students" class="shortcut green" type="button">
+                                    <i class="fa-solid fa-bullhorn"></i>
+                                    <span><b>Phát thông báo</b><small>Gửi tới học sinh</small></span>
+                                </button>
+                                <button data-go-view="reports" class="shortcut orange" type="button">
+                                    <i class="fa-solid fa-download"></i>
+                                    <span><b>Xuất dữ liệu</b><small>Excel hoặc backup JSON</small></span>
+                                </button>
+                            </div>
+                        </section>
+                        <section class="panel recent-panel">
+                            <div class="panel-title">
+                                <div><h2>Hoạt động gần đây</h2></div>
+                                <button id="clear-activity-log" class="text-button" type="button" title="Xóa nhật ký hoạt động cục bộ">Xóa lịch sử</button>
+                            </div>
+                            <div id="recent-activity" class="activity-list">
+                                <div class="activity-empty-state">
+                                    <span class="activity-empty-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                                    <h3>Chưa có hoạt động mới</h3>
+                                    <p>Các thao tác cập nhật câu hỏi, đổi bảo trì hoặc phát thông báo sẽ hiển thị tại đây</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="view" data-view-panel="questions">
+                     <div class="page-heading compact-heading"><div><h1>Ngân hàng câu hỏi &amp; môn học</h1><p>Quản lý câu hỏi, môn học và quyền riêng tư trong cùng một khu vực.</p></div><div class="heading-actions"><button id="export-pdf-heading" class="button button-info" type="button"><i class="fa-solid fa-print"></i> In đề / Xuất PDF</button><button id="copy-ai-prompt-btn" class="button button-secondary" type="button" title="Sao chép Prompt AI trích xuất câu hỏi chuẩn JSON"><i class="fa-solid fa-terminal"></i> Copy Prompt AI</button><button id="import-button" class="button button-secondary" type="button"><i class="fa-solid fa-file-import"></i> Nạp hàng loạt</button><button id="new-question-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Câu hỏi mới</button></div></div>
+                    <div class="question-workspace">
+                         <section class="panel editor-panel"><div class="panel-title"><div><h2 id="form-title">Thêm câu hỏi mới</h2></div><button id="reset-form" class="text-button" type="button">Làm mới</button></div>
+                            <form id="question-form" novalidate><input type="hidden" id="question-id"><div class="form-grid two-columns"><label>Đối tượng<select id="grade-select" required><option value="5">Lớp 5</option><option value="11" selected>Lớp 11</option></select></label><label>Môn học<select id="subject-select" required></select></label></div><label>Chuyên đề / bài học<input id="category-input" type="text" placeholder="Ví dụ: Phân số và số thập phân"></label><label>Loại câu hỏi<select id="question-type-select" required><option value="mcq">Trắc nghiệm 4 lựa chọn</option><option value="tf_group">Trắc nghiệm Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select></label><label>Nội dung câu hỏi<textarea id="question-input" rows="4" required placeholder="Nhập nội dung câu hỏi..."></textarea></label><div class="options-heading"><label>4 đáp án</label><span>Chọn nút tròn để đặt đáp án đúng</span></div><div class="answers-grid"><label class="answer-field"><button type="button" class="answer-radio is-selected" data-answer="0" aria-label="Chọn đáp án đúng A"><i class="fa-solid fa-circle-dot"></i></button><b>A</b><input id="option-0" required placeholder="Phương án A"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="1" aria-label="Chọn đáp án đúng B"><i class="fa-regular fa-circle"></i></button><b>B</b><input id="option-1" required placeholder="Phương án B"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="2" aria-label="Chọn đáp án đúng C"><i class="fa-regular fa-circle"></i></button><b>C</b><input id="option-2" required placeholder="Phương án C"></label><label class="answer-field"><button type="button" class="answer-radio" data-answer="3" aria-label="Chọn đáp án đúng D"><i class="fa-regular fa-circle"></i></button><b>D</b><input id="option-3" required placeholder="Phương án D"></label></div><div id="dynamic-type-editor"><div id="tf-editor" class="hidden"></div><div id="short-editor" class="hidden"></div></div><label>Giải thích <span class="muted-copy">(tùy chọn)</span><textarea id="explanation-input" rows="3" placeholder="Giải thích đáp án hoặc cách giải..."></textarea></label><div class="form-actions"><button id="cancel-edit" class="button button-secondary hidden" type="button">Hủy sửa</button><button id="submit-question" class="button button-primary" type="submit"><i class="fa-solid fa-cloud-arrow-up"></i> <span id="submit-label">Lưu câu hỏi</span></button></div></form>
+                        </section>
+                         <section class="panel preview-panel"><div class="panel-title"><div><h2>Học sinh sẽ nhìn thấy</h2></div><span class="info-badge">Realtime</span></div><div id="preview-card" class="preview-card"></div></section>
+                    </div>
+                    <section id="content-library-section" class="panel library-panel"><div class="panel-title"><div><h2>Danh sách câu hỏi <span id="library-count" class="heading-count">0</span></h2></div><div class="panel-title-actions"><span id="result-summary" class="muted-copy">0 kết quả</span><button id="scan-duplicates-button" class="button button-secondary" type="button"><i class="fa-solid fa-clone"></i> Quét trùng lặp</button><button id="export-pdf-library" class="button button-secondary" type="button"><i class="fa-solid fa-file-pdf"></i> In đề thi</button><button id="open-trash-button" class="button button-secondary" type="button"><i class="fa-solid fa-trash-can-arrow-up"></i> Thùng rác <span id="trash-count-badge" class="badge-count">0</span></button><button id="delete-scope-button" class="button button-secondary button-danger-hover" type="button"><i class="fa-solid fa-trash-can"></i> Xóa câu hỏi...</button></div></div><div class="library-toolbar"><div class="grade-filters"><button type="button" class="grade-filter is-active" data-grade="all">Tất cả</button><button type="button" class="grade-filter" data-grade="5">Lớp 5</button><button type="button" class="grade-filter" data-grade="11">Lớp 11</button></div><select id="library-subject-filter" aria-label="Lọc theo môn học"><option value="all">Tất cả môn học</option></select><select id="question-type-filter" aria-label="Lọc theo dạng câu hỏi"><option value="all">Tất cả dạng câu</option><option value="mcq">4 lựa chọn</option><option value="tf_group">Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select><input id="search-input" type="search" aria-label="Tìm nội dung câu hỏi" placeholder="Tìm nội dung câu hỏi..."></div><div id="library-subject-tabs" class="library-subject-tabs"></div><div id="library-bulk-bar" class="library-bulk-bar hidden"><div class="bulk-bar-left"><label class="bulk-checkbox-label"><input type="checkbox" id="bulk-select-all-checkbox"><span>Chọn tất cả (<span id="bulk-filtered-count">0</span> câu đang lọc)</span></label><span class="bulk-badge">Đã chọn: <strong id="bulk-selected-count">0</strong></span></div><div class="bulk-bar-right"><button type="button" id="bulk-deselect-btn" class="button button-secondary button-sm">Bỏ chọn</button><button type="button" id="bulk-delete-btn" class="button button-danger-solid button-sm"><i class="fa-solid fa-trash-can"></i> Xóa các câu đã chọn (<span id="bulk-delete-count">0</span>)</button></div></div><div id="questions-list" class="questions-list"></div><div id="empty-state" class="empty-state hidden"><i class="fa-solid fa-box-open"></i><p>Không tìm thấy câu hỏi phù hợp.</p></div><div id="library-pagination" class="library-pagination"></div></section>
+                </section>
+
+                <section class="view" data-view-panel="progress">
+                    <div class="page-heading compact-heading">
+                        <div>
+                             
+                            <h1>Lớp học trực tiếp</h1>
+                            <p>Theo dõi tiến trình chi tiết từng câu, phát thông báo toàn phòng và kiểm soát phiên truy cập.</p>
+                        </div>
+                        <div class="heading-actions">
+                            <button id="refresh-progress" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button>
+                             <button id="cleanup-duplicate-logins" class="button button-secondary" type="button" title="Xóa bản ghi chờ trùng máy/IP và tên gõ dở, giữ nguyên bài thi đã làm"><i class="fa-solid fa-broom"></i> Dọn trùng máy/IP</button>
+                             <button id="copy-parent-link-head" class="button button-warning" type="button"><i class="fa-solid fa-share-nodes"></i> Sao chép Link Theo Dõi</button>
+                        </div>
+                    </div>
+
+                    <div class="live-subtabs" role="tablist" aria-label="Chế độ lớp học trực tiếp">
+                        <button type="button" class="live-subtab is-active" data-live-tab="cards" role="tab" aria-selected="true"><i class="fa-solid fa-chart-pie"></i> Tiến trình &amp; Chi tiết bài làm</button>
+                        <button type="button" class="live-subtab" data-live-tab="control" role="tab" aria-selected="false"><i class="fa-solid fa-radar"></i> Giám sát, Thông báo &amp; Chặn IP <em id="nav-online-count">0</em></button>
+                        <button type="button" class="live-subtab" data-live-tab="arena" role="tab" aria-selected="false"><i class="fa-solid fa-trophy"></i> Phòng thi đấu</button>
+                    </div>
+
+                    <div data-live-pane="cards">
+
+                    <!-- KHU VỰC CẤP NHANH IP / TOKEN NGƯỜI THEO DÕI NGAY TRÊN BẢNG TIẾN TRÌNH -->
+                    <section class="panel" style="margin-bottom: 20px; border-left: 4px solid var(--amber,#f59e0b);">
+                        <div class="panel-title">
+                            <div>
+                                 
+                                <h2>Cấp IP / IP-Token Người Theo Dõi</h2>
+                            <p class="muted-copy" style="font-size:12px;">Cấp quyền cho người giám sát: vừa theo dõi tiến trình trực tiếp, vừa có quyền xem tiến trình học sinh và sử dụng Trợ lý AI.</p>
+                            </div>
+                            <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:11px;font-weight:700;">
+                                <i class="fa-solid fa-eye"></i> Quyền Quan Sát
+                            </span>
+                        </div>
+
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+                            <input id="quick-observer-ip" aria-label="IP, Mã máy hoặc IP-Token người theo dõi" style="flex:2;min-width:240px;" placeholder="Dán IP, Mã máy hoặc IP-Token cần cấp theo dõi (hoặc để trống tự tạo)...">
+                            <input id="quick-observer-name" aria-label="Tên người theo dõi" style="flex:1;min-width:180px;" placeholder="Tên người theo dõi (VD: Người giám sát)...">
+                            <button id="btn-add-quick-observer" class="button button-primary" type="button" style="white-space:nowrap;">
+                                <i class="fa-solid fa-user-plus"></i> Cấp Quyền Theo Dõi
+                            </button>
+                        </div>
+
+                        <div id="quick-observer-list" style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+                            <!-- Danh sách người theo dõi thu nhỏ -->
+                        </div>
+                    </section>
+
+                        <div class="monitor-stats progress-stat-grid" id="grade5-monitor-stats">
+                         <div class="monitor-stat"><span><b id="g5-stat-doing">0</b><small>Đang làm bài</small></span><i class="fa-solid fa-pen-nib monitor-stat-icon is-doing"></i></div>
+                         <div class="monitor-stat"><span><b id="g5-stat-submitted">0</b><small>Đã nộp bài</small></span><i class="fa-solid fa-circle-check monitor-stat-icon is-submitted"></i></div>
+                         <div class="monitor-stat"><span><b id="g5-stat-waiting">0</b><small>Đang chờ</small></span><i class="fa-solid fa-hourglass-half monitor-stat-icon is-waiting"></i></div>
+                         <div class="monitor-stat"><span><b id="g5-stat-total">0</b><small>Tổng kết nối</small></span><i class="fa-solid fa-users monitor-stat-icon is-total"></i></div>
+                    </div>
+
+                    <!-- BỘ LỌC MÔN VÀ DANH SÁCH TIẾN TRÌNH THỜI GIAN THỰC -->
+                    <section class="panel">
+                            <div class="panel-title progress-list-heading" style="flex-wrap:wrap;gap:12px;">
+                                <div>
+                                     
+                                    <h2>Danh sách tiến trình học sinh</h2>
+                                </div>
+                                <div class="progress-toolbar">
+                                    <div class="grade-filters" style="margin:0;">
+                                        <button type="button" class="progress-grade-filter is-active" data-progress-grade="all">Tất cả môn</button>
+                                        <button type="button" class="progress-grade-filter" data-progress-grade="5">Lớp 5</button>
+                                        <button type="button" class="progress-grade-filter" data-progress-grade="11">Lớp 11</button>
+                                    </div>
+                                    <select id="progress-subject-filter" class="progress-subject-filter" aria-label="Lọc theo môn học">
+                                        <option value="all">Tất cả môn học</option>
+                                    </select>
+                                    <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                         <i class="fa-solid fa-bolt"></i> Trực tiếp thời gian thực
+                                    </span>
+                                </div>
+                            </div>
+                        <div id="progress-subject-info" class="progress-subject-info" aria-live="polite"></div>
+                        <div class="progress-list-tools">
+                            <label class="progress-search-wrap" for="progress-search"><i class="fa-solid fa-magnifying-glass"></i><input id="progress-search" type="search" placeholder="Tìm theo tên học sinh..." autocomplete="off"></label>
+                            <label class="progress-sort-wrap" for="progress-sort"><span>Sắp xếp</span><select id="progress-sort"><option value="recent">Mới hoạt động gần nhất</option><option value="progress">Tiến độ cao nhất</option><option value="score">Điểm cao nhất</option><option value="score-asc">Điểm thấp nhất</option></select></label>
+                        </div>
+                        <div id="grade5-progress-cards" class="progress-cards-grid">
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:120px;height:14px;"></div><div class="skeleton-block" style="width:76px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:110px;height:10px;"></div><div class="skeleton-block" style="width:80px;height:10px;"></div></div>
+                            </div>
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:136px;height:14px;"></div><div class="skeleton-block" style="width:82px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:100px;height:10px;"></div><div class="skeleton-block" style="width:88px;height:10px;"></div></div>
+                            </div>
+                            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                                <div style="display:flex;justify-content:space-between;align-items:center;"><div style="display:flex;gap:10px;align-items:center;"><div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div><div style="display:grid;gap:6px;"><div class="skeleton-block" style="width:108px;height:14px;"></div><div class="skeleton-block" style="width:70px;height:10px;"></div></div></div><div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div></div>
+                                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                                <div style="display:flex;justify-content:space-between;"><div class="skeleton-block" style="width:118px;height:10px;"></div><div class="skeleton-block" style="width:76px;height:10px;"></div></div>
+                            </div>
+                        </div>
+                         </section>
+                     </div>
+
+                    <div data-live-pane="control" class="hidden">
+                        <div class="live-control-toolbar">
+                            <div class="heading-actions">
+                                <button id="refresh-students" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới phiên</button>
+                                <button id="clear-logins" class="button button-danger-solid" type="button"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử đăng nhập</button>
+                            </div>
+                        </div>
+
+                        <div class="monitor-stats" id="monitor-stats"></div>
+
+                        <section class="panel broadcast-panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Thông báo toàn lớp</h2>
+                                    <p>Gửi thông báo trực tiếp tới màn hình học sinh đang làm bài</p>
+                                </div>
+                            </div>
+                            <div class="broadcast-row">
+                                <input id="notice-input" type="text" aria-label="Nội dung thông báo toàn lớp" placeholder="Nhập nội dung thông báo gửi tới toàn lớp...">
+                                <button id="send-notice" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> Gửi thông báo</button>
+                            </div>
+                            <div class="quick-notices">
+                                <span>Gửi nhanh:</span>
+                                 <button type="button" data-notice="Các em chú ý làm bài cẩn thận, còn 10 phút nữa hết giờ">Còn 10 phút</button>
+                                 <button type="button" data-notice="Nhắc nhở: Không chuyển tab hay tìm kiếm đáp án bên ngoài khi đang làm bài">Nhắc không chuyển tab</button>
+                                 <button type="button" data-notice="Các em hãy kiểm tra lại các câu đã làm trước khi bấm Nộp bài">Kiểm tra trước khi nộp</button>
+                            </div>
+                        </section>
+
+                        <section class="panel danger-panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Chặn IP khẩn cấp</h2>
+                                    <p>Ngăn thiết bị hoặc địa chỉ IP truy cập vào hệ thống thi</p>
+                                </div>
+                                <span id="banned-count" class="status-badge danger">0 IP bị chặn</span>
+                            </div>
+                            <div class="ban-row">
+                                <input id="ban-ip-input" type="text" aria-label="Địa chỉ IP cần chặn" placeholder="Nhập địa chỉ IP cần chặn...">
+                                <input id="ban-reason-input" type="text" aria-label="Lý do chặn IP" placeholder="Lý do chặn (không bắt buộc)...">
+                                <button id="ban-ip-button" class="button button-danger-solid" type="button"><i class="fa-solid fa-ban"></i> Chặn IP</button>
+                            </div>
+                            <div id="banned-list" class="banned-list"></div>
+                        </section>
+
+                        <section class="panel students-panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Danh sách phiên truy cập</h2>
+                                    <p>Theo dõi thiết bị, IP, trạng thái trực tuyến và cảnh báo vi phạm</p>
+                                </div>
+                                <span id="student-count" class="status-badge pending">0 phiên</span>
+                            </div>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Học sinh</th>
+                                            <th>IP</th>
+                                            <th>Thiết bị</th>
+                                            <th>Hoạt động cuối</th>
+                                            <th>Trạng thái</th>
+                                            <th class="align-right">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="students-body">
+                                        <!-- Sessions render here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div data-live-pane="arena" class="hidden">
+                        <div id="arena-host-root"></div>
+                    </div>
+                </section>
+
+                <section class="view" data-view-panel="access">
+                    <div class="page-heading compact-heading">
+                        <div>
+                            <h1>Phân quyền truy cập</h1>
+                            <p>Quản lý IP Admin và phân quyền học sinh (Token &amp; IP) thống nhất.</p>
+                        </div>
+                        <span class="security-chip"><i class="fa-solid fa-shield-halved"></i> Dual Auth: Token + IP</span>
+                    </div>
+
+                    <div class="access-grid">
+                        <section class="panel access-hero">
+                            <div class="access-hero-icon"><i class="fa-solid fa-crown"></i></div>
+                            <div>
+                                <h2>Thiết bị quản trị hiện tại</h2>
+                                <p>IP đang đăng nhập: <strong id="access-current-ip">Đang nhận diện...</strong> · Mã máy: <strong id="access-current-device">...</strong></p>
+                                <p id="access-device-lock-status" class="muted-copy" style="margin-top:4px;">Đang kiểm tra trạng thái khóa mã máy...</p>
+                            </div>
+                            <button id="save-master-ip" class="button button-primary" type="button"><i class="fa-solid fa-lock"></i> Khóa Master vào máy này</button>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Cấp IP-Token Quản Trị Viên <span id="admin-ip-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Cấp quyền mở khóa Control Center qua IP, Mã máy hoặc IP-Token (không lo đổi mạng/4G bị chặn).</p>
+                                </div>
+                            </div>
+                            <div class="inline-form" style="gap:8px;flex-wrap:wrap;">
+                                <input id="admin-ip-input" aria-label="IP, Mã máy hoặc IP-Token Quản trị viên" placeholder="Dán IP, Mã máy hoặc IP-Token (VD: 14.164.221.205-QM-KM9SZG)" style="flex:2;min-width:220px;font-family:monospace;font-weight:700;">
+                                <input id="admin-ip-name" aria-label="Tên gợi nhớ thiết bị quản trị" placeholder="Tên gợi nhớ (VD: Laptop nhà, Điện thoại Admin...)" style="flex:1.2;min-width:160px;">
+                                <button id="add-admin-ip" class="button button-primary" type="button" style="white-space:nowrap;"><i class="fa-solid fa-bolt"></i> Cấp IP-Token Admin</button>
+                            </div>
+                            <div id="admin-ip-list" class="stack-list" style="margin-top:12px;"></div>
+                        </section>
+
+                        <!-- FORM CẤP QUYỀN HỌC SINH TẬP TRUNG (Lớp 5, AI, hoặc cả 2) -->
+                        <section class="panel unified-access-panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Cấp quyền truy cập học sinh (Lớp 5 &amp; Trợ lý AI)</h2>
+                                    <p class="muted-copy">Nhập IP hoặc Mã máy để mở khóa. Một học sinh/mã có thể dùng chung cho cả Lớp 5 và Trợ lý AI.</p>
+                                </div>
+                                <i class="fa-solid fa-users-gear" style="color:var(--primary);font-size:20px;"></i>
+                            </div>
+
+                            <div class="form-grid student-access-grid" style="margin-bottom:12px;">
+                                <label>Tên học sinh / Ghi chú <span class="muted-copy">(Tùy chọn)</span>
+                                    <input id="student-access-name" placeholder="Ví dụ: Khôi, Bảo Trâm 5A...">
+                                </label>
+                                <label>Mã xác thực học sinh gửi (IP, Mã máy hoặc Token) <span style="color:var(--red)">*</span>
+                                    <input id="student-access-code" placeholder="Dán IP hoặc mã máy (VD: 14.164.221.205-QM-KM9SZG)" style="font-family:monospace;font-weight:700;">
+                                </label>
+                                <label>Quyền hạn cấp <span style="color:var(--red)">*</span>
+                                    <select id="student-access-role">
+                                        <option value="grade5" selected>Quyền lớp 5 (Xem &amp; làm bài thi)</option>
+                                        <option value="student">Phân môn riêng (Chỉ xem các môn được chọn)</option>
+                                        <option value="ai">Quyền trợ lý AI (Giải bài &amp; hướng dẫn)</option>
+                                        <option value="all">Quyền lớp 5 và trợ lý AI</option>
+                                        <option value="parent">Quyền giám sát (Kèm xem đề &amp; trợ lý AI)</option>
+                                        <option value="admin">Quyền quản trị viên (Toàn quyền Admin Control Center)</option>
+                                    </select>
+                                </label>
+                                <label>Địa chỉ IP (Tự động điền nếu dán IP)
+                                    <div style="display:flex;gap:6px;">
+                                        <input id="student-access-ip" placeholder="Tự động nhận diện từ mã xác thực">
+                                        <button id="btn-fill-current-ip" class="button button-secondary compact" type="button" title="Lấy IP thiết bị này"><i class="fa-solid fa-location-crosshairs"></i></button>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div id="student-access-subjects-box" style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border);">
+                                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                                    <span style="font-size:12px;font-weight:700;color:var(--text);"><i class="fa-solid fa-layer-group" style="color:var(--primary);margin-right:5px;"></i> Phân chia môn học được xem <small class="muted-copy" style="font-weight:500;">(không chọn = hiện tất cả môn theo quyền lớp)</small></span>
+                                    <button id="btn-clear-access-subjects" type="button" class="text-button" style="font-size:11px;">Bỏ chọn hết</button>
+                                </div>
+                                <div id="student-access-subjects-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                            </div>
+
+                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                                <span class="muted-copy" style="font-size:12px;"><i class="fa-solid fa-circle-info" style="color:var(--info);"></i> Cấp quyền qua IP hoặc Token đều được tự động đồng bộ trên toàn hệ thống.</span>
+                                <button id="btn-grant-student-access" class="button button-primary" type="button">
+                                    <i class="fa-solid fa-bolt"></i> Kích hoạt quyền cho học sinh
+                                </button>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 1: QUYỀN LỚP 5 -->
+                         <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Danh sách học sinh được duyệt Lớp 5 <span id="class5-student-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Các thiết bị được phép xem và làm toàn bộ các bộ đề thi Lớp 5.</p>
+                                </div>
+                                <span class="status-badge safe" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                    <i class="fa-solid fa-graduation-cap"></i> Quyền Lớp 5
+                                </span>
+                            </div>
+
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Học sinh</th>
+                                            <th>Mã máy / Token</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Quyền Trợ lý AI</th>
+                                            <th>Ngày cấp</th>
+                                            <th style="text-align:right;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="class5-access-body">
+                                        <!-- Render dynamic rows here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 2: QUYỀN TRỢ LÝ AI (GEMINI) -->
+                        <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Danh sách học sinh được duyệt Trợ lý AI <span id="ai-student-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Các thiết bị được phép sử dụng Trợ lý AI giải thích bài và hướng dẫn (dùng chung Token/IP với Lớp 5).</p>
+                                </div>
+                                <span class="status-badge info-badge">
+                                    <i class="fa-solid fa-comments"></i> Quyền AI
+                                </span>
+                            </div>
+
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Học sinh</th>
+                                            <th>Mã máy / Token</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Quyền Lớp 5</th>
+                                            <th>Ngày cấp</th>
+                                            <th style="text-align:right;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ai-access-body">
+                                        <!-- Render dynamic rows here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- BẢNG 3: QUYỀN QUAN SÁT TIẾN TRÌNH (NGƯỜI THEO DÕI / PHỤ HUYNH) -->
+                        <section class="panel" style="grid-column: 1 / -1;">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Danh sách Người Theo Dõi &amp; Giám Sát Tiến Trình <span id="parent-observer-count" class="heading-count">0</span></h2>
+                                    <p class="muted-copy">Người thân/người giám sát được cấp link/mã để theo dõi tiến trình làm bài của học sinh trực tiếp (không thể sửa/xóa bài).</p>
+                                </div>
+                                <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;">
+                                    <i class="fa-solid fa-eye"></i> Quyền Quan Sát
+                                </span>
+                            </div>
+
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Người theo dõi / Giám sát</th>
+                                            <th>Mã Token / IP</th>
+                                            <th>Địa chỉ IP</th>
+                                            <th>Link theo dõi</th>
+                                            <th>Ngày cấp</th>
+                                            <th style="text-align:right;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="parent-access-body">
+                                        <!-- Render dynamic rows here -->
+                                    </tbody>
+                                </table>
+                             </div>
+                         </section>
+                         <section class="panel roster-panel" style="grid-column:1 / -1;">
+                             <div class="panel-title">
+                                  <div><h2>Danh sách lớp &amp; Ghim tên theo mã máy</h2><p class="muted-copy">Mỗi dòng nhập một họ và tên. Mã máy [QM-XXXXXX] sẽ được ưu tiên khi học sinh đổi mạng.</p></div>
+                                 <span class="info-badge">Realtime</span>
+                             </div>
+                             <div class="roster-grid">
+                                 <section class="roster-grade-card"><div class="roster-grade-head"><h3>Khối Lớp 5</h3><span id="roster-grade5-count" class="status-badge pending">0 học sinh</span></div><label class="checkbox-label"><input id="roster-grade5-enabled" type="checkbox"> Bật danh sách Lớp 5</label><label class="checkbox-label"><input id="roster-grade5-allow-guests" type="checkbox"> Cho phép người ngoài lớp ôn tập (đề Luyện tập)</label><label>Danh sách học sinh<textarea id="roster-grade5-textarea" rows="6" placeholder="Mỗi dòng 1 họ và tên học sinh"></textarea></label></section>
+                                 <section class="roster-grade-card"><div class="roster-grade-head"><h3>Khối Lớp 11</h3><span id="roster-grade11-count" class="status-badge pending">0 học sinh</span></div><label class="checkbox-label"><input id="roster-grade11-enabled" type="checkbox"> Bật danh sách Lớp 11</label><label class="checkbox-label"><input id="roster-grade11-allow-guests" type="checkbox"> Cho phép người ngoài lớp ôn tập (đề Luyện tập)</label><label>Danh sách học sinh<textarea id="roster-grade11-textarea" rows="6" placeholder="Mỗi dòng 1 họ và tên học sinh"></textarea></label></section>
+                             </div>
+                             <div class="roster-actions"><button id="save-roster-config" class="button button-primary" type="button"><i class="fa-solid fa-floppy-disk"></i> Lưu danh sách lớp</button></div>
+                             <div class="device-pin-box"><div class="roster-grade-head"><h3>Ghim tên cố định theo Mã máy [QM-XXXXXX]</h3><span id="device-pins-count" class="status-badge pending">0 mã máy</span></div><div class="device-pin-form"><input id="device-pin-code-input" placeholder="VD: QM-AB12CD"><input id="device-pin-name-input" placeholder="Họ và tên thật của học sinh"><button id="btn-save-device-pin" class="button button-secondary" type="button"><i class="fa-solid fa-thumbtack"></i> Ghim tên thiết bị</button></div><div id="device-pins-list" class="device-pins-list"></div></div>
+                         </section>
+                     </div>
+                </section>
+
+                <section class="view" data-view-panel="subjects">
+                    <div class="page-heading compact-heading">
+                        <div>
+                            <h1>Môn học</h1>
+                            <p>Tạo môn học và gán môn vào đúng khối bằng hai lựa chọn cố định.</p>
+                        </div>
+                        <div class="heading-actions">
+                            <button id="new-folder-button" class="button button-secondary" type="button"><i class="fa-solid fa-folder-plus" style="color:var(--amber,#f59e0b);"></i> Thêm thư mục</button>
+                            <button id="new-subject-button" class="button button-primary" type="button"><i class="fa-solid fa-plus"></i> Thêm môn / đề</button>
+                            <button id="hub-add-question-button" class="button button-secondary" type="button"><i class="fa-solid fa-circle-plus"></i> Thêm câu hỏi</button>
+                        </div>
+                    </div>
+                    <section class="panel">
+                        <div class="panel-title">
+                            <div>
+                                <h2>Danh sách môn học <span id="subject-count" class="heading-count">0</span></h2>
+                            </div>
+                            <button id="refresh-subjects" class="text-button" type="button"><i class="fa-solid fa-rotate"></i> Làm mới</button>
+                        </div>
+                        <div id="subjects-list" class="subject-grid"></div>
+                    </section>
+                    <div class="geo-grid">
+                        <section class="panel subject-editor-panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Tạo môn học</h2>
+                                </div>
+                                <span class="info-badge">Dynamic hub</span>
+                            </div>
+                            <form id="subject-form">
+                                 <div class="form-grid two-columns">
+                                    <label>Tên môn<input id="subject-name-input" required placeholder="Ví dụ: Toán nâng cao"></label>
+                                    <label>Mã định danh<input id="subject-key-input" required placeholder="math_advanced"></label>
+                                </div>
+                                <div class="form-grid two-columns">
+                                    <label>Học kỳ<input id="subject-semester-input" placeholder="Giữa Kì 1"></label>
+                                    <label>Icon Font Awesome<input id="subject-icon-input" placeholder="fa-book" value="fa-book"></label>
+                                </div>
+                                <label>Thư mục / Nhóm đề <span class="muted-copy">(tùy chọn — gom chung các đề thành 1 tệp)</span>
+                                    <input id="subject-folder-input" list="subject-folder-datalist" placeholder="VD: Môn Toán (để trống = tự nhận theo tên đề)">
+                                    <datalist id="subject-folder-datalist"></datalist>
+                                </label>
+                                <label class="grade-picker-label">Khối lớp <span>Chọn một trong hai khối</span></label>
+                                <div id="subject-grade-picker" class="subject-grade-picker" role="group" aria-label="Chọn khối lớp">
+                                    <button type="button" class="subject-grade-button is-selected" data-subject-grade="11"><i class="fa-solid fa-graduation-cap"></i> Lớp 11</button>
+                                    <button type="button" class="subject-grade-button" data-subject-grade="5"><i class="fa-solid fa-seedling"></i> Lớp 5</button>
+                                </div>
+                                <input type="hidden" id="subject-grade-input" value="11">
+                                <label class="grade-picker-label">Chế độ làm bài <span>Quy định cách chấm điểm cho học sinh</span></label>
+                                <div id="subject-mode-picker" class="subject-grade-picker" role="group" aria-label="Chọn chế độ làm bài">
+                                    <button type="button" class="subject-grade-button is-selected" data-subject-mode="practice"><i class="fa-solid fa-book-open-reader"></i> Luyện tập</button>
+                                    <button type="button" class="subject-grade-button" data-subject-mode="exam"><i class="fa-solid fa-trophy"></i> Thi đấu</button>
+                                </div>
+                                <input type="hidden" id="subject-mode-input" value="practice">
+                                <div class="form-grid two-columns">
+                                    <label>Màu nhận diện
+                                        <select id="subject-gradient-input">
+                                            <option value="navy">Navy Ocean</option>
+                                            <option value="emerald">Emerald</option>
+                                            <option value="amber">Amber</option>
+                                            <option value="rose">Rose</option>
+                                        </select>
+                                    </label>
+                                    <label>Trạng thái
+                                        <select id="subject-visibility-input">
+                                            <option value="PUBLIC">Công khai</option>
+                                            <option value="PRIVATE">Riêng tư</option>
+                                        </select>
+                                    </label>
+                                 </div>
+                                 <div class="form-grid two-columns subject-schedule-grid">
+                                     <label>Hẹn giờ mở đề (tùy chọn)<input id="subject-open-at-input" type="datetime-local"></label>
+                                     <label>Hẹn giờ đóng đề (tùy chọn)<input id="subject-close-at-input" type="datetime-local"></label>
+                                     <label>Giới hạn lượt nộp (0 = không giới hạn)<input id="subject-max-attempts-input" type="number" min="0" max="99" value="0"></label>
+                                 </div>
+                                 <div class="form-actions">
+                                    <button id="clear-subject-form" class="button button-secondary" type="button">Làm mới</button>
+                                    <button class="button button-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Lưu môn học</button>
+                                </div>
+                            </form>
+                        </section>
+                        <section class="panel info-banner-panel">
+                            <div class="panel-title">
+                                <div>
+                                    <h2>Phân quyền học sinh</h2>
+                                    <p class="muted-copy">Cấp quyền Lớp 5 &amp; Trợ lý AI đã được gộp chung.</p>
+                                </div>
+                                <i class="fa-solid fa-users-gear" style="color:var(--primary);font-size:20px;"></i>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-top:8px;">
+                                Toàn bộ việc cấp quyền Lớp 5 và Trợ lý AI (theo Link Token hoặc IP) nay đã được gộp quản lý tập trung tại mục <b>Quyền truy cập</b>.
+                            </p>
+                            <button type="button" class="button button-secondary" onclick="document.querySelector('[data-view=&quot;access&quot;]')?.click()" style="margin-top:14px;width:100%;">
+                                <i class="fa-solid fa-arrow-right"></i> Đi tới Quản lý phân quyền học sinh
+                            </button>
+                        </section>
+                    </div>
+                </section>
+
+  <section class="view" data-view-panel="reports"><section class="panel ai-config-panel"><div class="panel-title"><div><h2>Cấu hình trợ lý phân tích đề</h2><p class="muted-copy">Dán Gemini API Key tại đây để lưu lên Supabase Cloud cho toàn bộ hệ thống (hỗ trợ cả key dạng AIza... và AQ....), hoặc cấu hình qua biến môi trường GEMINI_API_KEY trên máy chủ.</p></div><i class="fa-solid fa-sliders accent-purple"></i></div><div class="inline-form"><input id="gemini-key-input" type="password" autocomplete="off" aria-label="Gemini API Key" placeholder="Dán Gemini API Key (AIza... hoặc AQ....)"><button id="save-gemini-key" class="button button-primary" type="button"><i class="fa-solid fa-floppy-disk"></i> Lưu Key</button><button id="test-gemini-key" class="button button-info" type="button"><i class="fa-solid fa-plug"></i> Kiểm tra Proxy AI</button><span id="gemini-key-status" class="info-badge">Chưa kiểm tra</span></div></section></section>
+ <div id="ai-drawer-backdrop" class="ai-drawer-backdrop hidden" aria-hidden="true"></div>
+ <section class="view" data-view-panel="ai-assistant">
+      <div class="page-heading"><div><h1>Trợ lý AI Quản trị</h1><p>Phân tích dữ liệu lớp học theo thời gian thực, phát hiện bất thường và thực thi lệnh quản trị với 1 chạm xác nhận</p></div><div class="heading-actions"><span id="ai-context-sync-label" class="last-sync">Chưa đồng bộ dữ liệu AI</span><button id="ai-refresh-context-btn" class="button button-secondary compact" type="button"><i class="fa-solid fa-arrows-rotate"></i> Làm mới dữ liệu</button><button id="ai-clear-chat-btn" class="button button-secondary compact" type="button"><i class="fa-solid fa-broom"></i> Xóa hội thoại</button><button id="ai-drawer-expand-btn" class="icon-button ai-drawer-only" type="button" title="Mở toàn màn hình" aria-label="Mở Trợ lý AI toàn màn hình"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button><button id="ai-drawer-close-btn" class="icon-button ai-drawer-only" type="button" title="Đóng ngăn kéo (Esc)" aria-label="Đóng Trợ lý AI"><i class="fa-solid fa-xmark"></i></button></div></div>
+     <div id="ai-context-strip" class="ai-context-strip"><span class="ai-ctx-pill"><i class="fa-solid fa-users"></i> <small>Học sinh:</small> <b id="ai-ctx-students">0</b></span><span class="ai-ctx-pill is-ok"><i class="fa-solid fa-pen-to-square"></i> <small>Đang làm:</small> <b id="ai-ctx-doing">0</b></span><span id="ai-ctx-same-ip-pill" class="ai-ctx-pill"><i class="fa-solid fa-network-wired"></i> <small>Trùng IP:</small> <b id="ai-ctx-same-ip">0</b></span><span id="ai-ctx-rename-pill" class="ai-ctx-pill"><i class="fa-solid fa-user-pen"></i> <small>Chờ đổi tên:</small> <b id="ai-ctx-rename">0</b></span><span id="ai-ctx-maintenance-pill" class="ai-ctx-pill"><i class="fa-solid fa-shield-halved"></i> <small>Hệ thống:</small> <b id="ai-ctx-maintenance">Đang mở</b></span></div>
+     <div id="ai-key-warning" class="ai-key-warning hidden" role="alert"><div><b><i class="fa-solid fa-triangle-exclamation"></i> Chưa cấu hình Gemini API Key</b><p class="muted-copy" style="margin:3px 0 0;">Vào mục Báo cáo &amp; dữ liệu để dán Gemini API Key (hoặc kiểm tra Proxy AI) trước khi chat với Trợ lý.</p></div><button id="ai-goto-key-config" class="button button-warning compact" type="button"><i class="fa-solid fa-key"></i> Mở cấu hình Key</button></div>
+      <section class="panel ai-chat-shell"><div id="ai-quick-prompts" class="ai-quick-prompts"><button type="button" class="ai-quick-chip" data-ai-prompt="Tổng kết tình hình lớp học hôm nay: có bao nhiêu học sinh đang làm, đã nộp, điểm trung bình và những trường hợp nào cần chú ý?">Tổng kết lớp hôm nay</button><button type="button" class="ai-quick-chip" data-ai-prompt="Kiểm tra danh sách học sinh hiện tại xem có ai trùng IP với máy khác, dùng nhiều máy, tên bất thường/ngoài danh sách hoặc đang chờ đổi tên không? Nếu phát hiện hãy đề xuất lệnh xử lý phù hợp.">Soi trùng IP &amp; tên lạ</button><button type="button" class="ai-quick-chip" data-ai-prompt="Phân tích các học sinh điểm thấp và tổng hợp những câu hỏi bị làm sai nhiều nhất để tôi tập trung ôn tập cho lớp.">Điểm thấp &amp; câu hay sai</button><button type="button" class="ai-quick-chip" data-ai-prompt="Soạn giúp tôi một tin nhắn ngắn gọn, lịch sự, kèm số liệu rõ ràng để gửi lên nhóm Zalo lớp tổng kết tình hình làm bài và nhắc các bạn còn dang dở.">Soạn tin nhắn Zalo lớp</button><button type="button" class="ai-quick-chip" data-ai-prompt="Rà soát các mã máy chưa ghim tên hoặc trùng IP với danh sách lớp và đề xuất các lệnh ghim tên / gộp máy / yêu cầu đổi tên để tôi duyệt.">Chuẩn hóa tên &amp; ghim máy</button></div><div id="ai-chat-messages" class="ai-chat-messages" aria-live="polite"></div><div class="ai-composer"><div class="ai-composer-row"><textarea id="ai-chat-input" rows="2" placeholder="Hỏi AI về lớp học, câu hay sai hoặc ra lệnh quản trị..."></textarea><button id="ai-send-btn" class="button button-primary" type="button"><i class="fa-solid fa-paper-plane"></i> <span>Gửi</span></button></div><p class="ai-composer-hint"><span>Enter để gửi · Shift + Enter xuống dòng</span><span>Mọi lệnh thay đổi dữ liệu đều tạo Thẻ xem trước và cần bạn bấm Xác nhận.</span></p></div></section>
+ </section>
+            </div>
+        </main>
+    </div>
+
+    <div id="import-modal" class="modal-backdrop hidden"><section class="modal-card import-modal"><div class="modal-header"><div><h2>Nạp câu hỏi hàng loạt</h2><p>Dán JSON câu hỏi đã có sẵn hoặc chọn file JSON/TXT.</p></div><div style="display:flex;align-items:center;gap:8px;"><button id="modal-copy-ai-prompt-btn" class="button button-secondary" type="button" style="font-size:11px;padding:6px 12px;" title="Sao chép Prompt AI trích xuất đề thi"><i class="fa-solid fa-terminal"></i> Copy Prompt AI</button><button class="icon-button" data-close-modal="import-modal" type="button" aria-label="Đóng cửa sổ nạp câu hỏi"><i class="fa-solid fa-xmark"></i></button></div></div><div class="import-toolbar"><label>Môn đích<select id="import-subject-select"></select></label><label class="checkbox-label"><input type="checkbox" id="import-replace"> Xóa câu hỏi cũ của môn này</label></div><textarea id="import-text" rows="12" aria-label="Nội dung JSON câu hỏi" placeholder="Dán JSON câu hỏi tại đây..."></textarea><div class="dropzone"><i class="fa-solid fa-cloud-arrow-up"></i><span>Kéo thả hoặc chọn file JSON hoặc TXT</span><input id="import-file" type="file" aria-label="Chọn file JSON hoặc TXT" accept=".json,.txt"></div><div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal="import-modal">Hủy</button><button id="parse-import" class="button button-info" type="button"><i class="fa-solid fa-code"></i> Đọc JSON</button><button id="save-import" class="button button-primary" type="button"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào ngân hàng</button></div><div id="import-preview" class="import-preview"></div></section></div>
+    <dialog id="subject-dialog" class="subject-dialog" aria-labelledby="subject-editor-title">
+        <header class="subject-dialog-header">
+            <div>
+<h2 id="subject-editor-title">Tạo môn học</h2>
+                <p class="muted-copy">Tạo môn mới và gán vào Lớp 5 hoặc Lớp 11.</p>
+            </div>
+            <button id="subject-dialog-close" class="icon-button" type="button" aria-label="Đóng cửa sổ môn học"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div id="subject-dialog-content"></div>
+    </dialog>
+    <dialog id="folder-dialog" class="subject-dialog" aria-labelledby="folder-dialog-title">
+        <header class="subject-dialog-header">
+            <div>
+                <h2 id="folder-dialog-title">Tạo thư mục mới</h2>
+                <p class="muted-copy">Tạo thư mục riêng theo khối lớp và gom các đề vào chung một chỗ cho gọn.</p>
+            </div>
+            <button id="folder-dialog-close" class="icon-button" type="button" aria-label="Đóng cửa sổ thư mục"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <form id="folder-form" style="padding:0 4px 4px;display:flex;flex-direction:column;gap:14px;">
+            <label>Tên thư mục
+                <input id="folder-name-input" required placeholder="VD: Môn Toán, Môn Tiếng Việt, Ôn thi Giữa Kì">
+            </label>
+            <div>
+                <label class="grade-picker-label">Khối lớp <span>Chọn khối lớp cho thư mục</span></label>
+                <div id="folder-grade-picker" class="subject-grade-picker" role="group" aria-label="Chọn khối lớp thư mục">
+                    <button type="button" class="subject-grade-button is-selected" data-folder-grade="11"><i class="fa-solid fa-graduation-cap"></i> Lớp 11</button>
+                    <button type="button" class="subject-grade-button" data-folder-grade="5"><i class="fa-solid fa-seedling"></i> Lớp 5</button>
+                </div>
+                <input type="hidden" id="folder-grade-input" value="11">
+            </div>
+            <div>
+                <label class="grade-picker-label">Gom đề / môn có sẵn vào thư mục này <span class="muted-copy">(tùy chọn)</span></label>
+                <div id="folder-subjects-checklist" style="max-height:190px;overflow-y:auto;display:grid;gap:8px;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);"></div>
+            </div>
+            <div class="form-actions">
+                <button id="cancel-folder-dialog" class="button button-secondary" type="button">Hủy</button>
+                <button class="button button-primary" type="submit"><i class="fa-solid fa-folder-plus"></i> Lưu thư mục</button>
+            </div>
+        </form>
+    </dialog>
+    <div id="print-modal" class="modal-backdrop hidden">
+        <section class="modal-card print-modal" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">
+            <div class="modal-header">
+                <div>
+                    <h2 id="print-modal-title">Xuất đề thi &amp; Bản in chuẩn Bộ GD&amp;ĐT</h2>
+                    <p>Tạo bản in đề thi chính thức chuẩn A4 kèm bảng ma trận đáp án và lời giải chi tiết.</p>
+                </div>
+                <button class="icon-button" data-close-modal="print-modal" type="button" aria-label="Đóng cửa sổ"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="print-form-body">
+                <div class="form-grid two-columns">
+                    <label>Môn thi
+                        <select id="print-subject-select"></select>
+                    </label>
+                    <label>Khối lớp
+                        <select id="print-grade-select">
+                            <option value="all">Tất cả khối lớp</option>
+                            <option value="5">Khối Lớp 5</option>
+                            <option value="11">Khối Lớp 11</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="form-grid two-columns">
+                    <label>Tên đơn vị / Trường học
+                        <input id="print-school-input" type="text" value="SỞ GIÁO DỤC VÀ ĐÀO TẠO - TRƯỜNG QUIZ STUDIO" placeholder="Tên trường / Đơn vị tổ chức">
+                    </label>
+                    <label>Mã đề thi
+                        <div class="input-with-action">
+                            <input id="print-code-input" type="text" value="101" placeholder="Mã đề (101, 102...)">
+                            <button id="print-random-code" class="button button-secondary compact" type="button" title="Tạo mã đề ngẫu nhiên"><i class="fa-solid fa-dice"></i> Ngẫu nhiên</button>
+                        </div>
+                    </label>
+                </div>
+                <div class="form-grid two-columns">
+                    <label>Tiêu đề kỳ thi
+                        <input id="print-title-input" type="text" value="ĐỀ KIỂM TRA ĐÁNH GIÁ CHẤT LƯỢNG HỌC KỲ" placeholder="Ví dụ: ĐỀ KIỂM TRA ĐỊNH KỲ">
+                    </label>
+                    <label>Thời gian làm bài
+                        <input id="print-duration-input" type="text" value="45 phút (không kể thời gian phát đề)" placeholder="Ví dụ: 45 phút, 50 phút...">
+                    </label>
+                </div>
+                <div class="form-grid two-columns">
+                    <label>Giới hạn số lượng câu
+                        <select id="print-count-input">
+                            <option value="0">Toàn bộ câu hỏi phù hợp</option>
+                            <option value="10">10 câu</option>
+                            <option value="15">15 câu</option>
+                            <option value="20">20 câu</option>
+                            <option value="25">25 câu</option>
+                            <option value="30">30 câu</option>
+                            <option value="40">40 câu</option>
+                            <option value="50">50 câu</option>
+                        </select>
+                    </label>
+                    <label>Chế độ xuất bản in
+                        <select id="print-mode-select">
+                            <option value="exam_and_answers">Đề bài + Ma trận đáp án &amp; Lời giải chi tiết</option>
+                            <option value="exam_only">Chỉ xuất đề bài (Phát cho học sinh)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="print-options-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="print-shuffle-check">
+                        <span>Xáo trộn ngẫu nhiên thứ tự câu hỏi trước khi xuất</span>
+                    </label>
+                    <span id="print-available-count" class="muted-copy">Đang kiểm tra số câu...</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="button button-secondary" type="button" data-close-modal="print-modal">Hủy</button>
+                <button id="do-print-btn" class="button button-primary" type="button">
+                    <i class="fa-solid fa-print"></i> Xem trước &amp; In ngay (PDF)
+                </button>
+            </div>
+        </section>
+
+    </div>
+
+    <div id="student-progress-modal" class="student-progress-modal hidden" role="dialog" aria-modal="true" aria-labelledby="student-progress-modal-title">
+        <div class="student-progress-modal-card">
+            <div class="student-progress-modal-head"><div><h2 id="student-progress-modal-title">Chi tiết tiến trình</h2><p id="student-progress-modal-subtitle" class="muted-copy"></p></div><button id="student-progress-modal-close" type="button" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button></div>
+            <div id="student-progress-modal-body" class="student-progress-modal-body"></div>
+        </div>
+    </div>
+
+    <div id="trash-modal" class="modal-backdrop hidden">
+        <section class="modal-card trash-modal" role="dialog" aria-modal="true" aria-labelledby="trash-modal-title">
+            <div class="modal-header">
+                <div>
+                    <h2 id="trash-modal-title">Thùng rác câu hỏi (Khôi phục chống xóa nhầm)</h2>
+                    <p>Các câu hỏi đã xóa được lưu trữ an toàn trên Cloud. Bạn có thể khôi phục về ngân hàng bất kỳ lúc nào.</p>
+                </div>
+                <button class="icon-button" data-close-modal="trash-modal" type="button" aria-label="Đóng cửa sổ"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="trash-toolbar">
+                <div class="trash-search-wrap">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input id="trash-search-input" type="search" aria-label="Tìm câu hỏi trong thùng rác" placeholder="Tìm câu hỏi trong thùng rác...">
+                </div>
+                <select id="trash-subject-filter" aria-label="Lọc thùng rác theo môn học">
+                    <option value="all">Tất cả môn học</option>
+                </select>
+                <div class="trash-toolbar-actions">
+                    <button id="trash-restore-all-btn" class="button button-secondary" type="button">
+                        <i class="fa-solid fa-rotate-left"></i> Khôi phục tất cả
+                    </button>
+                    <button id="trash-empty-btn" class="button button-danger" type="button">
+                        <i class="fa-solid fa-broom"></i> Dọn sạch thùng rác
+                    </button>
+                </div>
+            </div>
+            <div class="trash-status-bar">
+                <span>Tổng cộng: <strong id="trash-modal-count">0 câu hỏi</strong></span>
+                <small class="muted-copy">Câu hỏi khôi phục sẽ xuất hiện lại ngay lập tức trong ngân hàng câu hỏi.</small>
+            </div>
+            <div id="trash-list" class="trash-list"></div>
+            <div id="trash-empty-state" class="trash-empty-state hidden">
+                <i class="fa-solid fa-trash-arrow-up"></i>
+                <h3>Thùng rác trống</h3>
+                <p>Không có câu hỏi nào bị xóa tạm trong hệ thống.</p>
+            </div>
+            <div class="modal-actions">
+                <button class="button button-secondary" type="button" data-close-modal="trash-modal">Đóng</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- MODAL TÙY CHỌN XÓA CÂU HỎI (DELETE SCOPE MODAL) -->
+    <div id="delete-scope-modal" class="modal-backdrop hidden">
+        <section class="modal-card delete-scope-modal" role="dialog" aria-modal="true" aria-labelledby="delete-scope-title">
+            <div class="modal-header">
+                <div>
+                    <h2 id="delete-scope-title">Tùy chọn xóa câu hỏi</h2>
+                    <p>Chọn phạm vi xóa chính xác để tránh xóa nhầm. Toàn bộ câu hỏi bị xóa sẽ được chuyển an toàn vào Thùng rác.</p>
+                </div>
+                <button class="icon-button" data-close-modal="delete-scope-modal" type="button" aria-label="Đóng cửa sổ"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="delete-scope-body">
+                <!-- TÙY CHỌN 1: XÓA THEO BỘ LỌC HIỆN TẠI (1 BÀI / 1 MÔN ĐANG CHỌN) -->
+                <div class="delete-option-card">
+                    <div class="delete-option-icon warning">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <h3>1. Xóa các câu hỏi theo bộ lọc hiện tại</h3>
+                        <p id="delete-scope-filtered-desc">Chuyển các câu hỏi thuộc môn/bài đang chọn vào Thùng rác.</p>
+                        <div class="delete-option-meta">
+                            <span class="scope-count-badge" id="delete-scope-filtered-badge">0 câu</span>
+                            <small class="muted-copy">Chỉ xóa các câu trong bài/môn bạn đang lọc, không chạm vào môn khác.</small>
+                        </div>
+                    </div>
+                    <button id="btn-delete-current-filter" class="button button-warning-solid" type="button">
+                        <i class="fa-solid fa-trash-arrow-up"></i> Xóa bài đang lọc
+                    </button>
+                </div>
+
+                <!-- TÙY CHỌN 2: BẬT CHẾ ĐỘ TICK CHỌN TỪNG CÂU (CHECKBOX) -->
+                <div class="delete-option-card">
+                    <div class="delete-option-icon primary">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <h3>2. Tự chọn từng câu hỏi cần xóa (Checkbox)</h3>
+                        <p>Bật ô đánh dấu trên mỗi câu để bạn tự tay tick chọn 1 câu hoặc vài câu bất kỳ muốn bỏ.</p>
+                        <div class="delete-option-meta">
+                            <small class="muted-copy">Có thanh tác vụ xóa nhanh các câu đã tick kèm nút chọn/bỏ chọn tất cả.</small>
+                        </div>
+                    </div>
+                    <button id="btn-activate-selection-mode" class="button button-secondary" type="button">
+                        <i class="fa-solid fa-square-check"></i> Bật chọn câu
+                    </button>
+                </div>
+
+                <!-- TÙY CHỌN 3: XÓA TOÀN BỘ NGÂN HÀNG (CÓ KHÓA BẢO VỆ CHỐNG ẤN NHẦM) -->
+                <div class="delete-option-card danger-zone">
+                    <div class="delete-option-icon danger">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="delete-option-info">
+                        <div class="danger-title-row">
+                            <h3>3. Xóa TOÀN BỘ ngân hàng câu hỏi</h3>
+                            <span class="danger-badge">Nguy hiểm</span>
+                        </div>
+                        <p>Chuyển toàn bộ <strong id="delete-scope-total-count">0</strong> câu hỏi của <strong>TẤT CẢ các môn học và khối lớp</strong> vào Thùng rác.</p>
+                        <div class="confirm-type-box">
+                            <label for="delete-all-confirm-input">Nhập chính xác chữ <code>XOA HET</code> để mở khóa:</label>
+                            <input type="text" id="delete-all-confirm-input" placeholder="Gõ XOA HET vào đây..." autocomplete="off">
+                        </div>
+                    </div>
+                    <button id="btn-delete-all-guarded" class="button button-danger-solid is-disabled" type="button" disabled>
+                        <i class="fa-solid fa-dumpster-fire"></i> Xóa sạch tất cả
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="button button-secondary" type="button" data-close-modal="delete-scope-modal">Đóng</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="print-paper" class="print-paper" aria-hidden="true"></div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <!-- NÚT CUỘN LÊN ĐẦU TRANG (BACK TO TOP) -->
+    <button id="back-to-top-btn" class="back-to-top-btn hidden" type="button" aria-label="Lên đầu trang" title="Lên đầu trang">
+        <i class="fa-solid fa-arrow-up"></i>
+    </button>
+
+    <template id="report-workspace-template">
+        <div class="report-workspace">
+            <div class="report-hero">
+                <div>
+                    <h1>Báo cáo &amp; dữ liệu</h1>
+                    <p>Đọc kết quả theo dữ liệu thực tế, xuất bản sao lưu và chuẩn bị cho kỳ thi mới.</p>
+                </div>
+                <div class="report-hero-actions">
+                    <span id="report-last-updated" class="report-updated">Chưa tải dữ liệu</span>
+                    <button id="refresh-score-report" class="button button-secondary" type="button"><i class="fa-solid fa-rotate"></i> Làm mới báo cáo</button>
+                </div>
+            </div>
+
+            <div id="report-state-loading" class="report-state report-state-loading" role="status" aria-live="polite">
+                <i class="fa-solid fa-circle-notch fa-spin"></i><span>Đang đọc dữ liệu kết quả...</span>
+            </div>
+            <div id="report-state-error" class="report-state report-state-error hidden" role="alert">
+                <i class="fa-solid fa-triangle-exclamation"></i><span id="report-state-error-text">Không thể tải báo cáo.</span>
+                <button id="report-retry" class="button button-secondary compact" type="button">Thử lại</button>
+            </div>
+            <div id="report-state-empty" class="report-state report-state-empty hidden" role="status">
+                <i class="fa-solid fa-chart-simple"></i><div><strong>Chưa có lượt thi hợp lệ</strong><p>Báo cáo sẽ xuất hiện sau khi học sinh nộp bài có điểm hoặc tỷ lệ đúng.</p></div>
+            </div>
+
+            <section id="report-summary" class="report-summary hidden" aria-label="Tóm tắt thống kê điểm">
+                <div class="report-summary-head">
+                    <div><h2>Tóm tắt kết quả</h2><p id="report-method-note" class="report-method-note">Chưa có dữ liệu.</p></div>
+                    <span id="report-scale-badge" class="report-scale-badge">Thang điểm /10</span>
+                </div>
+                <div class="report-stat-grid">
+                    <article class="report-stat-card report-stat-accent"><span class="report-stat-icon"><i class="fa-solid fa-list-check"></i></span><div><small>N hợp lệ</small><strong id="report-attempts">—</strong><span>lượt thi</span></div></article>
+                    <article class="report-stat-card"><span class="report-stat-icon"><i class="fa-solid fa-user-group"></i></span><div><small>Học sinh duy nhất</small><strong id="report-students">—</strong><span>theo tên hoặc IP</span></div></article>
+                    <article class="report-stat-card"><span class="report-stat-icon"><i class="fa-solid fa-chart-line"></i></span><div><small>Trung bình</small><strong id="report-mean">—</strong><span>/10</span></div></article>
+                    <article class="report-stat-card"><span class="report-stat-icon"><i class="fa-solid fa-arrows-to-circle"></i></span><div><small>Trung vị</small><strong id="report-median">—</strong><span>/10</span></div></article>
+                    <article class="report-stat-card"><span class="report-stat-icon"><i class="fa-solid fa-sigma"></i></span><div><small>Độ lệch chuẩn</small><strong id="report-sd">—</strong><span>/10</span></div></article>
+                    <article class="report-stat-card"><span class="report-stat-icon"><i class="fa-solid fa-ruler-horizontal"></i></span><div><small>Min - Max</small><strong id="report-range">—</strong><span>/10</span></div></article>
+                </div>
+                <div class="report-detail-grid">
+                    <div><span><i class="fa-solid fa-circle-check"></i> Hoàn tất</span><strong id="report-completion">—</strong></div>
+                    <div><span><i class="fa-solid fa-circle-minus"></i> Bỏ sót câu</span><strong id="report-omission">Không có dữ liệu</strong></div>
+                    <div><span><i class="fa-solid fa-calendar-days"></i> Khoảng ngày</span><strong id="report-date-range">—</strong></div>
+                    <div><span><i class="fa-solid fa-scale-balanced"></i> Quy tắc chọn</span><strong id="report-selection-rule">—</strong></div>
+                </div>
+            </section>
+
+            <section class="panel report-panel leaderboard-panel" aria-labelledby="leaderboard-title">
+                <div class="panel-title report-panel-title">
+                    <div><h2 id="leaderboard-title">Bảng xếp hạng kết quả</h2><p id="leaderboard-summary" class="muted-copy">Chưa tải bảng xếp hạng.</p></div>
+                    <div class="report-filter-actions"><label class="report-filter-label" for="leaderboard-subject">Môn học<select id="leaderboard-subject"><option value="">Tất cả môn</option></select></label><button id="load-leaderboard" class="button button-warning" type="button"><i class="fa-solid fa-ranking-star"></i> Xem xếp hạng</button></div>
+                </div>
+                <div id="leaderboard-loading" class="hidden" role="status" aria-label="Đang tải bảng xếp hạng">
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                    <div class="skeleton-shimmer admin-skeleton-row"></div>
+                </div>
+                <div id="leaderboard-error" class="report-inline-state report-inline-error hidden" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><span id="leaderboard-error-text">Không thể tải bảng xếp hạng.</span></div>
+                <div id="leaderboard-empty" class="report-inline-state hidden" role="status"><i class="fa-solid fa-trophy"></i> Chưa có kết quả phù hợp.</div>
+                <div id="leaderboard-content" class="leaderboard-content" aria-live="polite"></div>
+            </section>
+
+            <section class="panel report-panel wrong-stats-panel" aria-labelledby="wrong-stats-title">
+                <div class="panel-title report-panel-title">
+                    <div><h2 id="wrong-stats-title">Top câu hỏi hay sai nhất (Đấu trường)</h2><p id="wrong-stats-summary" class="muted-copy">Tổng hợp các câu thí sinh trả lời sai nhiều nhất để ôn tập trọng tâm.</p></div>
+                    <div class="report-filter-actions"><label class="report-filter-label" for="wrong-stats-subject">Môn học<select id="wrong-stats-subject"><option value="">Tất cả môn</option></select></label><button id="load-wrong-stats" class="button button-danger" type="button"><i class="fa-solid fa-chart-column"></i> Thống kê câu sai</button></div>
+                </div>
+                <div id="wrong-stats-content" class="leaderboard-content" aria-live="polite"><p class="muted-copy">Bấm "Thống kê câu sai" để tải dữ liệu từ phòng thi đấu.</p></div>
+            </section>
+
+            <div class="report-grid report-action-grid">
+                <article class="report-card purple"><span><i class="fa-solid fa-file-pdf"></i></span><div><h2>Xuất đề thi &amp; Đáp án PDF</h2><p>In đề theo mẫu chuẩn Bộ GD&amp;ĐT: đề bài, ma trận đáp án và lời giải chi tiết.</p></div><button id="export-pdf-report" class="button button-purple" type="button"><i class="fa-solid fa-print"></i> Cấu hình &amp; Xuất đề</button></article>
+                <article class="report-card green"><span><i class="fa-solid fa-file-excel"></i></span><div><h2>Xuất bảng câu hỏi Excel</h2><p>Tải toàn bộ ngân hàng câu hỏi theo môn và dạng.</p></div><button id="export-excel" class="button button-success" type="button"><i class="fa-solid fa-download"></i> Tải Excel</button></article>
+                <article class="report-card blue"><span><i class="fa-solid fa-box-archive"></i></span><div><h2>Sao lưu ngân hàng câu hỏi</h2><p>Tải JSON câu hỏi và cấu hình quản trị. Không xóa lịch sử điểm hoặc dữ liệu học sinh.</p></div><button id="export-backup" class="button button-info" type="button"><i class="fa-solid fa-cloud-arrow-down"></i> Tải backup JSON</button></article>
+                <article class="report-card cyan"><span><i class="fa-solid fa-file-lines"></i></span><div><h2>Xuất báo cáo điểm</h2><p>Tải tóm tắt thống kê và các lượt thi hợp lệ với nhãn rõ ràng /10 và %.</p></div><button id="export-score-report" class="button button-info" type="button"><i class="fa-solid fa-file-export"></i> Tải báo cáo điểm</button></article>
+                <article class="report-card red"><span><i class="fa-solid fa-broom"></i></span><div><h2>Dọn dữ liệu kỳ thi cũ</h2><p>Tự động tải bản sao lưu lịch sử trước, sau đó xóa lịch sử kết quả.</p></div><button id="archive-data" class="button button-danger" type="button"><i class="fa-solid fa-trash-can"></i> Dọn dữ liệu</button></article>
+            </div>
+        </div>
+    </template>
+    <div id="workspace-transition-overlay" class="workspace-transition-overlay" aria-hidden="true">
+        <div class="workspace-transition-badge">
+            <span class="workspace-transition-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+            <span id="workspace-transition-text" class="workspace-transition-text">Đang mở Control Center...</span>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+       <script src="supabase.js?v=20261123k"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+       <script src="arena.js?v=20261123k"></script>
+       <script src="admin.js?v=20261123k"></script>
+</body>
+</html>

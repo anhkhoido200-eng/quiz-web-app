@@ -1,0 +1,9765 @@
+/* Quiz Studio Control Center. Question editor, strict import and system controls. */
+(() => {
+    const CONFIG = {
+        url: localStorage.getItem('quiz_supabase_url') || 'https://qotfikuiwmruicsvsbgq.supabase.co',
+        key: localStorage.getItem('quiz_supabase_key') || 'sb_publishable_KtAmEX6Jj97BNElniBrX6w_wVyCeQYs'
+    };
+    const SYSTEM = {
+        admin: '00000000-0000-0000-0000-000000000001',
+        geo: '00000000-0000-0000-0000-000000000002',
+        maintenance: '00000000-0000-0000-0000-000000000003',
+        subjects: '00000000-0000-0000-0000-000000000004',
+        gemini: '00000000-0000-0000-0000-000000000005',
+        aiIps: '00000000-0000-0000-0000-000000000006',
+        trash: '00000000-0000-0000-0000-000000000007',
+        tokens: '00000000-0000-0000-0000-000000000008',
+        folders: '00000000-0000-0000-0000-000000000009',
+        roster: '00000000-0000-0000-0000-000000000010'
+    };
+    const TYPE_LABELS = { mcq: 'Trắc nghiệm 4 lựa chọn', tf_group: 'Đúng / Sai', short_answer: 'Trả lời ngắn' };
+    const state = {
+        client: null, clientIp: '', questions: [], questionsLoaded: false, grade: 'all', subject: 'all', typeFilter: 'all',
+        type: 'mcq', answer: 0, tfAnswers: [true, true, true, true], editingId: null,
+        page: 1, pageSize: 12,
+        importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
+        adminConfig: { masterIp: '', masterDeviceCode: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
+        tokens: [], reportRows: null, reportAllRows: [], reportLoading: false, reportLeaderboardPage: 1,
+        progressFilter: 'all', progressSubject: 'all', progressSearch: '', progressSort: 'recent', progressRecords: [], progressRawLogins: [], progressLoading: false, progressRefreshQueued: false,
+        subjects: [], subjectFolders: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_subject_folders') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })(), maintenance: { isActive: false, message: '' }, bound: false,
+        subjectDialogOpener: null, subjectEditingKey: null,
+        importIntegrity: { valid: true, errors: [] },
+        selectedQuestionIds: new Set(),
+        selectMode: false,
+        activityLogs: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_admin_activity_logs') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })(),
+        trashQuestions: (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem('quiz_trash_questions') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })(),
+        isLeavingWorkspace: false,
+        workspaceTransitionsBound: false,
+        libraryTabIndicatorRect: null,
+        libraryIndicatorResizeBound: false,
+         rosterConfig: { grade5: { enabled: false, allowGuestsInPractice: true, students: [] }, grade11: { enabled: false, allowGuestsInPractice: true, students: [] } },
+         devicePins: {},
+         renameRequests: {},
+         aiChatMessages: (() => {
+             try {
+                 const saved = JSON.parse(sessionStorage.getItem('quiz_admin_ai_history') || '[]');
+                 if (!Array.isArray(saved)) return [];
+                 const isOwnerTarget = (act) => {
+                     const raw = JSON.stringify(act?.params || {})
+                         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
+                     return raw.includes('dua con cua thoi dai') || raw.includes('qm-a5pzbc');
+                 };
+                 return saved.slice(-20).map((message) => ({
+                     ...message,
+                     actions: Array.isArray(message?.actions)
+                         ? message.actions
+                             .filter((action) => !isOwnerTarget(action))
+                             .map((action) => ({
+                                 ...action,
+                                 status: action?.status === 'running' ? 'pending' : action?.status
+                             }))
+                         : []
+                 }));
+             } catch (e) { return []; }
+         })(),
+         aiChatLoading: false,
+         aiLastContextSyncAt: 0
+    };
+    const $ = (id) => document.getElementById(id);
+    const extractDeviceCode = (dev) => {
+        const external = window.extractDeviceCode?.(dev);
+        if (external) return String(external).toUpperCase();
+        const match = String(dev || '').match(/\[(QM-[A-Z0-9]{4,})\]/i);
+        return match ? match[1].toUpperCase() : '';
+    };
+    const normalizeIdentityKey = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/gi, 'd')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    const findRosterMatchedName = (name) => {
+        const needle = normalizeIdentityKey(name);
+        if (!needle) return '';
+        const rosters = [state.rosterConfig?.grade5, state.rosterConfig?.grade11];
+        for (const roster of rosters) {
+            if (!roster?.enabled || !Array.isArray(roster.students)) continue;
+            for (const student of roster.students) {
+                const candidate = typeof student === 'string' ? student : student?.name;
+                if (candidate && normalizeIdentityKey(candidate) === needle) return String(candidate).trim();
+            }
+        }
+        return '';
+    };
+    const getPinnedDeviceName = (deviceOrCode) => {
+        const raw = String(deviceOrCode || '').trim();
+        if (!raw) return '';
+        const code = extractDeviceCode(raw) || raw.toUpperCase().replace(/^\[|\]$/g, '');
+        return /^QM-[A-Z0-9]{4,}$/i.test(code) ? String(state.devicePins?.[code.toUpperCase()] || '').trim() : '';
+    };
+    const hasPendingRename = (deviceCodesOrCode) => {
+        const codes = Array.isArray(deviceCodesOrCode) ? deviceCodesOrCode : [deviceCodesOrCode];
+        return codes.some((code) => {
+            const normalized = extractDeviceCode(`[${String(code || '').trim()}]`) || String(code || '').trim().toUpperCase().replace(/^\[|\]$/g, '');
+            return Boolean(state.renameRequests?.[normalized]);
+        });
+    };
+    const getGroupKey = (row) => {
+        const code = extractDeviceCode(row?.device_info || row?.device || row?.deviceInfo);
+        const pinned = getPinnedDeviceName(code);
+        if (pinned) return `pin:${normalizeIdentityKey(pinned)}`;
+        const isOutside = /\[Ngoài lớp\]/i.test(String(row?.status || '')) || row?.outsideRoster === true;
+        if (!isOutside) {
+            const rosterMatch = findRosterMatchedName(row?.player_name);
+            if (rosterMatch) return `pin:${normalizeIdentityKey(rosterMatch)}`;
+        }
+        const external = window.getStudentGroupKey?.(row);
+        if (external) return String(external).toLowerCase();
+        if (code) return `dev:${code.toLowerCase()}`;
+        const ip = String(row?.ip_address || row?.client_ip || '').trim().toLowerCase();
+        return ip && !['system', 'all', 'chưa xác định', '—'].includes(ip) ? `ip:${ip}` : `row:${row?.id || ''}`;
+    };
+    const resolvePinnedStudentName = (deviceOrCode, fallbackName = 'Học sinh') => {
+        return getPinnedDeviceName(deviceOrCode) || String(fallbackName || 'Học sinh').trim() || 'Học sinh';
+    };
+    const toLocalDatetimeInput = (iso) => {
+        if (!iso) return '';
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        const pad = (v) => String(v).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+    const parseLocalDatetimeInput = (val) => {
+        const clean = String(val || '').trim();
+        if (!clean) return '';
+        const date = new Date(clean);
+        return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+    };
+    const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+    const escBody = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const notationText = (value) => {
+        if (typeof MathNotation !== 'undefined' && typeof MathNotation.readValue === 'function') {
+            return MathNotation.readValue(value).text;
+        }
+        if (value && typeof value === 'object') return String(value.text ?? value.value ?? value.content ?? '');
+        return String(value ?? '');
+    };
+    const storageText = (value) => {
+        if (value && typeof value === 'object') {
+            const text = String(value.text ?? value.value ?? value.content ?? '').trim();
+            const math = value.math ?? value.latex ?? value.formula;
+            if (math !== undefined && math !== null && String(math).trim()) {
+                const source = String(math).trim();
+                const mathStr = /^\$[^$]+\$$|^\$\$[\s\S]*\$\$$/.test(source) ? source : `$${source}$`;
+                return text ? `${text} ${mathStr}` : mathStr;
+            }
+            return String(value.text ?? value.value ?? value.content ?? '');
+        }
+        return String(value ?? '');
+    };
+    const formatNotation = (value, fallback = '') => {
+        const source = value || fallback;
+        return typeof MathNotation !== 'undefined' && typeof MathNotation.format === 'function'
+            ? MathNotation.format(source)
+            : String(source ?? '');
+    };
+    const htmlText = (value, fallback = '') => escBody(formatNotation(value, fallback)).replace(/\r?\n/g, '<br>');
+    const renderMath = (root) => {
+        if (!root) return;
+        if (typeof renderMathInElement !== 'function') {
+            if (!root.dataset.mathRenderRetry) root.dataset.mathRenderRetry = '0';
+            const retry = Number(root.dataset.mathRenderRetry);
+            if (retry < 20) {
+                root.dataset.mathRenderRetry = String(retry + 1);
+                window.setTimeout(() => renderMath(root), 50);
+            }
+            return;
+        }
+        try {
+            renderMathInElement(root, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false }
+                ],
+                throwOnError: false
+            });
+        } catch (error) {
+            console.warn('[Quiz Studio Admin] Math rendering failed:', error);
+        }
+    };
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    function ensureAdminWorkspaceOverlay() {
+        let overlay = $('workspace-transition-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'workspace-transition-overlay';
+            overlay.className = 'workspace-transition-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = `
+                <div class="workspace-transition-badge">
+                    <span class="workspace-transition-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    <span id="workspace-transition-text" class="workspace-transition-text">Đang mở Control Center...</span>
+                </div>
+            `;
+            document.body?.appendChild(overlay);
+        }
+        return overlay;
+    }
+
+    /** Return the singleton Supabase client shared with supabase.js. */
+    function ensureSupabaseClient() {
+        if (!state.client) {
+            state.client = typeof window.getSharedSupabaseClient === 'function'
+                ? window.getSharedSupabaseClient(CONFIG.url, CONFIG.key)
+                : window.supabase.createClient(CONFIG.url, CONFIG.key);
+        }
+        return state.client;
+    }
+
+    /** Check whether the user requested reduced motion. */
+    function isReducedMotionPreferred() {
+        return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    function navigateToStudentWithTransition(targetUrl = 'index.html') {
+        if (state.isLeavingWorkspace) return;
+        state.isLeavingWorkspace = true;
+        const cleanUrl = targetUrl || 'index.html';
+        try {
+            sessionStorage.setItem('quiz_workspace_transition', 'to-student');
+        } catch (e) {}
+        if (isReducedMotionPreferred()) {
+            window.location.href = cleanUrl;
+            return;
+        }
+        const overlay = ensureAdminWorkspaceOverlay();
+        const textEl = $('workspace-transition-text');
+        if (textEl) textEl.textContent = 'Đang quay về Trang học sinh...';
+        if (overlay) {
+            overlay.classList.add('is-active');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        document.body?.classList.remove('workspace-entering');
+        document.body?.classList.add('workspace-leaving');
+        window.setTimeout(() => {
+            window.location.href = cleanUrl;
+        }, 220);
+    }
+
+    function initAdminWorkspaceTransitions() {
+        let transitionFlag = '';
+        try {
+            transitionFlag = sessionStorage.getItem('quiz_workspace_transition') || '';
+        } catch (e) {}
+
+        if (transitionFlag === 'to-admin') {
+            try {
+                sessionStorage.removeItem('quiz_workspace_transition');
+            } catch (e) {}
+            const reducedMotion = isReducedMotionPreferred();
+            const overlay = reducedMotion ? $('workspace-transition-overlay') : ensureAdminWorkspaceOverlay();
+            if (reducedMotion) {
+                if (overlay) {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                document.body?.classList.remove('workspace-leaving', 'workspace-entering');
+            } else {
+                const textEl = $('workspace-transition-text');
+                if (textEl) textEl.textContent = 'Đang mở Control Center...';
+                if (overlay) {
+                    overlay.classList.add('is-active');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    void overlay.offsetWidth;
+                }
+                document.body?.classList.remove('workspace-leaving');
+                document.body?.classList.add('workspace-entering');
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (overlay) {
+                            overlay.classList.remove('is-active');
+                            overlay.setAttribute('aria-hidden', 'true');
+                        }
+                    });
+                });
+                window.setTimeout(() => {
+                    document.body?.classList.remove('workspace-entering');
+                }, 380);
+            }
+        }
+
+        if (!state.workspaceTransitionsBound) {
+            state.workspaceTransitionsBound = true;
+            window.addEventListener('pageshow', () => {
+                state.isLeavingWorkspace = false;
+                const overlay = $('workspace-transition-overlay');
+                if (overlay) {
+                    overlay.classList.remove('is-active');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                document.body?.classList.remove('workspace-leaving', 'workspace-entering');
+            });
+        }
+
+        document.querySelectorAll('a[href="index.html"], a.side-home, a.brand').forEach((link) => {
+            if (link.dataset.workspaceTransitionBound === '1') return;
+            link.dataset.workspaceTransitionBound = '1';
+            link.addEventListener('click', (event) => {
+                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                event.preventDefault();
+                navigateToStudentWithTransition(link.getAttribute('href') || 'index.html');
+            });
+        });
+    }
+    const copyToClipboard = async (text) => {
+        const cleanText = String(text ?? '').trim();
+        if (!cleanText) return false;
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(cleanText);
+                return true;
+            }
+        } catch (e) {
+            console.warn('[Quiz Studio Admin] Clipboard API failed, trying fallback...', e);
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = cleanText;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return success;
+        } catch (err) {
+            prompt('Sao chép nội dung bên dưới:', cleanText);
+            return true;
+        }
+    };
+    const animateAdminCount = (target, value, duration = 400) => {
+        const element = typeof target === 'string' ? $(target) : target;
+        if (!element) return;
+        const nextValue = Math.max(0, Math.round(Number(value) || 0));
+        const rawPrev = element.dataset.prevValue !== undefined
+            ? Number(element.dataset.prevValue)
+            : Number(String(element.textContent || '').replace(/[^\d.-]/g, ''));
+        const startValue = Number.isFinite(rawPrev) ? Math.max(0, Math.round(rawPrev)) : 0;
+        element.dataset.prevValue = String(nextValue);
+
+        if (element._countRafId) {
+            cancelAnimationFrame(element._countRafId);
+            element._countRafId = null;
+        }
+
+        const prefersReduced = typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced || startValue === nextValue || duration <= 0) {
+            element.textContent = String(nextValue);
+            return;
+        }
+
+        const startTime = performance.now();
+        const delta = nextValue - startValue;
+        const step = (now) => {
+            const progress = Math.min(1, (now - startTime) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.textContent = String(Math.round(startValue + delta * eased));
+            if (progress < 1) {
+                element._countRafId = requestAnimationFrame(step);
+            } else {
+                element._countRafId = null;
+                element.textContent = String(nextValue);
+            }
+        };
+        element._countRafId = requestAnimationFrame(step);
+    };
+    const buildAdminSkeletonHtml = (type = 'progress', count = 3) => {
+        if (type === 'leaderboard') {
+            return Array.from({ length: count }, () => `
+                <div class="skeleton-shimmer admin-skeleton-row" aria-hidden="true"></div>
+            `).join('');
+        }
+        return Array.from({ length: count }, () => `
+            <div class="skeleton-shimmer admin-skeleton-card" aria-hidden="true">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <div class="skeleton-block" style="width:38px;height:38px;border-radius:10px;"></div>
+                        <div style="display:grid;gap:6px;">
+                            <div class="skeleton-block" style="width:120px;height:14px;"></div>
+                            <div class="skeleton-block" style="width:76px;height:10px;"></div>
+                        </div>
+                    </div>
+                    <div class="skeleton-block" style="width:72px;height:22px;border-radius:99px;"></div>
+                </div>
+                <div class="skeleton-block" style="width:100%;height:42px;border-radius:10px;"></div>
+                <div style="display:flex;justify-content:space-between;">
+                    <div class="skeleton-block" style="width:110px;height:10px;"></div>
+                    <div class="skeleton-block" style="width:80px;height:10px;"></div>
+                </div>
+            </div>
+        `).join('');
+    };
+    const triggerAdminCopyFeedback = (btnEl, duration = 1500) => {
+        if (!btnEl) return;
+        if (btnEl._copyFeedbackTimer) {
+            clearTimeout(btnEl._copyFeedbackTimer);
+            btnEl._copyFeedbackTimer = null;
+        }
+        if (btnEl.dataset.origCopyHtml === undefined) {
+            btnEl.dataset.origCopyHtml = btnEl.innerHTML;
+        }
+        btnEl.classList.add('is-copied-feedback');
+        const icon = btnEl.querySelector('i');
+        if (icon) {
+            icon.className = 'fa-solid fa-check';
+        } else {
+            btnEl.innerHTML = `<i class="fa-solid fa-check"></i> ${esc(btnEl.textContent.trim())}`;
+        }
+        btnEl._copyFeedbackTimer = window.setTimeout(() => {
+            btnEl._copyFeedbackTimer = null;
+            btnEl.classList.remove('is-copied-feedback');
+            if (btnEl.dataset.origCopyHtml !== undefined) {
+                btnEl.innerHTML = btnEl.dataset.origCopyHtml;
+                delete btnEl.dataset.origCopyHtml;
+            }
+        }, duration);
+    };
+    const confirmDialog = (options = {}) => {
+        const opts = typeof options === 'string' ? { message: options } : (options || {});
+        const msg = String(opts.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?');
+        const isDanger = opts.variant ? opts.variant === 'danger' : /xóa|dọn|backup/i.test(msg);
+        const variant = opts.variant || (isDanger ? 'danger' : 'warning');
+
+        let modal = document.getElementById('admin-confirm-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'admin-confirm-modal';
+            modal.className = 'admin-confirm-backdrop hidden';
+            modal.innerHTML = `
+                <div class="admin-confirm-card" role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title">
+                    <div id="admin-confirm-accent" class="admin-confirm-accent"></div>
+                    <div class="admin-confirm-body">
+                        <div class="admin-confirm-head">
+                            <span id="admin-confirm-icon" class="admin-confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                            <div class="admin-confirm-title-wrap">
+                                <p id="admin-confirm-eyebrow" class="eyebrow">CONFIRM ACTION</p>
+                                <h3 id="admin-confirm-title">Xác nhận thao tác</h3>
+                            </div>
+                            <button type="button" id="admin-confirm-close" class="icon-button" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div id="admin-confirm-message" class="admin-confirm-message"></div>
+                         <input id="admin-confirm-input" class="hidden" type="text" style="width:100%;margin-top:12px;margin-bottom:14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;" autocomplete="off">
+                        <div class="admin-confirm-actions">
+                            <button type="button" id="admin-confirm-cancel" class="button button-secondary">Hủy bỏ</button>
+                            <button type="button" id="admin-confirm-ok" class="button button-primary"><i class="fa-solid fa-check"></i> <span id="admin-confirm-ok-text">Xác nhận</span></button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        const accentEl = document.getElementById('admin-confirm-accent');
+        const iconWrap = document.getElementById('admin-confirm-icon');
+        const eyebrowEl = document.getElementById('admin-confirm-eyebrow');
+        const titleEl = document.getElementById('admin-confirm-title');
+        const msgEl = document.getElementById('admin-confirm-message');
+        const inputEl = document.getElementById('admin-confirm-input');
+        const cancelBtn = document.getElementById('admin-confirm-cancel');
+        const okBtn = document.getElementById('admin-confirm-ok');
+        const okText = document.getElementById('admin-confirm-ok-text');
+        const closeBtn = document.getElementById('admin-confirm-close');
+
+        if (accentEl) accentEl.className = `admin-confirm-accent ${variant === 'danger' ? 'is-danger' : (variant === 'warning' ? 'is-warning' : '')}`;
+        if (iconWrap) {
+            iconWrap.className = `admin-confirm-icon ${variant === 'danger' ? 'is-danger' : (variant === 'warning' ? 'is-warning' : '')}`;
+            iconWrap.innerHTML = `<i class="fa-solid ${opts.icon || (variant === 'danger' ? 'fa-trash-can' : 'fa-triangle-exclamation')}"></i>`;
+        }
+        if (eyebrowEl) eyebrowEl.textContent = opts.eyebrow || (variant === 'danger' ? 'DANGER ZONE' : 'CONFIRM ACTION');
+        if (titleEl) titleEl.textContent = opts.title || (variant === 'danger' ? 'Xác nhận xóa dữ liệu?' : 'Xác nhận thao tác?');
+        if (msgEl) msgEl.textContent = msg;
+        let suggestionsEl = document.getElementById('admin-confirm-suggestions');
+        if (!suggestionsEl && inputEl?.parentNode) {
+            suggestionsEl = document.createElement('div');
+            suggestionsEl.id = 'admin-confirm-suggestions';
+            suggestionsEl.style.cssText = 'display:none;flex-wrap:wrap;gap:6px;margin-top:8px;';
+            inputEl.insertAdjacentElement('afterend', suggestionsEl);
+        }
+        if (inputEl) {
+            inputEl.type = opts.inputType || 'text';
+            if (opts.withInput) {
+                inputEl.classList.remove('hidden');
+                inputEl.placeholder = opts.placeholder || 'Nhập nội dung...';
+                inputEl.value = opts.defaultValue || '';
+            } else {
+                inputEl.classList.add('hidden');
+                inputEl.value = '';
+            }
+        }
+        if (suggestionsEl) {
+            suggestionsEl.innerHTML = '';
+            const suggestions = opts.withInput && Array.isArray(opts.suggestions) ? opts.suggestions.filter((item) => item && item.value) : [];
+            if (suggestions.length > 0) {
+                suggestionsEl.style.display = 'flex';
+                suggestions.forEach((item) => {
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = 'button button-secondary compact';
+                    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;';
+                    chip.innerHTML = `<span>${esc(item.label || item.value)}</span>${item.badge ? `<span class="tag">${esc(item.badge)}</span>` : ''}`;
+                    chip.addEventListener('click', () => {
+                        if (inputEl) {
+                            inputEl.value = String(item.value);
+                            inputEl.focus();
+                        }
+                        suggestionsEl.querySelectorAll('button').forEach((btn) => { btn.style.borderColor = ''; });
+                        chip.style.borderColor = 'var(--primary)';
+                    });
+                    suggestionsEl.appendChild(chip);
+                });
+            } else {
+                suggestionsEl.style.display = 'none';
+            }
+        }
+        if (cancelBtn) cancelBtn.textContent = opts.cancelText || 'Hủy bỏ';
+        if (okBtn) okBtn.className = `button ${variant === 'danger' ? 'button-danger-solid' : (variant === 'warning' ? 'button-warning-solid' : 'button-primary')}`;
+        if (okText) okText.textContent = opts.confirmText || (variant === 'danger' ? 'Xác nhận xóa' : 'Đồng ý');
+
+        if (modal._adminConfirmFinish) modal._adminConfirmFinish(false);
+        modal.classList.remove('hidden');
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (confirmed) => {
+                if (settled) return;
+                settled = true;
+                modal.classList.add('hidden');
+                if (suggestionsEl) {
+                    suggestionsEl.innerHTML = '';
+                    suggestionsEl.style.display = 'none';
+                }
+                window.removeEventListener('keydown', onKey, true);
+                modal.onclick = null;
+                if (okBtn) okBtn.onclick = null;
+                if (cancelBtn) cancelBtn.onclick = null;
+                if (closeBtn) closeBtn.onclick = null;
+                if (modal._adminConfirmFinish === finish) modal._adminConfirmFinish = null;
+                if (opts.withInput) {
+                    resolve(confirmed ? String(inputEl?.value || '') : null);
+                } else {
+                    resolve(confirmed);
+                }
+            };
+            modal._adminConfirmFinish = finish;
+            const onKey = (e) => {
+                if (e.isComposing) return;
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+                else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (variant !== 'danger') finish(true); }
+            };
+            window.addEventListener('keydown', onKey, true);
+            modal.onclick = (e) => { if (e.target === modal) finish(false); };
+            if (okBtn) okBtn.onclick = () => finish(true);
+            if (cancelBtn) cancelBtn.onclick = () => finish(false);
+            if (closeBtn) closeBtn.onclick = () => finish(false);
+            setTimeout(() => {
+                if (opts.withInput && inputEl) { inputEl.focus(); inputEl.select(); }
+                else (variant === 'danger' ? cancelBtn : okBtn)?.focus();
+            }, 20);
+        });
+    };
+    const promptDialog = (options = {}) => confirmDialog({ ...options, withInput: true, variant: options.variant || 'primary' });
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 60000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+    const isGeminiQuotaError = (status, message = '') => status === 429 || /resource_exhausted|quota exceeded|rate limit|free[_ -]?tier|billing|limit:\s*0/i.test(String(message));
+    const geminiQuotaMessage = 'Gemini đã hết quota của project/API key hiện tại. Hãy đổi sang API key/project khác, bật billing hoặc chờ quota Google cấp lại; không thể tạo câu hỏi mới lúc này.';
+    const parseBool = (value) => {
+        if (value === true || value === 1) return true;
+        if (value === false || value === 0 || value === null || value === undefined) return false;
+        const normalized = String(value).trim().toLowerCase();
+        return ['true', 'đúng', 'dung', 'yes', 'y', 't', '1'].includes(normalized);
+    };
+    const cleanGeminiKey = (value) => String(value || '').trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
+    const isValidGeminiKey = (value) => {
+        const key = cleanGeminiKey(value);
+        return Boolean(key && (/^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/i.test(key) || key.length >= 20));
+    };
+    const subjectName = (key) => {
+        const dynamic = state.subjects.find((item) => item.key === key || item.subject_key === key)
+            || state.subjects.find((item) => subjectMatchKey(item.key || item.subject_key) === subjectMatchKey(key));
+        return dynamic?.name || dynamic?.title || key || 'Chưa chọn môn';
+    };
+    // Mã môn có thể được tạo từ JSON cũ với dấu cách/gạch nối/Unicode khác
+    // nhau. Dùng một khóa so sánh ổn định để số câu trên thẻ môn luôn khớp
+    // với ngân hàng, nhưng vẫn giữ nguyên subject_key thật khi ghi Cloud.
+    const subjectMatchKey = (value) => String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+    const allSubjects = () => mergeSubjectCatalog(state.subjects)
+        .map((item) => ({ ...item, key: item.key || item.subject_key, name: item.name || item.title || item.key }))
+        .filter((item) => item.key);
+    const builtinSubjects = () => [];
+    const mergeSubjectCatalog = (configured) => {
+        const merged = [];
+        const seenMatchKeys = new Set();
+        (Array.isArray(configured) ? configured : []).forEach((item) => {
+            const key = String(item?.key || item?.subject_key || '').trim();
+            const matchKey = subjectMatchKey(key) || key;
+            if (key && !seenMatchKeys.has(matchKey)) {
+                seenMatchKeys.add(matchKey);
+                merged.push({ ...item, key, name: item.name || item.title || key });
+            }
+        });
+        return merged.filter((item) => item.key && (item.name || item.title));
+    };
+    const subjectGrade = (subject) => {
+        const explicit = String(subject?.grade || subject?.class || subject?.grade_level || '').match(/5|11/);
+        if (explicit) return explicit[0];
+        const source = `${subject?.key || ''} ${subject?.name || subject?.title || ''}`;
+        return /(?:^|[^0-9])5(?:$|[^0-9])/.test(source) || /5$/.test(subject?.key || '') ? '5' : '11';
+    };
+    const gradeOf = (q) => {
+        if (String(q?.grade || q?.grade_level || '') === '5') return '5';
+        if (String(q?.grade || q?.grade_level || '') === '11') return '11';
+        const key = String(q?.subject_key || q?.subjectKey || q?.key || '').trim();
+        const matchKey = subjectMatchKey(key);
+        const subjects = allSubjects();
+        const matchedSubject = subjects.find((s) => subjectMatchKey(s.key || s.subject_key) === matchKey);
+        if (matchedSubject) return subjectGrade(matchedSubject);
+        if (subjects.length > 0 && subjects.every((s) => subjectGrade(s) === '5')) return '5';
+        if (subjects.length > 0 && subjects.every((s) => subjectGrade(s) === '11')) return '11';
+        const lowerKey = key.toLowerCase();
+        if (/(?:^|[^0-9])5(?:$|[^0-9])/.test(lowerKey) || /5$/.test(lowerKey)) return '5';
+        return '11';
+    };
+    const notify = (message, error = false) => {
+        const toast = $('toast');
+        if (!toast) return;
+        toast.textContent = String(message ?? '').replace(/[🎉⚠️✅❌👁🔥✨🚀🏆📋👑⏰🔒🗑️]/gu, '').replace(/!+(?=\s*$)/g, '').replace(/\s{2,}/g, ' ').trim();
+        toast.className = `toast show${error ? ' error' : ''}`;
+        clearTimeout(notify.timer);
+        notify.timer = setTimeout(() => { toast.className = 'toast'; }, 3400);
+    };
+    const runAction = (action) => Promise.resolve().then(action).catch((error) => {
+        console.error('[Quiz Studio Admin]', error);
+        notify(error?.message || 'Thao tác không thành công.', true);
+    });
+
+    function setConnection(ready, message) {
+        const el = $('connection-status');
+        if (!el) return;
+        el.className = `connection-status${ready ? ' is-ready' : ' is-offline'}`;
+        el.innerHTML = `<i class="fa-solid ${ready ? 'fa-cloud-check' : 'fa-triangle-exclamation'}"></i> ${esc(message)}`;
+    }
+
+    function maskIpAddress(ip) {
+        const clean = String(ip || '').trim();
+        if (!clean || clean === 'Chưa xác định' || clean === 'Không xác định IP') return 'Không xác định IP';
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(clean)) {
+            const parts = clean.split('.');
+            return `${parts[0]}.${parts[1]}.***.***`;
+        }
+        if (clean.includes(':')) {
+            const parts = clean.split(':').filter(Boolean);
+            return parts.length >= 2 ? `${parts[0]}:${parts[1]}:****:****` : `${clean.slice(0, 6)}****`;
+        }
+        return clean.length > 6 ? `${clean.slice(0, 6)}.***.***` : clean;
+    }
+
+    async function copyAdminIp() {
+        const fullIp = state.clientIp || $('current-ip')?.dataset.fullIp || '';
+        if (!fullIp || fullIp === 'Không xác định IP' || fullIp === 'Chưa xác định') {
+            return notify('Chưa nhận diện được địa chỉ IP để sao chép.', true);
+        }
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(fullIp);
+            } else {
+                const temp = document.createElement('textarea');
+                temp.value = fullIp;
+                temp.style.position = 'fixed';
+                temp.style.opacity = '0';
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                temp.remove();
+            }
+            const btn = $('copy-admin-ip');
+            if (btn) {
+                btn.classList.add('is-copied');
+                triggerAdminCopyFeedback(btn, 1500);
+                clearTimeout(copyAdminIp.timer);
+                copyAdminIp.timer = setTimeout(() => {
+                    btn.classList.remove('is-copied');
+                }, 1500);
+            }
+            notify(`Đã sao chép IP đầy đủ (${fullIp}) vào clipboard.`);
+        } catch (error) {
+            notify('Không thể sao chép địa chỉ IP.', true);
+        }
+    }
+
+    function updateHealthStatus(type, stateMode, badgeLabel, detailText) {
+        const isDb = type === 'db';
+        const badge = $(isDb ? 'health-database-badge' : 'health-content-badge');
+        const detail = $(isDb ? 'health-database' : 'health-content');
+        if (detail && detailText) detail.textContent = detailText;
+        if (!badge) return;
+        badge.classList.remove('pending', 'safe', 'danger', 'is-checking');
+        if (stateMode === 'checking') {
+            badge.classList.add('pending', 'is-checking');
+            badge.innerHTML = `<i class="fa-solid fa-arrows-rotate is-spinning"></i> <span>${esc(badgeLabel || 'Đang kiểm tra')}</span>`;
+        } else if (stateMode === 'safe') {
+            badge.classList.add('safe');
+            badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>${esc(badgeLabel || 'Đã kết nối')}</span> <i class="fa-solid fa-arrows-rotate health-recheck-icon"></i>`;
+        } else {
+            badge.classList.add('danger');
+            badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>${esc(badgeLabel || 'Mất kết nối')}</span> <span class="health-retry-tag"><i class="fa-solid fa-arrows-rotate"></i> Thử lại</span>`;
+        }
+    }
+
+    async function recheckSystemHealth() {
+        updateHealthStatus('db', 'checking', 'Đang kiểm tra', 'Đang kết nối lại với Supabase...');
+        updateHealthStatus('content', 'checking', 'Đang đồng bộ', 'Đang tải lại ngân hàng câu hỏi...');
+        try {
+            await Promise.all([loadSubjects(), loadQuestions(), loadMaintenance()]);
+            notify('Đã kiểm tra kết nối và đồng bộ dữ liệu thành công.');
+        } catch (error) {
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
+            updateHealthStatus('content', 'danger', 'Lỗi tải', 'Chưa thể đồng bộ dữ liệu câu hỏi.');
+            notify(`Kiểm tra kết nối thất bại: ${error.message}`, true);
+        }
+    }
+
+    function addActivityLog(action, detail = '', category = 'info') {
+        const cleanAction = String(action || '').trim();
+        if (!cleanAction) return;
+        const entry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            action: cleanAction,
+            detail: String(detail || '').trim(),
+            category: String(category || 'info'),
+            timestamp: new Date().toISOString()
+        };
+        if (!Array.isArray(state.activityLogs)) state.activityLogs = [];
+        state.activityLogs.unshift(entry);
+        if (state.activityLogs.length > 25) state.activityLogs = state.activityLogs.slice(0, 25);
+        try {
+            localStorage.setItem('quiz_admin_activity_logs', JSON.stringify(state.activityLogs));
+        } catch (e) {}
+        renderRecentActivity();
+    }
+    window.addActivityLog = addActivityLog;
+
+    function navigateToLibraryByGrade(grade) {
+        const targetGrade = ['5', '11', 'all'].includes(String(grade)) ? String(grade) : 'all';
+        state.grade = targetGrade;
+        state.subject = 'all';
+        state.page = 1;
+        document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.grade === targetGrade);
+        });
+        fillLibrarySubjects();
+        renderLibrary();
+        switchView('questions');
+        requestAnimationFrame(() => {
+            const target = $('content-library-section') || document.querySelector('.library-panel');
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.classList.remove('is-focus-pulse');
+                void target.offsetWidth;
+                target.classList.add('is-focus-pulse');
+                clearTimeout(navigateToLibraryByGrade.timer);
+                navigateToLibraryByGrade.timer = setTimeout(() => target.classList.remove('is-focus-pulse'), 1400);
+            }
+        });
+    }
+
+    async function getClientIp() {
+        if (state.clientIp && state.clientIp !== 'Chưa xác định') return state.clientIp;
+        try {
+            const cached = sessionStorage.getItem('quiz_stable_client_ip');
+            if (cached && cached !== 'Chưa xác định') return cached;
+        } catch (e) {}
+        const endpoints = ['https://api4.ipify.org?format=json', 'https://api.ipify.org?format=json', 'https://ipapi.co/json/'];
+        for (const endpoint of endpoints) {
+            try {
+                const response = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
+                const data = await response.json();
+                if (data?.ip) {
+                    const clean = String(data.ip).trim();
+                    try { sessionStorage.setItem('quiz_stable_client_ip', clean); } catch (e) {}
+                    return clean;
+                }
+            } catch (error) { /* Use the fallback provider. */ }
+        }
+        return '';
+    }
+
+    async function systemRow(id) {
+        const { data, error } = await state.client.from('quiz_logins').select('*').eq('id', id).limit(1);
+        if (error) {
+            console.error(`[Quiz Studio Admin] Không đọc được bản ghi hệ thống ${id}:`, error);
+            throw error;
+        }
+        if (!data?.[0]) return null;
+        return data[0];
+    }
+
+    async function isCurrentIpAllowed() {
+        state.clientIp = await getClientIp();
+        if ($('current-ip')) {
+            $('current-ip').textContent = maskIpAddress(state.clientIp);
+            $('current-ip').dataset.fullIp = state.clientIp || '';
+        }
+        if ($('access-current-ip')) $('access-current-ip').textContent = state.clientIp || 'Không xác định IP';
+
+        const getOrCreateAdminDeviceCode = () => {
+            let code = '';
+            try { code = localStorage.getItem('quiz_device_machine_code') || ''; } catch (e) {}
+            if (!/^QM-[A-Z0-9]{4,}$/i.test(code)) {
+                try {
+                    const cookie = document.cookie.split(';').map((item) => item.trim()).find((item) => item.startsWith('quiz_device_machine_code='));
+                    const cookieCode = cookie ? decodeURIComponent(cookie.slice('quiz_device_machine_code='.length)) : '';
+                    if (/^QM-[A-Z0-9]{4,}$/i.test(cookieCode)) code = cookieCode;
+                } catch (e) {}
+            }
+            if (!/^QM-[A-Z0-9]{4,}$/i.test(code)) {
+                const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+                let randomPart = '';
+                for (let i = 0; i < 6; i++) randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+                code = `QM-${randomPart}`;
+            }
+            code = code.toUpperCase();
+            try { localStorage.setItem('quiz_device_machine_code', code); } catch (e) {}
+            try { document.cookie = `quiz_device_machine_code=${encodeURIComponent(code)}; path=/; max-age=31536000; SameSite=Lax`; } catch (e) {}
+            return code;
+        };
+        state.deviceCode = getOrCreateAdminDeviceCode();
+        if ($('access-current-device')) $('access-current-device').textContent = state.deviceCode;
+
+        // Đọc mã IP-Token từ URL query params (?admin_token=... hoặc ?token=...) hoặc URL hash
+        let urlAdminToken = '';
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+            const paramToken = urlParams.get('admin_token') || urlParams.get('token') || hashParams.get('admin_token') || hashParams.get('token');
+            if (paramToken && paramToken.trim()) {
+                urlAdminToken = paramToken.trim();
+                try {
+                    const cleanUrl = window.location.pathname + (hashParams.has('admin_token') || hashParams.has('token') ? '' : window.location.hash);
+                    window.history.replaceState({}, document.title, cleanUrl);
+                } catch (e) {}
+            }
+        } catch (e) {}
+
+        // CHỈ đọc quiz_admin_token, TUYỆT ĐỐI KHÔNG đọc quiz_access_token (token học sinh)
+        const storedToken = (localStorage.getItem('quiz_admin_token') || '').trim();
+        const currentToken = urlAdminToken || storedToken;
+        const persistValidAdminToken = () => {
+            if (!urlAdminToken) return;
+            try { localStorage.setItem('quiz_admin_token', urlAdminToken); } catch (e) {}
+        };
+
+        const row = await systemRow(SYSTEM.admin);
+        if (!row) return false;
+        try {
+            const config = JSON.parse(row.score_summary || '{}');
+            state.adminConfig = {
+                masterIp: String(config.masterIp || '').trim(),
+                masterDeviceCode: String(config.masterDeviceCode || '').trim().toUpperCase(),
+                allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
+            };
+            const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
+            const myDeviceCode = String(state.deviceCode || '').trim().toUpperCase();
+            const masterDeviceCode = state.adminConfig.masterDeviceCode;
+            const normalizeAdminCode = (value) => {
+                const clean = String(value || '').trim().toLowerCase();
+                if (!clean) return '';
+                const parts = clean.split('-');
+                // IP-Token / IP-Mã: chỉ dùng phần mã sau IP khi xác thực Admin.
+                return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                    ? parts.slice(1).join('-')
+                    : clean;
+            };
+            const matchesAllowedDevice = (item) => {
+                if (!myDeviceCode || !item) return false;
+                if (typeof item === 'string') {
+                    const up = item.trim().toUpperCase();
+                    return up === myDeviceCode || up.endsWith('-' + myDeviceCode);
+                }
+                const itemDev = String(item.deviceCode || '').trim().toUpperCase();
+                const itemRaw = String(item.rawCode || '').trim().toUpperCase();
+                const itemTok = String(item.token || '').trim().toUpperCase();
+                return itemDev === myDeviceCode || itemRaw === myDeviceCode || itemTok === myDeviceCode || itemTok.endsWith('-' + myDeviceCode);
+            };
+
+            // 1. Khớp Mã máy Master hoặc Mã máy trong danh sách Admin
+            if (masterDeviceCode && myDeviceCode === masterDeviceCode) return true;
+            if (myDeviceCode && state.adminConfig.allowedIps.some(matchesAllowedDevice)) return true;
+
+            // 2. Nếu CHƯA khóa theo mã máy Master thì mới cho phép khớp theo Master IP / IP whitelist
+            if (!masterDeviceCode) {
+                if (state.clientIp && state.clientIp === state.adminConfig.masterIp) return true;
+                if (state.clientIp && ips.includes(state.clientIp)) return true;
+            }
+
+            // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
+            const isPlainIpAddress = (value) => {
+                const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+                return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
+            };
+            if (currentToken) {
+                const tok = currentToken.toLowerCase();
+                const tokCode = normalizeAdminCode(tok);
+                const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
+                    if (!tok || tok.length < 6 || isPlainIpAddress(tok)) return false;
+                    if (typeof item === 'string') {
+                        const str = item.trim().toLowerCase();
+                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
+                        const strCode = normalizeAdminCode(str);
+                        return str === tok || (Boolean(tokCode) && tokCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === tokCode);
+                    }
+                    const itemToken = String(item.token || '').toLowerCase();
+                    const itemRaw = String(item.rawCode || '').toLowerCase();
+                    if (tok && tok.length >= 6) {
+                        if (itemToken && !isPlainIpAddress(itemToken) && itemToken === tok) return true;
+                        if (itemRaw && !isPlainIpAddress(itemRaw) && itemRaw === tok) return true;
+                        if (tokCode && !isPlainIpAddress(tokCode) && normalizeAdminCode(itemToken) === tokCode) return true;
+                        if (tokCode && !isPlainIpAddress(tokCode) && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
+                    }
+                    return false;
+                });
+                if (isTokenMatch) { persistValidAdminToken(); return true; }
+            }
+
+            // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
+            try {
+            const row8 = await systemRow(SYSTEM.tokens);
+                if (row8 && row8.score_summary) {
+                    const tokens = JSON.parse(row8.score_summary || '[]');
+                    if (Array.isArray(tokens)) {
+                        // CHỈ CHẤP NHẬN ROLE ADMIN, TUYỆT ĐỐI KHÔNG CHẤP NHẬN ROLE ALL HOẶC PARENT
+                        const adminTokens = tokens.filter(t => t.role === 'admin');
+                        if (currentToken) {
+                            const tok = currentToken.toLowerCase();
+                            const tokCode = normalizeAdminCode(tok);
+                            const foundAdmin = adminTokens.find(t => {
+                                const tToken = String(t.token || '').toLowerCase();
+                                const tRaw = String(t.rawCode || '').toLowerCase();
+                                if (tok && tok.length >= 6) {
+                                    if (tToken && tToken === tok) return true;
+                                    if (tRaw && tRaw === tok) return true;
+                                    if (tokCode && normalizeAdminCode(tToken) === tokCode) return true;
+                                    if (tokCode && tRaw && normalizeAdminCode(tRaw) === tokCode) return true;
+                                }
+                                return false;
+                            });
+                            if (foundAdmin) { persistValidAdminToken(); return true; }
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            return false;
+        } catch (error) { return false; }
+    }
+
+    function denyAccess(reason = '') {
+        try {
+            // Xóa mã admin không hợp lệ khỏi máy để tránh lặp lại
+            localStorage.removeItem('quiz_admin_token');
+            localStorage.removeItem('quiz_admin_session_token');
+            sessionStorage.removeItem('quiz_admin_session_token');
+            sessionStorage.removeItem('quiz_admin_session_expires_at');
+        } catch (e) {}
+        $('app-shell')?.classList.add('hidden');
+        $('access-denied')?.classList.remove('hidden');
+        const message = document.querySelector('#access-denied .access-card p:not(.eyebrow)');
+        if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
+    }
+
+    async function bootstrapAdmin() {
+        ensureSupabaseClient();
+        if (!state.clientIp) state.clientIp = await getClientIp();
+        if (!state.clientIp || state.clientIp === 'Chưa xác định') return notify('Không xác định được IP máy hiện tại.', true);
+        const row = await systemRow(SYSTEM.admin);
+        if (!row) return notify('Chưa tìm thấy bản ghi cấu hình Admin trên Supabase.', true);
+        let config;
+        try { config = JSON.parse(row.score_summary || '{}'); } catch (error) { config = {}; }
+        const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
+        const masterIp = String(config.masterIp || '').trim();
+        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để xác thực qua máy chủ và thiết lập quyền Master lần đầu:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
+        if (password === null) return;
+        let verified = false;
+        if (typeof window.dbService?.verifyAdminLogin === 'function') {
+            const authRes = await window.dbService.verifyAdminLogin({ password, ip: state.clientIp });
+            const nextSessionTok = authRes?.token || authRes?.sessionToken;
+            if (nextSessionTok) {
+                if (typeof window.dbService?.setAdminSessionToken === 'function') {
+                    window.dbService.setAdminSessionToken(nextSessionTok, authRes?.expiresAt || null);
+                } else {
+                    try {
+                        sessionStorage.setItem('quiz_admin_session_token', String(nextSessionTok));
+                        localStorage.removeItem('quiz_admin_session_token');
+                    } catch (e) {}
+                }
+            }
+            verified = Boolean(authRes?.valid || authRes?.ok || authRes?.verified || authRes === true);
+        } else {
+            const { data: rpcData, error: rpcErr } = await state.client.rpc('admin_verify_login', { p_password: String(password ?? ''), p_ip: state.clientIp || null }).catch((e) => ({ data: null, error: e }));
+            if (rpcErr) {
+                return notify('Chưa kích hoạt RPC xác thực Admin trên máy chủ (supabase_security_migration.sql).', true);
+            }
+            verified = Boolean(rpcData === true || rpcData?.valid || rpcData?.ok || rpcData?.verified);
+        }
+        if (!verified) return notify('Mật khẩu Admin không đúng.', true);
+        const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
+        const payload = { masterIp: state.clientIp, masterDeviceCode: myDeviceCode, allowedIps: [{ ip: state.clientIp, deviceCode: myDeviceCode, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
+        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) throw error;
+        notify('Đã thiết lập Master Admin. Đang tải lại bảng điều khiển.');
+        window.setTimeout(() => window.location.reload(), 700);
+    }
+
+    async function unlockAdminWithToken() {
+        const val = $('admin-token-unlock-input')?.value.trim();
+        if (!val) return notify('Vui lòng nhập hoặc dán mã IP-Token Admin.', true);
+
+        const isPlainIpAddress = (value) => {
+            const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+            return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
+        };
+        if (isPlainIpAddress(val)) {
+            return notify('Vui lòng nhập mã IP-Token Admin hợp lệ (không dùng địa chỉ IP thuần).', true);
+        }
+
+        ensureSupabaseClient();
+        state.clientIp = await getClientIp();
+
+        let isMatch = false;
+        const normalizeAdminCode = (value) => {
+            const clean = String(value || '').trim().toLowerCase();
+            if (!clean) return '';
+            const parts = clean.split('-');
+            return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                ? parts.slice(1).join('-')
+                : clean;
+        };
+        try {
+            const row = await systemRow(SYSTEM.admin);
+            if (row && row.score_summary) {
+                const config = JSON.parse(row.score_summary || '{}');
+                const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
+                const clean = val.toLowerCase();
+                const cleanCode = normalizeAdminCode(clean);
+                isMatch = allowed.some(it => {
+                    if (!clean || clean.length < 6 || isPlainIpAddress(clean)) return false;
+                    if (typeof it === 'string') {
+                        const str = it.trim().toLowerCase();
+                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
+                        const strCode = normalizeAdminCode(str);
+                        return str === clean || (Boolean(cleanCode) && cleanCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === cleanCode);
+                    }
+                    const itTok = String(it.token || '').toLowerCase();
+                    const itRaw = String(it.rawCode || '').toLowerCase();
+                    if (itTok && !isPlainIpAddress(itTok) && itTok === clean) return true;
+                    if (itRaw && !isPlainIpAddress(itRaw) && itRaw === clean) return true;
+                    if (cleanCode && !isPlainIpAddress(cleanCode) && normalizeAdminCode(itTok) === cleanCode) return true;
+                    if (cleanCode && !isPlainIpAddress(cleanCode) && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
+                    return false;
+                });
+            }
+        } catch (e) {}
+
+        if (!isMatch) {
+            try {
+                const row8 = await systemRow(SYSTEM.tokens);
+                if (row8 && row8.score_summary) {
+                    const tokens = JSON.parse(row8.score_summary || '[]');
+                    const clean = val.toLowerCase();
+                    const cleanCode = normalizeAdminCode(clean);
+                    isMatch = tokens.some(t => {
+                        // CHỈ ROLE ADMIN ĐƯỢC MỞ KHÓA ADMIN
+                        if (t.role !== 'admin' || !clean || clean.length < 6) return false;
+                        const tTok = String(t.token || '').toLowerCase();
+                        const tRaw = String(t.rawCode || '').toLowerCase();
+                        if (tTok && tTok === clean) return true;
+                        if (tRaw && tRaw === clean) return true;
+                        if (cleanCode && normalizeAdminCode(tTok) === cleanCode) return true;
+                        if (cleanCode && tRaw && normalizeAdminCode(tRaw) === cleanCode) return true;
+                        return false;
+                    });
+                }
+            } catch (e) {}
+        }
+
+        if (isMatch) {
+            localStorage.setItem('quiz_admin_token', val);
+            notify('✅ Mở khóa Admin thành công! Đang vào hệ thống...');
+            setTimeout(() => {
+                window.location.reload();
+            }, 600);
+        } else {
+            notify('❌ Mã IP-Token Admin không hợp lệ hoặc chưa được cấp quyền!', true);
+        }
+    }
+
+    function showApp() {
+        $('access-denied')?.classList.add('hidden');
+        $('app-shell')?.classList.remove('hidden');
+    }
+
+    function injectEditorControls() {
+        const form = $('question-form');
+        if (!form) return;
+        if (!$('question-type-select')) {
+            const questionLabel = $('question-input')?.closest('label');
+            const explanationLabel = $('explanation-input')?.closest('label');
+            if (questionLabel && explanationLabel) {
+                const typeLabel = document.createElement('label');
+                typeLabel.innerHTML = 'Loại câu hỏi<select id="question-type-select" required><option value="mcq">Trắc nghiệm 4 lựa chọn</option><option value="tf_group">Trắc nghiệm Đúng / Sai</option><option value="short_answer">Trả lời ngắn</option></select>';
+                questionLabel.before(typeLabel);
+                const typeEditor = document.createElement('div');
+                typeEditor.id = 'dynamic-type-editor';
+                typeEditor.innerHTML = '<div id="tf-editor" class="hidden"></div><div id="short-editor" class="hidden"></div>';
+                explanationLabel.before(typeEditor);
+            }
+        }
+        const importModal = $('import-modal');
+        $('ai-analyze-import')?.remove();
+        const importTitle = importModal?.querySelector('.modal-header p:not(.eyebrow)');
+        if (importTitle) importTitle.textContent = 'Dán JSON câu hỏi đã có sẵn hoặc chọn file JSON/TXT.';
+        const importDropzone = importModal?.querySelector('.dropzone span');
+        if (importDropzone) importDropzone.textContent = 'Kéo thả hoặc chọn file JSON hoặc TXT';
+        if ($('import-text')) $('import-text').placeholder = 'Dán JSON câu hỏi tại đây...';
+        const file = $('import-file');
+        if (file) file.accept = '.json,.txt';
+        injectGeminiControls();
+        injectAdminStyles();
+    }
+
+    function injectGeminiControls() {
+        if ($('test-gemini-key')) return;
+        const saveButton = $('save-gemini-key');
+        if (!saveButton) return;
+        const testButton = document.createElement('button');
+        testButton.id = 'test-gemini-key';
+        testButton.type = 'button';
+        testButton.className = 'button button-info';
+        testButton.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra key';
+        saveButton.parentElement?.insertBefore(testButton, saveButton.nextSibling);
+        const status = document.createElement('span');
+        status.id = 'gemini-key-status';
+        status.className = 'info-badge';
+        status.textContent = 'Chưa kiểm tra';
+        saveButton.parentElement?.appendChild(status);
+    }
+
+    function injectAdminStyles() {
+        if ($('question-type-runtime-style')) return;
+        const style = document.createElement('style');
+        style.id = 'question-type-runtime-style';
+        style.textContent = `
+            #dynamic-type-editor{margin-bottom:14px}.type-note,.field-note{font-size:10px;color:var(--muted);line-height:1.5;margin:5px 0 12px}.field-note i{color:var(--primary);margin-right:4px}.tf-editor-grid{display:grid;gap:8px}.tf-answer-field{display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;gap:6px;align-items:center;margin:0}.tf-answer-field>b{color:var(--primary);font-size:12px}.tf-answer-field input{margin:0}.tf-choice{border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:8px;padding:7px 8px;font-size:10px;font-weight:700}.tf-choice.is-selected[data-value="true"]{color:#078256;background:#def9eb;border-color:#86efac}.tf-choice.is-selected[data-value="false"]{color:#d73840;background:#ffe7e8;border-color:#fca5a5}.type-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border-radius:7px;font-size:9px;font-weight:800;background:#e0f2fe;color:var(--primary)}.type-chip.tf{background:#fff0e5;color:#bd6310}.type-chip.short{background:#def9eb;color:#078256}.tf-preview-list{display:grid;gap:8px}.tf-preview-row{display:grid;grid-template-columns:25px minmax(0,1fr) auto;gap:8px;align-items:start;padding:9px;border:1px solid #e1e5f0;background:#fff;border-radius:10px;font-size:11px}.tf-preview-row>b{color:var(--primary)}.tf-preview-answer{font-size:9px;font-weight:800;padding:4px 6px;border-radius:6px;background:#def9eb;color:#078256}.tf-preview-answer.false{background:#ffe7e8;color:#d73840}.short-preview-input{width:100%;border:1px dashed #7dd3fc;background:#fff;border-radius:10px;padding:12px;color:#8994a8;font-size:11px}.ai-review{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}.ai-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.ai-review-list{display:flex;gap:5px;overflow:auto;padding:10px 0}.ai-review-index{border:1px solid var(--line);background:var(--surface-2);border-radius:7px;padding:6px 8px;font-size:10px;font-weight:800;color:var(--muted)}.ai-review-index.is-active{background:var(--primary);color:#fff;border-color:var(--primary)}.ai-review-question{border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:12px;font-size:11px;line-height:1.55}.strict-warning{display:flex;gap:7px;padding:9px;border:1px solid #f8db8b;background:#fff9e8;color:#9a6400;border-radius:9px;font-size:10px;line-height:1.45;margin-top:10px}.question-item .item-statements{display:grid;gap:4px;margin-top:5px}.question-item .item-statement{font-size:10px;color:var(--muted);padding:5px 7px;background:var(--surface-2);border-radius:6px}.question-item .item-statement b{color:var(--primary);margin-right:4px}.type-filter-note{font-size:10px;color:var(--muted)}
+        `;
+        document.head.appendChild(style);
+    }
+
+    function fillSubjects(grade, selected) {
+        const options = allSubjects().filter((item) => subjectGrade(item) === String(grade));
+        const select = $('subject-select');
+        if (!select) return;
+        select.innerHTML = options.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+        if (selected && options.some((item) => item.key === selected)) select.value = selected;
+    }
+
+    function fillLibrarySubjects() {
+        const catalog = mergeSubjectCatalog(state.subjects);
+        const list = state.grade === 'all' ? catalog : catalog.filter((item) => subjectGrade(item) === String(state.grade));
+        if (!list.some((item) => item.key === state.subject)) state.subject = 'all';
+        if ($('library-subject-filter')) {
+            $('library-subject-filter').innerHTML = '<option value="all">Tất cả môn học</option>' + list.map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+            $('library-subject-filter').value = state.subject;
+        }
+        renderLibrarySubjectTabs();
+        if ($('import-subject-select')) {
+            $('import-subject-select').innerHTML = allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+            // Luôn giữ state theo đúng môn đang hiển thị. Nếu state cũ là
+            // "history" nhưng Admin chọn môn khác, trước đây dữ liệu vẫn bị
+            // ghi nhầm vào history khiến app học sinh không tìm thấy.
+            const selectedSubject = allSubjects().some((item) => item.key === state.importSubject)
+                ? state.importSubject
+                : (allSubjects()[0]?.key || '');
+            $('import-subject-select').value = selectedSubject;
+            state.importSubject = selectedSubject;
+        }
+        if ($('leaderboard-subject')) {
+            if (state.reportRows) {
+                populateLeaderboardSubjects();
+            } else {
+                const prevLeaderSub = $('leaderboard-subject').value || '';
+                $('leaderboard-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+                if (prevLeaderSub && allSubjects().some((item) => item.key === prevLeaderSub)) {
+                    $('leaderboard-subject').value = prevLeaderSub;
+                }
+            }
+        }
+        if ($('wrong-stats-subject')) {
+            const prevWrongSub = $('wrong-stats-subject').value || '';
+            $('wrong-stats-subject').innerHTML = '<option value="">Tất cả môn</option>' + allSubjects().map((item) => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join('');
+            if (prevWrongSub && allSubjects().some((item) => item.key === prevWrongSub)) {
+                $('wrong-stats-subject').value = prevWrongSub;
+            }
+        }
+    }
+
+    function ensureTypeEditor(type = state.type) {
+        state.type = type || 'mcq';
+        const select = $('question-type-select');
+        if (select) select.value = state.type;
+        const mcqParts = document.querySelectorAll('#question-form > .options-heading, #question-form > .answers-grid');
+        mcqParts.forEach((element) => element.classList.toggle('hidden', state.type !== 'mcq'));
+        [0, 1, 2, 3].forEach((index) => {
+            const input = $(`option-${index}`);
+            if (input) input.required = state.type === 'mcq';
+        });
+        const tf = $('tf-editor');
+        const short = $('short-editor');
+        if (tf) tf.classList.toggle('hidden', state.type !== 'tf_group');
+        if (short) short.classList.toggle('hidden', state.type !== 'short_answer');
+        document.querySelectorAll('#tf-editor input[id^="tf-"]').forEach((input) => { input.required = state.type === 'tf_group'; });
+        if ($('correct-value-input')) $('correct-value-input').required = state.type === 'short_answer';
+        if (state.type === 'tf_group' && tf) {
+            tf.innerHTML = `<div class="options-heading"><label>4 ý Đúng / Sai</label><span>Giữ nguyên thứ tự a, b, c, d</span></div><p class="type-note">Mỗi ý có một đáp án Đúng hoặc Sai. Nội dung không được tự động viết lại.</p><div class="tf-editor-grid">${[0, 1, 2, 3].map((index) => `<div class="tf-answer-field"><b>${'abcd'[index]}</b><input id="tf-${index}" placeholder="Nội dung ý ${'abcd'[index]}"><button type="button" class="tf-choice ${state.tfAnswers[index] ? 'is-selected' : ''}" data-index="${index}" data-value="true">Đúng</button><button type="button" class="tf-choice ${!state.tfAnswers[index] ? 'is-selected' : ''}" data-index="${index}" data-value="false">Sai</button></div>`).join('')}</div>`;
+            [0, 1, 2, 3].forEach((index) => { $(`tf-${index}`).required = true; });
+        }
+        if (state.type === 'short_answer' && short) {
+            short.innerHTML = '<label>Đáp án chính xác<input id="correct-value-input" placeholder="Ví dụ: 16.9 hoặc từ khóa chính xác"></label><label>Các đáp án chấp nhận khác (tùy chọn)<textarea id="accepted-values-input" rows="2" placeholder="Mỗi đáp án một dòng hoặc ngăn cách bằng dấu ; (ví dụ: 16,9; 16.90)"></textarea></label><p class="field-note"><i class="fa-solid fa-circle-info"></i> Đáp án được lưu nguyên văn để hỗ trợ số, đơn vị và từ khóa.</p>';
+            $('correct-value-input').required = true;
+        }
+        renderPreview();
+    }
+
+    /** Normalize accepted_values / acceptedValues into a deduplicated array of non-empty strings. */
+    function normalizeAcceptedValues(value) {
+        const rawList = Array.isArray(value)
+            ? value
+            : typeof value === 'string'
+                ? value.split(/\r?\n|[;|]+|,\s+/)
+                : (value !== undefined && value !== null ? [value] : []);
+        const seen = new Set();
+        const result = [];
+        rawList.forEach((item) => {
+            const clean = String(item ?? '').trim();
+            if (!clean || seen.has(clean)) return;
+            seen.add(clean);
+            result.push(clean);
+        });
+        return result;
+    }
+
+    function readQuestion() {
+        const correctVal = $('correct-value-input')?.value || '';
+        const acceptedValues = state.type === 'short_answer'
+            ? normalizeAcceptedValues($('accepted-values-input')?.value || '')
+            : [];
+        const q = {
+            grade: $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'),
+            subject_key: $('subject-select')?.value || state.importSubject,
+            category: $('category-input')?.value || 'Ôn tập',
+            q_type: state.type,
+            question: $('question-input')?.value || '',
+            options: [], statements: [], correct: 0, answer: 0,
+            correct_value: correctVal, explanation: $('explanation-input')?.value || '',
+            qType: state.type, correctValue: correctVal,
+            acceptedValues,
+            accepted_values: acceptedValues.length > 0 ? acceptedValues : null
+        };
+        if (state.type === 'mcq') {
+            q.options = [0, 1, 2, 3].map((index) => $(`option-${index}`)?.value || '');
+            q.correct = state.answer; q.answer = state.answer;
+        } else if (state.type === 'tf_group') {
+            q.statements = [0, 1, 2, 3].map((index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: $(`tf-${index}`)?.value || '', answer: Boolean(state.tfAnswers[index]) }));
+        }
+        return q;
+    }
+
+    function renderPreview() {
+        const card = $('preview-card');
+        if (!card) return;
+        const q = readQuestion();
+        let body = '';
+        if (state.type === 'tf_group') {
+            body = `<div class="tf-preview-list">${q.statements.map((statement, index) => `<div class="tf-preview-row"><b>${statement.key}</b><span>${htmlText(statement.text, `Nội dung ý ${statement.key}`)}</span><span class="tf-preview-answer ${statement.answer ? '' : 'false'}">${statement.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('')}</div>`;
+        } else if (state.type === 'short_answer') {
+            const expectedVal = String(q.correctValue || '').trim();
+            const extraVals = (Array.isArray(q.acceptedValues) ? q.acceptedValues : []).filter((val) => val && val !== expectedVal);
+            body = `<div class="preview-options-list"><div class="short-preview-input">Nhập câu trả lời ngắn tại đây...</div><div class="preview-option is-correct"><b><i class="fa-solid fa-check"></i></b><span>Đáp án chuẩn: ${htmlText(expectedVal, 'Chưa nhập đáp án chính xác')}</span></div>${extraVals.length ? `<div class="preview-option"><b>+</b><span>Chấp nhận thêm: ${esc(extraVals.join(' · '))}</span></div>` : ''}</div>`;
+        } else {
+            body = `<div class="preview-options-list">${q.options.map((option, index) => `<div class="preview-option ${index === state.answer ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(option, `Phương án ${'ABCD'[index]}`)}</span></div>`).join('')}</div>`;
+        }
+        card.classList.add('preview-updating');
+        const gradeText = q.grade ? `Lớp ${q.grade}` : (state.grade !== 'all' ? `Lớp ${state.grade}` : '');
+        card.innerHTML = `
+            <div class="preview-meta">
+                <span class="preview-badge type-badge"><i class="fa-solid fa-shapes"></i> ${esc(TYPE_LABELS[state.type] || state.type)}</span>
+                <span class="preview-badge subject-badge"><i class="fa-solid fa-book-bookmark"></i> ${esc(subjectName(q.subject_key))}</span>
+                ${gradeText ? `<span class="preview-badge grade-badge"><i class="fa-solid fa-graduation-cap"></i> ${esc(gradeText)}</span>` : ''}
+            </div>
+            <h3 class="preview-title">${htmlText(q.question, 'Nội dung câu hỏi sẽ hiển thị ở đây...')}</h3>
+            ${body}
+        `;
+        renderMath(card);
+        requestAnimationFrame(() => card.classList.remove('preview-updating'));
+    }
+
+    function setAnswer(index) {
+        state.answer = Number(index);
+        document.querySelectorAll('.answer-radio').forEach((button) => {
+            const active = Number(button.dataset.answer) === state.answer;
+            button.classList.toggle('is-selected', active);
+            button.innerHTML = `<i class="fa-${active ? 'solid fa-circle-dot' : 'regular fa-circle'}"></i>`;
+        });
+        renderPreview();
+    }
+
+    function setTfAnswer(index, value) {
+        state.tfAnswers[Number(index)] = value === 'true';
+        document.querySelectorAll(`.tf-choice[data-index="${index}"]`).forEach((button) => button.classList.toggle('is-selected', button.dataset.value === value));
+        renderPreview();
+    }
+
+    function normalizeRow(row) {
+        const qType = row.q_type || row.qType || 'mcq';
+        const statements = Array.isArray(row.statements) ? row.statements.map((item, index) => ({ key: item.key || item.id || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.text ?? item.content ?? '', math: item.math ?? item.latex ?? item.formula } : item.text ?? item.content ?? '', answer: parseBool(item.answer ?? item.correctAnswer) })) : [];
+        const acceptedValues = qType === 'short_answer'
+            ? normalizeAcceptedValues(row.accepted_values ?? row.acceptedValues)
+            : [];
+        const correctValue = String(row.correct_value ?? row.correctValue ?? (acceptedValues[0] || ''));
+        return {
+            ...row,
+            subjectKey: row.subject_key,
+            qType,
+            q_type: qType,
+            options: Array.isArray(row.options) ? row.options : [],
+            statements,
+            correct: Number(row.correct ?? row.answer ?? 0),
+            answer: Number(row.answer ?? row.correct ?? 0),
+            correctValue,
+            correct_value: correctValue,
+            acceptedValues,
+            accepted_values: acceptedValues.length > 0 ? acceptedValues : null,
+            explanation: row.explanation || ''
+        };
+    }
+
+    /** Fetch all rows from quiz_questions using 1000-row .range() pagination so >1000 questions never truncate. */
+    async function fetchAllQuestionRows(selectCols = '*', { orderById = true } = {}) {
+        const pageSize = 1000;
+        const rows = [];
+        for (let from = 0; ; from += pageSize) {
+            let query = state.client.from('quiz_questions').select(selectCols);
+            if (orderById) {
+                query = query.order('id', { ascending: true });
+            }
+            const { data, error } = await query.range(from, from + pageSize - 1);
+            if (error) throw error;
+            const batch = Array.isArray(data) ? data : [];
+            rows.push(...batch);
+            if (batch.length < pageSize) break;
+        }
+        return rows;
+    }
+
+    async function loadQuestions() {
+        try {
+            if (!navigator.onLine) throw new Error('Thiết bị đang ngoại tuyến (Offline)');
+            const data = await fetchAllQuestionRows('*', { orderById: true });
+            state.questions = (data || []).filter((r) => !r.is_deleted).map(normalizeRow);
+            state.questionsLoaded = true;
+            setConnection(true, 'Đã kết nối');
+            $('last-sync') && ($('last-sync').textContent = `Đồng bộ lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
+            await syncSubjectQuestionCounts();
+            renderStats(); renderLibrary(); renderRecentActivity(); renderSubjectCatalog();
+            updateHealthStatus('db', 'safe', 'Đã kết nối', 'Supabase đang hoạt động ổn định');
+            updateHealthStatus('content', 'safe', 'Đã đồng bộ', `${state.questions.length} câu hỏi · ${state.subjects.length} môn học`);
+        } catch (error) {
+            setConnection(false, 'Mất kết nối');
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
+            updateHealthStatus('content', 'danger', 'Lỗi tải', 'Chưa thể đồng bộ dữ liệu câu hỏi.');
+            notify(`Lỗi tải câu hỏi: ${error.message}`, true);
+        }
+    }
+
+    async function syncSubjectQuestionCounts() {
+        if (!state.questionsLoaded) return;
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        const changed = state.subjects.some((subject) => Number(subject.count || 0) !== (questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0));
+        if (!changed) return;
+        state.subjects = state.subjects.map((subject) => ({
+            ...subject,
+            count: questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0
+        }));
+        console.debug('[Quiz Studio Admin] Syncing subject question counts:', state.subjects.map((subject) => ({ key: subject.key, count: subject.count })));
+        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) console.warn('[Quiz Studio Admin] Không thể lưu số câu theo môn:', error.message);
+        renderSubjectCatalog();
+    }
+
+    function animateMetricValue(id, target) {
+        const element = $(id);
+        if (!element) return;
+
+        const value = Math.max(0, Number(target) || 0);
+        const previous = Number(element.dataset.metricValue || 0);
+        element.dataset.metricValue = String(value);
+
+        if (previous === value || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            element.textContent = String(value);
+            return;
+        }
+
+        cancelAnimationFrame(element.metricAnimationFrame);
+        const startedAt = performance.now();
+        const duration = 650;
+        const tick = (now) => {
+            const progress = Math.min((now - startedAt) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.textContent = String(Math.round(previous + (value - previous) * eased));
+            if (progress < 1) element.metricAnimationFrame = requestAnimationFrame(tick);
+        };
+        element.metricAnimationFrame = requestAnimationFrame(tick);
+    }
+
+    function renderStats() {
+        const grade5 = state.questions.filter((q) => gradeOf(q) === '5').length;
+        const grade11 = state.questions.length - grade5;
+        animateMetricValue('stat-total', state.questions.length);
+        animateMetricValue('stat-grade5', grade5);
+        animateMetricValue('stat-grade11', grade11);
+        $('nav-question-count') && ($('nav-question-count').textContent = state.questions.length);
+    }
+
+    function replayOverviewMetrics() {
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        ['stat-total', 'stat-grade5', 'stat-grade11', 'stat-online'].forEach((id) => {
+            const element = $(id);
+            if (!element) return;
+            const value = Number(element.dataset.metricValue || element.textContent || 0) || 0;
+            cancelAnimationFrame(element.metricAnimationFrame);
+            element.dataset.metricValue = '0';
+            animateMetricValue(id, value);
+        });
+    }
+
+    function typeChip(q) {
+        const type = q.qType || 'mcq';
+        return `<span class="type-chip ${type === 'tf_group' ? 'tf' : type === 'short_answer' ? 'short' : ''}">${esc(TYPE_LABELS[type] || type)}</span>`;
+    }
+
+    function getFilteredQuestions() {
+        const keyword = ($('search-input')?.value || '').toLowerCase();
+        return state.questions.filter((q) => {
+            const typeMatch = state.typeFilter === 'all' || (state.typeFilter === 'mcq' && q.qType === 'mcq') || (state.typeFilter === 'tf_group' && q.qType === 'tf_group') || (state.typeFilter === 'short_answer' && q.qType === 'short_answer');
+            const text = `${notationText(q.question)} ${notationText(q.explanation)} ${(q.options || []).map(notationText).join(' ')} ${(q.statements || []).map((s) => notationText(s.text)).join(' ')}`.toLowerCase();
+            return (state.grade === 'all' || gradeOf(q) === state.grade) && (state.subject === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(state.subject)) && typeMatch && (!keyword || text.includes(keyword));
+        });
+    }
+
+    function updateBulkBar() {
+        const bar = $('library-bulk-bar');
+        if (!bar) return;
+        const filtered = getFilteredQuestions();
+        const selectedCount = state.selectedQuestionIds.size;
+
+        $('bulk-filtered-count') && ($('bulk-filtered-count').textContent = filtered.length);
+        $('bulk-selected-count') && ($('bulk-selected-count').textContent = selectedCount);
+        $('bulk-delete-count') && ($('bulk-delete-count').textContent = selectedCount);
+
+        const selectAllCb = $('bulk-select-all-checkbox');
+        if (selectAllCb) {
+            const allFilteredSelected = filtered.length > 0 && filtered.every((q) => state.selectedQuestionIds.has(String(q.id)));
+            selectAllCb.checked = allFilteredSelected;
+            selectAllCb.indeterminate = selectedCount > 0 && !allFilteredSelected;
+        }
+
+        if (selectedCount > 0 || state.selectMode) {
+            bar.classList.remove('hidden');
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+
+    function updateLibrarySlidingIndicator(animate = true) {
+        const container = $('library-subject-tabs');
+        if (!container) return;
+        container.classList.add('has-sliding-indicator');
+
+        let indicator = container.querySelector('.sliding-tab-indicator');
+        if (!indicator) {
+            indicator = document.createElement('span');
+            indicator.className = 'sliding-tab-indicator';
+            indicator.setAttribute('aria-hidden', 'true');
+            container.prepend(indicator);
+        }
+
+        const activePill = container.querySelector('.subject-tab-pill.is-active');
+        if (!activePill || !activePill.offsetWidth) {
+            indicator.style.opacity = '0';
+            if (!activePill) state.libraryTabIndicatorRect = null;
+            return;
+        }
+
+        const targetLeft = activePill.offsetLeft;
+        const targetWidth = activePill.offsetWidth;
+        const prevRect = state.libraryTabIndicatorRect;
+        const reducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+        if (animate && !reducedMotion && prevRect && prevRect.width > 0 && (prevRect.left !== targetLeft || prevRect.width !== targetWidth)) {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${prevRect.left}px)`;
+            indicator.style.width = `${prevRect.width}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+            requestAnimationFrame(() => {
+                if (!indicator.isConnected) return;
+                indicator.style.transform = `translateX(${targetLeft}px)`;
+                indicator.style.width = `${targetWidth}px`;
+                indicator.style.opacity = '1';
+            });
+        } else {
+            indicator.style.transition = 'none';
+            indicator.style.transform = `translateX(${targetLeft}px)`;
+            indicator.style.width = `${targetWidth}px`;
+            indicator.style.opacity = '1';
+            void indicator.offsetWidth;
+            indicator.style.transition = '';
+        }
+
+        state.libraryTabIndicatorRect = { left: targetLeft, width: targetWidth };
+    }
+
+    function renderLibrarySubjectTabs() {
+        const container = $('library-subject-tabs');
+        if (!container) return;
+
+        const catalog = mergeSubjectCatalog(state.subjects);
+        const subjectsInScope = state.grade === 'all'
+            ? catalog
+            : catalog.filter((item) => subjectGrade(item) === String(state.grade));
+
+        const totalInGrade = state.questions.filter((q) => state.grade === 'all' || gradeOf(q) === state.grade).length;
+
+        const countMap = {};
+        state.questions.forEach((q) => {
+            if (state.grade !== 'all' && gradeOf(q) !== state.grade) return;
+            const key = q.subject_key;
+            countMap[key] = (countMap[key] || 0) + 1;
+        });
+
+        const allPill = `
+            <button type="button" class="subject-tab-pill ${state.subject === 'all' ? 'is-active' : ''}" data-subject-tab="all" title="Xem tất cả môn">
+                <span>Tất cả môn</span>
+                <span class="pill-count">${totalInGrade}</span>
+            </button>
+        `;
+
+        const subjectPills = subjectsInScope.map((sub) => {
+            const count = countMap[sub.key] || 0;
+            const isActive = subjectMatchKey(state.subject) === subjectMatchKey(sub.key);
+            return `
+                <button type="button" class="subject-tab-pill ${isActive ? 'is-active' : ''}" data-subject-tab="${esc(sub.key)}" title="Lọc môn ${esc(sub.name)}">
+                    <span>${esc(sub.name)}</span>
+                    <span class="pill-count">${count}</span>
+                </button>
+            `;
+        }).join('');
+
+        container.innerHTML = '<span class="sliding-tab-indicator" aria-hidden="true"></span>' + allPill + subjectPills;
+        updateLibrarySlidingIndicator(true);
+    }
+
+    function renderPagination(total, totalPages) {
+        const container = $('library-pagination');
+        if (!container) return;
+
+        if (total === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const pageSize = state.pageSize === 'all' ? total : Number(state.pageSize || 12);
+        const startIndex = (state.page - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, total);
+
+        let pageButtonsHtml = '';
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) {
+                pageButtonsHtml += `<button type="button" class="page-btn ${i === state.page ? 'is-active' : ''}" data-page="${i}">${i}</button>`;
+            }
+        } else {
+            const current = state.page;
+            const pages = [];
+            pages.push(1);
+            if (current > 3) pages.push('...');
+            const startMid = Math.max(2, current - 1);
+            const endMid = Math.min(totalPages - 1, current + 1);
+            for (let i = startMid; i <= endMid; i++) {
+                if (!pages.includes(i)) pages.push(i);
+            }
+            if (current < totalPages - 2) pages.push('...');
+            if (!pages.includes(totalPages)) pages.push(totalPages);
+
+            pageButtonsHtml = pages.map((p) => {
+                if (p === '...') return `<span class="page-ellipsis">…</span>`;
+                return `<button type="button" class="page-btn ${p === current ? 'is-active' : ''}" data-page="${p}">${p}</button>`;
+            }).join('');
+        }
+
+        container.innerHTML = `
+            <div class="pagination-info">
+                Hiển thị <strong>${startIndex + 1} - ${endIndex}</strong> trên tổng số <strong>${total}</strong> câu hỏi
+            </div>
+            <div class="pagination-controls">
+                <button type="button" class="page-btn prev-btn" data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''} title="Trang trước">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                ${pageButtonsHtml}
+                <button type="button" class="page-btn next-btn" data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''} title="Trang sau">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+            <div class="page-size-selector">
+                <label for="page-size-select">Hiển thị:</label>
+                <select id="page-size-select">
+                    <option value="12" ${state.pageSize === 12 ? 'selected' : ''}>12 câu / trang</option>
+                    <option value="24" ${state.pageSize === 24 ? 'selected' : ''}>24 câu / trang</option>
+                    <option value="48" ${state.pageSize === 48 ? 'selected' : ''}>48 câu / trang</option>
+                    <option value="all" ${state.pageSize === 'all' ? 'selected' : ''}>Tất cả (${total})</option>
+                </select>
+            </div>
+        `;
+    }
+
+    function renderLibrary() {
+        const rows = getFilteredQuestions();
+        $('library-count') && ($('library-count').textContent = rows.length);
+        $('result-summary') && ($('result-summary').textContent = `${rows.length} kết quả`);
+        $('empty-state')?.classList.toggle('hidden', rows.length !== 0);
+
+        renderLibrarySubjectTabs();
+
+        const list = $('questions-list');
+        if (!list) return;
+
+        if (rows.length === 0) {
+            list.innerHTML = '';
+            renderPagination(0, 1);
+            updateBulkBar();
+            return;
+        }
+
+        const pageSize = state.pageSize === 'all' ? rows.length : Number(state.pageSize || 12);
+        const totalPages = pageSize > 0 ? Math.ceil(rows.length / pageSize) : 1;
+        if (state.page > totalPages) state.page = totalPages;
+        if (state.page < 1) state.page = 1;
+
+        const startIndex = (state.page - 1) * pageSize;
+        const pagedRows = rows.slice(startIndex, startIndex + pageSize);
+
+        list.innerHTML = pagedRows.map((q) => {
+            const grade = gradeOf(q);
+            const isSelected = state.selectedQuestionIds.has(String(q.id));
+            let answerPreview = '';
+            if (q.qType === 'tf_group') answerPreview = `<div class="item-statements">${q.statements.map((s) => `<div class="item-statement"><b>${esc(s.key)}.</b>${htmlText(s.text)} <strong>${s.answer ? 'Đúng' : 'Sai'}</strong></div>`).join('')}</div>`;
+            else if (q.qType === 'short_answer') {
+                const extraVals = (Array.isArray(q.acceptedValues) ? q.acceptedValues : []).filter((val) => val && val !== q.correctValue);
+                answerPreview = `<div class="item-option is-correct">Đáp án: ${htmlText(q.correctValue)}${extraVals.length ? ` <span class="muted-copy">(Chấp nhận thêm: ${esc(extraVals.join(' · '))})</span>` : ''}</div>`;
+            }
+            else answerPreview = `<div class="item-options">${q.options.slice(0, 4).map((option, index) => `<span class="item-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}.</b> ${htmlText(option)}</span>`).join('')}</div>`;
+            return `<article class="question-item ${isSelected ? 'is-selected' : ''}" data-item-id="${esc(q.id)}">
+                <div class="question-item-head">
+                    <div class="question-head-left">
+                        <label class="question-select-checkbox-label" title="Chọn câu hỏi này để thao tác xóa">
+                            <input type="checkbox" class="question-select-checkbox" data-select-id="${esc(q.id)}" ${isSelected ? 'checked' : ''}>
+                            <span class="custom-check-box"><i class="fa-solid fa-check"></i></span>
+                        </label>
+                        <div class="question-tags">
+                            <span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span>
+                            <span class="tag">${esc(subjectName(q.subject_key))}</span>
+                            ${typeChip(q)}
+                        </div>
+                    </div>
+                    <span class="tag">#${esc(q.id)}</span>
+                </div>
+                <h3>${htmlText(q.question)}</h3>
+                ${answerPreview}
+                <div class="question-item-footer">
+                    <small>${esc(q.category || 'Ôn tập')}</small>
+                    <div class="item-actions">
+                        <button class="edit-button" data-edit="${esc(q.id)}"><i class="fa-solid fa-pen"></i> Sửa</button>
+                        <button class="delete-button" data-delete="${esc(q.id)}"><i class="fa-solid fa-trash"></i> Xóa</button>
+                    </div>
+                </div>
+            </article>`;
+        }).join('');
+        renderMath(list);
+        renderPagination(rows.length, totalPages);
+        updateBulkBar();
+    }
+
+    function renderRecentActivity() {
+        const list = $('recent-activity');
+        if (!list) return;
+        const logs = Array.isArray(state.activityLogs) ? state.activityLogs : [];
+        if (!logs.length) {
+            list.innerHTML = `
+                <div class="activity-empty-state">
+                    <span class="activity-empty-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                    <h3>Chưa có hoạt động mới</h3>
+                    <p>Các thao tác cập nhật câu hỏi, đổi bảo trì hoặc phát thông báo sẽ hiển thị tại đây</p>
+                </div>
+            `;
+            return;
+        }
+        const iconForLog = (item) => {
+            const act = String(item.action || '').toLowerCase();
+            const cat = String(item.category || '').toLowerCase();
+            if (cat === 'danger' || act.includes('xóa') || act.includes('chặn')) return { icon: 'fa-trash-can', tone: 'danger' };
+            if (cat === 'maintenance' || act.includes('bảo trì') || act.includes('khóa web')) return { icon: 'fa-shield-halved', tone: 'warning' };
+            if (cat === 'broadcast' || act.includes('thông báo')) return { icon: 'fa-bullhorn', tone: 'green' };
+            if (cat === 'import' || act.includes('nạp')) return { icon: 'fa-file-import', tone: 'cyan' };
+            return { icon: 'fa-file-pen', tone: 'purple' };
+        };
+        const formatLogTime = (iso) => {
+            if (!iso) return 'Vừa xong';
+            const date = new Date(iso);
+            if (Number.isNaN(date.getTime())) return 'Vừa xong';
+            return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        };
+        list.innerHTML = logs.slice(0, 6).map((item) => {
+            const meta = iconForLog(item);
+            return `
+                <div class="activity-item">
+                    <i class="fa-solid ${meta.icon} activity-icon-${meta.tone}"></i>
+                    <span class="activity-main">
+                        <b>${esc(item.action)}</b>
+                        <small>${htmlText(item.detail || 'Thao tác quản trị hệ thống')}</small>
+                    </span>
+                    <time class="activity-time">${esc(formatLogTime(item.timestamp))}</time>
+                </div>
+            `;
+        }).join('');
+        renderMath(list);
+    }
+
+    function resetForm() {
+        state.editingId = null; state.type = 'mcq'; state.answer = 0; state.tfAnswers = [true, true, true, true];
+        $('question-form')?.reset();
+        $('form-title') && ($('form-title').textContent = 'Thêm câu hỏi mới');
+        $('submit-label') && ($('submit-label').textContent = 'Lưu câu hỏi');
+        $('question-id') && ($('question-id').value = '');
+        $('cancel-edit')?.classList.add('hidden');
+        if ($('grade-select')) $('grade-select').value = '11';
+        fillSubjects('11'); ensureTypeEditor('mcq'); setAnswer(0); renderPreview();
+    }
+
+    function fillForm(q) {
+        const normalized = normalizeAiQuestion(q);
+        const grade = gradeOf(normalized);
+        state.editingId = normalized.id || null;
+        state.type = normalized.qType;
+        $('question-id') && ($('question-id').value = normalized.id || '');
+        $('form-title') && ($('form-title').textContent = normalized.id ? `Sửa câu hỏi #${normalized.id}` : 'Duyệt câu hỏi từ JSON');
+        $('submit-label') && ($('submit-label').textContent = normalized.id ? 'Cập nhật câu hỏi' : 'Lưu câu hỏi');
+        $('cancel-edit')?.classList.toggle('hidden', !normalized.id);
+        if ($('grade-select')) $('grade-select').value = grade;
+        fillSubjects(grade, normalized.subject_key || state.importSubject);
+        if ($('category-input')) $('category-input').value = normalized.category || '';
+        if ($('question-input')) $('question-input').value = storageText(normalized.question);
+        if ($('explanation-input')) $('explanation-input').value = storageText(normalized.explanation);
+        [0, 1, 2, 3].forEach((index) => { if ($(`option-${index}`)) $(`option-${index}`).value = storageText(normalized.options?.[index]); });
+        state.answer = Number(normalized.correctAnswer ?? normalized.correct ?? 0);
+        state.tfAnswers = (normalized.statements || []).map((item) => parseBool(item.answer ?? item.correctAnswer));
+        while (state.tfAnswers.length < 4) state.tfAnswers.push(true);
+        ensureTypeEditor(normalized.qType); setAnswer(state.answer);
+        if (normalized.qType === 'tf_group') normalized.statements.forEach((item, index) => { if ($(`tf-${index}`)) $(`tf-${index}`).value = storageText(item.text); });
+        if (normalized.qType === 'short_answer') {
+            if ($('correct-value-input')) $('correct-value-input').value = normalized.correctValue || '';
+            if ($('accepted-values-input')) {
+                const acceptedList = normalizeAcceptedValues(normalized.acceptedValues ?? normalized.accepted_values);
+                $('accepted-values-input').value = acceptedList.join('\n');
+            }
+        }
+        renderPreview();
+    }
+
+    function normalizeAiQuestion(raw) {
+        const rawType = String(raw?.type ?? raw?.q_type ?? raw?.qType ?? '').trim().toLowerCase().replace(/[-\s]/g, '_');
+        const inferredShortAnswer = !rawType && (raw?.answer !== undefined || raw?.correctAnswer !== undefined || raw?.correct_value !== undefined || raw?.correctValue !== undefined || raw?.acceptedAnswer !== undefined || raw?.acceptedValues !== undefined || raw?.accepted_values !== undefined) && !Array.isArray(raw?.options) && !Array.isArray(raw?.subQuestions) && !Array.isArray(raw?.statements);
+        const type = rawType === 'multiple_choice' || rawType === 'multiplechoice' || rawType === 'mcq' ? 'mcq' : rawType === 'true_false' || rawType === 'truefalse' || rawType === 'tf_group' || rawType === 'tf' ? 'tf_group' : rawType === 'short_answer' || rawType === 'short' || rawType === 'fill_blank' || rawType === 'fill_in_the_blank' || rawType === 'shortanswer' || rawType === 'tra_loi_ngan' || rawType === 'trả_lời_ngắn' || rawType === 'text_answer' || rawType === 'free_text' || inferredShortAnswer ? 'short_answer' : 'mcq';
+        if (type === 'tf_group') {
+            const rawStatements = Array.isArray(raw?.subQuestions) ? raw.subQuestions : (Array.isArray(raw?.statements) ? raw.statements : []);
+            return { ...raw, qType: 'tf_group', q_type: 'tf_group', question: raw?.question ?? '', statements: rawStatements.slice(0, 4).map((item, index) => ({ key: 'abcd'[index], label: 'abcd'[index], text: item.math || item.latex || item.formula ? { text: item.content ?? item.text ?? '', math: item.math ?? item.latex ?? item.formula } : item.content ?? item.text ?? '', answer: parseBool(item.correctAnswer ?? item.answer) })), options: [], explanation: raw?.explanation ?? '' };
+        }
+        if (type === 'short_answer') {
+            const acceptedValues = normalizeAcceptedValues(raw?.acceptedValues ?? raw?.accepted_values);
+            const rawAnswer = raw?.correctAnswer ?? raw?.correct_answer ?? raw?.correct_value ?? raw?.correctValue ?? raw?.acceptedAnswer ?? raw?.accepted_answer ?? raw?.answer ?? raw?.correct ?? raw?.value ?? acceptedValues[0] ?? '';
+            const answerValue = rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer) ? (rawAnswer.value ?? rawAnswer.answer ?? rawAnswer.text ?? '') : Array.isArray(rawAnswer) ? rawAnswer[0] ?? '' : rawAnswer;
+            return { ...raw, qType: 'short_answer', q_type: 'short_answer', question: raw?.question ?? raw?.prompt ?? raw?.text ?? '', options: [], statements: [], correctValue: String(answerValue ?? ''), acceptedValues, accepted_values: acceptedValues.length > 0 ? acceptedValues : null, explanation: raw?.explanation ?? '' };
+        }
+        return { ...raw, qType: 'mcq', q_type: 'mcq', question: raw?.question ?? '', options: Array.isArray(raw?.options) ? raw.options : [], statements: [], correct: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), correctAnswer: Number(raw?.correctAnswer ?? raw?.correct ?? raw?.answer ?? 0), explanation: raw?.explanation ?? '' };
+    }
+
+    function toRecord(q, subjectKey, id) {
+        const normalized = normalizeAiQuestion(q);
+        const targetSubjectKey = subjectKey || normalized.subject_key || 'history';
+        const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(targetSubjectKey));
+        const resolvedGrade = String(normalized.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || $('grade-select')?.value || (state.grade && state.grade !== 'all' ? state.grade : '11'));
+        const acceptedValues = normalized.qType === 'short_answer'
+            ? normalizeAcceptedValues(normalized.acceptedValues ?? normalized.accepted_values)
+            : [];
+        const record = {
+            ...(id ? { id: Number(id) } : {}), subject_key: targetSubjectKey, grade: resolvedGrade, category: normalized.category || 'Bài tập',
+            q_type: normalized.qType, question: storageText(normalized.question), options: normalized.qType === 'mcq' ? normalized.options.map(storageText) : [],
+            statements: normalized.qType === 'tf_group' ? normalized.statements.map((item, index) => ({ key: item.key || 'abcd'[index], label: item.label || item.key || 'abcd'[index], text: storageText(item.text ?? item.content), answer: parseBool(item.answer ?? item.correctAnswer) })) : [],
+            correct: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
+            answer: normalized.qType === 'mcq' ? Number(normalized.correctAnswer ?? normalized.correct ?? 0) : 0,
+            correct_value: normalized.qType === 'short_answer' ? String(normalized.correctValue ?? normalized.correctAnswer ?? acceptedValues[0] ?? '') : '',
+            accepted_values: normalized.qType === 'short_answer' && acceptedValues.length > 0 ? acceptedValues : null,
+            explanation: storageText(normalized.explanation ?? ''), image_url: normalized.image_url || normalized.imageUrl || '', is_deleted: false, deleted_at: null, updated_at: new Date().toISOString()
+        };
+        return record;
+    }
+
+    async function nextQuestionId() {
+        let maxId = 0;
+        if (Array.isArray(state.questions) && state.questions.length > 0) {
+            for (const q of state.questions) {
+                const num = Number(q.id);
+                if (Number.isFinite(num) && num > 0 && num < 2000000000) {
+                    if (num > maxId) maxId = num;
+                }
+            }
+        }
+
+        try {
+            if (state.client) {
+                const { data, error } = await state.client
+                    .from('quiz_questions')
+                    .select('id')
+                    .order('id', { ascending: false })
+                    .limit(1);
+                if (!error && Array.isArray(data) && data.length > 0) {
+                    const parsed = Number(data[0].id);
+                    if (Number.isFinite(parsed) && parsed > 0 && parsed < 2000000000) {
+                        if (parsed > maxId) maxId = parsed;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[nextQuestionId] Lỗi lấy max ID từ CSDL:', e);
+        }
+
+        const safeMax = (Number.isFinite(maxId) && maxId > 0) ? maxId : 1000;
+        return safeMax + 1;
+    }
+
+    async function saveQuestion(event) {
+        event?.preventDefault();
+        const q = readQuestion();
+        const valid = q.question.length > 0 && ((q.q_type === 'mcq' && q.options.every((item) => item.trim().length > 0)) || (q.q_type === 'tf_group' && q.statements.every((item) => item.text.trim().length > 0)) || (q.q_type === 'short_answer' && (q.correct_value.trim().length > 0 || (q.acceptedValues && q.acceptedValues.length > 0))));
+        if (!valid) return notify('Vui lòng nhập đủ nội dung theo loại câu hỏi.', true);
+        try {
+            const isEditing = Boolean(state.editingId);
+            const recordId = state.editingId || await nextQuestionId();
+            const record = toRecord(q, q.subject_key, recordId);
+            await upsertRestoredRows([record]);
+            addActivityLog(
+                isEditing ? `Cập nhật câu hỏi #${recordId}` : `Thêm câu hỏi mới #${recordId}`,
+                `${subjectName(q.subject_key)} · ${TYPE_LABELS[q.q_type] || q.q_type}`,
+                'question'
+            );
+            notify(isEditing ? 'Đã cập nhật câu hỏi.' : 'Đã thêm câu hỏi.');
+            resetForm(); await loadQuestions();
+        } catch (error) { notify(`Không thể lưu: ${error.message}`, true); }
+    }
+
+    function updateTrashBadge() {
+        const badge = $('trash-count-badge');
+        if (badge) {
+            const count = Array.isArray(state.trashQuestions) ? state.trashQuestions.length : 0;
+            badge.textContent = String(count);
+            badge.classList.toggle('has-items', count > 0);
+        }
+    }
+
+    async function loadTrash() {
+        updateTrashBadge();
+        try {
+            const row = await systemRow(SYSTEM.trash);
+            if (row && row.score_summary) {
+                try {
+                    const parsed = JSON.parse(row.score_summary);
+                    if (Array.isArray(parsed)) {
+                        state.trashQuestions = parsed;
+                        localStorage.setItem('quiz_trash_questions', JSON.stringify(parsed));
+                    }
+                } catch (e) {
+                    console.warn('[Quiz Studio Admin] Lỗi đọc thùng rác từ Cloud:', e);
+                }
+            }
+        } catch (err) {
+            console.warn('[Quiz Studio Admin] Chưa thể tải thùng rác từ Cloud:', err);
+        } finally {
+            updateTrashBadge();
+            if (!$('trash-modal')?.classList.contains('hidden')) {
+                renderTrashModal();
+            }
+        }
+    }
+
+    async function saveTrash({ throwOnError = false, ignoreLocalStorage = false } = {}) {
+        updateTrashBadge();
+        try {
+            localStorage.setItem('quiz_trash_questions', JSON.stringify(state.trashQuestions));
+        } catch (e) {
+            if (throwOnError && !ignoreLocalStorage) throw new Error('Không thể lưu bản sao vào bộ nhớ trình duyệt (LocalStorage).');
+        }
+
+        if (state.client) {
+            try {
+                const { error } = await state.client.from('quiz_logins').upsert({
+                    id: SYSTEM.trash,
+                    player_name: '__TRASH_BIN__',
+                    ip_address: 'SYSTEM',
+                    device_info: 'TRASH_STORAGE',
+                    status: 'ACTIVE',
+                    score_summary: JSON.stringify(state.trashQuestions),
+                    last_active: new Date().toISOString()
+                }, { onConflict: 'id' });
+                if (error) throw error;
+            } catch (error) {
+                console.warn('[Quiz Studio Admin] Lỗi đồng bộ thùng rác lên Cloud:', error);
+                if (throwOnError) throw new Error(`Không thể lưu vào Thùng rác trên Cloud: ${error.message || error}`);
+            }
+        }
+    }
+
+    async function moveQuestionsToTrash(questionsToTrash, actionTitle = 'Chuyển câu hỏi vào thùng rác', detailLog = '') {
+        if (!Array.isArray(questionsToTrash) || questionsToTrash.length === 0) return;
+        const total = questionsToTrash.length;
+        const idsToDelete = questionsToTrash.map((q) => q.id).filter(Boolean);
+
+        const now = new Date().toISOString();
+        const trashedItems = questionsToTrash.map((q) => ({
+            ...q,
+            is_deleted: true,
+            deleted_at: now,
+            deleted_by: 'Admin'
+        }));
+
+        const idSet = new Set(questionsToTrash.map((q) => String(q.id)));
+        const previousTrash = state.trashQuestions;
+        state.trashQuestions = [
+            ...trashedItems,
+            ...state.trashQuestions.filter((q) => !idSet.has(String(q.id)))
+        ];
+
+        try {
+            await saveTrash({ throwOnError: true, ignoreLocalStorage: true });
+        } catch (error) {
+            state.trashQuestions = previousTrash;
+            updateTrashBadge();
+            throw error;
+        }
+
+        // Chỉ xóa trên Supabase sau khi đã lưu an toàn vào Thùng rác
+        const chunkSize = 50;
+        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+            const chunk = idsToDelete.slice(i, i + chunkSize);
+            const { error } = await state.client.from('quiz_questions').delete().in('id', chunk);
+            if (error) throw error;
+        }
+
+        state.questions = state.questions.filter((q) => !idSet.has(String(q.id)));
+        if (state.editingId && idSet.has(String(state.editingId))) resetForm();
+
+        // Gỡ bỏ khỏi danh sách đang chọn
+        questionsToTrash.forEach((q) => state.selectedQuestionIds.delete(String(q.id)));
+
+        addActivityLog(
+            actionTitle,
+            detailLog || `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`,
+            'danger'
+        );
+        renderStats();
+        renderLibrary();
+        renderRecentActivity();
+        renderSubjectCatalog();
+        await syncSubjectQuestionCounts();
+    }
+
+    function normalizeQuestionForDuplicateCheck(text) {
+        return String(text || '')
+            .replace(/<[^>]+>/g, ' ')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    async function scanAndResolveDuplicates() {
+        const subjectFilter = $('library-subject-filter')?.value || 'all';
+        const pool = (state.questions || []).filter((q) => {
+            if (subjectFilter === 'all') return true;
+            return subjectMatchKey(q.subject_key || q.subjectKey) === subjectMatchKey(subjectFilter);
+        });
+        const groups = new Map();
+        pool.forEach((q) => {
+            const normText = normalizeQuestionForDuplicateCheck(q.question);
+            if (!normText) return;
+            const qType = q.q_type || q.qType || 'mcq';
+            const normOpts = Array.isArray(q.options) ? q.options.map((o) => normalizeQuestionForDuplicateCheck(storageText(o))).join('|') : '';
+            const normStmts = Array.isArray(q.statements) ? q.statements.map((s) => `${normalizeQuestionForDuplicateCheck(storageText(s?.text ?? s?.content))}:${Boolean(s?.answer ?? s?.correctAnswer)}`).join('|') : '';
+            const normVal = normalizeQuestionForDuplicateCheck(q.correct_value ?? q.correctValue ?? '');
+            const key = `${subjectMatchKey(q.subject_key || q.subjectKey)}::${qType}::${normText}::${normOpts}::${normStmts}::${normVal}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(q);
+        });
+        const dupGroups = Array.from(groups.values()).filter((list) => list.length > 1);
+        if (dupGroups.length === 0) {
+            return notify('Không phát hiện câu hỏi trùng lặp nào trong phạm vi đang chọn.');
+        }
+        const toDelete = [];
+        const previewLines = dupGroups.slice(0, 5).map((list, idx) => {
+            list.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            toDelete.push(...list.slice(1));
+            const snippet = String(list[0].question || '').replace(/\s+/g, ' ').slice(0, 70);
+            return `${idx + 1}. "${snippet}${snippet.length >= 70 ? '...' : ''}" (${list.length} bản)`;
+        });
+        dupGroups.slice(5).forEach((list) => {
+            list.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            toDelete.push(...list.slice(1));
+        });
+        const ok = await confirmDialog({
+            eyebrow: 'QUÉT TRÙNG LẶP',
+            title: `Phát hiện ${dupGroups.length} nhóm câu hỏi trùng (${toDelete.length} bản dư)`,
+            message: `Hệ thống sẽ giữ lại 1 bản gốc (ID nhỏ nhất) cho mỗi nhóm và chuyển ${toDelete.length} bản trùng vào Thùng rác:\n\n${previewLines.join('\n')}${dupGroups.length > 5 ? `\n... và ${dupGroups.length - 5} nhóm khác.` : ''}`,
+            confirmText: `Xóa ${toDelete.length} bản trùng`,
+            cancelText: 'Đóng',
+            variant: 'danger',
+            icon: 'fa-clone'
+        });
+        if (!ok) return;
+        await moveQuestionsToTrash(toDelete, 'Dọn câu hỏi trùng lặp', `Xóa ${toDelete.length} bản trùng trong ${dupGroups.length} nhóm`);
+        notify(`Đã chuyển ${toDelete.length} câu hỏi trùng vào Thùng rác.`);
+    }
+
+    async function deleteQuestion(id) {
+        const targetQ = state.questions.find((item) => String(item.id) === String(id));
+        if (!targetQ) return;
+        if (!(await confirmDialog({
+            title: `Chuyển câu hỏi #${id} vào thùng rác?`,
+            message: `Câu hỏi #${id} (${subjectName(targetQ.subject_key)}) sẽ được chuyển vào Thùng rác.\nBạn có thể khôi phục lại bất kỳ lúc nào nếu xóa nhầm.`,
+            confirmText: 'Chuyển vào thùng rác',
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        }))) return;
+
+        try {
+            await moveQuestionsToTrash(
+                [targetQ],
+                `Chuyển câu hỏi #${id} vào thùng rác`,
+                `Môn ${subjectName(targetQ.subject_key)} · Đã lưu trữ an toàn trong Thùng rác`
+            );
+            notify(`Đã chuyển câu hỏi #${id} vào thùng rác.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
+    }
+
+    function openDeleteScopeModal() {
+        const filtered = getFilteredQuestions();
+        const total = state.questions.length;
+        const subjectFiltered = state.subject !== 'all';
+        const gradeFiltered = state.grade !== 'all';
+
+        let filterDesc = 'Chuyển các câu hỏi đang lọc vào Thùng rác.';
+        if (subjectFiltered && gradeFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc môn [${subjectName(state.subject)}] (Lớp ${state.grade}) vào Thùng rác.`;
+        } else if (subjectFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc môn [${subjectName(state.subject)}] vào Thùng rác.`;
+        } else if (gradeFiltered) {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi thuộc [Lớp ${state.grade}] vào Thùng rác.`;
+        } else {
+            filterDesc = `Chuyển ${filtered.length} câu hỏi đang hiển thị theo bộ lọc vào Thùng rác.`;
+        }
+
+        $('delete-scope-filtered-desc') && ($('delete-scope-filtered-desc').textContent = filterDesc);
+        $('delete-scope-filtered-badge') && ($('delete-scope-filtered-badge').textContent = `${filtered.length} câu hỏi`);
+        $('delete-scope-total-count') && ($('delete-scope-total-count').textContent = total);
+
+        const btnFilter = $('btn-delete-current-filter');
+        if (btnFilter) {
+            btnFilter.disabled = filtered.length === 0;
+            btnFilter.innerHTML = `<i class="fa-solid fa-trash-arrow-up"></i> Xóa bài đang lọc (${filtered.length} câu)`;
+        }
+
+        const inputConfirm = $('delete-all-confirm-input');
+        if (inputConfirm) inputConfirm.value = '';
+
+        const btnAll = $('btn-delete-all-guarded');
+        if (btnAll) {
+            btnAll.disabled = true;
+            btnAll.classList.add('is-disabled');
+        }
+
+        openModal('delete-scope-modal');
+    }
+
+    async function deleteFilteredQuestions() {
+        const filtered = getFilteredQuestions();
+        if (filtered.length === 0) return notify('Không có câu hỏi nào theo bộ lọc hiện tại để xóa.', true);
+
+        closeModal('delete-scope-modal');
+
+        const ok = await confirmDialog({
+            title: `Xác nhận xóa ${filtered.length} câu hỏi?`,
+            message: `Chuyển toàn bộ ${filtered.length} câu hỏi của bài/môn đang lọc vào Thùng rác?\n\nBạn có thể khôi phục lại bất kỳ lúc nào nếu cần.`,
+            confirmText: `Xóa ${filtered.length} câu này`,
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        });
+        if (!ok) return;
+
+        try {
+            await moveQuestionsToTrash(
+                filtered,
+                `Xóa ${filtered.length} câu theo bộ lọc`,
+                `Đã chuyển ${filtered.length} câu hỏi của bài/môn đang chọn vào Thùng rác`
+            );
+            notify(`Đã chuyển ${filtered.length} câu hỏi vào Thùng rác.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
+    }
+
+    async function deleteSelectedQuestions() {
+        const selected = state.questions.filter((q) => state.selectedQuestionIds.has(String(q.id)));
+        if (selected.length === 0) return notify('Chưa chọn câu hỏi nào để xóa.', true);
+
+        const ok = await confirmDialog({
+            title: `Xác nhận xóa ${selected.length} câu hỏi đã chọn?`,
+            message: `Chuyển ${selected.length} câu hỏi bạn đã đánh dấu vào Thùng rác?\n\nBạn có thể khôi phục lại bất kỳ lúc nào từ Thùng rác.`,
+            confirmText: `Xóa ${selected.length} câu đã chọn`,
+            variant: 'danger',
+            icon: 'fa-trash-arrow-up'
+        });
+        if (!ok) return;
+
+        try {
+            await moveQuestionsToTrash(
+                selected,
+                `Xóa ${selected.length} câu hỏi đã chọn`,
+                `Đã chuyển ${selected.length} câu hỏi đã chọn vào Thùng rác`
+            );
+            notify(`Đã chuyển ${selected.length} câu hỏi đã chọn vào Thùng rác.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+        }
+    }
+
+    async function deleteAllQuestionsGuarded() {
+        const input = $('delete-all-confirm-input');
+        if (!input || input.value.trim().toUpperCase() !== 'XOA HET') {
+            return notify('Vui lòng nhập đúng chữ "XOA HET" để xác nhận.', true);
+        }
+        closeModal('delete-scope-modal');
+        const total = state.questions.length;
+        if (total === 0) return notify('Ngân hàng câu hỏi hiện đang trống.', true);
+
+        try {
+            await moveQuestionsToTrash(
+                [...state.questions],
+                'Chuyển toàn bộ câu hỏi vào thùng rác',
+                `Đã lưu trữ an toàn ${total} câu hỏi vào Thùng rác`
+            );
+            notify(`Đã chuyển toàn bộ ${total} câu hỏi vào thùng rác an toàn.`);
+        } catch (error) {
+            notify(`Không thể xóa: ${error.message}`, true);
+            await loadQuestions();
+        }
+    }
+
+    function buildRestoreRow(item, targetId) {
+        const rawCorrect = Number(item.correct ?? item.answer ?? 0);
+        const safeCorrect = Number.isFinite(rawCorrect) ? Math.floor(rawCorrect) : 0;
+        const rawAnswer = Number(item.answer ?? item.correct ?? safeCorrect);
+        const safeAnswer = Number.isFinite(rawAnswer) ? Math.floor(rawAnswer) : safeCorrect;
+        const subjectKey = item.subject_key || item.subjectKey || 'history';
+        const matchedSubject = (state.subjects || []).find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(subjectKey));
+        const qType = item.q_type || item.qType || 'mcq';
+        const acceptedValues = qType === 'short_answer'
+            ? normalizeAcceptedValues(item.accepted_values ?? item.acceptedValues)
+            : [];
+
+        return {
+            id: targetId,
+            subject_key: subjectKey,
+            grade: String(item.grade || (matchedSubject ? subjectGrade(matchedSubject) : '') || '11'),
+            category: item.category || 'Ôn tập',
+            q_type: qType,
+            question: storageText(item.question ?? ''),
+            options: Array.isArray(item.options) ? item.options.map((opt) => storageText(opt ?? '')) : [],
+            statements: Array.isArray(item.statements)
+                ? item.statements.filter((s) => s && typeof s === 'object').map((s, index) => ({
+                    key: s.key || 'abcd'[index] || String(index + 1),
+                    label: s.label || s.key || 'abcd'[index] || String(index + 1),
+                    text: storageText(s.text ?? s.content ?? ''),
+                    answer: parseBool(s.answer ?? s.correctAnswer)
+                }))
+                : [],
+            correct: safeCorrect,
+            answer: safeAnswer,
+            correct_value: String(item.correct_value ?? item.correctValue ?? acceptedValues[0] ?? ''),
+            accepted_values: qType === 'short_answer' && acceptedValues.length > 0 ? acceptedValues : null,
+            explanation: storageText(item.explanation || ''),
+            image_url: item.image_url || item.imageUrl || '',
+            is_deleted: false,
+            deleted_at: null,
+            updated_at: new Date().toISOString()
+        };
+    }
+
+    async function upsertRestoredRows(rows, { returnIds = false } = {}) {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const chunkSize = 50;
+        let verifiedCount = 0;
+        const extractMissingColumn = (err) => {
+            const msg = String(err?.message || '');
+            const m = msg.match(/Could not find the '([^']+)' column/i)
+                || msg.match(/column "([^"]+)" of relation/i)
+                || msg.match(/column '([^']+)'/i);
+            return m ? m[1] : '';
+        };
+        const isMissingColError = (err) => Boolean(err && (err.code === 'PGRST204' || err.code === '42703' || /column|schema cache/i.test(err.message || '')));
+        const stripCol = (list, col) => list.map((row) => {
+            const copy = { ...row };
+            delete copy[col];
+            return copy;
+        });
+        const stripKnownOptional = (list) => list.map(({ grade, is_deleted, deleted_at, updated_at, image_url, accepted_values, ...rest }) => rest);
+
+        const execWithSchemaAdapt = async (initialChunk, mode) => {
+            let current = initialChunk;
+            for (let attempt = 0; attempt < 12; attempt++) {
+                let query = mode === 'insert'
+                    ? state.client.from('quiz_questions').insert(current)
+                    : state.client.from('quiz_questions').upsert(current, { onConflict: 'id' });
+                if (returnIds) query = query.select('id');
+                const res = await query;
+                if (!res.error || !isMissingColError(res.error)) {
+                    return { error: res.error, data: res.data, usedChunk: current };
+                }
+                const missingCol = extractMissingColumn(res.error);
+                if (missingCol && Object.prototype.hasOwnProperty.call(current[0] || {}, missingCol)) {
+                    current = stripCol(current, missingCol);
+                } else {
+                    current = stripKnownOptional(current);
+                }
+            }
+            return { error: new Error('Không thể khớp cấu trúc cột của quiz_questions.'), data: null, usedChunk: current };
+        };
+
+        for (let i = 0; i < rows.length; i += chunkSize) {
+            const chunk = rows.slice(i, i + chunkSize);
+            let { error, data, usedChunk } = await execWithSchemaAdapt(chunk, 'upsert');
+
+            // Nếu trùng ID với bản ghi bị ẩn bởi RLS (is_deleted = true), cấp ID mới và insert trực tiếp
+            if (error && (error.code === '42501' || error.code === '23505' || /row-level security|duplicate key/i.test(error.message || ''))) {
+                const baseFreshId = Math.max(await nextQuestionId(), (Math.floor(Date.now() / 1000) % 1000000000) + i);
+                const rekeyed = usedChunk.map((row, idx) => ({ ...row, id: baseFreshId + idx }));
+                const insertRes = await execWithSchemaAdapt(rekeyed, 'insert');
+                error = insertRes.error;
+                data = insertRes.data;
+                if (!error) {
+                    rekeyed.forEach((r, idx) => { rows[i + idx].id = r.id; });
+                }
+            }
+
+            if (error) throw error;
+            if (returnIds) {
+                verifiedCount += Array.isArray(data) ? data.length : chunk.length;
+            }
+        }
+        return verifiedCount;
+    }
+
+    async function restoreQuestion(id, fallbackIndex = -1) {
+        let itemIndex = state.trashQuestions.findIndex((q) => String(q.id) === String(id));
+        if (itemIndex < 0 && fallbackIndex >= 0 && fallbackIndex < state.trashQuestions.length) {
+            itemIndex = fallbackIndex;
+        }
+        const item = itemIndex >= 0 ? state.trashQuestions[itemIndex] : null;
+        if (!item) return notify('Không tìm thấy câu hỏi trong thùng rác.', true);
+
+        try {
+            let targetId = Number(item.id);
+            if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000) {
+                targetId = await nextQuestionId();
+            } else {
+                // Kiểm tra xem ID cũ có đang bị câu hỏi khác chiếm dụng không
+                const existsLocally = state.questions.some((q) => Number(q.id) === targetId);
+                let existsInDb = false;
+                if (!existsLocally && state.client) {
+                    try {
+                        const { data: existing } = await state.client
+                            .from('quiz_questions')
+                            .select('id')
+                            .eq('id', targetId)
+                            .maybeSingle();
+                        if (existing) existsInDb = true;
+                    } catch (e) {}
+                }
+                if (existsLocally || existsInDb) {
+                    // ID cũ đã bị chiếm dụng -> Cấp ID mới nhất
+                    targetId = await nextQuestionId();
+                }
+            }
+
+            targetId = Math.floor(Number(targetId));
+            if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000) {
+                targetId = await nextQuestionId();
+            }
+
+            const rowToInsert = buildRestoreRow(item, targetId);
+            await upsertRestoredRows([rowToInsert]);
+
+            state.trashQuestions = state.trashQuestions.filter((_, idx) => idx !== itemIndex);
+            await saveTrash({ throwOnError: true });
+
+            addActivityLog(
+                `Khôi phục câu hỏi #${rowToInsert.id}`,
+                `Môn ${subjectName(item.subject_key || item.subjectKey)} đã đưa về ngân hàng`,
+                'green'
+            );
+            notify(`Đã khôi phục thành công câu hỏi #${rowToInsert.id}!`);
+            await loadQuestions();
+            renderTrashModal();
+            await syncSubjectQuestionCounts();
+        } catch (error) {
+            notify(`Không thể khôi phục: ${error.message}`, true);
+        }
+    }
+
+    async function restoreAllTrash() {
+        const total = state.trashQuestions.length;
+        if (total === 0) return notify('Thùng rác hiện đang trống.', true);
+        if (!(await confirmDialog({
+            title: 'Khôi phục tất cả câu hỏi?',
+            message: `Khôi phục toàn bộ ${total} câu hỏi trong thùng rác trở lại Ngân hàng câu hỏi?`,
+            confirmText: 'Khôi phục tất cả',
+            variant: 'primary',
+            icon: 'fa-rotate-left'
+        }))) return;
+
+        try {
+            // Lấy danh sách ID hiện có trong CSDL và bộ nhớ để tránh trùng lặp
+            const usedIds = new Set();
+            (state.questions || []).forEach((q) => {
+                const num = Number(q.id);
+                if (Number.isFinite(num) && num > 0 && num < 2000000000) usedIds.add(num);
+            });
+            if (state.client) {
+                try {
+                    const existingRows = await fetchAllQuestionRows('id', { orderById: true });
+                    (existingRows || []).forEach((r) => {
+                        const num = Number(r.id);
+                        if (Number.isFinite(num) && num > 0 && num < 2000000000) usedIds.add(num);
+                    });
+                } catch (e) {}
+            }
+            let maxId = 1000;
+            usedIds.forEach((id) => {
+                if (id > maxId) maxId = id;
+            });
+
+            const rows = state.trashQuestions.map((item) => {
+                let targetId = Number(item.id);
+                if (!Number.isFinite(targetId) || targetId <= 0 || targetId > 2000000000 || usedIds.has(targetId)) {
+                    maxId++;
+                    targetId = maxId;
+                }
+                targetId = Math.floor(targetId);
+                usedIds.add(targetId);
+                return buildRestoreRow(item, targetId);
+            });
+
+            await upsertRestoredRows(rows);
+
+            state.trashQuestions = [];
+            await saveTrash();
+
+            addActivityLog(
+                `Khôi phục toàn bộ ${total} câu hỏi`,
+                'Toàn bộ câu hỏi trong Thùng rác đã được đưa trở lại ngân hàng',
+                'green'
+            );
+            notify(`Đã khôi phục thành công toàn bộ ${total} câu hỏi!`);
+            await loadQuestions();
+            renderTrashModal();
+            await syncSubjectQuestionCounts();
+        } catch (error) {
+            notify(`Không thể khôi phục: ${error.message}`, true);
+        }
+    }
+
+    async function hardDeleteQuestion(id) {
+        if (!(await confirmDialog({
+            title: `XÓA VĨNH VIỄN câu hỏi #${id}?`,
+            message: `Hành động này sẽ XÓA TRIỆT ĐỂ câu hỏi #${id} khỏi hệ thống và KHÔNG THỂ HOÀN TÁC! Bạn có chắc chắn muốn xóa?`,
+            confirmText: 'Xóa vĩnh viễn',
+            variant: 'danger',
+            icon: 'fa-triangle-exclamation'
+        }))) return;
+
+        state.trashQuestions = state.trashQuestions.filter((q) => String(q.id) !== String(id));
+        await saveTrash();
+        addActivityLog(
+            `Xóa vĩnh viễn câu hỏi #${id}`,
+            'Đã xóa triệt để khỏi thùng rác',
+            'danger'
+        );
+        notify(`Đã xóa vĩnh viễn câu hỏi #${id}.`);
+        renderTrashModal();
+    }
+
+    async function emptyTrash() {
+        const total = state.trashQuestions.length;
+        if (total === 0) return notify('Thùng rác hiện đang trống.', true);
+        if (!(await confirmDialog({
+            title: 'DỌN SẠCH THÙNG RÁC?',
+            message: `CẢNH BÁO NGUY HIỂM: Bạn sắp xóa vĩnh viễn toàn bộ ${total} câu hỏi trong Thùng rác. Thao tác này sẽ xóa triệt để dữ liệu và KHÔNG THỂ KHÔI PHỤC!`,
+            confirmText: 'Xác nhận dọn sạch',
+            variant: 'danger',
+            icon: 'fa-broom'
+        }))) return;
+
+        state.trashQuestions = [];
+        await saveTrash();
+        addActivityLog(
+            'Dọn sạch thùng rác',
+            `Đã xóa vĩnh viễn ${total} câu hỏi khỏi lưu trữ`,
+            'danger'
+        );
+        notify(`Đã dọn sạch thùng rác (${total} câu hỏi đã bị xóa vĩnh viễn).`);
+        renderTrashModal();
+    }
+
+    function renderTrashModal() {
+        const container = $('trash-list');
+        const emptyEl = $('trash-empty-state');
+        const countEl = $('trash-modal-count');
+        const filterSelect = $('trash-subject-filter');
+        const searchVal = ($('trash-search-input')?.value || '').toLowerCase().trim();
+        const subjectFilterVal = $('trash-subject-filter')?.value || 'all';
+
+        const list = Array.isArray(state.trashQuestions) ? state.trashQuestions : [];
+        if (countEl) countEl.textContent = `${list.length} câu hỏi`;
+
+        if (filterSelect) {
+            const currentSelected = filterSelect.value || 'all';
+            const subjectsInTrash = Array.from(new Set(list.map((q) => q.subject_key || q.subjectKey).filter(Boolean)));
+            filterSelect.innerHTML = '<option value="all">Tất cả môn học</option>' + subjectsInTrash.map((key) => {
+                return `<option value="${esc(key)}">${esc(subjectName(key))}</option>`;
+            }).join('');
+            if (subjectsInTrash.includes(currentSelected)) {
+                filterSelect.value = currentSelected;
+            }
+        }
+
+        const filtered = list.filter((q) => {
+            const sub = q.subject_key || q.subjectKey;
+            const matchSub = subjectFilterVal === 'all' || subjectMatchKey(sub) === subjectMatchKey(subjectFilterVal);
+            const text = `${notationText(q.question)} ${notationText(q.explanation)} ${(q.options || []).map(notationText).join(' ')}`.toLowerCase();
+            const matchSearch = !searchVal || text.includes(searchVal) || String(q.id).includes(searchVal);
+            return matchSub && matchSearch;
+        });
+
+        if (!container) return;
+
+        if (!filtered.length) {
+            container.innerHTML = '';
+            if (emptyEl) {
+                emptyEl.classList.remove('hidden');
+                const p = emptyEl.querySelector('p');
+                if (p) {
+                    p.textContent = list.length === 0
+                        ? 'Không có câu hỏi nào bị xóa tạm trong hệ thống.'
+                        : 'Không tìm thấy câu hỏi phù hợp với từ khóa lọc.';
+                }
+            }
+            return;
+        }
+
+        if (emptyEl) emptyEl.classList.add('hidden');
+
+        container.innerHTML = filtered.map((q) => {
+            const trashIndex = list.indexOf(q);
+            const grade = gradeOf(q);
+            const deletedTime = q.deleted_at ? new Date(q.deleted_at).toLocaleString('vi-VN', {
+                hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+            }) : 'Vừa xong';
+            let preview = '';
+            if (q.q_type === 'tf_group' || q.qType === 'tf_group') {
+                const stmts = Array.isArray(q.statements) ? q.statements : [];
+                preview = `<div class="trash-statements">${stmts.map((s) => `<div><b>${esc(s.key || '')}.</b> ${htmlText(s.text)} <small>(${s.answer ? 'Đúng' : 'Sai'})</small></div>`).join('')}</div>`;
+            } else if (q.q_type === 'short_answer' || q.qType === 'short_answer') {
+                preview = `<div class="trash-option">Đáp án: <strong>${htmlText(q.correct_value ?? q.correctValue ?? '')}</strong></div>`;
+            } else if (Array.isArray(q.options)) {
+                preview = `<div class="trash-options">${q.options.slice(0, 4).map((opt, i) => `<span class="${i === Number(q.correct ?? q.answer ?? 0) ? 'is-correct' : ''}"><b>${'ABCD'[i]}.</b> ${htmlText(opt)}</span>`).join('')}</div>`;
+            }
+
+            return `
+                <div class="trash-item" data-trash-id="${esc(q.id)}">
+                    <div class="trash-item-head">
+                        <div class="trash-tags">
+                            <span class="tag ${grade === '5' ? 'grade5' : 'grade11'}">Lớp ${grade}</span>
+                            <span class="tag">${esc(subjectName(q.subject_key || q.subjectKey))}</span>
+                            <span class="tag">#${esc(q.id)}</span>
+                        </div>
+                        <span class="trash-time"><i class="fa-regular fa-clock"></i> Xóa: ${esc(deletedTime)}</span>
+                    </div>
+                    <div class="trash-question-title">${htmlText(q.question)}</div>
+                    ${preview}
+                    <div class="trash-item-footer">
+                        <button class="button button-primary compact" data-restore-id="${esc(q.id ?? '')}" data-trash-index="${trashIndex}" type="button">
+                            <i class="fa-solid fa-rotate-left"></i> Khôi phục
+                        </button>
+                        <button class="button button-danger compact" data-hard-delete-id="${esc(q.id ?? '')}" data-trash-index="${trashIndex}" type="button">
+                            <i class="fa-solid fa-trash-can"></i> Xóa vĩnh viễn
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        renderMath(container);
+    }
+
+    function openPrintModal() {
+        const subjectSelect = $('print-subject-select');
+        if (subjectSelect) {
+            const catalog = mergeSubjectCatalog(state.subjects);
+            subjectSelect.innerHTML = '<option value="all">Tất cả các môn học</option>' + catalog.map((item) => {
+                const gradeLabel = subjectGrade(item) ? ` (Lớp ${subjectGrade(item)})` : '';
+                return `<option value="${esc(item.key)}">${esc(item.name)}${gradeLabel}</option>`;
+            }).join('');
+            if (state.subject && state.subject !== 'all') {
+                subjectSelect.value = state.subject;
+            } else {
+                subjectSelect.value = 'all';
+            }
+        }
+
+        const gradeSelect = $('print-grade-select');
+        if (gradeSelect) {
+            gradeSelect.value = state.grade || 'all';
+        }
+
+        updatePrintQuestionsPreview();
+        openModal('print-modal');
+    }
+
+    function updatePrintQuestionsPreview() {
+        const subject = $('print-subject-select')?.value || 'all';
+        const grade = $('print-grade-select')?.value || 'all';
+        const available = state.questions.filter((q) => {
+            const matchGrade = grade === 'all' || gradeOf(q) === grade;
+            const matchSubject = subject === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(subject);
+            return matchGrade && matchSubject;
+        });
+
+        const infoEl = $('print-available-count');
+        if (infoEl) {
+            infoEl.textContent = `Hiện có ${available.length} câu hỏi phù hợp trong ngân hàng`;
+        }
+    }
+
+    function renderMathAndWait(element) {
+        return new Promise((resolve) => {
+            renderMath(element);
+            setTimeout(resolve, 380);
+        });
+    }
+
+    async function executePrintExam() {
+        const subjectKey = $('print-subject-select')?.value || 'all';
+        const gradeVal = $('print-grade-select')?.value || 'all';
+        const examTitle = $('print-title-input')?.value?.trim() || 'ĐỀ KIỂM TRA ĐÁNH GIÁ CHẤT LƯỢNG HỌC KỲ';
+        const schoolName = $('print-school-input')?.value?.trim() || 'SỞ GIÁO DỤC VÀ ĐÀO TẠO - TRƯỜNG QUIZ STUDIO';
+        const testCode = $('print-code-input')?.value?.trim() || '101';
+        const duration = $('print-duration-input')?.value?.trim() || '45 phút (không kể thời gian phát đề)';
+        const countLimit = parseInt($('print-count-input')?.value || '0', 10);
+        const shouldShuffle = $('print-shuffle-check')?.checked || false;
+        const printMode = $('print-mode-select')?.value || 'exam_and_answers';
+
+        let pool = state.questions.filter((q) => {
+            const matchGrade = gradeVal === 'all' || gradeOf(q) === gradeVal;
+            const matchSubject = subjectKey === 'all' || subjectMatchKey(q.subject_key) === subjectMatchKey(subjectKey);
+            return matchGrade && matchSubject;
+        });
+
+        if (!pool.length) {
+            return notify('Không có câu hỏi nào thỏa mãn điều kiện lọc để xuất đề!', true);
+        }
+
+        if (shouldShuffle) {
+            pool = [...pool];
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+        }
+
+        if (countLimit > 0 && countLimit < pool.length) {
+            pool = pool.slice(0, countLimit);
+        }
+
+        const printContainer = $('print-paper');
+        if (!printContainer) return;
+
+        const subjectTitle = subjectKey === 'all' ? 'TỔNG HỢP KIẾN THỨC' : subjectName(subjectKey).toUpperCase();
+        const gradeTitle = gradeVal === 'all' ? '' : ` - KHỐI ${gradeVal}`;
+
+        let html = `
+            <div class="print-page-document">
+                <header class="print-exam-header">
+                    <div class="print-header-col print-col-left">
+                        <div class="print-school-name">${esc(schoolName.toUpperCase())}</div>
+                        <div class="print-exam-badge">ĐỀ THI CHÍNH THỨC</div>
+                        <div class="print-sub-note"><em>(Đề thi gồm ${pool.length} câu)</em></div>
+                    </div>
+                    <div class="print-header-col print-col-right">
+                        <div class="print-nation-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+                        <div class="print-motto">Độc lập - Tự do - Hạnh phúc</div>
+                        <div class="print-header-divider"></div>
+                    </div>
+                </header>
+
+                <div class="print-exam-center-title">
+                    <h2>${esc(examTitle.toUpperCase())}</h2>
+                    <div class="print-subject-line">Môn thi: <strong>${esc(subjectTitle)}</strong>${esc(gradeTitle)}</div>
+                    <div class="print-duration-line"><em>Thời gian làm bài: ${esc(duration)}</em></div>
+                </div>
+
+                <div class="print-student-info-bar">
+                    <div class="print-info-left">
+                        <div class="print-info-row">
+                            <span class="info-label">Họ và tên thí sinh:</span>
+                            <span class="info-dots">......................................................................................................</span>
+                        </div>
+                        <div class="print-info-row">
+                            <span class="info-label">Số báo danh:</span>
+                            <span class="info-dots">..................................................................</span>
+                            <span class="info-label" style="margin-left: 18px;">Lớp:</span>
+                            <span class="info-dots">..................................</span>
+                        </div>
+                    </div>
+                    <div class="print-test-code-badge">
+                        <span>MÃ ĐỀ THI</span>
+                        <strong>${esc(testCode)}</strong>
+                    </div>
+                </div>
+
+                <div class="print-questions-body">
+        `;
+
+        pool.forEach((q, idx) => {
+            const qNum = idx + 1;
+            let optionsHtml = '';
+            const qType = q.q_type || q.qType || 'mcq';
+
+            if (qType === 'tf_group' && Array.isArray(q.statements) && q.statements.length > 0) {
+                optionsHtml = `
+                    <div class="print-tf-grid">
+                        ${q.statements.map((s) => `
+                            <div class="print-tf-statement">
+                                <span class="tf-key"><strong>${esc(s.key || '')})</strong></span>
+                                <span class="tf-content">${htmlText(s.text)}</span>
+                                <span class="tf-brackets">[ Đúng / Sai ]</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (qType === 'short_answer') {
+                optionsHtml = `
+                    <div class="print-short-field">
+                        <span><strong>Đáp án:</strong></span>
+                        <span class="print-short-line">........................................................................................................................</span>
+                    </div>
+                `;
+            } else {
+                const opts = Array.isArray(q.options) ? q.options.slice(0, 4) : [];
+                const maxLen = opts.reduce((acc, cur) => Math.max(acc, notationText(cur).length), 0);
+                let colClass = 'cols-1';
+                if (maxLen <= 22) colClass = 'cols-4';
+                else if (maxLen <= 50) colClass = 'cols-2';
+
+                optionsHtml = `
+                    <div class="print-options-grid ${colClass}">
+                        ${opts.map((opt, oIdx) => `
+                            <div class="print-opt-item">
+                                <span class="opt-label"><strong>${'ABCD'[oIdx]}.</strong></span>
+                                <span class="opt-text">${htmlText(opt)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="print-question-block">
+                    <div class="print-question-text">
+                        <span class="q-label"><strong>Câu ${qNum}:</strong></span>
+                        <span class="q-content">${htmlText(q.question)}</span>
+                    </div>
+                    ${optionsHtml}
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <div class="print-end-exam">
+                    <div class="end-rule">---------- HẾT ----------</div>
+                    <div class="end-note"><em>Cán bộ coi thi không giải thích gì thêm. Thí sinh không được sử dụng tài liệu.</em></div>
+                </div>
+            </div>
+        `;
+
+        if (printMode === 'exam_and_answers') {
+            html += `
+                <div class="print-answers-page">
+                    <div class="print-answers-header">
+                        <h2>HƯỚNG DẪN CHẤM VÀ ĐÁP ÁN CHI TIẾT</h2>
+                        <p>Môn thi: <strong>${esc(subjectTitle)}</strong>${esc(gradeTitle)} — Mã đề thi: <strong>${esc(testCode)}</strong></p>
+                    </div>
+
+                    <div class="print-section-title">I. BẢNG ĐÁP ÁN NHANH</div>
+            `;
+
+            const chunkSize = 10;
+            for (let i = 0; i < pool.length; i += chunkSize) {
+                const chunk = pool.slice(i, i + chunkSize);
+                html += `
+                    <table class="print-matrix-table">
+                        <thead>
+                            <tr>
+                                <th class="matrix-label">Câu</th>
+                                ${chunk.map((_, cIdx) => `<th>${i + cIdx + 1}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="matrix-label"><strong>Đ/A</strong></td>
+                                ${chunk.map((q) => {
+                                    const qType = q.q_type || q.qType || 'mcq';
+                                    if (qType === 'tf_group' && Array.isArray(q.statements)) {
+                                        const tfSummary = q.statements.map((s) => `${s.key || ''}:${s.answer ? 'Đ' : 'S'}`).join(' ');
+                                        return `<td class="matrix-tf">${esc(tfSummary)}</td>`;
+                                    }
+                                    if (qType === 'short_answer') {
+                                        return `<td class="matrix-val">${esc(q.correct_value ?? q.correctValue ?? '')}</td>`;
+                                    }
+                                    const correctLetter = 'ABCD'[Number(q.correct ?? q.answer ?? 0)] || 'A';
+                                    return `<td><strong>${correctLetter}</strong></td>`;
+                                }).join('')}
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            html += `
+                <div class="print-section-title" style="margin-top: 22px;">II. HƯỚNG DẪN GIẢI CHI TIẾT</div>
+                <div class="print-solutions-list">
+            `;
+
+            pool.forEach((q, idx) => {
+                const qNum = idx + 1;
+                let ansSummary = '';
+                const qType = q.q_type || q.qType || 'mcq';
+                if (qType === 'tf_group' && Array.isArray(q.statements)) {
+                    ansSummary = q.statements.map((s) => `Ý ${s.key || ''}: ${s.answer ? 'ĐÚNG' : 'SAI'}`).join(', ');
+                } else if (qType === 'short_answer') {
+                    ansSummary = `Đáp án: ${q.correct_value ?? q.correctValue ?? ''}`;
+                } else {
+                    ansSummary = `Đáp án đúng: ${'ABCD'[Number(q.correct ?? q.answer ?? 0)]}`;
+                }
+
+                const explanationContent = q.explanation ? htmlText(q.explanation) : '<em>(Không có lời giải thích chi tiết)</em>';
+
+                html += `
+                    <div class="print-solution-item">
+                        <div class="solution-header">
+                            <strong>Câu ${qNum}:</strong>
+                            <span class="solution-badge">${esc(ansSummary)}</span>
+                        </div>
+                        <div class="solution-body">
+                            ${explanationContent}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+
+        printContainer.innerHTML = html;
+        closeModal('print-modal');
+
+        notify('Đang kết xuất đề thi và mở hộp thoại in...');
+        await renderMathAndWait(printContainer);
+
+        window.print();
+        addActivityLog(
+            'Xuất đề thi PDF / Bản in',
+            `Môn ${esc(subjectTitle)} · ${pool.length} câu hỏi · Mã đề ${esc(testCode)}`,
+            'purple'
+        );
+    }
+
+    async function deleteSubjectQuestions(key) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        const name = subject?.name || key;
+        const currentCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key)).length;
+        if (!currentCount && !(await confirmDialog({ title: 'Kiểm tra & Dọn dữ liệu Cloud?', message: `Không thấy câu hỏi đã tải cho môn ${name}. Vẫn kiểm tra và dọn dữ liệu Cloud?`, confirmText: 'Dọn dữ liệu', variant: 'warning' }))) return;
+        if (currentCount && !(await confirmDialog({ title: `Xóa đề môn ${name}?`, message: `Chuyển toàn bộ ${currentCount} câu hỏi của môn ${name} vào Thùng rác? Bạn có thể khôi phục lại bất kỳ lúc nào nếu cần.`, confirmText: 'Chuyển vào thùng rác', variant: 'danger', icon: 'fa-trash-arrow-up' }))) return;
+        try {
+            const subjectQuestions = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === subjectMatchKey(key));
+            if (subjectQuestions.length) {
+                const now = new Date().toISOString();
+                const trashedItems = subjectQuestions.map((q) => ({
+                    ...q,
+                    is_deleted: true,
+                    deleted_at: now,
+                    deleted_by: 'Admin'
+                }));
+                const existingTrashIds = new Set(trashedItems.map((q) => String(q.id)));
+                state.trashQuestions = [...trashedItems, ...state.trashQuestions.filter((q) => !existingTrashIds.has(String(q.id)))];
+                await saveTrash({ throwOnError: true });
+            }
+
+            const rawKeys = Array.from(new Set([
+                key,
+                ...subjectQuestions.map((q) => String(q.subject_key || q.subjectKey || '').trim()).filter(Boolean)
+            ]));
+            const delQuery = rawKeys.length > 1
+                ? state.client.from('quiz_questions').delete().in('subject_key', rawKeys)
+                : state.client.from('quiz_questions').delete().eq('subject_key', key);
+            const { error } = await delQuery;
+            if (error) throw error;
+            const verifyQuery = rawKeys.length > 1
+                ? state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).in('subject_key', rawKeys)
+                : state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            const { count, error: verifyError } = await verifyQuery;
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) throw new Error(`Cloud còn ${count} câu hỏi chưa xóa được.`);
+            try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            addActivityLog(`Chuyển đề môn ${name} vào thùng rác`, `Đã lưu trữ ${currentCount} câu hỏi môn ${name} vào Thùng rác`, 'danger');
+            notify(`Đã chuyển toàn bộ câu hỏi của môn ${name} vào thùng rác.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể xóa câu hỏi môn ${name}: ${error.message}`, true);
+        }
+    }
+
+    async function adoptLegacyQuestions(key) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        const name = subject?.name || key;
+        const legacyCount = state.questions.filter((question) => subjectMatchKey(question.subject_key || question.subjectKey) === 'history').length;
+        if (!legacyCount) return notify('Không còn câu hỏi cũ chưa gán môn.', true);
+        if (!(await confirmDialog({ title: 'Gán câu hỏi cũ vào môn học?', message: `Gán ${legacyCount} câu hỏi cũ đang ở mã history vào môn ${name}?`, confirmText: 'Gán ngay', variant: 'primary', icon: 'fa-layer-group' }))) return;
+        try {
+            const { error } = await state.client.from('quiz_questions').update({ subject_key: key }).eq('subject_key', 'history');
+            if (error) throw error;
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).ilike('subject_key', key);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) < legacyCount) throw new Error(`Cloud chỉ xác minh ${count}/${legacyCount} câu đã gán.`);
+            notify(`Đã đồng bộ ${legacyCount} câu hỏi vào môn ${name}.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể đồng bộ câu hỏi vào môn ${name}: ${error.message}`, true);
+        }
+    }
+
+    function getOrphanQuestionGroups(subjects = mergeSubjectCatalog(state.subjects)) {
+        const knownKeys = new Set((subjects || []).map((s) => subjectMatchKey(s.key || s.subject_key)).filter(Boolean));
+        const groups = new Map();
+        (state.questions || []).forEach((q) => {
+            const rawKey = String(q.subject_key || q.subjectKey || '').trim();
+            const matchKey = subjectMatchKey(rawKey);
+            if (matchKey && knownKeys.has(matchKey)) return;
+            const groupKey = matchKey || '__empty__';
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, {
+                    groupKey,
+                    sampleRawKey: rawKey,
+                    rawKeys: new Set(),
+                    questions: [],
+                    count: 0,
+                    gradeCounts: { '5': 0, '11': 0 }
+                });
+            }
+            const g = groups.get(groupKey);
+            g.rawKeys.add(rawKey);
+            if (!g.sampleRawKey && rawKey) g.sampleRawKey = rawKey;
+            g.questions.push(q);
+            g.count += 1;
+            const gr = String(q.grade || '11') === '5' ? '5' : '11';
+            g.gradeCounts[gr] = (g.gradeCounts[gr] || 0) + 1;
+        });
+        return Array.from(groups.values()).sort((a, b) => b.count - a.count);
+    }
+
+    async function updateQuestionSubjectChunk(chunkIds, subjectKey, grade) {
+        const payload = { subject_key: subjectKey, grade, updated_at: new Date().toISOString() };
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const { error } = await state.client.from('quiz_questions').update(payload).in('id', chunkIds);
+            if (!error) return null;
+            const msg = String(error.message || '');
+            if (error.code === 'PGRST204' || error.code === '42703' || /column .* does not exist|could not find the .* column/i.test(msg)) {
+                let stripped = false;
+                if ('grade' in payload && /grade/i.test(msg)) { delete payload.grade; stripped = true; }
+                if ('updated_at' in payload && /updated_at/i.test(msg)) { delete payload.updated_at; stripped = true; }
+                if (!stripped) {
+                    if ('grade' in payload) { delete payload.grade; stripped = true; }
+                    else if ('updated_at' in payload) { delete payload.updated_at; stripped = true; }
+                }
+                if (stripped) continue;
+            }
+            return error;
+        }
+        return null;
+    }
+
+    async function assignOrphanQuestions(orphanGroupKey, targetKey) {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const target = subjects.find((s) => (s.key || s.subject_key) === targetKey);
+        if (!target) return notify('Hãy chọn môn đích hợp lệ để gán câu hỏi.', true);
+        const orphan = getOrphanQuestionGroups(subjects).find((g) => g.groupKey === orphanGroupKey);
+        if (!orphan || !orphan.questions.length) return notify('Không còn câu hỏi chưa gán ở nhóm này.', true);
+        const targetGrade = subjectGrade(target);
+        if (!(await confirmDialog({
+            title: 'Gán câu hỏi vào môn học?',
+            message: `Chuyển ${orphan.count} câu hỏi (mã "${orphan.sampleRawKey || 'trống'}") sang môn "${target.name}" (mã: ${target.key}, Lớp ${targetGrade})?`,
+            confirmText: 'Gán ngay',
+            variant: 'primary',
+            icon: 'fa-link'
+        }))) return;
+        try {
+            const ids = orphan.questions.map((q) => q.id).filter(Boolean);
+            for (let i = 0; i < ids.length; i += 50) {
+                const chunk = ids.slice(i, i + 50);
+                const error = await updateQuestionSubjectChunk(chunk, target.key, targetGrade);
+                if (error) throw error;
+            }
+            addActivityLog('Đồng bộ câu hỏi chưa khớp môn', `Đã gán ${orphan.count} câu (${orphan.sampleRawKey || 'trống'}) vào môn ${target.name}`, 'question');
+            notify(`Đã gán ${orphan.count} câu hỏi vào môn ${target.name}.`);
+            await loadQuestions();
+        } catch (error) {
+            notify(`Không thể gán câu hỏi: ${error.message}`, true);
+        }
+    }
+
+    async function createSubjectFromOrphan(orphanGroupKey) {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const orphan = getOrphanQuestionGroups(subjects).find((g) => g.groupKey === orphanGroupKey);
+        if (!orphan || !orphan.questions.length) return notify('Không còn câu hỏi chưa gán ở nhóm này.', true);
+        const rawKey = orphan.sampleRawKey || `mon_${Date.now().toString(36)}`;
+        const inferredGrade = orphan.gradeCounts['5'] > orphan.gradeCounts['11'] ? '5' : '11';
+        const defaultName = rawKey === 'history' ? 'Lịch Sử' : rawKey;
+        const newSubject = {
+            key: rawKey,
+            name: defaultName,
+            grade: inferredGrade,
+            semester: '',
+            icon: 'fa-book',
+            visibility: 'PUBLIC',
+            mode: 'practice',
+            count: orphan.count
+        };
+        if (!orphan.sampleRawKey) {
+            const ids = orphan.questions.map((q) => q.id).filter(Boolean);
+            for (let i = 0; i < ids.length; i += 50) {
+                const error = await updateQuestionSubjectChunk(ids.slice(i, i + 50), rawKey, inferredGrade);
+                if (error) return notify(`Không thể cập nhật mã môn cho câu hỏi trống: ${error.message}`, true);
+            }
+        }
+        state.subjects = [...state.subjects, newSubject];
+        await saveSubjects();
+        await loadQuestions();
+        notify(`Đã tạo thẻ môn "${defaultName}" (${orphan.count} câu). Bạn có thể bấm Sửa để đổi tên hiển thị.`);
+    }
+
+    async function extractFile(file) {
+        const name = file.name.toLowerCase();
+        return file.text();
+    }
+
+    function buildAppUrl(relativePath) {
+        const cleanPath = String(relativePath || '').replace(/^\/+/, '');
+        const baseHref = window.location.protocol.startsWith('http')
+            ? window.location.href
+            : 'https://quiz-web-app-rosy.vercel.app/';
+        return new URL(`./${cleanPath}`, baseHref).href;
+    }
+
+    function openModal(id) { $(id)?.classList.remove('hidden'); }
+    function closeModal(id) { $(id)?.classList.add('hidden'); }
+
+    function openImport() {
+        state.importQuestions = []; state.importIndex = 0; state.sourceText = ''; state.importError = '';
+        if ($('import-text')) $('import-text').value = '';
+        if ($('import-replace')) $('import-replace').checked = false;
+        if ($('import-preview')) $('import-preview').innerHTML = '<p class="muted-copy">Dán JSON câu hỏi rồi bấm “Đọc JSON” để xem trước và lưu.</p>';
+        fillLibrarySubjects(); switchView('questions'); openModal('import-modal');
+    }
+
+    function parseJsonInput(text) {
+        state.importError = '';
+        try {
+            const parsed = extractJsonPayload(text);
+            const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.questions) ? parsed.questions : [parsed]);
+            const normalized = list.map(normalizeAiQuestion);
+            const structureErrors = validateAiQuestionSet(normalized);
+            if (structureErrors.length) {
+                state.importError = structureErrors.slice(0, 3).join('; ');
+                console.warn('[Quiz Studio Admin] JSON import rejected:', {
+                    errors: structureErrors,
+                    rawTypes: list.map((item) => item?.type ?? item?.q_type ?? item?.qType ?? null),
+                    normalizedTypes: normalized.map((item) => item.qType),
+                    keys: list.map((item) => Object.keys(item || {})),
+                    shortAnswerValues: normalized.map((item) => item.qType === 'short_answer' ? item.correctValue : undefined)
+                });
+                return [];
+            }
+            state.importIntegrity = validateVerbatimQuestions(normalized, text);
+            return normalized;
+        } catch (error) {
+            state.importError = `JSON lỗi cú pháp: ${error.message}`;
+            console.warn('[Quiz Studio Admin] JSON import parse error:', error.message);
+            return [];
+        }
+    }
+
+    function extractJsonPayload(raw) {
+        const text = String(raw || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const candidates = [text];
+        const arrayStart = text.indexOf('[');
+        const arrayEnd = text.lastIndexOf(']');
+        if (arrayStart >= 0 && arrayEnd > arrayStart) candidates.push(text.slice(arrayStart, arrayEnd + 1));
+        const objectStart = text.indexOf('{');
+        const objectEnd = text.lastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1));
+        for (const candidate of candidates) {
+            try {
+                const parsed = JSON.parse(candidate);
+                const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.questions) ? parsed.questions : (Array.isArray(parsed.data) ? parsed.data : [parsed]));
+                if (list.length) return list;
+            } catch (error) { /* Try the next JSON boundary. */ }
+        }
+        throw new Error('Dữ liệu không phải JSON hợp lệ hoặc không có câu hỏi.');
+    }
+
+    function persistImportDraft() {
+        try {
+            sessionStorage.setItem('quiz_import_draft', JSON.stringify({ questions: state.importQuestions, sourceText: state.sourceText, subject: state.importSubject, integrity: state.importIntegrity }));
+        } catch (error) { console.warn('Không thể lưu bản nháp nhập câu hỏi:', error); }
+    }
+
+    function restoreImportDraft() {
+        try {
+            const draft = JSON.parse(sessionStorage.getItem('quiz_import_draft') || 'null');
+            if (!draft || !Array.isArray(draft.questions) || !draft.questions.length) return false;
+            state.importQuestions = draft.questions.map(normalizeAiQuestion);
+            state.sourceText = draft.sourceText || '';
+            state.importSubject = draft.subject || state.importSubject;
+            state.importIntegrity = draft.integrity || validateVerbatimQuestions(state.importQuestions, state.sourceText);
+            state.importIndex = 0;
+            renderImportReview();
+            return true;
+        } catch (error) { return false; }
+    }
+
+    function renderImportReview() {
+        const root = $('import-preview');
+        if (!root) return;
+        if (!state.importQuestions.length) { root.innerHTML = '<p class="muted-copy">Chưa có câu hỏi đã đọc.</p>'; return; }
+        const q = normalizeAiQuestion(state.importQuestions[state.importIndex]);
+        const type = TYPE_LABELS[q.qType] || TYPE_LABELS.mcq;
+        const detail = q.qType === 'tf_group' ? q.statements.map((item) => `<div class="tf-preview-row"><b>${esc(item.key)}</b><span>${htmlText(item.text)}</span><span class="tf-preview-answer ${item.answer ? '' : 'false'}">${item.answer ? 'ĐÚNG' : 'SAI'}</span></div>`).join('') : q.qType === 'short_answer' ? `<div class="item-option is-correct">Đáp án: ${esc(q.correctValue)}</div>` : q.options.map((item, index) => `<div class="preview-option ${index === q.correct ? 'is-correct' : ''}"><b>${'ABCD'[index]}</b><span>${htmlText(item)}</span></div>`).join('');
+        const integrity = state.importIntegrity.valid ? '<div class="strict-warning"><i class="fa-solid fa-lock"></i><span>Giữ nguyên nội dung và thứ tự theo JSON đã đọc. Hãy duyệt từng câu trước khi lưu.</span></div>' : `<div class="strict-warning" style="border-color:#fca5a5;background:#fff0f0;color:#b91c1c"><i class="fa-solid fa-triangle-exclamation"></i><span>Không khớp nguyên văn một số trường sau khi chuẩn hóa khoảng trắng: ${esc(state.importIntegrity.errors.join(' | '))}. Khi bấm lưu, Admin sẽ được hỏi xác nhận tiếp tục.</span></div>`;
+        root.innerHTML = `<div class="ai-review"><div class="ai-review-toolbar"><b>Câu ${state.importIndex + 1}/${state.importQuestions.length} · ${esc(type)}</b><div><button type="button" class="button button-secondary compact" data-import-prev ${state.importIndex === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button> <button type="button" class="button button-secondary compact" data-import-next ${state.importIndex === state.importQuestions.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="ai-review-list">${state.importQuestions.map((item, index) => `<button type="button" class="ai-review-index ${index === state.importIndex ? 'is-active' : ''}" data-import-index="${index}">Câu ${index + 1}</button>`).join('')}</div><div class="ai-review-question"><b>${htmlText(q.question)}</b><div style="margin-top:9px">${detail}</div><p class="muted-copy">${htmlText(q.explanation)}</p></div>${integrity}</div>`;
+        renderMath(root);
+    }
+
+    function validateVerbatimQuestions(questions, source) {
+        if (!source) return { valid: true, errors: [] };
+        const errors = [];
+        const normalizeVerbatim = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+        const normalizedSource = normalizeVerbatim(source);
+        const check = (value, label) => {
+            const normalizedValue = normalizeVerbatim(value);
+            if (normalizedValue && !normalizedSource.toLowerCase().includes(normalizedValue.toLowerCase())) errors.push(label);
+        };
+        questions.forEach((raw, index) => {
+            const q = normalizeAiQuestion(raw);
+            check(notationText(q.question), `Câu ${index + 1}: câu hỏi`);
+            if (q.qType === 'mcq') q.options.forEach((value, optionIndex) => check(notationText(value), `Câu ${index + 1}: phương án ${'ABCD'[optionIndex]}`));
+            if (q.qType === 'tf_group') q.statements.forEach((value, statementIndex) => check(notationText(value.text ?? value.content), `Câu ${index + 1}: ý ${'abcd'[statementIndex]}`));
+        });
+        return { valid: errors.length === 0, errors };
+    }
+
+    function validateAiQuestionSet(questions) {
+        const errors = [];
+        questions.forEach((question, index) => {
+            const q = normalizeAiQuestion(question);
+            if (!notationText(q.question).trim()) errors.push(`Câu ${index + 1} thiếu nội dung`);
+            if (q.qType === 'mcq') {
+                if (q.options.length !== 4 || q.options.some((option) => !notationText(option).trim())) errors.push(`Câu ${index + 1} MCQ phải đủ A/B/C/D`);
+                if (!Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3) errors.push(`Câu ${index + 1} MCQ thiếu đáp án đúng`);
+            } else if (q.qType === 'tf_group') {
+                if (q.statements.length !== 4 || q.statements.some((statement) => !notationText(statement.text).trim())) errors.push(`Câu ${index + 1} Đúng/Sai phải đủ a/b/c/d`);
+                if (q.statements.some((statement) => typeof statement.answer !== 'boolean')) errors.push(`Câu ${index + 1} Đúng/Sai thiếu đáp án`);
+            } else if (q.qType === 'short_answer' && !String(q.correctValue || '').trim()) {
+                errors.push(`Câu ${index + 1} trả lời ngắn thiếu đáp án`);
+            }
+        });
+        return errors;
+    }
+
+    /* Gemini is intentionally not used for question import; AI calls route through the backend proxy. */
+    async function analyzeWithGemini() {
+        return notify('Gemini phân tích đề đã được tắt. Hãy dán JSON rồi bấm Đọc JSON.', true);
+    }
+
+    async function saveImportQuestions() {
+        if (state.importSaving) return;
+        if (!state.importQuestions.length) {
+            if (restoreImportDraft()) return notify('Đã khôi phục bản nháp câu hỏi. Bấm Lưu vào ngân hàng để tiếp tục.');
+            return notify(state.importError || 'Chưa có câu hỏi để lưu. Hãy dán JSON hợp lệ rồi bấm Đọc JSON.', true);
+        }
+        if (!state.importIntegrity.valid && !(await confirmDialog({ title: 'Tiếp tục lưu câu hỏi?', message: 'Không thể xác minh hoàn toàn văn bản nguồn. Admin vẫn muốn tiếp tục lưu các câu hỏi này?', confirmText: 'Vẫn tiếp tục lưu', variant: 'warning' }))) return;
+        if ($('import-replace')?.checked && !(await confirmDialog({ title: 'Ghi đè câu hỏi cũ?', message: 'Xóa toàn bộ câu hỏi cũ của môn này trước khi nạp bộ đề mới?', confirmText: 'Xóa cũ & Nạp mới', variant: 'danger' }))) return;
+        state.importSaving = true;
+        setActionBusy('save-import', true, 'Đang lưu...');
+        try {
+            const selectedSubject = String($('import-subject-select')?.value || state.importSubject || '').trim();
+            if (!selectedSubject) throw new Error('Chưa chọn môn đích cho bộ câu hỏi.');
+            // Quan trọng: dùng đúng giá trị mới nhất từ dropdown, không dùng
+            // state cũ còn sót lại từ lần import trước.
+            state.importSubject = selectedSubject;
+            let replaceIdsToDelete = [];
+            if ($('import-replace')?.checked) {
+                const rawKeys = Array.from(new Set([
+                    selectedSubject,
+                    ...(state.questions || [])
+                        .filter((q) => subjectMatchKey(q.subject_key || q.subjectKey) === subjectMatchKey(selectedSubject))
+                        .map((q) => String(q.subject_key || q.subjectKey || '').trim())
+                        .filter(Boolean)
+                ]));
+                const oldRowsQuery = rawKeys.length > 1
+                    ? state.client.from('quiz_questions').select('id').in('subject_key', rawKeys)
+                    : state.client.from('quiz_questions').select('id').eq('subject_key', selectedSubject);
+                const { data: oldRows, error: oldErr } = await oldRowsQuery;
+                if (oldErr) throw oldErr;
+                replaceIdsToDelete = (oldRows || []).map((r) => r.id).filter(Boolean);
+            }
+            const firstId = await nextQuestionId();
+            const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
+            const verifiedCount = await upsertRestoredRows(records, { returnIds: true });
+            if (verifiedCount < records.length) {
+                throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu vừa nhập ở môn ${selectedSubject}.`);
+            }
+            if (replaceIdsToDelete.length > 0) {
+                await moveQuestionsToTrash((state.questions || []).filter((q) => replaceIdsToDelete.some((id) => String(id) === String(q.id))), 'Thay thế bộ câu hỏi cũ');
+                const newIdSet = new Set(records.map((r) => String(r.id)));
+                const safeDeleteIds = replaceIdsToDelete.filter((id) => !newIdSet.has(String(id)));
+                for (let i = 0; i < safeDeleteIds.length; i += 50) {
+                    const chunk = safeDeleteIds.slice(i, i + 50);
+                    const { error: delErr } = await state.client.from('quiz_questions').delete().in('id', chunk);
+                    if (delErr) throw delErr;
+                }
+            }
+            console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, verifiedCount });
+            addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import');
+            notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
+             sessionStorage.removeItem('quiz_import_draft');
+             closeModal('import-modal'); await loadQuestions();
+        } catch (error) {
+            notify(`Không thể lưu danh sách: ${error.message}`, true);
+        } finally {
+            state.importSaving = false;
+            setActionBusy('save-import', false);
+        }
+    }
+
+    async function handleImportFile(file) {
+        if (!file) return;
+        try {
+            const source = await file.text();
+            $('import-text').value = source;
+            const list = parseJsonInput(source);
+            if (!list.length) throw new Error(state.importError || 'File không chứa JSON câu hỏi hợp lệ.');
+            state.sourceText = source;
+            state.importQuestions = list;
+            state.importError = '';
+            state.importIndex = 0;
+            state.importIntegrity = validateVerbatimQuestions(list, source);
+            persistImportDraft();
+            renderImportReview();
+            notify(`Đã đọc ${list.length} câu từ ${file.name}.`);
+        } catch (error) {
+            notify(`Không thể đọc file: ${error.message}`, true);
+        }
+    }
+
+    function getGeminiProxyUrl() {
+        return window.__QUIZ_CONFIG__?.geminiProxyUrl || '/api/gemini';
+    }
+
+    async function loadGeminiKeyIntoInput() {
+        const input = $('gemini-key-input');
+        if (!input) return;
+        let key = '';
+        try { key = cleanGeminiKey(localStorage.getItem('gemini_api_key') || ''); } catch (e) {}
+        if (window.dbService?.fetchGeminiApiKey) {
+            try {
+                const cloudKey = cleanGeminiKey(await window.dbService.fetchGeminiApiKey());
+                if (cloudKey) {
+                    key = cloudKey;
+                    try { localStorage.setItem('gemini_api_key', cloudKey); } catch (e) {}
+                }
+            } catch (e) {}
+        }
+        if (key) {
+            input.value = key;
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Đã lưu Key';
+        }
+    }
+
+    async function saveGeminiKey() {
+        const input = $('gemini-key-input');
+        const key = cleanGeminiKey(input?.value || '');
+        if (!isValidGeminiKey(key)) {
+            return notify('Vui lòng nhập Gemini API Key hợp lệ (dạng AIza... hoặc AQ....).', true);
+        }
+        try { localStorage.setItem('gemini_api_key', key); } catch (e) {}
+        let cloudSaved = false;
+        if (window.dbService?.saveGeminiApiKey) {
+            cloudSaved = await window.dbService.saveGeminiApiKey(key);
+        }
+        if ($('gemini-key-status')) $('gemini-key-status').textContent = cloudSaved ? 'Đã lưu Cloud' : 'Đã lưu cục bộ';
+        notify(cloudSaved ? 'Đã lưu Gemini API Key lên Supabase Cloud cho toàn hệ thống.' : 'Đã lưu Gemini API Key trên trình duyệt hiện tại.');
+    }
+
+    async function testGeminiKey() {
+        const button = $('test-gemini-key');
+        if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra'; }
+        try {
+            const proxyUrl = getGeminiProxyUrl();
+            const inputKey = cleanGeminiKey($('gemini-key-input')?.value || '');
+            let savedKey = inputKey;
+            if (!savedKey) {
+                try { savedKey = cleanGeminiKey(localStorage.getItem('gemini_api_key') || ''); } catch (e) {}
+            }
+            if (!savedKey && window.dbService?.fetchGeminiApiKey) {
+                try { savedKey = cleanGeminiKey(await window.dbService.fetchGeminiApiKey()); } catch (e) {}
+            }
+            const headers = { 'Content-Type': 'application/json' };
+            if (savedKey) headers['x-gemini-api-key'] = savedKey;
+            const response = await fetch(proxyUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: 'gemini-3-flash-preview',
+                    contents: [{ parts: [{ text: 'Reply only with OK.' }] }],
+                    generationConfig: { temperature: 0, maxOutputTokens: 4 }
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = data?.error?.message || data?.error || `HTTP ${response.status}`;
+                if (isGeminiQuotaError(response.status, msg)) throw new Error(geminiQuotaMessage);
+                throw new Error(msg);
+            }
+            notify('Gemini Proxy đang hoạt động bình thường.');
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Proxy hoạt động';
+        } catch (error) {
+            if ($('gemini-key-status')) $('gemini-key-status').textContent = 'Proxy lỗi / chưa cấu hình';
+            notify(isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : `Không thể kết nối Gemini Proxy: ${error.message}`, true);
+        } finally {
+            if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Kiểm tra Proxy AI'; }
+        }
+    }
+
+    function getProgressFilterTitle() {
+        const grade = state.progressFilter || 'all';
+        const subject = state.progressSubject || 'all';
+        if (subject !== 'all') {
+            const selected = allSubjects().find((item) => subjectMatchKey(item.key) === subjectMatchKey(subject) || subjectMatchKey(item.name) === subjectMatchKey(subject));
+            return `Tiến trình ${selected?.name || subject}`;
+        }
+        return grade === 'all' ? 'Tiến trình Tất cả môn' : `Tiến trình Lớp ${grade}`;
+    }
+
+    function switchLiveSubtab(tab = 'cards') {
+        const target = tab === 'control' ? 'control' : (tab === 'arena' ? 'arena' : 'cards');
+        document.querySelectorAll('[data-live-tab]').forEach((btn) => {
+            const active = btn.dataset.liveTab === target;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-live-pane]').forEach((pane) => {
+            pane.classList.toggle('hidden', pane.dataset.livePane !== target);
+        });
+        if (target === 'control') loadStudents().catch(() => {});
+        else if (target === 'arena') window.ArenaHost?.mount(state.subjects);
+        else renderGrade5ProgressMonitor();
+    }
+
+    function switchView(view) {
+        closeAdminAiDrawer();
+        if (view !== 'arena') window.ArenaHost?.stopPolling?.();
+        if (view === 'subjects') view = 'questions';
+        let requestedLiveTab = null;
+        if (view === 'students') {
+            view = 'progress';
+            requestedLiveTab = 'control';
+        }
+        const titles = { overview: 'Tổng quan', questions: 'Đề thi & môn học', progress: 'Lớp học trực tiếp', access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu', 'ai-assistant': 'Trợ lý AI' };
+        document.querySelectorAll('[data-view-panel]').forEach((panel) => {
+            const isActive = panel.dataset.viewPanel === view;
+            panel.classList.toggle('is-visible', isActive);
+            panel.classList.remove('view-enter');
+            if (isActive) {
+                // Force a fresh animation cycle even when the same tab is opened repeatedly.
+                requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.add('view-enter')));
+            }
+        });
+        document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === view));
+        $('view-title') && ($('view-title').textContent = titles[view] || view);
+        $('sidebar')?.classList.remove('is-open');
+
+        if (view === 'overview') {
+            requestAnimationFrame(() => replayOverviewMetrics());
+        } else if (view === 'questions') {
+            updateLibrarySlidingIndicator(false);
+        }
+
+        if (view !== 'progress') {
+            clearInterval(state.progressMonitorTimer);
+            state.progressMonitorTimer = null;
+            clearTimeout(state.progressDebounceTimer);
+            state.progressDebounceTimer = null;
+            if (state.progressRealtimeChannel && state.client && typeof state.client.removeChannel === 'function') {
+                state.client.removeChannel(state.progressRealtimeChannel);
+                state.progressRealtimeChannel = null;
+            }
+        }
+
+        if (view === 'progress') {
+            switchLiveSubtab(requestedLiveTab || 'cards');
+
+            // Kích hoạt Realtime Supabase live feed cho Admin (cập nhật ngay khi học sinh chọn đáp án)
+            if (!state.progressRealtimeChannel && state.client && typeof state.client.channel === 'function') {
+                try {
+                    state.progressRealtimeChannel = state.client
+                        .channel('admin-progress-live-sync')
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_logins' }, () => {
+                            const progPanel = document.querySelector('[data-view-panel="progress"]');
+                            if (progPanel && progPanel.classList.contains('is-visible')) {
+                                if (state.progressDebounceTimer) clearTimeout(state.progressDebounceTimer);
+                                state.progressDebounceTimer = setTimeout(() => {
+                                    renderGrade5ProgressMonitor();
+                                }, 180);
+                            }
+                        })
+                        .subscribe();
+                } catch (e) {
+                    console.warn('[Admin Progress] Lỗi realtime channel:', e);
+                }
+            }
+
+            clearInterval(state.progressMonitorTimer);
+            state.progressMonitorTimer = setInterval(() => {
+                const progPanel = document.querySelector('[data-view-panel="progress"]');
+                if (progPanel && progPanel.classList.contains('is-visible')) {
+                    renderGrade5ProgressMonitor();
+                }
+            }, 8000);
+        } else if (view === 'reports') {
+            runAction(loadScoreReport);
+        } else if (view === 'ai-assistant') {
+            onOpenAdminAiView();
+        } else {
+            clearInterval(state.progressMonitorTimer);
+        }
+    }
+
+    function mergeContentLibraryView() {
+        const library = document.querySelector('[data-view-panel="questions"]');
+        const subjects = document.querySelector('[data-view-panel="subjects"]');
+        if (!library || !subjects || subjects.dataset.merged === 'true') return;
+
+        const heading = subjects.querySelector('.page-heading');
+        if (heading) {
+            heading.querySelector('h1')?.replaceChildren(document.createTextNode('Môn học & quyền riêng tư'));
+            const copy = heading.querySelector('p:not(.eyebrow)');
+            if (copy) copy.textContent = 'Tạo môn học, gán quyền riêng tư và nạp câu hỏi vào đúng môn trong cùng một khu vực.';
+            heading.classList.add('content-library-subheading');
+        }
+
+        const divider = document.createElement('div');
+        divider.className = 'content-library-divider';
+        divider.innerHTML = '<span class="eyebrow">SUBJECT CATALOG</span><strong>Môn học &amp; quyền riêng tư</strong><small>Các câu hỏi mới sẽ được đồng bộ theo môn đích đã chọn.</small>';
+        library.appendChild(divider);
+        while (subjects.firstElementChild) library.appendChild(subjects.firstElementChild);
+        subjects.dataset.merged = 'true';
+        subjects.remove();
+    }
+
+    function configureAdminLabels() {
+        ensureReportWorkspace();
+        const reportsDescription = document.querySelector('[data-view-panel="reports"] .page-heading p:not(.eyebrow)');
+        if (reportsDescription) reportsDescription.textContent = 'Xuất kết quả, cấu hình giải thích bài tập, sao lưu dữ liệu và chuẩn bị cho kỳ thi mới.';
+        const aiHeading = document.querySelector('.ai-config-panel h2');
+        const aiDescription = document.querySelector('.ai-config-panel .muted-copy');
+        if (aiHeading) aiHeading.textContent = 'Cấu hình giải thích bài tập (Proxy)';
+        if (aiDescription) aiDescription.textContent = 'Dán Gemini API Key để lưu lên Supabase Cloud cho toàn hệ thống, hoặc cấu hình biến môi trường GEMINI_API_KEY trên máy chủ.';
+        const quickImport = $('quick-import');
+        if (quickImport) {
+            const title = quickImport.querySelector('b');
+            const description = quickImport.querySelector('small');
+            if (title) title.textContent = 'Nạp JSON câu hỏi';
+            if (description) description.textContent = 'JSON hoặc TXT';
+        }
+        const importButton = $('import-button');
+        if (importButton) importButton.innerHTML = '<i class="fa-solid fa-file-import"></i> Nạp JSON';
+    }
+
+    function ensureReportWorkspace() {
+        const panel = document.querySelector('[data-view-panel="reports"]');
+        const template = $('report-workspace-template');
+        if (!panel || !template || panel.dataset.reportReady === 'true') return;
+        const aiConfig = panel.querySelector('.ai-config-panel');
+        panel.replaceChildren(template.content.cloneNode(true));
+        if (aiConfig) panel.appendChild(aiConfig);
+        panel.dataset.reportReady = 'true';
+    }
+
+    async function loadMaintenance() {
+        const row = await systemRow(SYSTEM.maintenance);
+        const defaultLockedMsg = 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        if (row) {
+            state.maintenance = {
+                isActive: row.status === 'ACTIVE' || row.device_info === 'ON',
+                message: row.score_summary || defaultLockedMsg
+            };
+        }
+        const active = Boolean(state.maintenance.isActive);
+        const rawMsg = String(state.maintenance.message || '').trim();
+        const studentPreviewMsg = (!rawMsg || rawMsg === 'Website đang mở công khai cho học sinh.' || rawMsg === 'Website đang mở.')
+            ? defaultLockedMsg
+            : rawMsg;
+
+        if ($('maintenance-toggle')) $('maintenance-toggle').checked = active;
+        $('maintenance-panel')?.classList.toggle('is-locked', active);
+        $('sidebar-maintenance-mini')?.classList.toggle('is-active', active);
+        if ($('maintenance-toggle-label')) {
+            $('maintenance-toggle-label').textContent = active ? 'Đang khóa Web' : 'Khóa Web';
+            $('maintenance-toggle-label').classList.toggle('is-active', active);
+        }
+        if ($('maintenance-badge')) {
+            $('maintenance-badge').textContent = active ? 'ĐANG BẬT' : 'ĐANG TẮT';
+            $('maintenance-badge').className = `status-badge ${active ? 'danger is-pulsing' : 'safe'}`;
+        }
+        if ($('maintenance-copy')) {
+            $('maintenance-copy').textContent = active
+                ? 'Hệ thống đang tạm khóa — học sinh truy cập sẽ nhận được thông báo bảo trì.'
+                : 'Trang web đang mở công khai cho học sinh làm bài bình thường.';
+        }
+        if ($('maintenance-message-preview')) {
+            $('maintenance-message-preview').textContent = studentPreviewMsg;
+        }
+        if ($('health-maintenance')) $('health-maintenance').textContent = active ? 'Website đang tạm khóa' : 'Website đang mở';
+        if ($('health-maintenance-badge')) {
+            $('health-maintenance-badge').textContent = active ? 'Đang khóa' : 'Tắt';
+            $('health-maintenance-badge').className = `status-badge ${active ? 'danger' : 'safe'}`;
+        }
+        $('maintenance-dot')?.classList.toggle('is-active', active);
+        $('maintenance-mini-label') && ($('maintenance-mini-label').textContent = active ? 'Đang bảo trì' : 'Hệ thống đang mở');
+        $('maintenance-mini-message') && ($('maintenance-mini-message').textContent = active ? studentPreviewMsg : 'Sẵn sàng phục vụ học sinh');
+    }
+
+    async function toggleMaintenance(customActionNote = '') {
+        const active = Boolean($('maintenance-toggle')?.checked);
+        const defaultLockedMsg = 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        const rawMessage = String(state.maintenance.message || '').trim();
+        const hasCustomMessage = rowHasCustomMessage(rawMessage);
+        let message = hasCustomMessage ? rawMessage : defaultLockedMsg;
+        if (active && !hasCustomMessage && !customActionNote) {
+            const prompted = await promptDialog({
+                title: 'Lời nhắn khi bảo trì',
+                eyebrow: 'MAINTENANCE MODE',
+                message: 'Nhập nội dung thông báo hiển thị cho học sinh khi hệ thống tạm khóa:',
+                defaultValue: message,
+                confirmText: 'Bật bảo trì',
+                icon: 'fa-screwdriver-wrench'
+            });
+            if (prompted === null) {
+                if ($('maintenance-toggle')) $('maintenance-toggle').checked = false;
+                return;
+            }
+            message = prompted.trim() || defaultLockedMsg;
+        }
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.maintenance,
+            player_name: '__SYSTEM_MAINTENANCE__',
+            ip_address: 'SYSTEM',
+            device_info: active ? 'ON' : 'OFF',
+            status: active ? 'ACTIVE' : 'INACTIVE',
+            score_summary: message,
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if (error) return notify(error.message, true);
+        state.maintenance = { isActive: active, message };
+        await loadMaintenance();
+        addActivityLog(
+            customActionNote || (active ? 'Bật chế độ Khóa Web (Bảo trì)' : 'Tắt chế độ bảo trì (Mở Web)'),
+            `Lời nhắn: "${message}"`,
+            'maintenance'
+        );
+        notify(customActionNote ? 'Đã cập nhật lời nhắn bảo trì.' : (active ? 'Đã bật chế độ bảo trì.' : 'Đã mở lại website.'));
+    }
+
+    function rowHasCustomMessage(msg) {
+        const clean = String(msg || '').trim();
+        return Boolean(
+            clean
+            && clean !== 'Website đang mở công khai cho học sinh.'
+            && clean !== 'Website đang mở.'
+            && clean !== 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!'
+        );
+    }
+
+    function generateRandomToken(prefix = 'GRADE5') {
+        const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+        let rand = '';
+        for (let i = 0; i < 6; i++) {
+            rand += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return `${prefix}_${rand}`;
+    }
+
+    function getStudentActivationLink(token) {
+        const loc = window.location;
+        const basePath = loc.pathname.replace(/admin\.html.*$/, '');
+        const cleanBase = basePath.endsWith('/') ? basePath : basePath + '/';
+        return `${loc.origin}${cleanBase}index.html?token=${encodeURIComponent(token)}`;
+    }
+
+    async function copyActivationLink(token, name = '', triggerBtn = null) {
+        const link = getStudentActivationLink(token);
+        const copied = await copyToClipboard(link);
+        if (copied && triggerBtn) triggerAdminCopyFeedback(triggerBtn, 1500);
+        notify(`Đã sao chép link kích hoạt${name ? ' cho ' + name : ''} vào bộ nhớ tạm!`);
+    }
+
+    async function loadTokens() {
+        const row = await systemRow(SYSTEM.tokens);
+        if (row?.status === 'ACTIVE') {
+            try {
+                const data = JSON.parse(row.score_summary || '[]');
+                state.tokens = Array.isArray(data) ? data : data.tokens || [];
+            } catch (error) {
+                state.tokens = [];
+            }
+        } else {
+            state.tokens = [];
+        }
+        renderTokens();
+    }
+
+    async function saveTokens() {
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.tokens,
+            player_name: '__ACCESS_TOKENS_CONFIG__',
+            ip_address: 'SYSTEM',
+            device_info: 'TOKEN_AUTH',
+            status: 'ACTIVE',
+            score_summary: JSON.stringify(state.tokens),
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if (error) throw error;
+        renderTokens();
+    }
+
+    function renderStudentAccessSubjectCheckboxes() {
+        const container = $('student-access-subjects-list');
+        if (!container) return;
+        const subjects = allSubjects();
+        const prevChecked = new Set(Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value));
+        container.innerHTML = subjects.map((sub) => {
+            const key = String(sub.key || sub.subject_key || '');
+            const checked = prevChecked.has(key) ? 'checked' : '';
+            return `<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">
+                <input type="checkbox" value="${esc(key)}" ${checked}>
+                <span>${esc(sub.name || key)}</span>
+                <small style="color:var(--muted);font-weight:500;">(L${subjectGrade(sub)})</small>
+            </label>`;
+        }).join('');
+    }
+
+    function buildAllowedSubjectsBadge(item) {
+        const list = Array.isArray(item?.allowedSubjects) ? item.allowedSubjects.filter(Boolean) : [];
+        if (!list.length) {
+            return `<span class="muted-copy" style="font-size:10px;">Môn: Tất cả theo quyền lớp</span>`;
+        }
+        const names = list.map((k) => {
+            const found = allSubjects().find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(k));
+            return found ? (found.name || k) : k;
+        });
+        return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);padding:1px 6px;border-radius:6px;">Chỉ ${list.length} môn: ${esc(names.join(', '))}</span>`;
+    }
+
+    async function editTokenSubjects(tokenStr) {
+        const idx = (state.tokens || []).findIndex((t) => String(t.token || '') === String(tokenStr || ''));
+        if (idx === -1) return;
+        const item = state.tokens[idx];
+        const current = new Set((Array.isArray(item.allowedSubjects) ? item.allowedSubjects : []).map((k) => subjectMatchKey(k)).filter(Boolean));
+        const subjects = allSubjects();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.75);padding:16px;';
+        overlay.innerHTML = `
+            <div class="panel" style="width:100%;max-width:520px;max-height:85vh;overflow-y:auto;margin:0;">
+                <div class="panel-title">
+                    <div>
+                        <p class="eyebrow">SUBJECT ACCESS</p>
+                        <h2>Phân chia môn cho ${esc(item.name || item.token)}</h2>
+                        <p class="muted-copy" style="font-size:12px;">Chọn các môn học sinh này được nhìn thấy (bỏ chọn hết = hiện tất cả theo quyền lớp).</p>
+                    </div>
+                </div>
+                <div id="modal-assign-subjects-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;">
+                    ${subjects.map((sub) => {
+                        const key = String(sub.key || sub.subject_key || '');
+                        return `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;">
+                            <input type="checkbox" value="${esc(key)}" ${current.has(subjectMatchKey(key)) ? 'checked' : ''}>
+                            <span>${esc(sub.name || key)} (Lớp ${subjectGrade(sub)})</span>
+                        </label>`;
+                    }).join('')}
+                </div>
+                <div class="form-actions" style="justify-content:space-between;">
+                    <button type="button" id="modal-assign-clear" class="button button-secondary compact">Bỏ chọn hết</button>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" id="modal-assign-cancel" class="button button-secondary compact">Hủy</button>
+                        <button type="button" id="modal-assign-save" class="button button-primary compact"><i class="fa-solid fa-check"></i> Lưu phân môn</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        const close = () => overlay.remove();
+        overlay.querySelector('#modal-assign-cancel')?.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        overlay.querySelector('#modal-assign-clear')?.addEventListener('click', () => {
+            overlay.querySelectorAll('#modal-assign-subjects-grid input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+        });
+        overlay.querySelector('#modal-assign-save')?.addEventListener('click', async () => {
+            const selected = Array.from(overlay.querySelectorAll('#modal-assign-subjects-grid input[type="checkbox"]:checked')).map((cb) => cb.value);
+            state.tokens[idx] = { ...state.tokens[idx], allowedSubjects: selected, updatedAt: new Date().toISOString() };
+            await saveTokens();
+            renderUnifiedAccess();
+            close();
+            notify(selected.length ? `Đã giới hạn ${selected.length} môn cho ${item.name || item.token}.` : `Đã mở mặc định tất cả môn theo quyền lớp cho ${item.name || item.token}.`);
+        });
+    }
+
+    function renderUnifiedAccess() {
+        renderStudentAccessSubjectCheckboxes();
+        const list = state.tokens || [];
+        const class5List = list.filter(item => item.role === 'grade5' || item.role === 'all' || item.role === 'student');
+        const aiList = list.filter(item => item.role === 'ai' || item.role === 'all');
+
+        $('class5-student-count') && ($('class5-student-count').textContent = class5List.length);
+        $('ai-student-count') && ($('ai-student-count').textContent = aiList.length);
+        $('unified-student-count') && ($('unified-student-count').textContent = list.length);
+        $('token-count') && ($('token-count').textContent = list.length);
+
+        // 1. RENDER BẢNG 1: QUYỀN LỚP 5
+        const c5Tbody = $('class5-access-body');
+        if (c5Tbody) {
+            if (class5List.length === 0) {
+                c5Tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--muted);">
+                            <div style="font-size:24px;margin-bottom:6px;opacity:0.6;"><i class="fa-solid fa-graduation-cap"></i></div>
+                            <div style="font-weight:600;font-size:13px;color:var(--text);">Chưa có học sinh nào được cấp quyền Lớp 5</div>
+                            <div style="font-size:11px;margin-top:4px;">Dán IP hoặc mã máy ở form phía trên để mở khóa Lớp 5 cho học sinh.</div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                c5Tbody.innerHTML = class5List.map((item) => {
+                    const hasAi = item.role === 'all';
+                    const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
+                    const ipDisplay = item.ip 
+                        ? `<code style="font-size:11px;font-weight:600;color:var(--text);background:var(--surface-3);padding:2px 6px;border-radius:4px;">${esc(item.ip)}</code>`
+                        : `<span class="muted-copy" style="font-size:11px;"><i class="fa-solid fa-link"></i> Khóa theo máy</span>`;
+
+                    const aiStatusHtml = hasAi
+                        ? `<div style="display:inline-flex;align-items:center;gap:4px;">
+                                <span class="status-badge info-badge"><i class="fa-solid fa-check"></i> Đã có AI</span>
+                               <button type="button" class="button button-sm button-secondary compact" data-toggle-ai="${esc(item.token)}" title="Tắt quyền AI (vẫn giữ Lớp 5)" style="font-size:10px;padding:2px 6px;color:var(--muted);"><i class="fa-solid fa-xmark"></i> Tắt AI</button>
+                           </div>`
+                         : `<button type="button" class="button button-sm button-secondary compact" data-toggle-ai="${esc(item.token)}" title="Cấp thêm Trợ lý AI cho học sinh này (dùng chung mã/IP)" style="font-size:11px;padding:3px 8px;">
+                                <i class="fa-solid fa-sliders"></i> + Cấp thêm AI
+                           </button>`;
+
+                    return `
+                        <tr>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span class="stack-item-icon" style="color:var(--emerald);background:var(--surface-3);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
+                                        <i class="fa-solid fa-user-graduate"></i>
+                                    </span>
+                                    <div>
+                                        <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Học sinh')}</b>
+                                        <div style="margin-top:2px;">${buildAllowedSubjectsBadge(item)}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    <code style="font-weight:700;color:var(--primary);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                    <button type="button" class="button button-sm button-secondary compact" data-copy-token-link="${esc(item.token)}" data-token-name="${esc(item.name || '')}" style="font-size:10px;padding:3px 7px;">
+                                        <i class="fa-solid fa-link"></i> Link
+                                    </button>
+                                </div>
+                            </td>
+                            <td>${ipDisplay}</td>
+                            <td>${aiStatusHtml}</td>
+                            <td><small style="color:var(--muted);font-size:11px;">${esc(dateStr)}</small></td>
+                            <td style="text-align:right;white-space:nowrap;">
+                                <button type="button" class="button button-sm button-secondary compact" data-assign-subjects="${esc(item.token)}" style="font-size:11px;padding:4px 8px;margin-right:4px;" title="Phân chia môn học được xem">
+                                    <i class="fa-solid fa-layer-group"></i> Phân môn
+                                </button>
+                                <button type="button" class="button button-sm button-danger compact" data-revoke-grade5="${esc(item.token)}" style="font-size:11px;padding:4px 10px;" title="Thu hồi quyền Lớp 5">
+                                    <i class="fa-solid fa-trash-can"></i> Thu hồi
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 2. RENDER BẢNG 2: QUYỀN TRỢ LÝ AI (GEMINI)
+        const aiTbody = $('ai-access-body');
+        if (aiTbody) {
+            if (aiList.length === 0) {
+                aiTbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--muted);">
+                             <div style="font-size:24px;margin-bottom:6px;opacity:0.6;"><i class="fa-solid fa-comments"></i></div>
+                            <div style="font-weight:600;font-size:13px;color:var(--text);">Chưa có học sinh nào được cấp quyền Trợ lý AI</div>
+                            <div style="font-size:11px;margin-top:4px;">Bấm nút "+ Cấp thêm AI" ở bảng Lớp 5 bên trên hoặc nhập ở form để cấp quyền AI.</div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                aiTbody.innerHTML = aiList.map((item) => {
+                    const hasG5 = item.role === 'all';
+                    const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
+                    const ipDisplay = item.ip 
+                        ? `<code style="font-size:11px;font-weight:600;color:var(--text);background:var(--surface-3);padding:2px 6px;border-radius:4px;">${esc(item.ip)}</code>`
+                        : `<span class="muted-copy" style="font-size:11px;"><i class="fa-solid fa-link"></i> Khóa theo máy</span>`;
+
+                    const g5StatusHtml = hasG5
+                        ? `<div style="display:inline-flex;align-items:center;gap:4px;">
+                               <span class="status-badge safe" style="font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Đã có Lớp 5</span>
+                               <button type="button" class="button button-sm button-secondary compact" data-toggle-grade5="${esc(item.token)}" title="Tắt quyền Lớp 5 (vẫn giữ AI)" style="font-size:10px;padding:2px 6px;color:var(--muted);"><i class="fa-solid fa-xmark"></i> Tắt Lớp 5</button>
+                           </div>`
+                        : `<button type="button" class="button button-sm button-secondary compact" data-toggle-grade5="${esc(item.token)}" title="Cấp quyền Lớp 5 cho học sinh này (dùng chung mã/IP)" style="font-size:11px;color:var(--emerald);border-color:rgba(16,185,129,0.3);padding:3px 8px;">
+                               <i class="fa-solid fa-graduation-cap"></i> + Cấp Lớp 5
+                           </button>`;
+
+                    return `
+                        <tr>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span class="stack-item-icon" style="color:var(--primary);background:var(--primary-soft);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
+                                         <i class="fa-solid fa-comments"></i>
+                                    </span>
+                                    <b style="font-size:13px;color:var(--text);">${esc(item.name || 'Học sinh')}</b>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    <code style="font-weight:700;color:var(--primary);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                    <button type="button" class="button button-sm button-secondary compact" data-copy-token-link="${esc(item.token)}" data-token-name="${esc(item.name || '')}" style="font-size:10px;padding:3px 7px;">
+                                        <i class="fa-solid fa-link"></i> Link
+                                    </button>
+                                </div>
+                            </td>
+                            <td>${ipDisplay}</td>
+                            <td>${g5StatusHtml}</td>
+                            <td><small style="color:var(--muted);font-size:11px;">${esc(dateStr)}</small></td>
+                            <td style="text-align:right;">
+                                <button type="button" class="button button-sm button-danger compact" data-revoke-ai="${esc(item.token)}" style="font-size:11px;padding:4px 10px;" title="Thu hồi quyền AI">
+                                    <i class="fa-solid fa-trash-can"></i> Thu hồi
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 3. RENDER BẢNG 3: QUYỀN QUAN SÁT TIẾN TRÌNH (NGƯỜI THEO DÕI)
+        const parentList = list.filter(item => item.role === 'parent' || item.role === 'observer_grade5' || item.role === 'observer');
+        $('parent-observer-count') && ($('parent-observer-count').textContent = parentList.length);
+
+        const parentTbody = $('parent-access-body');
+        if (parentTbody) {
+            if (parentList.length === 0) {
+                parentTbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--muted);">
+                            <div style="font-size:24px;margin-bottom:6px;opacity:0.6;color:var(--amber,#f59e0b);"><i class="fa-solid fa-eye"></i></div>
+                            <div style="font-weight:600;font-size:13px;color:var(--text);">Chưa có Người theo dõi nào được cấp quyền theo dõi</div>
+                            <div style="font-size:11px;margin-top:4px;">Chọn "Quyền Giám Sát Tiến Trình" ở form trên rồi bấm "Kích hoạt quyền cho học sinh" để lấy link theo dõi.</div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                parentTbody.innerHTML = parentList.map((item) => {
+                    const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
+                    const ipDisplay = item.ip 
+                        ? `<code style="font-size:11px;font-weight:600;color:var(--text);background:var(--surface-3);padding:2px 6px;border-radius:4px;">${esc(item.ip)}</code>`
+                        : `<span class="muted-copy" style="font-size:11px;"><i class="fa-solid fa-link"></i> Khóa theo token</span>`;
+
+                    return `
+                        <tr>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span class="stack-item-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">
+                                        <i class="fa-solid fa-user-shield"></i>
+                                    </span>
+                                     <b style="font-size:13px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</b>
+                                     <span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;padding:1px 6px;">Kèm Đề + AI</span>
+                                </div>
+                            </td>
+                            <td>
+                                     <code style="font-weight:700;color:var(--amber,#f59e0b);cursor:pointer;background:var(--surface-3);padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;letter-spacing:0.5px;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code><button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
+                            </td>
+                            <td>${ipDisplay}</td>
+                            <td>
+                                <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:4px 10px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
+                                    <i class="fa-solid fa-copy"></i> Sao chép Link Theo Dõi
+                                </button>
+                            </td>
+                            <td><small style="color:var(--muted);font-size:11px;">${esc(dateStr)}</small></td>
+                            <td style="text-align:right;">
+                                <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:4px 10px;" title="Thu hồi quyền quan sát">
+                                    <i class="fa-solid fa-trash-can"></i> Thu hồi
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+        renderQuickObservers();
+    }
+
+    function renderQuickObservers() {
+        const container = $('quick-observer-list');
+        if (!container) return;
+        const parentList = (state.tokens || []).filter(item => item.role === 'parent' || item.role === 'observer_grade5' || item.role === 'observer');
+        let nextHtml = '';
+        if (parentList.length === 0) {
+            nextHtml = '<p class="muted-copy" style="font-size:12px;margin:4px 0 0 0;"><i class="fa-solid fa-info-circle"></i> Chưa có IP hoặc IP-Token người theo dõi nào. Nhập IP ở ô trên rồi bấm "Cấp Quyền Theo Dõi".</p>';
+        } else {
+            nextHtml = parentList.map(item => {
+                const ipDisplay = item.ip ? `<code style="font-size:10px;padding:2px 5px;background:var(--surface-3);border-radius:4px;">${esc(item.ip)}</code>` : '<span class="muted-copy" style="font-size:10px;">Khóa theo Token</span>';
+                return `
+                    <div class="stack-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--surface-3);border-radius:10px;">
+                        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                            <span style="color:var(--amber,#f59e0b);font-size:12px;"><i class="fa-solid fa-eye"></i></span>
+                            <div style="min-width:0;flex:1;">
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                     <strong style="font-size:12px;color:var(--text);"><span class="observer-status-dot ${observerIsOnline(item) ? 'is-online' : ''}" title="${observerIsOnline(item) ? 'Đang trực tuyến' : 'Không hoạt động'}"></span>${esc(item.name || 'Người theo dõi')}</strong>
+                                    <span style="font-size:10px;color:var(--emerald);background:rgba(16,185,129,0.15);padding:1px 5px;border-radius:4px;font-weight:600;">Xem Đề + AI</span>
+                                     <code style="font-size:11px;color:var(--amber,#f59e0b);font-weight:700;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(item.token)}">${esc(item.token)}</code>
+                                    ${ipDisplay}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                             <button type="button" class="button button-sm button-warning compact" data-copy-parent-link="${esc(item.token)}" style="font-size:11px;padding:3px 8px;background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:700;">
+                                 <i class="fa-solid fa-link"></i> Link
+                             </button>
+                             <button type="button" class="button button-sm button-secondary compact token-copy-icon" data-copy-token-code="${esc(item.token)}" title="Sao chép token" aria-label="Sao chép token"><i class="fa-regular fa-copy"></i></button>
+                            <button type="button" class="button button-sm button-danger compact" data-revoke-parent="${esc(item.token)}" style="font-size:11px;padding:3px 8px;" title="Thu hồi">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        if (state.lastQuickObserversHtml !== nextHtml) {
+            state.lastQuickObserversHtml = nextHtml;
+            container.innerHTML = nextHtml;
+        }
+    }
+
+    async function addQuickObserver() {
+        const inputVal = $('quick-observer-ip')?.value.trim() || '';
+        const nameVal = $('quick-observer-name')?.value.trim() || '';
+        
+        let detectedIp = '';
+        let detectedCode = '';
+
+        const parseCombined = (val) => {
+            if (!val) return;
+            const str = val.trim();
+            if (str.includes('-')) {
+                const parts = str.split('-');
+                const possibleIp = parts[0].trim().replace(/^\[|\]$/g, '');
+                if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(possibleIp)) {
+                    detectedIp = possibleIp.toLowerCase();
+                    detectedCode = parts.slice(1).join('-').trim().toUpperCase();
+                    return;
+                }
+            }
+            const clean = str.replace(/^\[|\]$/g, '').trim();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean.toLowerCase();
+            } else if (clean) {
+                detectedCode = clean.toUpperCase();
+            }
+        };
+
+        if (inputVal) parseCombined(inputVal);
+        if (!detectedCode) {
+            detectedCode = generateRandomToken('OBS');
+        }
+
+        const rawCode = detectedCode;
+        const ip = detectedIp || '';
+        const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+        const observerName = nameVal || (ip ? `Người theo dõi (${ip})` : `Người theo dõi (${rawCode})`);
+
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+        const existingIdx = state.tokens.findIndex(t => t.token === combinedToken || (rawCode && t.rawCode === rawCode) || (ip && t.ip === ip && t.role === 'parent'));
+
+        const tokenRecord = {
+            token: combinedToken,
+            rawCode: rawCode,
+            role: 'parent',
+            name: observerName,
+            ip: ip || null,
+            createdAt: new Date().toISOString()
+        };
+
+        if (existingIdx !== -1) {
+            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...tokenRecord };
+        } else {
+            state.tokens.unshift(tokenRecord);
+        }
+
+        await saveTokens();
+
+        if ($('quick-observer-ip')) $('quick-observer-ip').value = '';
+        if ($('quick-observer-name')) $('quick-observer-name').value = '';
+
+        renderUnifiedAccess();
+        renderQuickObservers();
+
+        const observerLink = buildAppUrl(`?token=${encodeURIComponent(combinedToken)}&view=progress`);
+        try {
+            await navigator.clipboard.writeText(observerLink);
+            notify(`✅ Đã cấp quyền người giám sát (kèm xem đề + AI): "${combinedToken}"!\n📋 Đã tự động sao chép Link Theo Dõi.`);
+        } catch (e) {
+            prompt('Sao chép Link Theo Dõi gửi người giám sát:', observerLink);
+        }
+    }
+
+    function renderTokens() {
+        renderUnifiedAccess();
+    }
+
+    function isIpOnlyTokenRecord(t) {
+        if (!t) return false;
+        const tCode = String(t.token || '').trim().toLowerCase();
+        const tRaw = String(t.rawCode || '').trim().toLowerCase();
+        const tIp = String(t.ip || '').trim().toLowerCase();
+        if (!tIp) return false;
+        return (!tRaw || tRaw === tIp) && (!tCode || tCode === tIp);
+    }
+
+    function hasOtherTokenWithRoleOnIp(ip, excludeToken, roles, ipOnlyOnly = false) {
+        const cleanIp = String(ip || '').trim().toLowerCase();
+        if (!cleanIp) return false;
+        return (state.tokens || []).some(t =>
+            t.token !== excludeToken &&
+            String(t.ip || '').trim().toLowerCase() === cleanIp &&
+            roles.includes(t.role) &&
+            (!ipOnlyOnly || isIpOnlyTokenRecord(t))
+        );
+    }
+
+    async function toggleStudentAi(token) {
+        const item = (state.tokens || []).find(t => t.token === token);
+        if (!item) return notify('Không tìm thấy học sinh này.', true);
+
+        if (item.role === 'grade5') {
+            item.role = 'all';
+            if (item.ip) {
+                state.aiIps = Array.isArray(state.aiIps) ? state.aiIps : [];
+                if (!state.aiIps.some(x => (typeof x === 'string' ? x : x.ip) === item.ip)) {
+                    state.aiIps.push({ ip: item.ip, name: item.name });
+                    await saveAiIps();
+                }
+            }
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`✅ Đã cấp thêm quyền Trợ lý AI cho ${item.name} (dùng chung token ${item.token})!`);
+        } else if (item.role === 'all') {
+            const confirmed = await confirmDialog({
+                title: 'Tắt quyền Trợ lý AI?',
+                message: `Bạn có chắc muốn tắt quyền Trợ lý AI của học sinh "${item.name}" không?\n(Học sinh này vẫn sẽ giữ nguyên quyền Lớp 5).`,
+                confirmText: 'Tắt quyền AI',
+                variant: 'danger',
+                 icon: 'fa-sliders'
+            });
+            if (!confirmed) return;
+
+            item.role = 'grade5';
+            if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['ai', 'all'])) {
+                state.aiIps = (state.aiIps || []).filter(x => (typeof x === 'string' ? x : x.ip) !== item.ip);
+                await saveAiIps();
+            }
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã tắt quyền Trợ lý AI của ${item.name}, vẫn giữ quyền Lớp 5.`);
+        }
+    }
+
+    async function toggleStudentGrade5(token) {
+        const item = (state.tokens || []).find(t => t.token === token);
+        if (!item) return notify('Không tìm thấy học sinh này.', true);
+
+        if (item.role === 'ai') {
+            item.role = 'all';
+            if (item.ip && isIpOnlyTokenRecord(item)) {
+                state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
+                if (!state.geo.grade5Ips.includes(item.ip)) {
+                    state.geo.grade5Ips.push(item.ip);
+                    await saveGeo();
+                }
+            }
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`✅ Đã cấp thêm quyền Lớp 5 cho ${item.name} (dùng chung token ${item.token})!`);
+        } else if (item.role === 'all') {
+            const confirmed = await confirmDialog({
+                title: 'Tắt quyền Lớp 5?',
+                message: `Bạn có chắc muốn tắt quyền Lớp 5 của học sinh "${item.name}" không?\n(Học sinh này sẽ chỉ còn quyền Trợ lý AI).`,
+                confirmText: 'Tắt Lớp 5',
+                variant: 'danger',
+                icon: 'fa-shield-halved'
+            });
+            if (!confirmed) return;
+
+            item.role = 'ai';
+            if (item.ip && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'], true)) {
+                state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
+                await saveGeo();
+            }
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã tắt quyền Lớp 5 của ${item.name}, vẫn giữ quyền Trợ lý AI.`);
+        }
+    }
+
+    async function revokeStudentGrade5(token) {
+        const item = (state.tokens || []).find(t => t.token === token);
+        if (!item) return;
+
+        if (!(await confirmDialog({
+            title: 'Thu hồi quyền Lớp 5?',
+            message: `Bạn có chắc muốn thu hồi quyền truy cập Lớp 5 của ${item.name || 'học sinh'}?`,
+            confirmText: 'Thu hồi quyền Lớp 5',
+            variant: 'danger',
+            icon: 'fa-trash-can'
+        }))) return;
+
+        if (item.ip && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(item.ip, token, ['grade5', 'all'], true)) {
+            state.geo.grade5Ips = (state.geo.grade5Ips || []).filter(ip => ip !== item.ip);
+            await saveGeo();
+        }
+
+        if (item.role === 'all') {
+            item.role = 'ai';
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã thu hồi quyền Lớp 5 của ${item.name}, vẫn giữ quyền AI.`);
+        } else {
+            if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
+            }
+        }
+
+        state.tokens = (state.tokens || []).filter(t => t.token !== token);
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã thu hồi quyền Lớp 5 của ${item.name}.`);
+        }
+    }
+
+    async function revokeStudentAi(token) {
+        const item = (state.tokens || []).find(t => t.token === token);
+        if (!item) return;
+
+        if (!(await confirmDialog({
+            title: 'Thu hồi quyền Trợ lý AI?',
+            message: `Bạn có chắc muốn thu hồi quyền sử dụng Trợ lý AI của ${item.name || 'học sinh'}?`,
+            confirmText: 'Thu hồi quyền AI',
+            variant: 'danger',
+            icon: 'fa-trash-can'
+        }))) return;
+
+        if (item.ip && !hasOtherTokenWithRoleOnIp(item.ip, token, ['ai', 'all'])) {
+            state.aiIps = (state.aiIps || []).filter(x => (typeof x === 'string' ? x : x.ip) !== item.ip);
+            await saveAiIps();
+        }
+
+        if (item.role === 'all') {
+            item.role = 'grade5';
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã thu hồi quyền Trợ lý AI của ${item.name}, vẫn giữ quyền Lớp 5.`);
+        } else {
+            if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
+            }
+        }
+
+        state.tokens = (state.tokens || []).filter(t => t.token !== token);
+            await saveTokens();
+            renderUnifiedAccess();
+            notify(`Đã thu hồi quyền Trợ lý AI của ${item.name}.`);
+        }
+    }
+
+    async function grantStudentAccess() {
+        const name = $('student-access-name')?.value.trim();
+        const customCode = $('student-access-code')?.value.trim() || '';
+        const role = $('student-access-role')?.value || 'grade5';
+        let rawIp = $('student-access-ip')?.value.trim() || '';
+
+        // Tự động tách nếu Admin dán chuỗi kết hợp dạng "14.164.221.205-QM-KM9SZG" hoặc chỉ dán IP vào bất kỳ ô nào
+        let detectedIp = '';
+        let detectedCode = '';
+
+        const parseCombined = (val) => {
+            if (!val) return;
+            const str = val.trim();
+            if (str.includes('-')) {
+                const parts = str.split('-');
+                const possibleIp = parts[0].trim().replace(/^\[|\]$/g, '');
+                if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(possibleIp)) {
+                    detectedIp = possibleIp.toLowerCase();
+                    detectedCode = parts.slice(1).join('-').trim().toUpperCase();
+                    return;
+                }
+            }
+            const clean = str.replace(/^\[|\]$/g, '').trim();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean.toLowerCase();
+            } else if (clean) {
+                detectedCode = clean.toUpperCase();
+            }
+        };
+
+        parseCombined(customCode);
+        if (!detectedIp && rawIp) parseCombined(rawIp);
+        if (rawIp && !detectedIp) {
+            const clean = rawIp.replace(/^\[|\]$/g, '').trim().toLowerCase();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean;
+            }
+        }
+
+        if (!detectedIp && !detectedCode) {
+            if (role === 'parent') {
+                detectedCode = generateRandomToken('PARENT');
+            } else if (role === 'admin') {
+                detectedCode = generateRandomToken('ADMIN');
+            } else {
+                return notify('Vui lòng dán Mã xác thực (IP-Mã máy) hoặc Địa chỉ IP của học sinh.', true);
+            }
+        }
+
+        const ip = detectedIp || '';
+        const rawCode = detectedCode || generateRandomToken(role === 'all' ? 'VIP' : (role === 'ai' ? 'AI' : (role === 'parent' ? 'OBS' : (role === 'admin' ? 'ADMIN' : 'QM'))));
+        const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+        const studentName = name || (role === 'parent' ? 'Người theo dõi' : (role === 'admin' ? 'Quản trị viên' : (detectedCode ? `Học sinh (${detectedCode})` : (detectedIp ? `Học sinh (${detectedIp})` : 'Học sinh mới'))));
+
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+
+        // Tìm xem token / mã kết hợp đã có trong danh sách chưa.
+        // Nếu có mã máy riêng (detectedCode), chỉ cập nhật đúng máy đó — không ghi đè máy khác cùng IP.
+        const existingIdx = state.tokens.findIndex(t => {
+            const tCode = String(t.token || '').toUpperCase();
+            const tRaw = String(t.rawCode || '').toUpperCase();
+            const tIp = String(t.ip || '').toLowerCase();
+            if (combinedToken && tCode === combinedToken.toUpperCase()) return true;
+            if (detectedCode && rawCode && (tRaw === rawCode || tCode === rawCode)) return true;
+            if (!detectedCode && ip && tIp === ip && isIpOnlyTokenRecord(t)) return true;
+            return false;
+        });
+
+        const allowedSubjects = Array.from(document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]:checked')).map((cb) => cb.value).filter(Boolean);
+        const record = {
+            token: combinedToken,
+            rawCode: rawCode,
+            role,
+            name: studentName,
+            ip: ip || null,
+            allowedSubjects,
+            createdAt: new Date().toISOString()
+        };
+
+        if (existingIdx !== -1) {
+            const prevAllowed = Array.isArray(state.tokens[existingIdx].allowedSubjects) ? state.tokens[existingIdx].allowedSubjects : [];
+            state.tokens[existingIdx] = {
+                ...state.tokens[existingIdx],
+                ...record,
+                allowedSubjects: allowedSubjects.length ? allowedSubjects : prevAllowed,
+                updatedAt: new Date().toISOString()
+            };
+        } else {
+            state.tokens.unshift(record);
+        }
+
+        await saveTokens();
+
+        if (ip) {
+            if ((role === 'grade5' || role === 'all') && !detectedCode) {
+                state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
+                if (!state.geo.grade5Ips.includes(ip)) {
+                    state.geo.grade5Ips.push(ip);
+                }
+                await saveGeo();
+            }
+            if (role === 'ai' || role === 'all') {
+                state.aiIps = Array.isArray(state.aiIps) ? state.aiIps : [];
+                if (!state.aiIps.some(item => (typeof item === 'string' ? item : item.ip) === ip)) {
+                    state.aiIps.push({ ip, name: studentName });
+                    await saveAiIps();
+                }
+            }
+            if (role === 'admin') {
+                state.adminConfig = state.adminConfig || { masterIp: '', allowedIps: [] };
+                state.adminConfig.allowedIps = Array.isArray(state.adminConfig.allowedIps) ? state.adminConfig.allowedIps : [];
+                if (!state.adminConfig.allowedIps.some(it => (typeof it === 'string' ? it : (it.token || it.ip)) === combinedToken)) {
+                    state.adminConfig.allowedIps.push({
+                        ip: ip || null,
+                        token: combinedToken,
+                        rawCode: rawCode,
+                        name: studentName,
+                        addedAt: new Date().toISOString()
+                    });
+                    await saveAdminConfig();
+                    renderAccess();
+                }
+            }
+        }
+
+        if ($('student-access-name')) $('student-access-name').value = '';
+        if ($('student-access-code')) $('student-access-code').value = '';
+        if ($('student-access-ip')) $('student-access-ip').value = '';
+        document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+
+        renderUnifiedAccess();
+
+        const roleDesc = role === 'all' ? 'Toàn bộ gói VIP (Lớp 5 + AI)' : (role === 'student' ? 'Phân môn riêng' : (role === 'ai' ? 'Trợ lý AI' : (role === 'parent' ? 'Giám Sát Tiến Trình (Kèm Xem Đề + AI)' : (role === 'admin' ? 'Quản Trị Viên (Toàn quyền Admin)' : 'Lớp 5'))));
+        notify(`✅ Đã kích hoạt quyền ${roleDesc} cho thiết bị "${record.token}" (${studentName})!`);
+    }
+
+    async function addTokenFromForm() {
+        return grantStudentAccess();
+    }
+
+    async function removeStudentAccess(token) {
+        const item = (state.tokens || []).find(t => t.token === token);
+        const studentName = item?.name || 'học sinh này';
+        if (!(await confirmDialog({
+            title: 'Thu hồi quyền truy cập?',
+            message: `Bạn có chắc muốn thu hồi toàn bộ quyền của ${studentName} (mã: ${token})?\nHọc sinh sẽ không thể tiếp tục truy cập môn Lớp 5 hoặc AI.`,
+            confirmText: 'Thu hồi quyền',
+            variant: 'danger',
+            icon: 'fa-trash-can'
+        }))) return;
+
+        if (item?.ip) {
+            const cleanIp = item.ip;
+            if (state.geo?.grade5Ips && isIpOnlyTokenRecord(item) && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['grade5', 'all'], true)) {
+                state.geo.grade5Ips = state.geo.grade5Ips.filter(ip => ip !== cleanIp);
+                await saveGeo();
+            }
+            if (state.aiIps && !hasOtherTokenWithRoleOnIp(cleanIp, token, ['ai', 'all'])) {
+                state.aiIps = state.aiIps.filter(i => (typeof i === 'string' ? i : i.ip) !== cleanIp);
+                await saveAiIps();
+            }
+        }
+
+        if (item?.role === 'admin' && Array.isArray(state.adminConfig?.allowedIps)) {
+            const beforeLen = state.adminConfig.allowedIps.length;
+            state.adminConfig.allowedIps = state.adminConfig.allowedIps.filter((it) => {
+                if (typeof it === 'string') return it !== token && (!isIpOnlyTokenRecord(item) || it !== item.ip);
+                if (it.token && it.token === token) return false;
+                if (item.rawCode && it.rawCode && it.rawCode === item.rawCode) return false;
+                if (isIpOnlyTokenRecord(item) && item.ip && it.ip === item.ip && !it.token) return false;
+                return true;
+            });
+            if (state.adminConfig.allowedIps.length !== beforeLen) {
+                await saveAdminConfig();
+                renderAccess();
+            }
+        }
+
+        state.tokens = (state.tokens || []).filter(t => t.token !== token);
+        await saveTokens();
+        renderUnifiedAccess();
+        notify(`Đã thu hồi quyền của ${studentName}.`);
+    }
+
+    async function removeAccessToken(token) {
+        return removeStudentAccess(token);
+    }
+
+    async function loadAccess() {
+        const row = await systemRow(SYSTEM.admin);
+        if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.adminConfig = { masterIp: data.masterIp || '', allowedIps: data.allowedIps || [] }; } catch (error) {} }
+        const aiRow = await systemRow(SYSTEM.aiIps);
+        if (aiRow?.status === 'ACTIVE') { try { const data = JSON.parse(aiRow.score_summary || '[]'); state.aiIps = Array.isArray(data) ? data : data.ips || []; } catch (error) { state.aiIps = []; } } else state.aiIps = [];
+        const geoRow = await systemRow(SYSTEM.geo);
+        if (geoRow) { try { const data = JSON.parse(geoRow.score_summary || '{}'); state.geo = { mode: data.mode || geoRow.device_info || 'PUBLIC', ips: data.ips || [], grade5Ips: data.grade5Ips || data.grade5_ips || [] }; } catch (error) {} }
+        await loadTokens();
+
+        // Đồng bộ các IP từ GEO (Lớp 5) và AI vào danh sách Token nếu chưa xuất hiện
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+        (state.geo.grade5Ips || []).forEach(ip => {
+            const cleanIp = String(ip).trim().toLowerCase();
+            if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
+                const existing = state.tokens.find(t => isIpOnlyTokenRecord(t) && (String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp));
+                if (!existing) {
+                    state.tokens.push({
+                        token: cleanIp,
+                        rawCode: cleanIp,
+                        role: 'grade5',
+                        name: `Học sinh Lớp 5 (${cleanIp})`,
+                        ip: cleanIp,
+                        createdAt: new Date().toISOString()
+                    });
+                }
+            }
+        });
+
+        (state.aiIps || []).forEach(item => {
+            const cleanIp = String(typeof item === 'string' ? item : item?.ip || '').trim().toLowerCase();
+            const name = typeof item === 'string' ? '' : (item?.name || '');
+            if (cleanIp && !['127.0.0.1', '::1'].includes(cleanIp)) {
+                const existing = state.tokens.find(t => String(t.ip || '').toLowerCase() === cleanIp || String(t.token || '').toLowerCase() === cleanIp);
+                if (existing) {
+                    const hasOtherAi = state.tokens.some(t => String(t.ip || '').toLowerCase() === cleanIp && (t.role === 'ai' || t.role === 'all'));
+                    if (existing.role === 'grade5' && (isIpOnlyTokenRecord(existing) || !hasOtherAi)) {
+                        existing.role = 'all';
+                    }
+                } else {
+                    state.tokens.push({
+                        token: cleanIp,
+                        rawCode: cleanIp,
+                        role: 'ai',
+                        name: name || `Học sinh AI (${cleanIp})`,
+                        ip: cleanIp,
+                        createdAt: new Date().toISOString()
+                    });
+                }
+            }
+        });
+
+        renderAccess();
+    }
+
+    const normalizeRoster = (value) => {
+        const source = value && typeof value === 'object' ? value : {};
+        const normalizeRenameRequests = (candidate) => {
+            if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return {};
+            return Object.entries(candidate).reduce((result, [code, request]) => {
+                const upperCode = String(code || '').trim().toUpperCase();
+                if (!/^QM-[A-Z0-9]{4,}$/i.test(upperCode) || !request || typeof request !== 'object') return result;
+                result[upperCode] = {
+                    requestedAt: String(request.requestedAt || ''),
+                    oldName: String(request.oldName || '').trim(),
+                    reason: String(request.reason || '').trim()
+                };
+                return result;
+            }, {});
+        };
+        if (typeof window.normalizeRosterConfig === 'function') {
+            const normalized = window.normalizeRosterConfig(value) || {};
+            return {
+                ...normalized,
+                renameRequests: normalizeRenameRequests(normalized.renameRequests || source.renameRequests)
+            };
+        }
+        const grade = (key) => {
+            const item = source[key] || {};
+            const students = Array.isArray(item.students) ? item.students : Array.isArray(item.names) ? item.names : [];
+            const seen = new Set();
+            const cleanStudents = students.map((name) => String(name || '').replace(/\s+/g, ' ').trim()).filter((name) => {
+                const k = name.toLowerCase();
+                if (!k || seen.has(k)) return false;
+                seen.add(k);
+                return true;
+            });
+            const allowRaw = item.allowGuestsInPractice ?? item.allowGuests ?? item.allow_guests;
+            return {
+                enabled: Boolean(item.enabled),
+                allowGuestsInPractice: allowRaw === undefined ? true : Boolean(allowRaw),
+                students: cleanStudents
+            };
+        };
+        return { grade5: grade('grade5'), grade11: grade('grade11'), devicePins: source.devicePins && typeof source.devicePins === 'object' ? source.devicePins : {}, renameRequests: normalizeRenameRequests(source.renameRequests) };
+    };
+    function renderRosterConfig() {
+        const config = state.rosterConfig || normalizeRoster({});
+        [['5', config.grade5], ['11', config.grade11]].forEach(([grade, item]) => {
+            const text = $(`roster-grade${grade}-textarea`);
+            if (text && document.activeElement !== text) text.value = (item.students || []).join('\n');
+            $(`roster-grade${grade}-enabled`) && ($(`roster-grade${grade}-enabled`).checked = Boolean(item.enabled));
+            $(`roster-grade${grade}-allow-guests`) && ($(`roster-grade${grade}-allow-guests`).checked = Boolean(item.allowGuestsInPractice !== false));
+            const count = text && document.activeElement === text ? String(text.value || '').split(/\r?\n/).map((name) => name.trim()).filter(Boolean).length : (item.students || []).length;
+            $(`roster-grade${grade}-count`) && ($(`roster-grade${grade}-count`).textContent = `${count} học sinh`);
+        });
+        const pins = state.devicePins || {};
+        $('device-pins-count') && ($('device-pins-count').textContent = `${Object.keys(pins).length} mã máy`);
+        $('device-pins-list') && ($('device-pins-list').innerHTML = Object.entries(pins).sort().map(([code, name]) => `<div class="device-pin-item"><code>[${esc(code)}]</code><b>${esc(name)}</b><button type="button" class="table-action danger" data-unpin-device-code="${esc(code)}" title="Bỏ ghim"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa có mã máy được ghim.</p>');
+    }
+    async function loadRosterConfig() {
+        let payload = null;
+        try { payload = await window.dbService?.fetchRosterConfig?.(); } catch (error) { console.warn('[Quiz Studio Admin] Không tải được roster qua dbService:', error); }
+        if (!payload) {
+            try { payload = JSON.parse(localStorage.getItem('quiz_roster_config') || 'null'); } catch (error) { payload = null; }
+        }
+        if (!payload) {
+            const row = await systemRow(SYSTEM.roster);
+            if (row?.score_summary) { try { payload = JSON.parse(row.score_summary); } catch (error) {} }
+        }
+        const normalized = normalizeRoster(payload || {});
+        state.rosterConfig = { grade5: normalized.grade5, grade11: normalized.grade11 };
+        state.devicePins = normalized.devicePins || {};
+        state.renameRequests = normalized.renameRequests || {};
+        renderRosterConfig();
+    }
+    async function persistRosterPayload(payload, toastMessage = '') {
+        const source = payload && typeof payload === 'object' ? payload : {};
+        const normalized = normalizeRoster({ ...source, renameRequests: source.renameRequests ?? state.renameRequests ?? {} });
+        state.rosterConfig = { grade5: normalized.grade5, grade11: normalized.grade11 };
+        state.devicePins = normalized.devicePins || {};
+        state.renameRequests = normalized.renameRequests || {};
+        let savedViaService = false;
+        if (typeof window.dbService?.saveRosterConfig === 'function') {
+            await window.dbService.saveRosterConfig(normalized);
+            savedViaService = true;
+        }
+        if (!savedViaService && state.client) {
+            const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.roster, player_name: '__SYSTEM_ROSTER__', ip_address: 'SYSTEM', device_info: 'ROSTER_CONFIG', status: 'ACTIVE', score_summary: JSON.stringify(normalized), last_active: new Date().toISOString() }, { onConflict: 'id' });
+            if (error) throw error;
+        }
+        try { localStorage.setItem('quiz_roster_config', JSON.stringify(normalized)); } catch (error) {}
+        renderRosterConfig();
+        if (toastMessage) notify(toastMessage);
+    }
+    async function saveRosterFromAccessView() {
+        const clean = (grade) => String($(`roster-grade${grade}-textarea`)?.value || '').split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
+        const payload = normalizeRoster({
+            grade5: { enabled: Boolean($('roster-grade5-enabled')?.checked), allowGuestsInPractice: $('roster-grade5-allow-guests') ? Boolean($('roster-grade5-allow-guests').checked) : true, students: clean('5') },
+            grade11: { enabled: Boolean($('roster-grade11-enabled')?.checked), allowGuestsInPractice: $('roster-grade11-allow-guests') ? Boolean($('roster-grade11-allow-guests').checked) : true, students: clean('11') },
+            devicePins: state.devicePins || {},
+            renameRequests: state.renameRequests || {}
+        });
+        await persistRosterPayload(payload, 'Đã lưu danh sách lớp và cấu hình người ngoài lớp.');
+    }
+    async function syncPinnedNamesToLogins(targetPins = state.devicePins) {
+        if (!state.client) return 0;
+        const pinEntries = Object.entries(targetPins || {})
+            .map(([code, name]) => [String(code || '').trim().toUpperCase(), String(name || '').replace(/\s+/g, ' ').trim()])
+            .filter(([code, name]) => /^QM-[A-Z0-9]{4,}$/i.test(code) && name && !name.startsWith('__'));
+        if (!pinEntries.length) return 0;
+        const pinsMap = new Map(pinEntries);
+        const systemIds = new Set(Object.values(SYSTEM || {}));
+        const updatesByName = new Map();
+        const pageSize = 500;
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await state.client
+                .from('quiz_logins')
+                .select('id, player_name, device_info, status, ip_address')
+                .ilike('device_info', '%[QM-%')
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            const rows = Array.isArray(data) ? data : [];
+            for (const row of rows) {
+                if (!row || !row.id || systemIds.has(row.id)) continue;
+                const currentName = String(row.player_name || '').trim();
+                const ip = String(row.ip_address || '').trim();
+                const status = String(row.status || '').trim();
+                if (currentName.startsWith('__') || ip === 'SYSTEM' || /^BANNED/i.test(status)) continue;
+                const devCode = extractDeviceCode(row.device_info);
+                const pinnedName = devCode ? pinsMap.get(devCode) : '';
+                if (!pinnedName || currentName === pinnedName) continue;
+                if (!updatesByName.has(pinnedName)) updatesByName.set(pinnedName, []);
+                updatesByName.get(pinnedName).push(row.id);
+            }
+            if (rows.length < pageSize) break;
+        }
+        let updatedCount = 0;
+        for (const [targetName, ids] of updatesByName.entries()) {
+            for (let i = 0; i < ids.length; i += 50) {
+                const chunk = ids.slice(i, i + 50);
+                const { error } = await state.client
+                    .from('quiz_logins')
+                    .update({ player_name: targetName })
+                    .in('id', chunk);
+                if (error) throw error;
+                updatedCount += chunk.length;
+            }
+        }
+        if (updatedCount > 0) {
+            try { localStorage.removeItem('quiz_local_logins_history'); } catch (e) {}
+        }
+        return updatedCount;
+    }
+    async function saveDevicePin(code, name) {
+        const cleanCode = extractDeviceCode(`[${String(code || '').trim()}]`) || String(code || '').trim().toUpperCase().replace(/^\[|\]$/g, '');
+        const cleanName = String(name || '').replace(/\s+/g, ' ').trim();
+        if (!/^QM-[A-Z0-9]{4,}$/i.test(cleanCode) || !cleanName || cleanName.startsWith('__')) {
+            return notify('Nhập đúng mã máy QM-XXXXXX và họ tên thật.', true);
+        }
+        const upperCode = cleanCode.toUpperCase();
+        const nextPins = { ...(state.devicePins || {}), [upperCode]: cleanName };
+        const payload = normalizeRoster({
+            grade5: state.rosterConfig?.grade5 || { enabled: false, allowGuestsInPractice: true, students: [] },
+            grade11: state.rosterConfig?.grade11 || { enabled: false, allowGuestsInPractice: true, students: [] },
+            devicePins: nextPins,
+            renameRequests: state.renameRequests || {}
+        });
+        await persistRosterPayload(payload, '');
+        let updatedCount = 0;
+        try {
+            updatedCount = await syncPinnedNamesToLogins({ [upperCode]: cleanName });
+        } catch (err) {
+            console.warn('[Quiz Studio Admin] Không thể đồng bộ đổi tên các bản ghi cũ:', err);
+        }
+        if (Array.isArray(state.reportRows)) {
+            state.reportRows = state.reportRows.map((item) => extractDeviceCode(item?.device_info) === upperCode ? { ...item, name: cleanName } : item);
+            renderLeaderboard();
+        }
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        notify(`Đã ghim tên "${cleanName}" cho [${upperCode}]${updatedCount > 0 ? ` và đổi tên ${updatedCount} bản ghi cũ.` : '.'}`);
+    }
+    async function mergeDevicesToName(codes, name) {
+        const cleanCodes = [...new Set((Array.isArray(codes) ? codes : []).map((code) => extractDeviceCode(`[${String(code || '').trim()}]`) || String(code || '').trim().toUpperCase()).filter((code) => /^QM-[A-Z0-9]{4,}$/i.test(code)))].map((code) => code.toUpperCase());
+        const cleanName = String(name || '').replace(/\s+/g, ' ').trim();
+        if (!cleanCodes.length || !cleanName || cleanName.startsWith('__')) return notify('Chưa đủ mã máy hoặc tên hợp lệ để gộp.', true);
+        const nextPins = { ...(state.devicePins || {}) };
+        cleanCodes.forEach((code) => { nextPins[code] = cleanName; });
+        const payload = normalizeRoster({ grade5: state.rosterConfig?.grade5 || { enabled: false, allowGuestsInPractice: true, students: [] }, grade11: state.rosterConfig?.grade11 || { enabled: false, allowGuestsInPractice: true, students: [] }, devicePins: nextPins, renameRequests: state.renameRequests || {} });
+        await persistRosterPayload(payload, '');
+        let updatedCount = 0;
+        try { updatedCount = await syncPinnedNamesToLogins(Object.fromEntries(cleanCodes.map((code) => [code, cleanName]))); } catch (err) { console.warn('[Quiz Studio Admin] Không thể đồng bộ đổi tên các bản ghi cũ:', err); }
+        if (Array.isArray(state.reportRows)) {
+            const codeSet = new Set(cleanCodes);
+            state.reportRows = state.reportRows.map((item) => codeSet.has(extractDeviceCode(item?.device_info)) ? { ...item, name: cleanName } : item);
+            renderLeaderboard();
+        }
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        notify(`Đã gộp và ghim tên "${cleanName}" cho ${cleanCodes.length} mã máy${updatedCount ? `, đổi tên ${updatedCount} bản ghi cũ` : ''}.`);
+    }
+    async function unpinDevicePin(code) {
+        const upperCode = String(code || '').trim().toUpperCase().replace(/^\[|\]$/g, '');
+        const nextPins = { ...(state.devicePins || {}) };
+        delete nextPins[upperCode];
+        const payload = normalizeRoster({
+            grade5: state.rosterConfig?.grade5 || { enabled: false, allowGuestsInPractice: true, students: [] },
+            grade11: state.rosterConfig?.grade11 || { enabled: false, allowGuestsInPractice: true, students: [] },
+            devicePins: nextPins,
+            renameRequests: state.renameRequests || {}
+        });
+        await persistRosterPayload(payload, `Đã bỏ ghim mã máy [${upperCode}].`);
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+    }
+
+    async function toggleRequireRename(code, currentName = '') {
+        const upperCode = String(code || '').trim().toUpperCase().replace(/^\[|\]$/g, '');
+        if (!/^QM-[A-Z0-9]{4,}$/i.test(upperCode)) return notify('Mã máy không hợp lệ.', true);
+        const nextReqs = { ...(state.renameRequests || {}) };
+        if (nextReqs[upperCode]) {
+            const confirmed = await confirmDialog({ title: 'Hủy yêu cầu đổi tên?', message: 'Mã máy [' + upperCode + '] đang được yêu cầu nhập lại tên thật. Bạn có muốn hủy yêu cầu này?', confirmText: 'Hủy yêu cầu', icon: 'fa-user-check' });
+            if (!confirmed) return;
+            delete nextReqs[upperCode];
+            await persistRosterPayload({ grade5: state.rosterConfig?.grade5, grade11: state.rosterConfig?.grade11, devicePins: state.devicePins || {}, renameRequests: nextReqs });
+            await loadStudents();
+            await renderGrade5ProgressMonitor();
+            notify('Đã hủy yêu cầu đổi tên cho [' + upperCode + '].');
+            return;
+        }
+        const reason = await promptDialog({ title: 'Bắt nhập lại tên thật [' + upperCode + ']', message: 'Lần tới máy [' + upperCode + '] mở web sẽ bị khóa màn hình bắt nhập lại đúng Họ và Tên thật (và tự đổi tên các lượt làm bài cũ):', defaultValue: 'Tên hiện tại chưa đúng Họ và Tên thật. Vui lòng nhập hoặc chọn đúng Họ và Tên thật của bạn để tiếp tục làm bài!', confirmText: 'Gửi yêu cầu đổi tên', icon: 'fa-user-pen' });
+        if (reason === null) return;
+        nextReqs[upperCode] = { requestedAt: new Date().toISOString(), oldName: String(currentName || '').trim(), reason: String(reason || '').trim() };
+        await persistRosterPayload({ grade5: state.rosterConfig?.grade5, grade11: state.rosterConfig?.grade11, devicePins: state.devicePins || {}, renameRequests: nextReqs });
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        notify('Đã bật khóa bắt nhập lại tên thật cho [' + upperCode + '].');
+    }
+
+    function renderAccess() {
+        const allowed = state.adminConfig.allowedIps || [];
+        const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
+        const masterDev = String(state.adminConfig.masterDeviceCode || '').trim().toUpperCase();
+        if ($('access-current-device')) $('access-current-device').textContent = myDeviceCode || 'Chưa có';
+        const lockStatusEl = $('access-device-lock-status');
+        if (lockStatusEl) {
+            if (masterDev) {
+                const isThisMachine = myDeviceCode && masterDev === myDeviceCode;
+                lockStatusEl.textContent = isThisMachine
+                    ? `Đã khóa quyền Admin vào đúng mã máy này (${masterDev}). Điện thoại hoặc máy khác cùng WiFi sẽ hiển thị như học sinh bình thường.`
+                    : `Quyền Master Admin đang khóa theo mã máy ${masterDev}. Bấm nút bên phải để chuyển sang máy hiện tại (${myDeviceCode}).`;
+            } else {
+                lockStatusEl.textContent = 'Đang nhận diện theo IP mạng (điện thoại chung WiFi sẽ lên Admin). Bấm "Khóa Master vào máy này" để chỉ máy này mới có quyền Admin.';
+            }
+        }
+        const saveMasterBtn = $('save-master-ip');
+        if (saveMasterBtn) {
+            saveMasterBtn.innerHTML = (masterDev && myDeviceCode && masterDev === myDeviceCode)
+                ? '<i class="fa-solid fa-shield-check"></i> Đã khóa vào máy này'
+                : '<i class="fa-solid fa-lock"></i> Khóa Master vào máy này';
+        }
+        $('admin-ip-count') && ($('admin-ip-count').textContent = allowed.length);
+        $('admin-ip-list') && ($('admin-ip-list').innerHTML = allowed.map((item) => {
+            const ip = typeof item === 'string' ? item : (item.ip || '');
+            const deviceCode = typeof item === 'object' ? String(item.deviceCode || '').trim().toUpperCase() : '';
+            const name = typeof item === 'string' ? 'Admin' : (item.name || 'Admin');
+            const token = typeof item === 'object' ? (item.token || item.rawCode || deviceCode || ip) : ip;
+            const isMaster = (typeof item === 'object' && item.isMaster) || (deviceCode && deviceCode === masterDev) || (ip && ip === state.adminConfig.masterIp);
+            const displayCode = esc(token || ip || 'ADMIN-KEY');
+            const deviceBadge = deviceCode
+                ? `<code style="font-size:10px;padding:2px 6px;background:var(--primary-soft);color:var(--primary);border-radius:4px;font-weight:700;">Mã máy: ${esc(deviceCode)}</code>`
+                : '';
+            const ipDisplay = ip
+                ? `<code style="font-size:10px;padding:2px 5px;background:var(--surface-3);border-radius:4px;">${esc(ip)}</code>`
+                : `<span class="muted-copy" style="font-size:10px;"><i class="fa-solid fa-link"></i> Khóa theo Token</span>`;
+
+            const copyBtn = `<button type="button" class="button button-sm button-secondary compact" data-copy-admin-link="${esc(token || ip)}" title="Sao chép link đăng nhập Admin cho thiết bị này" style="font-size:10px;padding:3px 7px;"><i class="fa-solid fa-link"></i> Link</button>`;
+
+            return `
+                <div class="stack-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <span class="stack-item-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;">
+                        <i class="fa-solid fa-crown"></i>
+                    </span>
+                    <span class="stack-item-main" style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <b style="font-size:13px;color:var(--text);">${esc(name)}</b>
+                            ${isMaster ? '<span class="tag" style="background:var(--amber,#f59e0b);color:#1e1b4b;font-weight:800;font-size:10px;">MASTER</span>' : ''}
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+                            <code style="font-weight:700;color:var(--primary);font-size:11px;font-family:monospace;letter-spacing:0.5px;cursor:pointer;" title="Bấm để copy mã" data-copy-token-code="${esc(token || ip)}">${displayCode}</code>
+                            ${deviceBadge}
+                            ${ipDisplay}
+                        </div>
+                    </span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        ${copyBtn}
+                        ${isMaster ? '' : `<button type="button" class="button button-sm button-danger compact" data-remove-admin="${esc(token || ip)}" title="Thu hồi quyền Admin" style="font-size:11px;padding:3px 8px;"><i class="fa-solid fa-trash-can"></i></button>`}
+                    </div>
+                </div>
+            `;
+        }).join('') || '<p class="muted-copy">Chưa có thiết bị Admin phụ.</p>');
+        $('ai-ip-count') && ($('ai-ip-count').textContent = state.aiIps.length);
+        renderUnifiedAccess();
+    }
+
+    async function saveAdminConfig() {
+        const cleanIps = (state.adminConfig.allowedIps || [])
+            .map((item) => typeof item === 'string' ? item : item.ip)
+            .filter(Boolean);
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.admin,
+            player_name: '__ADMIN_IPS_CONFIG__',
+            ip_address: 'SYSTEM',
+            device_info: 'PASSWORDLESS_AUTH',
+            status: 'ACTIVE',
+            score_summary: JSON.stringify({
+                masterIp: state.adminConfig.masterIp,
+                masterDeviceCode: state.adminConfig.masterDeviceCode || '',
+                allowedIps: state.adminConfig.allowedIps,
+                ips: cleanIps
+            }),
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if (error) throw error;
+    }
+    async function handleGrantTokenToStudent(name, ip, deviceInfo = '') {
+        const devMatch = (deviceInfo || '').match(/\[(QM-[A-Z0-9]+)\]/);
+        const deviceCode = devMatch ? devMatch[1] : '';
+
+        const choice = await promptDialog({
+            title: `Cấp quyền cho ${name}?`,
+            message: `Nhập 5 để cấp quyền Lớp 5, AI để cấp quyền AI. ESC/Hủy để thoát.\n${deviceCode ? `Mã thiết bị: ${deviceCode}\n` : ''}${ip ? `IP: ${ip}` : ''}`,
+            placeholder: '5 hoặc AI',
+            defaultValue: '5',
+            confirmText: 'Tiếp tục',
+            cancelText: 'Hủy',
+            variant: 'primary',
+            icon: 'fa-key'
+        });
+        if (choice === null) return;
+        const role = /^ai$/i.test(String(choice).trim()) ? 'ai' : /^5$|grade5/i.test(String(choice).trim()) ? 'grade5' : null;
+        if (!role) return notify('Lựa chọn không hợp lệ.', true);
+        const rawCode = deviceCode || generateRandomToken(role === 'grade5' ? 'QM' : 'AI');
+        const token = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+        const existingIdx = state.tokens.findIndex(t => {
+            const tToken = String(t.token || '').toUpperCase();
+            const tRaw = String(t.rawCode || '').toUpperCase();
+            const tIp = String(t.ip || '').toLowerCase();
+            return (token && tToken === token.toUpperCase()) ||
+                   (rawCode && (tRaw === rawCode.toUpperCase() || tToken === rawCode.toUpperCase())) ||
+                   (ip && tIp === ip.toLowerCase() && (!deviceCode || String(t.name || '').toLowerCase().includes(String(name || '').toLowerCase())));
+        });
+
+        const record = {
+            token,
+            rawCode,
+            role,
+            name: `${name}${deviceCode ? '' : ` (${ip || 'học sinh'})`}`,
+            ip: ip || '',
+            createdAt: new Date().toISOString()
+        };
+
+        if (existingIdx !== -1) {
+            state.tokens[existingIdx] = { ...state.tokens[existingIdx], ...record, updatedAt: new Date().toISOString() };
+        } else {
+            state.tokens.unshift(record);
+        }
+        await saveTokens();
+
+        if (ip) {
+            if (role === 'grade5' && !deviceCode) {
+                if (!state.geo.grade5Ips.includes(ip)) {
+                    state.geo.grade5Ips.push(ip);
+                    await saveGeo();
+                }
+            } else if (role === 'ai') {
+                if (!state.aiIps.some(item => (typeof item === 'string' ? item : item.ip) === ip)) {
+                    state.aiIps.push({ ip, name });
+                    await saveAiIps();
+                }
+            }
+        }
+
+        renderUnifiedAccess();
+        notify(`✅ Đã kích hoạt quyền ${role === 'grade5' ? 'Lớp 5' : 'AI'} cho thiết bị "${token}" (${name})!`);
+    }
+
+    async function addAdminIp() {
+        const inputVal = $('admin-ip-input')?.value.trim() || '';
+        const nameVal = $('admin-ip-name')?.value.trim() || '';
+        if (!inputVal && !nameVal) {
+            return notify('Vui lòng dán IP, Mã máy hoặc nhập Tên để cấp quyền Admin.', true);
+        }
+
+        let detectedIp = '';
+        let detectedCode = '';
+
+        const parseCombined = (val) => {
+            if (!val) return;
+            const str = val.trim();
+            if (str.includes('-')) {
+                const parts = str.split('-');
+                const possibleIp = parts[0].trim().replace(/^\[|\]$/g, '');
+                if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(possibleIp)) {
+                    detectedIp = possibleIp.toLowerCase();
+                    detectedCode = parts.slice(1).join('-').trim().toUpperCase();
+                    return;
+                }
+            }
+            const clean = str.replace(/^\[|\]$/g, '').trim();
+            if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|[0-9a-f:]+)$/i.test(clean)) {
+                detectedIp = clean.toLowerCase();
+            } else if (clean) {
+                detectedCode = clean.toUpperCase();
+            }
+        };
+
+        if (inputVal) parseCombined(inputVal);
+        if (!detectedCode && !detectedIp) {
+            detectedCode = generateRandomToken('ADMIN');
+        } else if (!detectedCode && detectedIp) {
+            detectedCode = generateRandomToken('ADMIN');
+        }
+
+        const rawCode = detectedCode || generateRandomToken('ADMIN');
+        const ip = detectedIp || '';
+        const combinedToken = (ip && rawCode) ? `${ip}-${rawCode}` : rawCode;
+        const adminName = nameVal || (ip ? `Admin (${ip})` : `Admin (${rawCode})`);
+
+        state.adminConfig = state.adminConfig || { masterIp: '', allowedIps: [] };
+        state.adminConfig.allowedIps = Array.isArray(state.adminConfig.allowedIps) ? state.adminConfig.allowedIps : [];
+
+        const existingIdx = state.adminConfig.allowedIps.findIndex(item => {
+            if (typeof item === 'string') return item === ip || item === combinedToken;
+            return (ip && item.ip === ip) || (combinedToken && item.token === combinedToken) || (rawCode && item.rawCode === rawCode);
+        });
+
+        const newAdminItem = {
+            ip: ip || null,
+            token: combinedToken,
+            rawCode: rawCode,
+            name: adminName,
+            addedAt: new Date().toISOString()
+        };
+
+        if (existingIdx !== -1) {
+            state.adminConfig.allowedIps[existingIdx] = { ...state.adminConfig.allowedIps[existingIdx], ...newAdminItem };
+        } else {
+            state.adminConfig.allowedIps.push(newAdminItem);
+        }
+
+        await saveAdminConfig();
+
+        // Đồng bộ thêm vào state.tokens với role: 'admin'
+        state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+        const existingTokenIdx = state.tokens.findIndex(t => t.token === combinedToken || (rawCode && t.rawCode === rawCode));
+        const tokenRecord = {
+            token: combinedToken,
+            rawCode: rawCode,
+            role: 'admin',
+            name: adminName,
+            ip: ip || null,
+            createdAt: new Date().toISOString()
+        };
+        if (existingTokenIdx !== -1) {
+            state.tokens[existingTokenIdx] = { ...state.tokens[existingTokenIdx], ...tokenRecord };
+        } else {
+            state.tokens.unshift(tokenRecord);
+        }
+        await saveTokens();
+
+        if ($('admin-ip-input')) $('admin-ip-input').value = '';
+        if ($('admin-ip-name')) $('admin-ip-name').value = '';
+
+        renderAccess();
+
+        const adminLink = buildAppUrl(`admin.html?token=${encodeURIComponent(combinedToken)}`);
+        try {
+            await navigator.clipboard.writeText(adminLink);
+            notify(`✅ Đã cấp IP-Token Admin: "${combinedToken}"!\nĐã tự động sao chép Link Admin vào bộ nhớ tạm.`);
+        } catch (e) {
+            notify(`✅ Đã cấp IP-Token Admin: "${combinedToken}" cho ${adminName}!`);
+        }
+    }
+
+    async function removeAdminIp(identifier) {
+        if (!identifier) return;
+        if (identifier === state.adminConfig.masterIp) {
+            return notify('Không thể thu hồi Master Admin chính.', true);
+        }
+
+        const item = (state.adminConfig.allowedIps || []).find(it => {
+            if (typeof it === 'string') return it === identifier;
+            return it.ip === identifier || it.token === identifier || it.rawCode === identifier;
+        });
+
+        const targetName = typeof item === 'object' ? item.name || identifier : identifier;
+
+        if (!(await confirmDialog({
+            title: 'Thu hồi quyền Admin?',
+            message: `Bạn có chắc muốn thu hồi quyền Admin của "${targetName}" (${identifier})?\nThiết bị này sẽ không thể truy cập trang quản trị nữa.`,
+            confirmText: 'Thu hồi quyền',
+            variant: 'danger',
+            icon: 'fa-user-lock'
+        }))) return;
+
+        state.adminConfig.allowedIps = (state.adminConfig.allowedIps || []).filter(it => {
+            if (typeof it === 'string') return it !== identifier;
+            return it.ip !== identifier && it.token !== identifier && it.rawCode !== identifier;
+        });
+        await saveAdminConfig();
+
+        state.tokens = (state.tokens || []).filter((t) => {
+            if (t.role !== 'admin') return true;
+            return t.token !== identifier && t.rawCode !== identifier && t.ip !== identifier;
+        });
+        await saveTokens();
+
+        renderAccess();
+        notify(`Đã thu hồi quyền Admin của ${targetName}.`);
+    }
+    async function saveMasterIp() {
+        if (!state.clientIp) return notify('Không xác định được IP hiện tại.', true);
+        const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
+        if (!myDeviceCode) return notify('Không xác định được mã máy hiện tại.', true);
+        const existingIdx = state.adminConfig.allowedIps.findIndex((item) => (
+            typeof item === 'object' ? (item.isMaster || item.ip === state.clientIp || String(item.deviceCode || '').toUpperCase() === myDeviceCode) : item === state.clientIp
+        ));
+        if (existingIdx >= 0) {
+            const existing = state.adminConfig.allowedIps[existingIdx];
+            state.adminConfig.allowedIps[existingIdx] = typeof existing === 'object'
+                ? { ...existing, ip: state.clientIp, deviceCode: myDeviceCode, isMaster: true, name: existing.name || 'Thiết bị Master' }
+                : { ip: state.clientIp, deviceCode: myDeviceCode, name: 'Thiết bị Master', isMaster: true };
+        } else {
+            state.adminConfig.allowedIps.push({ ip: state.clientIp, deviceCode: myDeviceCode, name: 'Thiết bị Master', isMaster: true, addedAt: new Date().toISOString() });
+        }
+        state.adminConfig.masterIp = state.clientIp;
+        state.adminConfig.masterDeviceCode = myDeviceCode;
+        await saveAdminConfig();
+        renderAccess();
+        notify(`Đã khóa quyền Master Admin vào mã máy ${myDeviceCode}. Điện thoại cùng WiFi sẽ hiển thị như học sinh bình thường.`);
+    }
+    async function saveAiIps() { const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.aiIps, player_name: '__AI_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'AI_IP_WHITELIST', status: 'ACTIVE', score_summary: JSON.stringify(state.aiIps), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; }
+    async function addAiIp() {
+        const ip = $('ai-ip-input')?.value.trim();
+        if (!ip) return notify('Nhập IP cần cấp AI.', true);
+        const name = $('ai-ip-name')?.value.trim() || 'Học sinh AI';
+        if (!state.aiIps.some((item) => (typeof item === 'string' ? item : item.ip) === ip)) {
+            state.aiIps.push({ ip, name });
+        }
+        await saveAiIps();
+
+        const autoToken = generateRandomToken('AI');
+        state.tokens.unshift({
+            token: autoToken,
+            role: 'ai',
+            name: `${name} (${ip})`,
+            ip,
+            createdAt: new Date().toISOString()
+        });
+        await saveTokens();
+        const link = getStudentActivationLink(autoToken);
+        await copyToClipboard(link);
+
+        if ($('ai-ip-input')) $('ai-ip-input').value = '';
+        if ($('ai-ip-name')) $('ai-ip-name').value = '';
+        renderAccess();
+        notify(`Đã cấp quyền AI cho IP ${ip} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
+    }
+    async function removeAiIp(ip) { state.aiIps = state.aiIps.filter((item) => (typeof item === 'string' ? item : item.ip) !== ip); await saveAiIps(); renderAccess(); notify('Đã thu hồi quyền AI.'); }
+
+    function ensureClass5AccessPanel() {
+        return;
+    }
+
+    async function loadGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: (data.ips || []).map(normalizeIp).filter(Boolean), grade5Ips: (data.grade5Ips || data.grade5_ips || []).map(normalizeIp).filter(Boolean) }; console.debug('[Quiz Studio Admin] Loaded Grade 5 access config:', { stateGeo: state.geo, raw: data }); } catch (error) { console.warn('[Quiz Studio Admin] Invalid Grade 5 access config:', error.message); } } ensureClass5AccessPanel(); renderGeo(); }
+    function renderGeo() { ensureClass5AccessPanel(); $('geo-mode-badge') && ($('geo-mode-badge').textContent = state.geo.mode); document.querySelectorAll('[data-geo-mode]').forEach((button) => button.classList.toggle('is-active', button.dataset.geoMode === state.geo.mode)); $('geo-ip-list') && ($('geo-ip-list').innerHTML = state.geo.ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-location-dot"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép truy cập Địa lý</small></span><button data-remove-geo="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Danh sách IP trống.</p>'); const class5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; $('class5-ip-count') && ($('class5-ip-count').textContent = `${class5Ips.length} IP`); $('class5-ip-list') && ($('class5-ip-list').innerHTML = class5Ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép xem Lớp 5</small></span><button data-remove-class5="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa cấp quyền cho IP nào.</p>'); }
+    async function saveGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const payload = { mode: state.geo.mode, ips: [...new Set((state.geo.ips || []).map(normalizeIp).filter(Boolean))], grade5Ips: [...new Set((state.geo.grade5Ips || []).map(normalizeIp).filter(Boolean))] }; state.geo = { ...state.geo, ...payload }; console.debug('[Quiz Studio Admin] Saving Grade 5 access config:', payload); const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.geo, player_name: '__ALLOWED_GEO_IPS__', ip_address: 'SYSTEM', device_info: state.geo.mode, status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; renderGeo(); }
+    async function addClass5Ip(ip) {
+        const cleanIp = String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+        if (!cleanIp) return notify('Nhập IP máy cần cấp quyền Lớp 5.', true);
+        state.geo.grade5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : [];
+        if (!state.geo.grade5Ips.includes(cleanIp)) state.geo.grade5Ips.push(cleanIp);
+        await saveGeo();
+
+        const autoToken = generateRandomToken('GRADE5');
+        state.tokens.unshift({
+            token: autoToken,
+            role: 'grade5',
+            name: `Học sinh Lớp 5 (${cleanIp})`,
+            ip: cleanIp,
+            createdAt: new Date().toISOString()
+        });
+        await saveTokens();
+        const link = getStudentActivationLink(autoToken);
+        await copyToClipboard(link);
+
+        notify(`Đã cấp quyền Lớp 5 cho IP ${cleanIp} & tạo mã ${autoToken} (đã copy link kích hoạt)!`);
+    }
+    async function removeClass5Ip(ip) { state.geo.grade5Ips = (state.geo.grade5Ips || []).filter((item) => item !== ip); await saveGeo(); notify(`Đã thu hồi quyền Lớp 5 của IP ${ip}.`); }
+
+    function getAdminSubjectFolderInfo(sub) {
+        const grade = subjectGrade(sub);
+        const explicitFolder = String(sub?.folder || sub?.group || '').trim();
+        if (explicitFolder) {
+            return { folderKey: `${grade}::${explicitFolder.toLowerCase()}`, folderLabel: explicitFolder };
+        }
+        const rawName = String(sub?.name || sub?.title || sub?.key || '').trim();
+        const m = rawName.match(/^(.+?)(?:\s*[-–—:|]\s*|\s+)(?:đề|bài|chuyên\s*đề|test|tập|phần)\s*(?:số\s*)?(?:\d+|[ivx]+)\b.*$/i);
+        if (!m) return null;
+        const base = m[1].trim();
+        if (!base || base.length < 2) return null;
+        const cleanBase = base.replace(/^môn\s+/i, '').trim();
+        const titleBase = cleanBase.charAt(0).toUpperCase() + cleanBase.slice(1);
+        const folderLabel = /^môn\s+/i.test(base) ? titleBase : `Môn ${titleBase}`;
+        return { folderKey: `${grade}::${cleanBase.toLowerCase()}`, folderLabel };
+    }
+
+    function getAdminSubjectFolders(subjects = mergeSubjectCatalog(state.subjects)) {
+        const folderMap = new Map();
+        (state.subjectFolders || []).forEach((f) => {
+            const label = String(f?.name || f?.label || '').trim();
+            const grade = String(f?.grade || '11') === '5' ? '5' : '11';
+            if (!label) return;
+            const folderKey = `${grade}::${label.toLowerCase()}`;
+            if (!folderMap.has(folderKey)) {
+                folderMap.set(folderKey, { key: folderKey, label, grade, items: [], explicit: true });
+            } else {
+                folderMap.get(folderKey).explicit = true;
+            }
+        });
+        subjects.forEach((subject) => {
+            const info = getAdminSubjectFolderInfo(subject);
+            if (!info) return;
+            const hasExplicit = Boolean(String(subject?.folder || subject?.group || '').trim());
+            if (!folderMap.has(info.folderKey)) {
+                folderMap.set(info.folderKey, { key: info.folderKey, label: info.folderLabel, grade: subjectGrade(subject), items: [], explicit: hasExplicit });
+            } else if (hasExplicit) {
+                folderMap.get(info.folderKey).explicit = true;
+            }
+            folderMap.get(info.folderKey).items.push(subject);
+        });
+        const activeFolders = new Map();
+        folderMap.forEach((group, key) => {
+            if (group.explicit || group.items.length >= 2) activeFolders.set(key, group);
+        });
+        return { folderMap, activeFolders };
+    }
+
+    function renderSubjectCatalog() {
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        const legacyCount = questionCounts.history || 0;
+        console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
+            key: subject.key,
+            storedCount: Number(subject.count || 0),
+            loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
+        })));
+        $('subject-count') && ($('subject-count').textContent = subjects.length);
+
+        const { folderMap, activeFolders } = getAdminSubjectFolders(subjects);
+        const datalist = $('subject-folder-datalist');
+        if (datalist) {
+            const uniqueLabels = Array.from(new Set(Array.from(folderMap.values()).map((g) => g.label)));
+            datalist.innerHTML = uniqueLabels.map((lbl) => `<option value="${esc(lbl)}"></option>`).join('');
+        }
+        if (state.adminOpenSubjectFolder && !activeFolders.has(state.adminOpenSubjectFolder)) {
+            state.adminOpenSubjectFolder = null;
+        }
+
+        const renderCardHtml = (subject) => {
+            const key = subject.key || subject.subject_key;
+            const count = questionCounts[subjectMatchKey(key)] || 0;
+            const canAdoptLegacy = subjectMatchKey(key) !== 'history' && legacyCount > 0;
+             const scheduleTags = [subject.openAt || subject.open_at ? 'Mở hẹn giờ' : '', subject.closeAt || subject.close_at ? 'Đóng hẹn giờ' : '', Number(subject.maxAttempts || subject.max_attempts || 0) > 0 ? `Tối đa ${Number(subject.maxAttempts || subject.max_attempts)} lượt` : ''].filter(Boolean);
+             return `<article class="subject-card"><div class="subject-card-head"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="tag">Lớp ${subjectGrade(subject)}</span></div><h3>${esc(subject.name || subject.title || subject.key)}</h3><p>${esc(subject.key)} · ${esc(subject.semester || 'Không chia kỳ')} · <b>${count} câu</b></p>${scheduleTags.length ? `<div class="subject-config-tags">${scheduleTags.map((tag) => `<span class="tag">${esc(tag)}</span>`).join('')}</div>` : ''}${canAdoptLegacy ? `<small class="subject-orphan-note">${legacyCount} câu cũ chưa gán môn</small>` : ''}<div class="subject-card-foot"><small>${esc(subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai')}</small><div class="subject-card-actions"><button data-quick-add-question="${esc(subject.key)}" aria-label="Thêm câu hỏi vào ${esc(subject.name || subject.key)}" title="Thêm câu hỏi vào đề này"><i class="fa-solid fa-circle-plus"></i></button><button data-edit-subject="${esc(subject.key)}" aria-label="Sửa môn ${esc(subject.name || subject.key)}" title="Sửa môn"><i class="fa-solid fa-pen"></i></button>${canAdoptLegacy ? `<button class="adopt-button" data-adopt-subject-questions="${esc(subject.key)}" aria-label="Gán câu hỏi cũ vào môn ${esc(subject.name || subject.key)}" title="Gán câu hỏi cũ vào môn"><i class="fa-solid fa-link"></i></button>` : ''}<button data-delete-subject-questions="${esc(subject.key)}" aria-label="Xóa toàn bộ câu hỏi môn ${esc(subject.name || subject.key)}" title="Xóa toàn bộ câu hỏi"><i class="fa-solid fa-eraser"></i></button><button data-delete-subject="${esc(subject.key)}" aria-label="Xóa môn ${esc(subject.name || subject.key)}" title="Xóa môn và câu hỏi"><i class="fa-solid fa-trash"></i></button></div></div></article>`;
+        };
+
+        const renderFolderCardHtml = (group) => {
+            const totalCount = group.items.reduce((sum, item) => sum + (questionCounts[subjectMatchKey(item.key || item.subject_key)] || 0), 0);
+            const allPrivate = group.items.length > 0 && group.items.every((item) => item.visibility === 'PRIVATE');
+            return `<article class="subject-card" data-open-subject-folder="${esc(group.key)}" style="cursor:pointer;border-color:rgba(245,158,11,0.35);">
+                <div class="subject-card-head">
+                    <span class="subject-card-icon" style="color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);"><i class="fa-solid fa-folder-closed"></i></span>
+                    <span class="tag">Lớp ${esc(group.grade)} · ${group.items.length} đề</span>
+                </div>
+                <h3>${esc(group.label)}</h3>
+                <p>Thư mục gom nhóm · <b>${totalCount} câu</b></p>
+                <div class="subject-card-foot">
+                    <small>${group.items.length ? (allPrivate ? 'Riêng tư' : 'Công khai') : 'Thư mục trống'}</small>
+                    <div class="folder-card-foot-right">
+                        <button type="button" class="folder-rename-btn" data-rename-folder="${esc(group.key)}" title="Đổi tên thư mục" aria-label="Đổi tên thư mục ${esc(group.label)}"><i class="fa-solid fa-pen"></i> Đổi tên</button>
+                        <span class="folder-open-hint"><i class="fa-solid fa-folder-open"></i> Bấm để mở</span>
+                    </div>
+                </div>
+            </article>`;
+        };
+
+        const listEl = $('subjects-list');
+        if (listEl) {
+            const orphanGroups = getOrphanQuestionGroups(subjects);
+            const totalOrphans = orphanGroups.reduce((sum, g) => sum + g.count, 0);
+            const targetOptionsHtml = subjects.map((s) => `<option value="${esc(s.key)}">${esc(s.name)} (Lớp ${subjectGrade(s)} · ${esc(s.key)})</option>`).join('');
+            const orphanBannerHtml = orphanGroups.length ? `
+                <div class="orphan-subjects-banner" style="grid-column:1 / -1;padding:12px 14px;border-radius:12px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);display:grid;gap:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                        <strong style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-triangle-exclamation"></i> Phát hiện ${totalOrphans} câu hỏi trong Ngân hàng chưa khớp thẻ môn nào</strong>
+                        <small class="muted-copy">Chọn môn đích để gán hoặc tạo thẻ môn mới để không bị thất lạc câu hỏi.</small>
+                    </div>
+                    <div style="display:grid;gap:8px;">
+                        ${orphanGroups.map((g) => `
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:9px;background:var(--surface-2);border:1px solid var(--border);">
+                                <span style="font-size:12px;">Mã môn: <code>${esc(g.sampleRawKey || '(trống)')}</code> · <b>${g.count} câu</b></span>
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    ${subjects.length ? `<select data-orphan-target="${esc(g.groupKey)}" style="font-size:12px;padding:5px 8px;border-radius:8px;">${targetOptionsHtml}</select><button type="button" class="button button-primary compact" data-assign-orphan="${esc(g.groupKey)}"><i class="fa-solid fa-link"></i> Gán vào môn</button>` : ''}
+                                    <button type="button" class="button button-secondary compact" data-create-orphan-subject="${esc(g.groupKey)}"><i class="fa-solid fa-plus"></i> Tạo thẻ môn</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '';
+
+            if (!subjects.length && !activeFolders.size && !orphanGroups.length) {
+                listEl.innerHTML = '<div class="empty-state">Chưa có môn học hoặc thư mục.</div>';
+            } else if (state.adminOpenSubjectFolder && activeFolders.has(state.adminOpenSubjectFolder)) {
+                const group = activeFolders.get(state.adminOpenSubjectFolder);
+                listEl.innerHTML = `
+                    ${orphanBannerHtml}
+                    <div style="grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <button type="button" class="button button-secondary compact" data-close-subject-folder="true"><i class="fa-solid fa-arrow-left"></i> Quay lại danh sách</button>
+                            <b style="font-size:13px;color:var(--amber,#f59e0b);"><i class="fa-solid fa-folder-open"></i> ${esc(group.label)} (${group.items.length} đề · Lớp ${esc(group.grade)})</b>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="button button-primary compact" data-add-subject-to-folder="${esc(group.label)}" data-folder-grade="${esc(group.grade)}"><i class="fa-solid fa-plus"></i> Thêm đề vào đây</button>
+                            ${group.items.length ? `<button type="button" class="button button-secondary compact" data-add-question-to-folder="${esc(group.key)}"><i class="fa-solid fa-circle-plus"></i> Thêm câu hỏi</button>` : ''}
+                            <button type="button" class="button button-secondary compact" data-rename-folder="${esc(group.key)}" title="Đổi tên thư mục"><i class="fa-solid fa-pen"></i> Đổi tên thư mục</button>
+                            <button type="button" class="button button-secondary compact" data-delete-folder="${esc(group.key)}" title="Giải tán thư mục (không xóa đề hay câu hỏi)"><i class="fa-solid fa-folder-minus"></i> Bỏ thư mục</button>
+                        </div>
+                    </div>
+                    ${group.items.length ? group.items.map(renderCardHtml).join('') : '<div class="empty-state" style="grid-column:1 / -1;">Thư mục này chưa có đề nào. Bấm <b>+ Thêm đề vào đây</b> ở trên để tạo đề mới vào thư mục!</div>'}
+                `;
+            } else {
+                const renderedFolders = new Set();
+                const subjectHtml = subjects.map((subject) => {
+                    const info = getAdminSubjectFolderInfo(subject);
+                    if (info && activeFolders.has(info.folderKey)) {
+                        if (renderedFolders.has(info.folderKey)) return '';
+                        renderedFolders.add(info.folderKey);
+                        return renderFolderCardHtml(activeFolders.get(info.folderKey));
+                    }
+                    return renderCardHtml(subject);
+                }).join('');
+                const emptyFolderHtml = Array.from(activeFolders.values())
+                    .filter((group) => !renderedFolders.has(group.key))
+                    .map(renderFolderCardHtml)
+                    .join('');
+                listEl.innerHTML = orphanBannerHtml + subjectHtml + emptyFolderHtml;
+            }
+        }
+        renderSubjectPrivacy();
+    }
+
+    async function loadSubjects() {
+        const row = await systemRow(SYSTEM.subjects);
+        if (row?.score_summary) { try { const data = JSON.parse(row.score_summary); state.subjects = Array.isArray(data) ? data : []; } catch (error) { state.subjects = []; } }
+        try {
+            const folderRow = await systemRow(SYSTEM.folders);
+            if (folderRow?.score_summary) {
+                const fData = JSON.parse(folderRow.score_summary);
+                if (Array.isArray(fData)) {
+                    state.subjectFolders = fData;
+                    localStorage.setItem('quiz_subject_folders', JSON.stringify(fData));
+                }
+            }
+        } catch (e) {}
+        state.subjects = mergeSubjectCatalog(state.subjects);
+        await syncSubjectQuestionCounts();
+        fillSubjects($('grade-select')?.value || '11');
+        fillLibrarySubjects();
+        renderSubjectCatalog();
+        upgradePrivacyPanel();
+        renderStats();
+        renderLibrary();
+    }
+
+    function upgradePrivacyPanel() {
+        const grid = document.querySelector('[data-view-panel="questions"] .geo-grid') || document.querySelector('[data-view-panel="subjects"] .geo-grid');
+        if (!grid || grid.dataset.upgraded === 'true') { ensureClass5AccessPanel(); renderSubjectPrivacy(); return; }
+        grid.dataset.upgraded = 'true';
+        ensureClass5AccessPanel();
+        renderSubjectPrivacy();
+    }
+
+    function renderSubjectPrivacy() {
+        const list = $('subject-privacy-list');
+        if (!list) return;
+        const subjects = mergeSubjectCatalog(state.subjects);
+        const privateCount = subjects.filter((subject) => subject.visibility === 'PRIVATE').length;
+        $('privacy-private-count') && ($('privacy-private-count').textContent = `${privateCount} RIÊNG TƯ`);
+        $('privacy-private-count') && ($('privacy-private-count').className = `status-badge ${privateCount ? 'danger' : 'safe'}`);
+        list.innerHTML = subjects.map((subject) => {
+            const isPrivate = subject.visibility === 'PRIVATE';
+            return `<div class="privacy-subject-row"><span class="subject-card-icon"><i class="fa-solid ${esc(subject.icon || 'fa-book')}"></i></span><span class="privacy-subject-main"><b>${esc(subject.name || subject.title || subject.key)}</b><small>Lớp ${subjectGrade(subject)} · ${esc(subject.key)}</small></span><span class="status-badge ${isPrivate ? 'danger' : 'safe'}">${isPrivate ? 'RIÊNG TƯ' : 'CÔNG KHAI'}</span><label class="privacy-switch" title="${isPrivate ? 'Bật để mở môn' : 'Tắt để ẩn môn'}"><input type="checkbox" data-toggle-subject="${esc(subject.key)}" ${isPrivate ? '' : 'checked'}><span></span></label></div>`;
+        }).join('') || '<div class="empty-state">Chưa có môn học để cấu hình.</div>';
+    }
+
+    async function toggleSubjectPrivacy(key, isPublic) {
+        const subject = state.subjects.find((item) => (item.key || item.subject_key) === key);
+        if (!subject) return;
+        const previous = subject.visibility;
+        subject.visibility = isPublic ? 'PUBLIC' : 'PRIVATE';
+        try {
+            await saveSubjects();
+            notify(`${subject.name || key} đã chuyển sang ${subject.visibility === 'PRIVATE' ? 'Riêng tư' : 'Công khai'}.`);
+        } catch (error) {
+            subject.visibility = previous;
+            renderSubjectPrivacy();
+            notify(`Không thể lưu quyền môn học: ${error.message}`, true);
+        }
+    }
+
+    async function saveSubjects() {
+        state.subjects = (state.subjects || []).filter((item) => item && item.key && item.name);
+        const questionCounts = (state.questions || []).reduce((counts, question) => {
+            const key = subjectMatchKey(question.subject_key || question.subjectKey);
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        state.subjects = state.subjects.map((subject) => ({
+            ...subject,
+            count: questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0
+        }));
+        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) throw error;
+        const verified = await systemRow(SYSTEM.subjects);
+        if (!verified?.score_summary || JSON.stringify(JSON.parse(verified.score_summary)) !== JSON.stringify(state.subjects)) throw new Error('Cloud chưa xác minh đúng danh sách môn học.');
+        fillLibrarySubjects(); await loadSubjects();
+    }
+
+    function setSubjectGrade(grade) { const value = String(grade) === '5' ? '5' : '11'; if ($('subject-grade-input')) $('subject-grade-input').value = value; document.querySelectorAll('[data-subject-grade]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectGrade === value)); }
+    function setSubjectMode(mode) { const value = String(mode) === 'exam' ? 'exam' : 'practice'; if ($('subject-mode-input')) $('subject-mode-input').value = value; document.querySelectorAll('[data-subject-mode]').forEach((button) => button.classList.toggle('is-selected', button.dataset.subjectMode === value)); }
+    function moveSubjectFormToDialog() {
+        const form = $('subject-form');
+        const dialogContent = $('subject-dialog-content');
+        const editor = document.querySelector('.subject-editor-panel');
+        if (!form || !dialogContent || !editor || editor.dataset.moved === 'true') return;
+        editor.dataset.moved = 'true';
+        form.classList.add('subject-dialog-form');
+        dialogContent.appendChild(form);
+        editor.remove();
+    }
+    function resetSubjectForm() {
+        ['subject-name-input', 'subject-key-input', 'subject-semester-input', 'subject-folder-input', 'subject-open-at-input', 'subject-close-at-input'].forEach((id) => { if ($(id)) $(id).value = ''; });
+        if ($('subject-icon-input')) $('subject-icon-input').value = 'fa-book';
+        if ($('subject-gradient-input')) $('subject-gradient-input').value = 'navy';
+        if ($('subject-visibility-input')) $('subject-visibility-input').value = 'PUBLIC';
+        if ($('subject-max-attempts-input')) $('subject-max-attempts-input').value = '0';
+        setSubjectGrade('11');
+        setSubjectMode('practice');
+        state.subjectEditingKey = null;
+        if ($('subject-editor-title')) $('subject-editor-title').textContent = 'Tạo môn học';
+    }
+    function closeSubjectDialog() {
+        const dialog = $('subject-dialog');
+        if (dialog?.open) dialog.close();
+        resetSubjectForm();
+    }
+    function openSubjectDialog(subject = null, opener = null, preset = null) {
+        moveSubjectFormToDialog();
+        switchView('questions');
+        state.subjectDialogOpener = opener || document.activeElement;
+        resetSubjectForm();
+        if (subject) {
+            state.subjectEditingKey = subject.key || subject.subject_key;
+            $('subject-name-input').value = subject.name || subject.title || '';
+            $('subject-key-input').value = state.subjectEditingKey || '';
+            $('subject-semester-input').value = subject.semester || '';
+            if ($('subject-folder-input')) $('subject-folder-input').value = subject.folder || subject.group || '';
+            $('subject-icon-input').value = subject.icon || 'fa-book';
+            $('subject-gradient-input').value = subject.gradient || 'navy';
+             $('subject-visibility-input').value = subject.visibility || 'PUBLIC';
+             $('subject-open-at-input').value = toLocalDatetimeInput(subject.openAt || subject.open_at);
+             $('subject-close-at-input').value = toLocalDatetimeInput(subject.closeAt || subject.close_at);
+             $('subject-max-attempts-input').value = String(Math.max(0, parseInt(subject.maxAttempts ?? subject.max_attempts, 10) || 0));
+            setSubjectGrade(subjectGrade(subject));
+            setSubjectMode(subject.mode || 'practice');
+            $('subject-editor-title').textContent = `Sửa môn ${subject.name || state.subjectEditingKey}`;
+        } else if (preset) {
+            if (preset.folder && $('subject-folder-input')) $('subject-folder-input').value = preset.folder;
+            if (preset.grade) setSubjectGrade(preset.grade === '5' ? '5' : '11');
+        }
+        const dialog = $('subject-dialog');
+        if (!dialog) return;
+        if (!dialog.open) dialog.showModal();
+        window.requestAnimationFrame(() => $('subject-name-input')?.focus());
+    }
+
+    async function saveSubjectFolders() {
+        try {
+            localStorage.setItem('quiz_subject_folders', JSON.stringify(state.subjectFolders || []));
+        } catch (e) {}
+        if (state.client) {
+            const { error } = await state.client.from('quiz_logins').upsert({
+                id: SYSTEM.folders,
+                player_name: '__SYSTEM_FOLDERS__',
+                ip_address: 'SYSTEM',
+                device_info: 'FOLDER_HUB',
+                status: 'ACTIVE',
+                score_summary: JSON.stringify(state.subjectFolders || []),
+                last_active: new Date().toISOString()
+            }, { onConflict: 'id' });
+            if (error) throw error;
+        }
+    }
+
+    function setFolderGrade(grade) {
+        const clean = grade === '5' ? '5' : '11';
+        if ($('folder-grade-input')) $('folder-grade-input').value = clean;
+        $('folder-grade-picker')?.querySelectorAll('[data-folder-grade]').forEach((btn) => {
+            btn.classList.toggle('is-selected', btn.dataset.folderGrade === clean);
+        });
+        renderFolderChecklist();
+    }
+
+    function renderFolderChecklist() {
+        const box = $('folder-subjects-checklist');
+        if (!box) return;
+        const grade = $('folder-grade-input')?.value === '5' ? '5' : '11';
+        const matching = mergeSubjectCatalog(state.subjects).filter((s) => subjectGrade(s) === grade);
+        if (!matching.length) {
+            box.innerHTML = `<div class="muted-copy" style="font-size:12px;">Chưa có đề nào thuộc Lớp ${grade}. Bạn vẫn có thể tạo thư mục trống trước!</div>`;
+            return;
+        }
+        box.innerHTML = matching.map((s) => {
+            const key = s.key || s.subject_key;
+            const currentFolder = String(s.folder || s.group || '').trim();
+            return `<label style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;font-size:13px;cursor:pointer;padding:8px 10px;border-radius:8px;background:var(--surface-3);margin:0;">
+                <input type="checkbox" value="${esc(key)}" data-folder-subject-check="true" style="width:16px;height:16px;flex:0 0 auto;margin:0;">
+                <span style="flex:1;text-align:left;line-height:1.35;"><b>${esc(s.name || s.title || key)}</b> <small class="muted-copy">(${esc(key)})</small></span>
+                ${currentFolder ? `<small class="tag" style="flex:0 0 auto;">${esc(currentFolder)}</small>` : ''}
+            </label>`;
+        }).join('');
+    }
+
+    function openFolderDialog() {
+        const form = $('folder-form');
+        if (form) form.reset();
+        if ($('folder-name-input')) $('folder-name-input').value = '';
+        setFolderGrade('11');
+        const dialog = $('folder-dialog');
+        if (!dialog) return;
+        if (!dialog.open) dialog.showModal();
+        window.requestAnimationFrame(() => $('folder-name-input')?.focus());
+    }
+
+    function closeFolderDialog() {
+        const dialog = $('folder-dialog');
+        if (dialog?.open) dialog.close();
+    }
+
+    async function saveFolder(event) {
+        event.preventDefault();
+        const name = $('folder-name-input')?.value.trim();
+        const grade = $('folder-grade-input')?.value === '5' ? '5' : '11';
+        if (!name) return notify('Hãy nhập tên thư mục.', true);
+
+        const folderKey = `${grade}::${name.toLowerCase()}`;
+        const existingIndex = (state.subjectFolders || []).findIndex(
+            (f) => `${String(f.grade || '11') === '5' ? '5' : '11'}::${String(f.name || f.label || '').trim().toLowerCase()}` === folderKey
+        );
+        if (existingIndex < 0) {
+            state.subjectFolders.push({ name, grade, createdAt: new Date().toISOString() });
+        } else {
+            state.subjectFolders[existingIndex] = { ...state.subjectFolders[existingIndex], name, grade };
+        }
+
+        const checkedKeys = new Set(
+            Array.from(document.querySelectorAll('#folder-subjects-checklist [data-folder-subject-check]:checked'))
+                .map((cb) => cb.value)
+        );
+
+        let movedCount = 0;
+        if (checkedKeys.size > 0) {
+            state.subjects = mergeSubjectCatalog(state.subjects).map((s) => {
+                const k = s.key || s.subject_key;
+                if (checkedKeys.has(k)) {
+                    movedCount++;
+                    return { ...s, folder: name, grade };
+                }
+                return s;
+            });
+        }
+
+        try {
+            await saveSubjectFolders();
+            if (movedCount > 0) await saveSubjects();
+            else renderSubjectCatalog();
+            state.adminOpenSubjectFolder = folderKey;
+            renderSubjectCatalog();
+            closeFolderDialog();
+            addActivityLog(`Tạo thư mục: ${name}`, `Khối Lớp ${grade}${movedCount ? ` · Gom ${movedCount} đề` : ''}`, 'subject');
+            notify(`Đã tạo thư mục "${name}" (Lớp ${grade})${movedCount ? ` và gom ${movedCount} đề vào trong` : ''}.`);
+        } catch (error) {
+            notify(`Không thể lưu thư mục: ${error.message}`, true);
+        }
+    }
+
+    async function deleteFolderOnly(folderKey) {
+        if (!(await confirmDialog({
+            title: 'Bỏ thư mục này?',
+            message: 'Các đề và câu hỏi bên trong vẫn được giữ nguyên, chỉ đưa ra ngoài danh sách chung.',
+            confirmText: 'Bỏ thư mục',
+            variant: 'warning'
+        }))) return;
+        const [gradePart, namePart] = String(folderKey || '').split('::');
+        state.subjectFolders = (state.subjectFolders || []).filter(
+            (f) => `${String(f.grade || '11') === '5' ? '5' : '11'}::${String(f.name || f.label || '').trim().toLowerCase()}` !== folderKey
+        );
+        const targetFolderName = String(namePart || '').trim().toLowerCase();
+        let changed = false;
+        state.subjects = (state.subjects || []).map((s) => {
+            const info = getAdminSubjectFolderInfo(s);
+            const hasFolderOrGroup = Boolean(String(s.folder || s.group || '').trim());
+            const folderMatches = (info && info.folderKey === folderKey) ||
+                (targetFolderName && (
+                    String(s.folder || '').trim().toLowerCase() === targetFolderName ||
+                    String(s.group || '').trim().toLowerCase() === targetFolderName
+                ));
+            if (folderMatches && hasFolderOrGroup) {
+                changed = true;
+                return { ...s, folder: '', group: '' };
+            }
+            return s;
+        });
+        await saveSubjectFolders();
+        if (changed) await saveSubjects();
+        state.adminOpenSubjectFolder = null;
+        renderSubjectCatalog();
+        notify(`Đã bỏ thư mục (Lớp ${gradePart || '11'} · ${namePart || ''}).`);
+    }
+
+    async function renameFolder(folderKey) {
+        const { activeFolders } = getAdminSubjectFolders();
+        const group = activeFolders.get(folderKey);
+        if (!group) return notify('Không tìm thấy thư mục cần đổi tên.', true);
+
+        const rawInput = await promptDialog({
+            title: 'Đổi tên thư mục',
+            eyebrow: 'RENAME FOLDER',
+            icon: 'fa-pen',
+            message: group.items.length > 0
+                ? `Nhập tên mới cho thư mục "${group.label}" (Lớp ${group.grade}). Toàn bộ ${group.items.length} đề bên trong sẽ tự động cập nhật theo tên mới.`
+                : `Nhập tên mới cho thư mục trống "${group.label}" (Lớp ${group.grade}).`,
+            placeholder: 'VD: Môn Toán, Ôn thi Giữa Kì...',
+            defaultValue: group.label,
+            confirmText: 'Lưu tên mới'
+        });
+        if (rawInput === null) return;
+        const newName = String(rawInput).trim();
+        if (!newName) return notify('Tên thư mục không được để trống.', true);
+        if (newName === group.label) return;
+
+        const grade = group.grade;
+        const oldFolderKey = group.key;
+        const oldLabel = group.label;
+        const oldLabelLower = oldLabel.toLowerCase();
+        const newNameLower = newName.toLowerCase();
+        const newFolderKey = `${grade}::${newNameLower}`;
+
+        const targetGroup = Array.from(activeFolders.values()).find(
+            (g) => g.key !== oldFolderKey && g.grade === grade && (g.key === newFolderKey || g.label.trim().toLowerCase() === newNameLower)
+        );
+        const isMerging = Boolean(targetGroup);
+        let finalName = newName;
+        if (isMerging) {
+            const confirmed = await confirmDialog({
+                title: 'Gộp vào thư mục đã có?',
+                eyebrow: 'MERGE FOLDER',
+                icon: 'fa-code-merge',
+                variant: 'warning',
+                message: `Thư mục "${targetGroup.label}" (Lớp ${grade}) đã tồn tại. Bạn có muốn gộp toàn bộ đề từ "${oldLabel}" vào "${targetGroup.label}" không?`,
+                confirmText: 'Gộp thư mục'
+            });
+            if (!confirmed) return;
+            finalName = targetGroup.label;
+        }
+        const finalNameLower = finalName.toLowerCase();
+        const finalFolderKey = `${grade}::${finalNameLower}`;
+
+        const previousFolders = (state.subjectFolders || []).map((f) => ({ ...f }));
+        const previousSubjects = (state.subjects || []).map((s) => ({ ...s }));
+        const previousOpenFolder = state.adminOpenSubjectFolder || null;
+
+        const normGrade = (g) => (String(g || '11') === '5' ? '5' : '11');
+        const matchesOldEntry = (f) => {
+            if (normGrade(f?.grade) !== grade) return false;
+            const fn = String(f?.name || f?.label || '').trim().toLowerCase();
+            return Boolean(fn) && (`${grade}::${fn}` === oldFolderKey || fn === oldLabelLower);
+        };
+        const matchesFinalEntry = (f) => {
+            if (normGrade(f?.grade) !== grade) return false;
+            const fn = String(f?.name || f?.label || '').trim().toLowerCase();
+            return Boolean(fn) && fn === finalNameLower;
+        };
+        const hasSeparateTarget = (state.subjectFolders || []).some((f) => matchesFinalEntry(f) && !matchesOldEntry(f));
+        const nextFolders = [];
+        let oldCreatedAt = '';
+        let placedFinal = false;
+        (state.subjectFolders || []).forEach((f) => {
+            if (matchesOldEntry(f)) {
+                oldCreatedAt = oldCreatedAt || f?.createdAt || '';
+                if (hasSeparateTarget || placedFinal) return;
+                const updated = { ...f, name: finalName, grade };
+                delete updated.label;
+                nextFolders.push(updated);
+                placedFinal = true;
+            } else if (matchesFinalEntry(f)) {
+                if (!placedFinal) {
+                    const updated = { ...f, name: finalName, grade };
+                    delete updated.label;
+                    nextFolders.push(updated);
+                    placedFinal = true;
+                }
+            } else {
+                nextFolders.push(f);
+            }
+        });
+        if (!placedFinal) {
+            nextFolders.push({ name: finalName, grade, createdAt: oldCreatedAt || new Date().toISOString() });
+        }
+        state.subjectFolders = nextFolders;
+
+        const memberKeys = new Set(group.items.map((s) => s.key || s.subject_key));
+        if (isMerging && targetGroup) {
+            targetGroup.items.forEach((s) => memberKeys.add(s.key || s.subject_key));
+        }
+        let subjectsChanged = false;
+        const nextSubjects = mergeSubjectCatalog(state.subjects).map((s) => {
+            const k = s.key || s.subject_key;
+            const sGrade = subjectGrade(s);
+            const explicitRaw = String(s.folder || s.group || '').trim();
+            const explicitLower = explicitRaw.toLowerCase();
+            const info = getAdminSubjectFolderInfo(s);
+            const matchesFolder = memberKeys.has(k)
+                || (info && info.folderKey === oldFolderKey)
+                || (sGrade === grade && Boolean(explicitLower) && (explicitLower === oldLabelLower || `${grade}::${explicitLower}` === oldFolderKey));
+            if (matchesFolder) {
+                if (String(s.folder || '').trim() !== finalName || String(s.group || '').trim() !== '') {
+                    subjectsChanged = true;
+                }
+                return { ...s, folder: finalName, group: '' };
+            }
+            return s;
+        });
+        if (subjectsChanged) {
+            state.subjects = nextSubjects;
+        }
+
+        if (state.adminOpenSubjectFolder === oldFolderKey) {
+            state.adminOpenSubjectFolder = finalFolderKey;
+        }
+
+        let foldersSaved = false;
+        try {
+            await saveSubjectFolders();
+            foldersSaved = true;
+            if (subjectsChanged) {
+                await saveSubjects();
+            } else {
+                renderSubjectCatalog();
+            }
+            addActivityLog(
+                isMerging ? `Gộp thư mục: ${oldLabel} → ${finalName}` : `Đổi tên thư mục: ${oldLabel} → ${finalName}`,
+                `Khối Lớp ${grade}${group.items.length ? ` · Cập nhật ${group.items.length} đề` : ''}`,
+                'subject'
+            );
+            notify(
+                isMerging
+                    ? `Đã gộp "${oldLabel}" vào thư mục "${finalName}" (Lớp ${grade}).`
+                    : `Đã đổi tên thư mục "${oldLabel}" thành "${finalName}"${group.items.length ? ` (${group.items.length} đề đã cập nhật)` : ''}.`
+            );
+        } catch (error) {
+            state.subjectFolders = previousFolders;
+            state.subjects = previousSubjects;
+            state.adminOpenSubjectFolder = previousOpenFolder;
+            try {
+                localStorage.setItem('quiz_subject_folders', JSON.stringify(previousFolders));
+            } catch (e) {}
+            if (foldersSaved) {
+                await saveSubjectFolders().catch(() => {});
+            }
+            renderSubjectCatalog();
+            notify(`Không thể đổi tên thư mục: ${error.message}`, true);
+        }
+    }
+
+    function jumpToAddQuestion(subjectKey = '') {
+        switchView('questions');
+        const target = subjectKey
+            ? mergeSubjectCatalog(state.subjects).find((s) => (s.key || s.subject_key) === subjectKey)
+            : null;
+        if (target) {
+            const g = subjectGrade(target);
+            if ($('grade-select')) $('grade-select').value = g;
+            fillSubjects(g);
+            if ($('subject-select')) $('subject-select').value = target.key || target.subject_key;
+        }
+        window.requestAnimationFrame(() => {
+            $('question-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $('question-input')?.focus();
+        });
+    }
+    async function saveSubject(event) {
+        event.preventDefault();
+        const key = $('subject-key-input')?.value.trim();
+        const name = $('subject-name-input')?.value.trim();
+        if (!key || !name) return notify('Nhập tên và mã môn học.', true);
+        const openAt = parseLocalDatetimeInput($('subject-open-at-input')?.value);
+        const closeAt = parseLocalDatetimeInput($('subject-close-at-input')?.value);
+        if (openAt && closeAt && new Date(closeAt) <= new Date(openAt)) return notify('Thời gian đóng đề phải sau thời gian mở đề.', true);
+        const subject = { key, name, grade: $('subject-grade-input')?.value === '5' ? '5' : '11', mode: $('subject-mode-input')?.value === 'exam' ? 'exam' : 'practice', semester: $('subject-semester-input')?.value.trim() || '', folder: $('subject-folder-input')?.value.trim() || '', icon: $('subject-icon-input')?.value.trim() || 'fa-book', gradient: $('subject-gradient-input')?.value || 'navy', visibility: $('subject-visibility-input')?.value || 'PUBLIC', openAt, closeAt, maxAttempts: Math.max(0, parseInt($('subject-max-attempts-input')?.value, 10) || 0) };
+        const index = state.subjects.findIndex((item) => item.key === (state.subjectEditingKey || key));
+        const duplicate = state.subjects.some((item, itemIndex) => item.key === key && itemIndex !== index);
+        if (duplicate) return notify('Mã định danh này đã tồn tại.', true);
+        const previousSubjects = (state.subjects || []).map((item) => ({ ...item }));
+        if (index >= 0) state.subjects[index] = { ...state.subjects[index], ...subject };
+        else state.subjects.push(subject);
+        try {
+            const isEditingSub = Boolean(state.subjectEditingKey);
+            if (isEditingSub && subjectMatchKey(state.subjectEditingKey) !== subjectMatchKey(key)) {
+                const { error: keyError } = await state.client.from('quiz_questions').update({ subject_key: key }).eq('subject_key', state.subjectEditingKey);
+                if (keyError) throw keyError;
+            }
+            await saveSubjects();
+            closeSubjectDialog();
+            addActivityLog(isEditingSub ? `Cập nhật môn ${name}` : `Tạo môn học mới: ${name}`, `Mã: ${key} · Khối Lớp ${subject.grade}`, 'subject');
+            notify('Đã lưu môn học.');
+        } catch (error) {
+            state.subjects = previousSubjects;
+            renderSubjectCatalog();
+            notify(`Không thể lưu môn học: ${error.message}`, true);
+        }
+    }
+    async function deleteSubject(key) {
+        if (!(await confirmDialog({ title: `Xóa môn ${key}?`, message: `Xóa môn ${key} và chuyển toàn bộ câu hỏi thuộc môn này vào Thùng rác?`, confirmText: 'Xóa môn học', variant: 'danger' }))) return;
+        const previousSubjects = state.subjects.slice();
+        try {
+            const subjectQuestions = (state.questions || []).filter((item) => subjectMatchKey(item.subject_key) === subjectMatchKey(key));
+            if (subjectQuestions.length > 0) {
+                await moveQuestionsToTrash(
+                    subjectQuestions,
+                    `Xóa môn học ${key}`,
+                    `Đã lưu trữ ${subjectQuestions.length} câu hỏi vào Thùng rác trước khi xóa môn`
+                );
+            } else {
+                const { error: deleteError } = await state.client.from('quiz_questions').delete().eq('subject_key', key);
+                if (deleteError) throw deleteError;
+            }
+            const { count, error: verifyError } = await state.client.from('quiz_questions').select('id', { count: 'exact', head: true }).eq('subject_key', key);
+            if (verifyError) throw verifyError;
+            if (Number(count || 0) !== 0) throw new Error(`Còn ${count} câu hỏi chưa xóa được.`);
+            state.subjects = previousSubjects.filter((item) => item.key !== key);
+            await saveSubjects();
+            try { localStorage.removeItem(`quiz_custom_questions_${key}`); } catch (error) { /* no-op */ }
+            addActivityLog(`Xóa môn học ${key}`, 'Đã xóa môn học và lưu trữ câu hỏi vào Thùng rác', 'danger');
+            notify(`Đã xóa môn ${key} và chuyển câu hỏi vào Thùng rác.`);
+            await loadQuestions();
+        } catch (error) {
+            state.subjects = previousSubjects;
+            throw new Error(`Không thể xóa môn ${key}: ${error.message}`);
+        }
+    }
+
+
+    function renderStudentsTableSmoothly(tbody, rows, online, bannedIpSet, nowMs, safeRowTime) {
+        if (!tbody) return;
+        if (!rows || rows.length === 0) {
+            if (!tbody.querySelector('.empty-state')) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Chưa có phiên truy cập.</td></tr>';
+            }
+            return;
+        }
+
+        const empty = tbody.querySelector('.empty-state');
+        if (empty) empty.closest('tr')?.remove();
+
+        const existingRows = new Map();
+        tbody.querySelectorAll('tr[data-session-key]').forEach(tr => {
+            existingRows.set(tr.dataset.sessionKey, tr);
+        });
+
+        const activeKeys = new Set();
+
+        rows.forEach((row, index) => {
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+             const name = row.player_name || 'Học sinh';
+             const dev = String(row.device_info || '—');
+             const deviceCodes = Array.isArray(row._deviceCodes) ? row._deviceCodes : (row._deviceCode ? [row._deviceCode] : [extractDeviceCode(dev)].filter(Boolean));
+             const deviceCode = row._deviceCode || deviceCodes[0] || extractDeviceCode(dev);
+             const ips = Array.isArray(row._ips) ? row._ips : [ip].filter(Boolean);
+             const latestIp = ips[0] || ip || 'Chưa xác định';
+             const outsideRoster = Boolean(row.outsideRoster || /\[Ngoài lớp\]/i.test(String(row.status || '')));
+             const pinName = getPinnedDeviceName(deviceCode);
+             const displayName = pinName || name;
+            const key = String(row.id || `${ip}__${name}__${dev}`);
+            activeKeys.add(key);
+
+            const isOnline = online.includes(row);
+            const isRowBanned = String(row.status || '').startsWith('BANNED') || bannedIpSet.has(ip);
+            const status = isRowBanned ? 'banned' : isOnline ? 'online' : 'offline';
+            const displayTimeMs = safeRowTime ? safeRowTime(row) : 0;
+            const timeFormatted = displayTimeMs ? new Date(Math.min(displayTimeMs, nowMs)).toLocaleString('vi-VN') : '—';
+            const statusText = status === 'online' ? 'Online' : status === 'banned' ? 'Bị chặn' : 'Offline';
+
+             const oldTr = existingRows.get(key);
+             if (oldTr) oldTr.remove();
+             let tr = null;
+            if (!tr) {
+                tr = document.createElement('tr');
+                tr.dataset.sessionKey = key;
+                tr.style.transition = 'background-color 0.25s ease, opacity 0.25s ease';
+                tr.innerHTML = `
+                      <td><b>${esc(displayName)}</b>${deviceCode ? `<span class="tag device-code-tag">[${esc(deviceCode)}]</span>${deviceCodes.length > 1 ? `<span class="tag ip-count-tag" title="${esc(deviceCodes.join(', '))}">+${deviceCodes.length - 1} máy</span>` : ''}` : ''}${pinName ? '<span class="tag pin-tag">[Đã ghim]</span>' : ''}${hasPendingRename(deviceCodes) ? '<span class="tag" style="background:rgba(168,85,247,0.18);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45);">[Chờ đổi tên]</span>' : ''}${outsideRoster ? '<span class="tag outside-roster-tag">[Ngoài lớp]</span>' : ''}${row._aliases?.length ? `<small class="progress-card-aliases">Tên khác: ${esc(row._aliases.join(', '))}</small>` : ''}</td>
+                     <td><code title="${esc(ips.join(', '))}">${esc(latestIp)}</code>${ips.length > 1 ? `<span class="tag ip-count-tag" title="${esc(ips.join(', '))}">+${ips.length - 1} IP</span>` : ''}</td>
+                     <td>${esc(dev)}</td>
+                    <td class="session-col-time">${esc(timeFormatted)}</td>
+                    <td class="session-col-status"><span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${statusText}</span></td>
+                    <td class="align-right">
+                        <div class="table-actions">
+                            ${status === 'banned' ? `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>` : `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`}
+                             ${deviceCode ? `<button class="table-action" data-pin-device-code="${esc(deviceCode)}" data-pin-device-name="${esc(displayName)}" title="${pinName ? 'Đổi ghim tên' : 'Ghim tên thiết bị'}"><i class="fa-solid fa-thumbtack"></i></button><button class="table-action" data-require-rename-code="${esc(deviceCode)}" data-require-rename-name="${esc(displayName)}" title="${hasPendingRename(deviceCode) ? 'Hủy yêu cầu đổi tên' : 'Bắt nhập lại tên thật'}" ${hasPendingRename(deviceCode) ? 'style="color:#c084fc;border-color:rgba(168,85,247,0.5);background:rgba(168,85,247,0.16);"' : ''}><i class="fa-solid fa-user-pen"></i></button>` : ''}
+                             <button class="table-action" data-grant-token-name="${esc(displayName)}" data-grant-token-ip="${esc(ip)}" data-grant-token-device="${esc(dev)}" title="Kích hoạt quyền thiết bị này"><i class="fa-solid fa-key"></i></button>
+                            <button class="table-action" data-private-notice="${esc(ip)}" data-private-name="${esc(displayName)}" title="Thông báo riêng"><i class="fa-solid fa-comment-dots"></i></button>
+                             <button class="table-action danger" data-delete-student-name="${esc(row._rawName || name)}" data-delete-student-ip="${esc(ip)}" data-delete-student-device="${esc(dev)}" data-delete-student-devices="${esc(deviceCodes.join(','))}" title="Xóa toàn bộ thông tin của học sinh này"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </td>
+                `;
+                const targetChild = tbody.children[index];
+                tbody.insertBefore(tr, targetChild || null);
+            } else {
+                const nameEl = tr.querySelector('td:first-child b');
+                if (nameEl && nameEl.textContent !== displayName) {
+                    nameEl.textContent = displayName;
+                }
+                 const nameCell = tr.children[0];
+                 if (nameCell) nameCell.innerHTML = `<b>${esc(displayName)}</b>${deviceCode ? `<span class="tag device-code-tag">[${esc(deviceCode)}]</span>${deviceCodes.length > 1 ? `<span class="tag ip-count-tag" title="${esc(deviceCodes.join(', '))}">+${deviceCodes.length - 1} máy</span>` : ''}` : ''}${pinName ? '<span class="tag pin-tag">[Đã ghim]</span>' : ''}${hasPendingRename(deviceCodes) ? '<span class="tag" style="background:rgba(168,85,247,0.18);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45);">[Chờ đổi tên]</span>' : ''}${outsideRoster ? '<span class="tag outside-roster-tag">[Ngoài lớp]</span>' : ''}${row._aliases?.length ? `<small class="progress-card-aliases">Tên khác cùng IP: ${esc(row._aliases.join(', '))}</small>` : ''}`;
+
+                const ipText = ip || 'Chưa xác định';
+                const ipEl = tr.children[1]?.querySelector('code') || tr.children[1];
+                if (ipEl && ipEl.textContent !== ipText) {
+                    ipEl.textContent = ipText;
+                }
+
+                const devCell = tr.children[2];
+                if (devCell && devCell.textContent !== dev) {
+                    devCell.textContent = dev;
+                }
+
+                const timeEl = tr.querySelector('.session-col-time');
+                if (timeEl && timeEl.textContent !== timeFormatted) {
+                    timeEl.textContent = timeFormatted;
+                }
+
+                const statusEl = tr.querySelector('.session-col-status');
+                if (statusEl) {
+                    // Tuyệt đối chỉ giữ huy hiệu kết nối (Online / Offline / Bị chặn), loại bỏ vĩnh viễn tag tiến độ [toán đề ...]
+                    const cleanStatusHtml = `<span class="table-status ${status}"><i class="fa-solid fa-circle"></i> ${statusText}</span>`;
+                    if (statusEl.innerHTML.trim() !== cleanStatusHtml) {
+                        statusEl.innerHTML = cleanStatusHtml;
+                    }
+                }
+                tr.querySelectorAll('div, small').forEach(el => {
+                    if (el.textContent.includes('Tiến độ:') || el.textContent.includes('câu (') || el.style?.color?.includes('cyan')) {
+                        el.remove();
+                    }
+                });
+
+                const actionsEl = tr.querySelector('.table-actions');
+                if (actionsEl) {
+                    const banBtn = actionsEl.querySelector('[data-ban-row], [data-unban-row]');
+                    if (status === 'banned' && banBtn) {
+                        if (banBtn.hasAttribute('data-ban-row')) {
+                            banBtn.outerHTML = `<button class="table-action" data-unban-row="${esc(ip)}" title="Mở khóa IP"><i class="fa-solid fa-unlock"></i></button>`;
+                        } else if (banBtn.dataset.unbanRow !== ip) {
+                            banBtn.dataset.unbanRow = ip;
+                        }
+                    } else if (status !== 'banned' && banBtn) {
+                        if (banBtn.hasAttribute('data-unban-row')) {
+                            banBtn.outerHTML = `<button class="table-action danger" data-ban-row="${esc(ip)}" title="Chặn IP"><i class="fa-solid fa-ban"></i></button>`;
+                        } else if (banBtn.dataset.banRow !== ip) {
+                            banBtn.dataset.banRow = ip;
+                        }
+                    }
+
+                    let renameBtn = actionsEl.querySelector('[data-require-rename-code]');
+                    if (deviceCode && !renameBtn) {
+                        actionsEl.insertAdjacentHTML('beforeend', `<button class="table-action" data-require-rename-code="${esc(deviceCode)}" data-require-rename-name="${esc(displayName)}" title="${hasPendingRename(deviceCode) ? 'Hủy yêu cầu đổi tên' : 'Bắt nhập lại tên thật'}" ${hasPendingRename(deviceCode) ? 'style="color:#c084fc;border-color:rgba(168,85,247,0.5);background:rgba(168,85,247,0.16);"' : ''}><i class="fa-solid fa-user-pen"></i></button>`);
+                        renameBtn = actionsEl.querySelector('[data-require-rename-code]');
+                    }
+                    if (renameBtn) {
+                        if (!deviceCode) renameBtn.remove();
+                        else {
+                            renameBtn.dataset.requireRenameCode = deviceCode;
+                            renameBtn.dataset.requireRenameName = displayName;
+                            renameBtn.title = hasPendingRename(deviceCode) ? 'Hủy yêu cầu đổi tên' : 'Bắt nhập lại tên thật';
+                            renameBtn.style.cssText = hasPendingRename(deviceCode) ? 'color:#c084fc;border-color:rgba(168,85,247,0.5);background:rgba(168,85,247,0.16);' : '';
+                        }
+                    }
+
+                    const grantBtn = actionsEl.querySelector('[data-grant-token-name]');
+                    if (grantBtn) {
+                        grantBtn.dataset.grantTokenName = name;
+                        grantBtn.dataset.grantTokenIp = ip;
+                        grantBtn.dataset.grantTokenDevice = dev;
+                    }
+
+                    const noticeBtn = actionsEl.querySelector('[data-private-notice]');
+                    if (noticeBtn) {
+                        noticeBtn.dataset.privateNotice = ip;
+                        noticeBtn.dataset.privateName = name;
+                    }
+
+                    const deleteBtn = actionsEl.querySelector('[data-delete-student-name]');
+                     if (deleteBtn) {
+                         deleteBtn.dataset.deleteStudentName = name;
+                         deleteBtn.dataset.deleteStudentIp = ip;
+                         deleteBtn.dataset.deleteStudentDevice = dev;
+                         deleteBtn.dataset.deleteStudentDevices = deviceCodes.join(',');
+                    }
+                }
+
+                const targetChild = tbody.children[index];
+                if (targetChild !== tr) {
+                    tbody.insertBefore(tr, targetChild || null);
+                }
+            }
+        });
+
+        existingRows.forEach((tr, k) => {
+            if (!activeKeys.has(k)) {
+                tr.remove();
+            }
+        });
+    }
+
+    async function loadStudents() {
+        if (state.isClearingStudents) return;
+        const loadSeq = (state.studentsLoadSeq = (state.studentsLoadSeq || 0) + 1);
+        ensureMonitorTable();
+        const systemIds = Object.values(SYSTEM);
+        if (!state.adminConfig?.masterIp) {
+            const adminRow = await systemRow(SYSTEM.admin);
+            if (adminRow?.score_summary) {
+                try {
+                    const config = JSON.parse(adminRow.score_summary);
+                    state.adminConfig = {
+                        masterIp: String(config.masterIp || '').trim(),
+                        allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : []
+                    };
+                } catch (error) { /* Keep the config already loaded. */ }
+            }
+        }
+        const adminIps = new Set([
+            state.adminConfig.masterIp,
+            ...(state.adminConfig.allowedIps || []).map((item) => typeof item === 'string' ? item : item?.ip)
+        ].map((ip) => String(ip || '').trim()).filter(Boolean));
+        const data = [];
+        let error = null;
+        // Giới hạn 300 phiên hoạt động mới nhất để chống tràn API Supabase định kỳ 5s,
+        // đồng thời truy vấn bổ sung các bản ghi IP bị chặn để không bị đẩy mất khi có >300 phiên mới
+        const [page, bannedPage] = await Promise.all([
+            state.client
+                .from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .neq('player_name', '__TRASH_BIN__')
+                .neq('player_name', '__TRASH_QUESTIONS__')
+                .order('last_active', { ascending: false })
+                .limit(300),
+            state.client
+                .from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .or('player_name.eq.__BANNED_IP__,status.like.BANNED%')
+                .order('last_active', { ascending: false })
+        ]);
+        if (page.error) {
+            error = page.error;
+        } else {
+            const seenRowKeys = new Set();
+            const appendUniqueRows = (rowsList) => {
+                if (!Array.isArray(rowsList)) return;
+                for (const r of rowsList) {
+                    if (!r) continue;
+                    const rowKey = r.id != null ? `id:${r.id}` : `${r.ip_address || ''}|${r.player_name || ''}|${r.device_info || ''}|${r.last_active || ''}`;
+                    if (seenRowKeys.has(rowKey)) continue;
+                    seenRowKeys.add(rowKey);
+                    data.push(r);
+                }
+            };
+            appendUniqueRows(page.data);
+            if (!bannedPage?.error) {
+                appendUniqueRows(bannedPage?.data);
+            }
+            state.logins = data.slice();
+        }
+        if (error) {
+            console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);
+            return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
+        }
+        if (state.isClearingStudents) return;
+        if (loadSeq !== state.studentsLoadSeq) return;
+        const nowMs = Date.now() + (window.dbService?.serverClockOffsetMs || 0);
+        const normalizeTimestamp = (iso) => {
+            if (!iso) return 0;
+            let ts = new Date(iso).getTime();
+            if (Number.isNaN(ts) || ts <= 0) return 0;
+            return ts;
+        };
+        const safeRowTime = (row) => {
+            const la = normalizeTimestamp(row.last_active);
+            const ca = normalizeTimestamp(row.created_at);
+            return la || ca || 0;
+        };
+        const rawRows = (data || []).filter((row) => {
+            const playerName = String(row.player_name || '').trim();
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+            if (systemIds.includes(row.id) || playerName.startsWith('__')) return false;
+            if ((!playerName || playerName.toLowerCase() === 'khách truy cập') && adminIps.has(ip)) return false;
+            return true;
+        }).sort((a, b) => safeRowTime(b) - safeRowTime(a));
+
+         // Gộp theo mã máy trước, IP sau; một thiết bị đổi WiFi/4G vẫn là một học sinh.
+        const isGenericVisitorName = (n) => {
+            const lower = String(n || '').trim().toLowerCase();
+            return !lower || /^(khách truy cập|học sinh|visitor|guest)$/.test(lower);
+        };
+        const appendUniqueAlias = (list, candidate, canonicalName) => {
+            const clean = String(candidate || '').trim();
+            if (!clean || isGenericVisitorName(clean)) return Array.isArray(list) ? list : [];
+            const canonLower = String(canonicalName || '').trim().toLowerCase();
+            if (clean.toLowerCase() === canonLower) return Array.isArray(list) ? list : [];
+            const next = Array.isArray(list) ? [...list] : [];
+            const seenLower = new Set(next.map((a) => String(a || '').trim().toLowerCase()));
+            if (!seenLower.has(clean.toLowerCase())) next.push(clean);
+            return next;
+        };
+
+        const seenStudents = new Map();
+        for (const row of rawRows) {
+            const normName = String(row.player_name || '').trim().toLowerCase();
+             const normIp = String(row.ip_address || row.client_ip || '').trim().toLowerCase();
+             const dedupeKey = getGroupKey(row);
+            const previous = seenStudents.get(dedupeKey);
+                 if (!previous) {
+                  const firstCode = extractDeviceCode(row.device_info);
+                  seenStudents.set(dedupeKey, { ...row, _aliases: [], _ips: normIp ? [normIp] : [], _deviceCodes: firstCode ? [firstCode] : [], _deviceCode: firstCode });
+            } else {
+                const prevGeneric = isGenericVisitorName(previous.player_name);
+                const currGeneric = isGenericVisitorName(row.player_name);
+                let canonicalName = previous.player_name;
+                if (prevGeneric && !currGeneric) {
+                    canonicalName = row.player_name;
+                } else if (!currGeneric && !prevGeneric && safeRowTime(row) > safeRowTime(previous)) {
+                    canonicalName = row.player_name;
+                }
+
+                let mergedAliases = [];
+                (previous._aliases || []).forEach((a) => {
+                    mergedAliases = appendUniqueAlias(mergedAliases, a, canonicalName);
+                });
+                mergedAliases = appendUniqueAlias(mergedAliases, previous.player_name, canonicalName);
+                mergedAliases = appendUniqueAlias(mergedAliases, row.player_name, canonicalName);
+
+                const baseRow = (!currGeneric || prevGeneric) && safeRowTime(row) > safeRowTime(previous)
+                    ? { ...row }
+                    : { ...previous };
+                 baseRow.player_name = canonicalName || 'Học sinh';
+                 baseRow._aliases = mergedAliases;
+                  baseRow._ips = [...new Set([...(previous._ips || []), ...(baseRow._ips || []), ...(normIp ? [normIp] : [])])];
+                  baseRow._deviceCodes = [...new Set([...(previous._deviceCodes || []), ...(baseRow._deviceCodes || []), extractDeviceCode(row.device_info)].filter(Boolean))];
+                  baseRow._deviceCode = baseRow._deviceCodes[0] || '';
+                 seenStudents.set(dedupeKey, baseRow);
+            }
+        }
+        const rows = Array.from(seenStudents.values()).map((row) => {
+            const devCode = row._deviceCode || extractDeviceCode(row.device_info);
+            const pinName = getPinnedDeviceName(devCode);
+            const rawName = String(row.player_name || 'Học sinh').trim() || 'Học sinh';
+            const aliases = (row._aliases || []).filter((a) => {
+                const normA = String(a || '').trim().toLowerCase();
+                return normA && (!pinName || normA !== pinName.toLowerCase());
+            });
+            if (pinName && rawName.toLowerCase() !== pinName.toLowerCase() && !isGenericVisitorName(rawName)) {
+                if (!aliases.some((a) => a.toLowerCase() === rawName.toLowerCase())) {
+                    aliases.unshift(rawName);
+                }
+            }
+            return {
+                ...row,
+                 _deviceCodes: row._deviceCodes || (devCode ? [devCode] : []),
+                 _deviceCode: devCode,
+                _rawName: rawName,
+                _aliases: aliases
+            };
+        });
+
+        // Danh sách IP bị chặn (bao gồm cả IP chặn thủ công __BANNED_IP__ chưa từng đăng nhập)
+        const bannedMap = new Map();
+        (data || []).forEach((row) => {
+            const ip = String(row.ip_address || row.client_ip || '').trim();
+            if (!ip || ip === 'SYSTEM' || ip === 'ALL') return;
+            if (String(row.status || '').startsWith('BANNED') || row.player_name === '__BANNED_IP__') {
+                if (!bannedMap.has(ip)) bannedMap.set(ip, row);
+            }
+        });
+        const banned = Array.from(bannedMap.values());
+        const bannedIpSet = new Set(bannedMap.keys());
+
+        if (!state.studentPulseMap) state.studentPulseMap = new Map();
+        const online = rows.filter((row) => {
+            const normIp = String(row.ip_address || row.client_ip || '').trim();
+            if (String(row.status || '').startsWith('BANNED') || bannedIpSet.has(normIp)) return false;
+            const normName = String(row.player_name || '').trim().toLowerCase();
+            const normDev = String(row.device_info || '').trim().toLowerCase();
+            const validIp = normIp && !['chưa xác định', '—', 'system'].includes(normIp.toLowerCase());
+             const key = getGroupKey(row);
+            const sig = `${row.last_active || ''}|${row.status || ''}|${row.score_summary || ''}|${normIp}|${normDev}`;
+            const prev = state.studentPulseMap.get(key);
+            const rowTime = safeRowTime(row);
+            // Online nếu hoạt động trong vòng 5 phút (300,000 ms) hoặc đồng hồ máy học sinh chạy trước admin
+            const isRecentByClock = rowTime > 0 && (rowTime >= nowMs - 300000) && (rowTime <= nowMs + 86400000);
+            const isRecentEnoughForPulse = rowTime > 0 && (rowTime >= nowMs - 30 * 60 * 1000) && (rowTime <= nowMs + 86400000);
+            if (!prev) {
+                state.studentPulseMap.set(key, {
+                    sig,
+                    activeUntil: isRecentByClock ? (nowMs + 300000) : 0
+                });
+            } else if (prev.sig !== sig) {
+                prev.sig = sig;
+                if (isRecentEnoughForPulse) {
+                    // Chỉ gia hạn Online 5 phút nếu bản ghi mới cập nhật thực sự gần hiện tại
+                    prev.activeUntil = nowMs + 300000;
+                } else {
+                    prev.activeUntil = 0;
+                }
+            }
+            const pulse = state.studentPulseMap.get(key);
+            return isRecentByClock || (pulse && pulse.activeUntil > nowMs);
+        });
+
+        const activeSessions = new Set(online.map((row) => `${row.id || (row.ip_address + ':' + row.player_name + ':' + row.device_info)}`));
+        animateMetricValue('stat-online', activeSessions.size);
+        $('nav-online-count') && ($('nav-online-count').textContent = activeSessions.size);
+        $('student-count') && ($('student-count').textContent = `${rows.length} phiên`);
+        $('stat-visitor-note') && ($('stat-visitor-note').textContent = `${rows.length} phiên ghi nhận`);
+
+        const nextStatsHtml = `<div class="monitor-stat"><span><b>${activeSessions.size}</b><small>Đang trực tuyến</small></span><i style="color:var(--green);background:#def9eb" class="fa-solid fa-signal"></i></div><div class="monitor-stat"><span><b>${rows.length}</b><small>Tổng phiên ghi nhận</small></span><i style="color:var(--primary);background:#e0f2fe" class="fa-solid fa-users"></i></div><div class="monitor-stat"><span><b>${banned.length}</b><small>IP đang bị chặn</small></span><i style="color:var(--red);background:#ffe7e8" class="fa-solid fa-ban"></i></div>`;
+        if ($('monitor-stats') && state.lastMonitorStatsHtml !== nextStatsHtml) {
+            state.lastMonitorStatsHtml = nextStatsHtml;
+            $('monitor-stats').innerHTML = nextStatsHtml;
+        }
+
+        renderStudentsTableSmoothly($('students-body'), rows, online, bannedIpSet, nowMs, safeRowTime);
+
+        $('banned-count') && ($('banned-count').textContent = `${banned.length} IP`);
+         const nextBannedHtml = banned.map((row) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-ban"></i></span><span class="stack-item-main"><b>${esc(row.ip_address)}</b><small>${esc(String(row.score_summary || row.device_info || 'Vi phạm quy chế').split('\n__DETAIL__:')[0])}</small></span><button data-unban-row="${esc(row.ip_address)}"><i class="fa-solid fa-unlock"></i></button></div>`).join('') || '<p class="muted-copy">Chưa có IP bị chặn.</p>';
+        if ($('banned-list') && state.lastBannedListHtml !== nextBannedHtml) {
+            state.lastBannedListHtml = nextBannedHtml;
+            $('banned-list').innerHTML = nextBannedHtml;
+        }
+    }
+    function ensureMonitorTable() {
+        if ($('students-body')) return;
+        const stats = $('monitor-stats');
+        if (!stats) return;
+        stats.insertAdjacentHTML('afterend', '<section class="panel monitor-table-panel"><div class="panel-title"><div><p class="eyebrow">PRESENCE</p><h2>Phiên truy cập và địa chỉ IP</h2></div><span class="info-badge">Heartbeat 20 giây</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Học sinh</th><th>IP</th><th>Thiết bị</th><th>Hoạt động cuối</th><th>Trạng thái</th><th></th></tr></thead><tbody id="students-body"><tr><td colspan="6" class="empty-state">Đang tải dữ liệu...</td></tr></tbody></table></div></section>');
+    }
+
+    function parseStudentProgress(row) {
+        const rawStatus = String(row.status || '');
+        const fullRawScore = String(row.score_summary || '');
+        let detail = null;
+        const detailMarkerIdx = fullRawScore.indexOf('\n__DETAIL__:');
+        const rawScore = detailMarkerIdx !== -1 ? fullRawScore.slice(0, detailMarkerIdx) : fullRawScore;
+        if (detailMarkerIdx !== -1) {
+            try {
+                detail = JSON.parse(fullRawScore.slice(detailMarkerIdx + '\n__DETAIL__:'.length));
+            } catch (e) { detail = null; }
+        }
+        const rawPayload = [rawStatus, rawScore].join(' ');
+        let subjectName = '';
+        const subjMatch = rawStatus.match(/^\[((?:\[[^\]]*\]|[^\]])*)\]/) || rawScore.match(/^\[((?:\[[^\]]*\]|[^\]])*)\]/);
+        if (subjMatch) subjectName = subjMatch[1].trim();
+
+        const configuredSubject = allSubjects().find((s) => subjectMatchKey(s.name || s.key) === subjectMatchKey(subjectName) || subjectMatchKey(s.key) === subjectMatchKey(subjectName));
+        const isGrade5 = configuredSubject
+            ? subjectGrade(configuredSubject) === '5'
+            : (/lớp\s*5|toán|math5|toán\s*đề/i.test(subjectName) ||
+                /lớp\s*5/i.test(rawStatus) || /lớp\s*5/i.test(rawScore) ||
+                subjectName.toLowerCase().startsWith('toán'));
+
+        let answered = 0, total = 0, percent = 0;
+        const progMatch = rawStatus.match(/Tiến độ\s*:\s*(\d+)\s*\/\s*(\d+)/i);
+        if (progMatch) {
+            answered = parseInt(progMatch[1], 10);
+            total = parseInt(progMatch[2], 10);
+            percent = total > 0 ? Math.round((answered / total) * 100) : 0;
+        }
+
+        let correct = 0, wrong = 0;
+        const hasDetailItems = Array.isArray(detail?.items) && detail.items.length > 0;
+        if (hasDetailItems) {
+            total = detail.items.length;
+            correct = detail.items.filter((item) => item.ok === true).length;
+            wrong = detail.items.filter((item) => item.ok === false).length;
+            answered = correct + wrong;
+            percent = total ? Math.round(answered * 100 / total) : 0;
+        } else {
+            const correctMatch = rawScore.match(/đúng\s*(\d+)(?:\s*\/\s*(\d+))?/i);
+            if (correctMatch) {
+                correct = parseInt(correctMatch[1], 10);
+                if (correctMatch[2]) {
+                    const outOf = parseInt(correctMatch[2], 10);
+                    if (total === 0) total = outOf;
+                    if (answered === 0) answered = total;
+                    wrong = Math.max(0, (answered || total) - correct);
+                } else if (answered >= correct) {
+                    wrong = answered - correct;
+                }
+            }
+        }
+
+        const isCompleted = /đã nộp bài|hoàn thành/i.test(rawStatus) || /\d+(?:[.,]\d+)?\s*điểm/i.test(rawScore);
+        if (!detail?.items?.length && isCompleted && total > 0) {
+            answered = total;
+            wrong = Math.max(0, total - correct);
+            percent = 100;
+        }
+        const isFullyAnswered = total > 0 && answered >= total;
+        const isReadyToSubmit = !isCompleted && isFullyAnswered;
+        if (isCompleted && percent === 0 && total > 0) percent = 100;
+        if (isFullyAnswered) percent = 100;
+
+        let finalScore = null;
+        const scoreMatch = rawScore.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
+        if (scoreMatch) finalScore = Number(scoreMatch[1].replace(',', '.'));
+
+        const isWaiting = !isCompleted && !isReadyToSubmit && answered === 0 && /đang xem trang chủ|trang chủ|chưa chọn|chờ vào/i.test(rawStatus);
+
+        const detailSeconds = Number(detail?.sec);
+        const clockMatch = rawScore.match(/-\s*(\d{1,3}:\d{2})(?:\s|$)/) || rawStatus.match(/-\s*(\d{1,3}:\d{2})(?:\s|$)/);
+        const minuteMatch = rawPayload.match(/(?:thời gian làm bài|đã làm)\s*[:：-]?\s*(\d{1,3})\s*(?:phút|p)\s*(?:(\d{1,2})\s*(?:giây|s))?/i);
+        const secondMatch = rawPayload.match(/(?:thời gian làm bài|đã làm)\s*[:：-]?\s*(\d{1,4})\s*(?:giây|s)\b/i);
+        let durationSeconds = 0;
+        let durationLabel = 'Chưa có dữ liệu';
+        if (Number.isFinite(detailSeconds) && detailSeconds >= 0) durationSeconds = detailSeconds;
+        else if (clockMatch) {
+                const [minutes, seconds] = String(clockMatch[1]).split(':').map(Number);
+                durationSeconds = (minutes * 60) + seconds;
+        } else if (minuteMatch) durationSeconds = Number(minuteMatch[1]) * 60 + Number(minuteMatch[2] || 0);
+        else if (secondMatch) durationSeconds = Number(secondMatch[1]);
+        else if (!isWaiting && row.created_at && row.last_active) {
+            const diff = new Date(row.last_active).getTime() - new Date(row.created_at).getTime();
+            if (diff > 0 && diff < 14400000) durationSeconds = Math.round(diff / 1000);
+        }
+        if (durationSeconds >= 0 && (durationSeconds > 0 || isCompleted || answered > 0)) {
+            const minutes = Math.floor(durationSeconds / 60);
+            const seconds = durationSeconds % 60;
+            durationLabel = minutes ? `${minutes}p ${String(seconds).padStart(2, '0')}s` : `${seconds}s`;
+        }
+
+        // Quy đổi điểm sang Thang Điểm 10 khoa học (Tối đa 10 điểm mỗi đề)
+        let score10 = 0;
+        if (isCompleted) {
+            if (finalScore !== null && !isNaN(finalScore)) {
+                // score_summary của app lưu điểm phần trăm (0–100).
+                // Quy đổi nhất quán sang thang 10, không dùng tổng câu để
+                // biến 75/50 thành 10/10.
+                const s = Number(finalScore) / 10;
+                score10 = Math.min(10, Math.max(0, Math.round(s * 10) / 10));
+            } else if (total > 0) {
+                score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+            }
+        } else if (total > 0 && answered > 0) {
+            score10 = Math.min(10, Math.max(0, Math.round((correct / total) * 100) / 10));
+        }
+
+        return {
+            id: row.id,
+            sessionId: row.session_id || detail?.sessionId || '',
+            name: row.player_name || 'Học sinh',
+            ip: row.ip_address || '',
+            device: row.device_info || '',
+            subject: subjectName || 'Chưa chọn môn',
+            grade: isGrade5 ? '5' : '11',
+            isGrade5,
+            answered,
+            total,
+            percent,
+            correct,
+            wrong,
+            finalScore,
+            score10,
+            isCompleted,
+            isReadyToSubmit,
+            isWaiting,
+            isPaused: !isCompleted && !isWaiting && (Date.now() - new Date(row.last_active || row.created_at || 0).getTime() > 30 * 60 * 1000),
+            durationSeconds,
+            durationLabel,
+            lastActive: row.last_active,
+            rawStatus,
+            rawScore,
+            detail,
+            row
+        };
+    }
+
+    function formatTimeAgo(isoString, nowMs = Date.now()) {
+        if (!isoString) return '—';
+        const timeMs = new Date(isoString).getTime();
+        if (isNaN(timeMs)) return '—';
+        const diffSec = Math.max(0, Math.round((nowMs - timeMs) / 1000));
+        if (diffSec < 15) return 'Vừa mới xong';
+        if (diffSec < 60) return `${diffSec} giây trước`;
+        const diffMin = Math.round(diffSec / 60);
+        if (diffMin < 60) return `${diffMin} phút trước`;
+        const diffHours = Math.round(diffMin / 60);
+        if (diffHours < 24) return `${diffHours} giờ trước`;
+        return new Date(timeMs).toLocaleDateString('vi-VN');
+    }
+
+    function buildProgressDeleteButton(p) {
+        const noticeBtn = `<button type="button" class="progress-card-delete" data-private-notice="${esc(p.ip || '')}" data-private-name="${esc(p.name || 'Học sinh')}" title="Gửi thông báo riêng tới ${esc(p.name || 'Học sinh')}" aria-label="Nhắn riêng cho ${esc(p.name || 'Học sinh')}"><i class="fa-solid fa-comment-dots"></i></button>`;
+        const deviceCodes = p._deviceCodes || (p._deviceCode ? [p._deviceCode] : []);
+        const deleteBtn = `<button type="button" class="progress-card-delete" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" data-delete-progress-devices="${esc(deviceCodes.join(','))}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(p.name)}"><i class="fa-solid fa-trash-can"></i></button>`;
+        return `${noticeBtn}${deleteBtn}`;
+    }
+
+    function setProgressEmptyState(container, visible, filterLabel = 'nào') {
+        if (!container) return;
+        let empty = container.querySelector('[data-progress-empty]');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.dataset.progressEmpty = 'true';
+            empty.style.cssText = 'grid-column:1 / -1;text-align:center;padding:48px 16px;background:var(--surface-2);border-radius:16px;border:1px dashed var(--border);';
+            empty.innerHTML = '<div style="font-size:32px;color:var(--amber,#f59e0b);margin-bottom:8px;"><i class="fa-solid fa-graduation-cap"></i></div><h3 style="font-size:16px;font-weight:700;color:var(--text);"></h3><p style="font-size:13px;color:var(--muted);margin-top:4px;max-width:420px;margin-inline:auto;">Khi học sinh vào làm các đề thi, số câu làm được và tiến trình sẽ hiển thị trực tiếp theo thời gian thực tại đây.</p>';
+            container.appendChild(empty);
+        }
+        const title = empty.querySelector('h3');
+        if (title) title.textContent = filterLabel ? `Chưa có học sinh ${filterLabel} nào` : 'Chưa có học sinh nào';
+        empty.hidden = !visible;
+    }
+
+    function formatExamStatus(subject) {
+        const configured = allSubjects().find((item) => subjectMatchKey(item.key) === subjectMatchKey(subject) || subjectMatchKey(item.name) === subjectMatchKey(subject));
+        const source = `${configured?.status || configured?.state || configured?.name || subject}`.toLowerCase();
+        return /đóng|closed|khóa/i.test(source) ? 'Đã đóng' : 'Đang mở';
+    }
+
+    function renderProgressSubjectOptions(records = []) {
+        const select = $('progress-subject-filter');
+        if (!select) return;
+        const subjects = new Map();
+        records.forEach((record) => {
+            const key = record.subject && record.subject !== 'Chưa chọn môn' ? record.subject : '';
+            if (key) subjects.set(subjectMatchKey(key), key);
+        });
+        allSubjects().forEach((item) => {
+            if (!subjects.has(subjectMatchKey(item.name))) subjects.set(subjectMatchKey(item.name), item.name);
+        });
+        const selected = state.progressSubject || 'all';
+        select.innerHTML = `<option value="all">Tất cả môn học</option>${Array.from(subjects.values()).sort((a, b) => a.localeCompare(b, 'vi')).map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('')}`;
+        select.value = Array.from(select.options).some((option) => subjectMatchKey(option.value) === subjectMatchKey(selected)) ? selected : 'all';
+        if (select.value !== selected) state.progressSubject = 'all';
+    }
+
+    function observerIsOnline(item) {
+        const now = Date.now();
+        return (state.progressRawLogins || []).some((row) => {
+            const sameIp = item.ip && String(row.ip_address || '').trim() === String(item.ip).trim();
+            const sameName = item.name && String(row.player_name || '').trim().toLowerCase() === String(item.name).trim().toLowerCase();
+            const time = new Date(row.last_active || row.created_at || 0).getTime();
+            return (sameIp || sameName) && time > 0 && now - time < 300000 && !String(row.status || '').startsWith('BANNED');
+        });
+    }
+
+    function renderProgressSubjectInfo(records = []) {
+        const target = $('progress-subject-info');
+        if (!target) return;
+        const subject = state.progressSubject || 'all';
+        if (subject === 'all') {
+            const total = records.length;
+            const completed = records.filter((item) => item.isCompleted).length;
+            const completion = total ? Math.round((completed / total) * 100) : 0;
+            target.innerHTML = `<div class="progress-subject-empty"><i class="fa-solid fa-layer-group"></i><div><strong>Tổng quan theo bộ lọc hiện tại</strong><span>${total ? `${total} học sinh · ${completion}% đã hoàn thành` : 'Chọn một môn học cụ thể để xem thông tin đề thi.'}</span></div></div>`;
+            return;
+        }
+        const matched = records.filter((item) => subjectMatchKey(item.subject) === subjectMatchKey(subject));
+        const first = matched[0];
+        const configured = allSubjects().find((item) => subjectMatchKey(item.name || item.key) === subjectMatchKey(subject));
+        const totalQuestions = Math.max(Number(configured?.count || 0), ...matched.map((item) => Number(item.total || 0)), 0);
+            const scored = matched.filter((item) => item.isCompleted || item.answered > 0);
+            const average = scored.length ? scored.reduce((sum, item) => sum + Number(item.score10 || 0), 0) / scored.length : 0;
+        const completion = matched.length ? Math.round((matched.filter((item) => item.isCompleted || item.percent >= 100).length / matched.length) * 100) : 0;
+        const grade = configured ? subjectGrade(configured) : (first?.grade || '—');
+        target.innerHTML = `<div class="progress-subject-summary"><div class="progress-subject-identity"><span class="progress-subject-icon"><i class="fa-solid fa-book-open"></i></span><div><p class="eyebrow">THÔNG TIN MÔN HỌC</p><h3>${esc(configured?.name || subject)}</h3><span>Khối ${esc(grade)} · Mã đề: ${esc(configured?.examCode || configured?.code || 'Chưa thiết lập')}</span></div></div><div class="progress-subject-facts"><span><b>Thời gian</b>${esc(configured?.duration || '45 phút')}</span><span><b>Trạng thái đề</b><em class="${formatExamStatus(subject) === 'Đang mở' ? 'is-open' : 'is-closed'}">${formatExamStatus(subject)}</em></span><span><b>Cấu trúc</b>${totalQuestions || '—'} câu · ${esc(configured?.format || 'Trắc nghiệm')}</span><span><b>Thang điểm</b>${esc(configured?.scale || '10')}</span><span><b>Điểm trung bình</b>${matched.length ? average.toFixed(1) : '—'} / 10</span><span><b>Hoàn thành chung</b>${completion}%</span></div></div>`;
+    }
+
+    function getProgressCardStatus(p) {
+        if (p.isCompleted) return { type: 'completed', label: 'Hoàn thành', icon: 'fa-circle-check', tone: 'primary' };
+        if (p.isReadyToSubmit) return { type: 'ready', label: 'Chờ nộp bài', icon: 'fa-paper-plane', tone: 'blue' };
+        if (p.isPaused) return { type: 'paused', label: 'Tạm dừng', icon: 'fa-pause', tone: 'muted' };
+        if (p.isWaiting) return { type: 'waiting', label: 'Đang chờ', icon: 'fa-hourglass-half', tone: 'muted' };
+        return { type: 'doing', label: 'Đang làm bài', icon: 'fa-pen-nib', tone: 'green' };
+    }
+
+    function progressSortRecords(records) {
+        const list = [...records];
+        const time = (item) => new Date(item.lastActive || 0).getTime() || 0;
+        if (state.progressSort === 'progress') return list.sort((a, b) => b.percent - a.percent || time(b) - time(a));
+        if (state.progressSort === 'score') return list.sort((a, b) => b.score10 - a.score10 || time(b) - time(a));
+        if (state.progressSort === 'score-asc') return list.sort((a, b) => a.score10 - b.score10 || time(b) - time(a));
+        return list.sort((a, b) => {
+            const statusWeight = (item) => item.activeDoing ? 4 : (item.isReadyToSubmit ? 3 : (item.isCompleted ? 2 : (item.isPaused ? 1 : 0)));
+            return statusWeight(b) - statusWeight(a) || time(b) - time(a);
+        });
+    }
+
+    async function renderGrade5ProgressMonitor() {
+        const container = $('grade5-progress-cards');
+        if (!container) return;
+        if (state.progressLoading) {
+            state.progressRefreshQueued = true;
+            return;
+        }
+        state.progressLoading = true;
+        const hasExistingCards = Boolean(container.querySelector('.grade5-live-card'));
+        const existingEmpty = container.querySelector('[data-progress-empty]');
+        const isShowingEmpty = Boolean(existingEmpty && !existingEmpty.hidden);
+        if (!hasExistingCards && !isShowingEmpty && !container.querySelector('.admin-skeleton-card')) {
+            container.innerHTML = buildAdminSkeletonHtml('progress', 3);
+        }
+
+        try {
+            let logins = [];
+            let loadError = '';
+            try {
+                if (state.client) {
+                    const { data, error } = await state.client
+                        .from('quiz_logins')
+                        .select('*')
+                        .order('last_active', { ascending: false })
+                        .limit(300);
+                    if (error) loadError = error.message || 'Không thể tải dữ liệu tiến trình.';
+                    else if (data) logins = data;
+                }
+            } catch (e) {
+                loadError = e?.message || 'Không thể tải dữ liệu tiến trình.';
+                console.warn('Lỗi tải tiến trình:', e);
+            }
+
+            if (!logins || logins.length === 0) logins = state.logins || [];
+            if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(logins).catch((err) => console.warn('[Quiz Studio Admin] Auto-submit stale attempts failed:', err)); }
+
+            const systemIds = Object.values(SYSTEM || {});
+            const studentRows = (logins || []).filter(r => {
+                const name = String(r.player_name || '').trim().toLowerCase();
+                const status = String(r.status || '').toLowerCase();
+                return !systemIds.includes(r.id) && !name.startsWith('__') &&
+                    name !== 'khách truy cập' && name !== 'visitor' &&
+                    !status.includes('admin') && String(r.ip_address || '').trim() !== 'SYSTEM';
+            });
+            // Nhóm theo mã máy trước, IP sau để giữ trọn lịch sử khi đổi WiFi/4G,
+            // nhưng chỉ hiển thị 1 thẻ đại diện cho mỗi học sinh trên bảng tổng quan.
+            const groupedByStudent = new Map();
+            for (const row of studentRows) {
+                const ip = String(row.ip_address || row.client_ip || '').trim().toLowerCase();
+                const key = getGroupKey(row);
+                const time = new Date(row.last_active || row.created_at || 0).getTime() || 0;
+                if (!groupedByStudent.has(key)) groupedByStudent.set(key, []);
+                groupedByStudent.get(key).push({ row, time });
+            }
+            const allParsed = [];
+            groupedByStudent.forEach((entries, studentKey) => {
+                entries.sort((a, b) => b.time - a.time);
+                const records = entries.map(item => parseStudentProgress(item.row));
+                const seenIds = new Set();
+                const realAttempts = records.filter((r) => {
+                    const idKey = String(r.id);
+                    if (seenIds.has(idKey)) return false;
+                    seenIds.add(idKey);
+                    return !r.isWaiting || r.isCompleted || r.answered > 0 || (Array.isArray(r.detail?.items) && r.detail.items.length > 0);
+                });
+                const nowMs = Date.now() + (window.dbService?.serverClockOffsetMs || 0);
+                const WAITING_ACTIVE_WINDOW_MS = 10 * 60 * 1000;
+                realAttempts.forEach((r) => {
+                    const rTime = new Date(r.lastActive || r.row?.created_at || 0).getTime();
+                    r.activeDoing = !r.isCompleted && !r.isWaiting && (nowMs - rTime) <= 30 * 60 * 1000;
+                    r.isPaused = !r.isCompleted && !r.isWaiting && !r.activeDoing;
+                });
+                const inProgress = realAttempts.find(r => r.activeDoing);
+                const latestCompleted = realAttempts.find(r => r.isCompleted);
+                const primary = inProgress || latestCompleted || realAttempts[0] || records[0];
+                if (!primary) return;
+                // Chỉ giữ trạng thái "Đang chờ" nếu học sinh thực sự hoạt động trong 10 phút gần đây
+                if (!primary.isCompleted && primary.answered <= 0 && (primary.isWaiting || primary.isPaused)) {
+                    const primaryTime = new Date(primary.lastActive || primary.row?.created_at || 0).getTime() || 0;
+                    if (primaryTime <= 0 || (nowMs - primaryTime) > WAITING_ACTIVE_WINDOW_MS) return;
+                }
+                primary.history = realAttempts.length > 0 ? realAttempts : [primary];
+                 const deviceCodes = [...new Set(entries.map((item) => extractDeviceCode(item.row.device_info)).filter(Boolean))];
+                 const deviceCode = deviceCodes[0] || '';
+                 const pinName = deviceCodes.map(getPinnedDeviceName).find(Boolean) || '';
+                 const canonical = realAttempts.find(r => !/khách truy cập|học sinh|visitor/i.test(String(r.name || '')))?.name || primary.name;
+                 const isOwnerProfile = normalizeIdentityKey(canonical).includes('dua con cua thoi dai') || deviceCodes.includes('QM-A5PZBC');
+                 const outsideRoster = !isOwnerProfile && (entries.some((item) => item.row.outsideRoster === true || /\[Ngoài lớp\]/i.test(String(item.row.status || '')) || item.row.detail?.outsideRoster === true) || records.some((record) => record.detail?.outsideRoster === true));
+                 const rosterName = !pinName && !outsideRoster ? findRosterMatchedName(canonical) : '';
+                 const displayName = pinName || rosterName || canonical;
+                 primary._deviceCodes = deviceCodes;
+                 primary._deviceCode = deviceCode;
+                primary._pinnedName = pinName;
+                primary._rawName = canonical;
+                primary.name = displayName;
+                primary.aliases = [...new Set(records.map(r => String(r.name || '').trim()).filter(n => n && !/khách truy cập|học sinh|visitor/i.test(n) && n.toLowerCase() !== String(displayName).toLowerCase()))];
+                primary.studentKey = studentKey;
+                primary._ips = [...new Set(entries.map((item) => String(item.row.ip_address || item.row.client_ip || '').trim()).filter(Boolean))];
+                 primary._outsideRoster = outsideRoster;
+                 allParsed.push(primary);
+             });
+            const completedRenameCodes = new Set();
+            allParsed.forEach((p) => {
+                (p._deviceCodes || (p._deviceCode ? [p._deviceCode] : [])).forEach((code) => {
+                    const req = state.renameRequests?.[String(code || '').toUpperCase()];
+                    const latestName = p._rawName || p.name || '';
+                    if (req && normalizeIdentityKey(latestName) !== normalizeIdentityKey(req.oldName) && new Date(p.lastActive || 0).getTime() > (Date.parse(req.requestedAt || '') || 0)) completedRenameCodes.add(String(code || '').toUpperCase());
+                });
+            });
+            if (completedRenameCodes.size) {
+                const nextReqs = { ...(state.renameRequests || {}) };
+                completedRenameCodes.forEach((code) => delete nextReqs[code]);
+                state.renameRequests = nextReqs;
+                persistRosterPayload({ grade5: state.rosterConfig?.grade5, grade11: state.rosterConfig?.grade11, devicePins: state.devicePins || {}, renameRequests: nextReqs }).catch((error) => console.warn('[Quiz Studio Admin] Không thể dọn yêu cầu đổi tên đã hoàn thành:', error));
+            }
+             allParsed.forEach((p) => {
+                 const ownIps = new Set((p._ips || []).map((ip) => String(ip).trim().toLowerCase()).filter((ip) => ip && !['', '—', 'chưa xác định', 'system'].includes(ip)));
+                 p._sameIpPeers = allParsed.filter((other) => other !== p && [...ownIps].some((ip) => (other._ips || []).map((value) => String(value).trim().toLowerCase()).includes(ip))).map((other) => ({ name: other.name, deviceCode: other._deviceCode, deviceCodes: other._deviceCodes || [], pinned: Boolean(other._pinnedName), studentKey: other.studentKey }));
+             });
+            const filter = state.progressFilter || 'all';
+            const gradeList = filter === 'all'
+                ? allParsed
+                : (filter === '5'
+                    ? allParsed.filter(p => p.isGrade5 || (p.history || []).some((h) => h.isGrade5))
+                    : allParsed.filter(p => !p.isGrade5 || (p.history || []).some((h) => !h.isGrade5)));
+            state.progressRecords = allParsed;
+            state.progressRawLogins = logins;
+            renderProgressSubjectOptions(allParsed.flatMap(p => (Array.isArray(p.history) && p.history.length ? p.history : [p])));
+            const subjectList = state.progressSubject === 'all'
+                ? gradeList
+                : gradeList
+                    .map((p) => {
+                        if (subjectMatchKey(p.subject) === subjectMatchKey(state.progressSubject)) return p;
+                        const matchedAttempt = (p.history || []).find((h) => subjectMatchKey(h.subject) === subjectMatchKey(state.progressSubject));
+                        if (!matchedAttempt) return null;
+                         return { ...matchedAttempt, name: p.name, _rawName: p._rawName, _pinnedName: p._pinnedName, aliases: p.aliases, history: p.history, studentKey: p.studentKey, _ips: p._ips, _deviceCode: p._deviceCode, _deviceCodes: p._deviceCodes, _sameIpPeers: p._sameIpPeers, _outsideRoster: p._outsideRoster };
+                    })
+                    .filter(Boolean);
+            const keyword = String(state.progressSearch || '').trim().toLowerCase();
+             const parsedList = keyword ? subjectList.filter((p) => `${p.name} ${p._rawName || ''} ${(p.aliases || []).join(' ')} ${(p._deviceCodes || []).join(' ')} ${p.subject} ${p.ip}`.toLowerCase().includes(keyword)) : subjectList;
+            renderProgressSubjectInfo(subjectList);
+            if (loadError && gradeList.length === 0) {
+                container.querySelectorAll('.grade5-live-card, .admin-skeleton-card').forEach((card) => card.remove());
+                setProgressEmptyState(container, true, 'nào');
+                const title = container.querySelector('[data-progress-empty] h3');
+                if (title) title.textContent = 'Không thể tải dữ liệu';
+                const message = container.querySelector('[data-progress-empty] p');
+                if (message) message.textContent = loadError;
+                return;
+            }
+
+            const nowMs = Date.now() + (window.dbService?.serverClockOffsetMs || 0);
+            let doingCount = 0;
+            let submittedCount = 0;
+            let waitingCount = 0;
+
+            subjectList.forEach(p => {
+                if (p.isCompleted) submittedCount++;
+                else if (p.isWaiting || p.isPaused) waitingCount++;
+                else doingCount++;
+            });
+
+            animateAdminCount('g5-stat-doing', doingCount);
+            animateAdminCount('g5-stat-submitted', submittedCount);
+            animateAdminCount('g5-stat-waiting', waitingCount);
+            animateAdminCount('g5-stat-total', subjectList.length);
+            $('nav-progress-count') && ($('nav-progress-count').textContent = doingCount > 0 ? doingCount : (submittedCount || subjectList.length));
+
+            renderQuickObservers();
+
+            container.querySelectorAll('.admin-skeleton-card').forEach((card) => card.remove());
+
+            if (parsedList.length === 0) {
+                const filterLabel = filter === 'all' ? '' : `Lớp ${filter}`;
+                container.querySelectorAll('.grade5-live-card').forEach((card) => card.remove());
+                setProgressEmptyState(container, true, filterLabel);
+                return;
+            }
+
+            // Ưu tiên hiển thị: Học sinh đang thi lên đầu -> Đã nộp bài -> Người đang chờ ở trang chủ
+            const sortedList = progressSortRecords(parsedList);
+
+            setProgressEmptyState(container, false);
+            renderGrade5CardsSmoothly(container, sortedList, nowMs);
+        } finally {
+            state.progressLoading = false;
+            if (state.progressRefreshQueued) { state.progressRefreshQueued = false; setTimeout(() => renderGrade5ProgressMonitor(), 250); }
+        }
+    }
+
+    function buildProgressBarInnerHtml(p, percent) {
+        const items = p.detail?.items;
+        if (Array.isArray(items) && items.length > 0) {
+            return `<div class="g5-progress-segments">${items.map((it, idx) => {
+                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                return `<span class="g5-progress-seg ${cls}" title="Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Chưa làm')}"></span>`;
+            }).join('')}</div>`;
+        }
+        const totalBase = p.total > 0 ? p.total : Math.max(1, (p.correct || 0) + (p.wrong || 0));
+        const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
+        const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round(((p.wrong || 0) / totalBase) * 1000) / 10) : 0;
+        if (okPct === 0 && badPct === 0 && percent > 0) {
+            return `<div class="g5-progress-fill" style="width:${percent}%;height:100%;background:var(--primary);border-radius:99px;"></div>`;
+        }
+        return `<div class="g5-progress-split">
+            ${okPct > 0 ? `<div class="g5-progress-fill is-ok" style="width:${okPct}%" title="Đúng: ${p.correct}"></div>` : ''}
+            ${badPct > 0 ? `<div class="g5-progress-fill is-bad" style="width:${badPct}%" title="Sai: ${p.wrong}"></div>` : ''}
+        </div>`;
+    }
+
+    function buildGrade5HistoryStripHtml(p) {
+        const history = Array.isArray(p?.history) ? p.history : [];
+        if (history.length <= 1) return '';
+        const shown = history.slice(0, 6);
+        const hiddenCount = Math.max(0, history.length - shown.length);
+        return `
+            <div style="border-top:1px dashed var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);">
+                    <span style="font-weight:600;display:inline-flex;align-items:center;gap:5px;"><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary);font-size:10px;"></i> Lịch sử các đề (${history.length} lượt)</span>
+                    ${hiddenCount > 0 ? `<span>+${hiddenCount} đề cũ</span>` : ''}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    ${shown.map((att) => {
+                        const isCur = String(att.id) === String(p.id);
+                        const scoreLabel = att.isCompleted ? `${att.score10.toFixed(1)}đ` : `${att.answered}/${att.total || '?'} câu`;
+                        const borderCol = isCur ? 'var(--primary)' : 'var(--border)';
+                        const bgCol = isCur ? 'var(--primary-soft)' : 'var(--surface-2)';
+                        return `<button type="button" data-g5-attempt-id="${esc(att.id)}" style="padding:4px 8px;border-radius:8px;border:1px solid ${borderCol};background:${bgCol};color:var(--text);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;max-width:100%;" title="Xem chi tiết bài làm ${esc(att.subject)}">
+                            <span style="color:${att.isCompleted ? 'var(--emerald)' : '#f59e0b'};">${att.isCompleted ? '✓' : '•'}</span>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">${esc(att.subject)}</span>
+                            <strong style="color:${att.isCompleted ? '#f59e0b' : 'var(--primary)'};">${scoreLabel}</strong>
+                        </button>`;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function closeAllProgressMenus(exceptWrap = null) {
+        document.querySelectorAll('.progress-card-menu-wrap').forEach((wrap) => {
+            if (wrap !== exceptWrap) {
+                wrap.querySelector('.progress-card-dropdown')?.classList.add('hidden');
+                wrap.querySelector('.progress-card-menu-btn')?.setAttribute('aria-expanded', 'false');
+                wrap.closest('.grade5-live-card')?.classList.remove('has-open-menu');
+            }
+        });
+    }
+
+    /** Render the shared header of a live progress card so long names wrap inside .progress-card-identity without clipping .progress-card-actions. */
+    function buildProgressTagsHtml(p, deviceCode, pinName) {
+        const deviceCodes = p._deviceCodes || (deviceCode ? [deviceCode] : []);
+        return `${deviceCode ? `<span class="tag device-code-tag">${esc(deviceCode)}</span>` : ''}${deviceCodes.length > 1 ? `<span class="tag ip-count-tag" title="${esc(deviceCodes.join(', '))}">+${deviceCodes.length - 1} máy</span>` : ''}${pinName ? '<span class="tag pin-tag">Đã ghim</span>' : ''}${hasPendingRename(deviceCodes) ? '<span class="tag rename-pending-tag">Chờ đổi tên</span>' : ''}${p._outsideRoster ? '<span class="tag outside-roster-tag">Ngoài lớp</span>' : ''}`;
+    }
+    function buildProgressCardMenuItemsHtml(p, displayName, deviceCode, pinName) {
+        const deviceCodes = p._deviceCodes || (p._deviceCode ? [p._deviceCode] : []);
+        const cleanIp = String(p.ip || '').trim();
+        const copyIdentityValue = (cleanIp && deviceCode) ? `${cleanIp}-${deviceCode}` : (deviceCode || cleanIp || '');
+        return `${deviceCode && p._sameIpPeers?.length ? `<button type="button" class="progress-menu-item is-warning" role="menuitem" data-merge-device-code="${esc(deviceCode)}" data-merge-student-key="${esc(p.studentKey || '')}" title="Phát hiện thẻ cùng IP (${esc(p._sameIpPeers.map(x => x.name).join(', '))}) — Bấm để gộp chung thành 1 học sinh"><i class="fa-solid fa-code-merge"></i><span>Gộp học sinh cùng IP</span></button>` : ''}${copyIdentityValue ? `<button type="button" class="progress-menu-item" role="menuitem" data-copy-student-identity="${esc(copyIdentityValue)}" data-copy-student-name="${esc(displayName)}" title="Sao chép ${esc(copyIdentityValue)}"><i class="fa-regular fa-copy"></i><span>Copy IP &amp; Mã máy</span></button>` : ''}${deviceCode ? `<button type="button" class="progress-menu-item" role="menuitem" data-pin-device-code="${esc(deviceCode)}" data-pin-device-name="${esc(displayName)}" title="${pinName ? 'Đổi ghim tên' : 'Ghim tên thiết bị'}"><i class="fa-solid fa-thumbtack"></i><span>${pinName ? 'Đổi ghim tên' : 'Ghim tên thiết bị'}</span></button><button type="button" class="progress-menu-item${hasPendingRename(deviceCode) ? ' is-active-flag' : ''}" role="menuitem" data-require-rename-code="${esc(deviceCode)}" data-require-rename-name="${esc(displayName)}" title="${hasPendingRename(deviceCode) ? 'Hủy yêu cầu đổi tên' : 'Bắt nhập lại tên thật'}"><i class="fa-solid fa-user-pen"></i><span>${hasPendingRename(deviceCode) ? 'Hủy yêu cầu đổi tên' : 'Yêu cầu đổi tên'}</span></button>` : ''}${!p.isCompleted && !p.isWaiting && !isProtectedOwnerIdentity(displayName, deviceCode) ? `<button type="button" class="progress-menu-item is-primary" role="menuitem" data-force-submit-id="${esc(p.id)}" data-force-submit-name="${esc(displayName)}" data-force-submit-code="${esc(deviceCode)}" title="Ép nộp bài ngay cho ${esc(displayName)}"><i class="fa-solid fa-bolt"></i><span>Ép nộp bài ngay</span></button>` : ''}<button type="button" class="progress-menu-item" role="menuitem" data-private-notice="${esc(p.ip || '')}" data-private-name="${esc(displayName || 'Học sinh')}" title="Gửi thông báo riêng tới ${esc(displayName || 'Học sinh')}"><i class="fa-solid fa-comment-dots"></i><span>Gửi tin nhắn riêng</span></button><div class="progress-menu-divider" role="separator"></div><button type="button" class="progress-menu-item is-danger" role="menuitem" data-delete-progress-id="${esc(p.id)}" data-delete-progress-name="${esc(p._rawName || p.name)}" data-delete-progress-ip="${esc(p.ip)}" data-delete-progress-device="${esc(p.device)}" data-delete-progress-devices="${esc(deviceCodes.join(','))}" title="Xóa phiên này" aria-label="Xóa phiên của ${esc(displayName)}"><i class="fa-solid fa-trash-can"></i><span>Xóa khỏi bảng</span></button>`;
+    }
+    function buildProgressCardHeaderHtml(p, statusHtml, timeAgo, avatarStyle, iconClass) {
+        const deviceCode = p._deviceCode || '';
+        const pinName = p._pinnedName || getPinnedDeviceName(deviceCode);
+        const displayName = pinName || p.name;
+        const ipList = Array.isArray(p._ips) ? p._ips : [p.ip].filter(Boolean);
+        return `
+            <div class="progress-card-head">
+                <div class="progress-card-head-main">
+                    <div class="progress-card-avatar" style="${avatarStyle}">
+                        <i class="fa-solid ${iconClass}"></i>
+                    </div>
+                    <div class="progress-card-identity">
+                        <h3 class="progress-card-name" title="${esc(displayName)}">${esc(displayName)}</h3>
+                        <div class="progress-card-tags">${buildProgressTagsHtml(p, deviceCode, pinName)}</div>
+                        ${p.aliases?.length ? `<div class="progress-card-aliases" title="${esc(p.aliases.join(', '))}"><span class="progress-card-alias-label">Tên khác cùng IP:</span> ${esc(p.aliases.join(', '))}</div>` : ''}
+                        <small style="color:var(--muted);font-size:11px;"><i class="fa-solid fa-network-wired"></i> <span title="${esc(ipList.join(', '))}">${esc(ipList[0] || '—')}${ipList.length > 1 ? ` <span class="tag ip-count-tag">+${ipList.length - 1} IP</span>` : ''}</span> · <i class="fa-solid fa-clock"></i> <span class="g5-card-time">${esc(timeAgo)}</span></small>
+                    </div>
+                </div>
+                <div class="progress-card-actions">
+                    ${statusHtml}
+                    <div class="progress-card-menu-wrap">
+                        <button type="button" class="progress-card-menu-btn" data-progress-menu-toggle aria-haspopup="menu" aria-expanded="false" title="Thao tác" aria-label="Thao tác cho ${esc(displayName)}"><i class="fa-solid fa-ellipsis"></i></button>
+                        <div class="progress-card-dropdown hidden" role="menu">${buildProgressCardMenuItemsHtml(p, displayName, deviceCode, pinName)}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function buildGrade5CardInnerHtml(p, cardType, percent, timeAgo) {
+        const status = getProgressCardStatus(p);
+        const statusHtml = `<span class="status-badge progress-status-badge is-${status.type}"><i class="fa-solid ${status.icon}"></i> ${status.label}</span>`;
+        if (cardType === 'waiting') {
+            return `
+                ${buildProgressCardHeaderHtml(
+                    p,
+                    statusHtml,
+                    timeAgo,
+                    'background:var(--surface-2);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:16px;',
+                    'fa-user-clock'
+                )}
+
+                 <div style="background:var(--surface-2);padding:10px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;font-weight:500;color:var(--text);"><i class="fa-solid fa-compass" style="color:var(--muted);margin-right:6px;"></i> Đang ở màn hình trang chủ</span>
+                    <span style="font-size:11px;color:var(--muted);font-style:italic;">Chưa chọn đề thi</span>
+                </div>
+
+                <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                    <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                    <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
+                </div>
+            `;
+        }
+
+        if (cardType === 'completed') {
+            return `
+                ${buildProgressCardHeaderHtml(
+                    p,
+                    statusHtml,
+                    timeAgo,
+                    'background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;',
+                    'fa-award'
+                )}
+
+                 <div style="background:var(--surface-2);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
+                        <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
+                    </div>
+                     <div class="g5-progress-track">
+                        ${buildProgressBarInnerHtml({ ...p, wrong: p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0)) }, 100)}
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
+                        <span>Đúng: <b style="color:var(--text);">${p.correct}/${p.total || p.answered} câu</b> (${percent}%)</span>
+                        <span style="font-size:13px;font-weight:800;color:var(--amber,#f59e0b);background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);"><i class="fa-solid fa-trophy"></i> ${p.score10.toFixed(1)} / 10 đ</span>
+                    </div>
+                </div>
+
+                <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                    <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                    <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
+                </div>
+            `;
+        }
+
+        // CardType: doing
+        return `
+            ${buildProgressCardHeaderHtml(
+                p,
+                statusHtml,
+                timeAgo,
+                'background:rgba(16,185,129,0.15);color:var(--emerald);display:flex;align-items:center;justify-content:center;font-size:16px;',
+                'fa-user-pen'
+            )}
+
+             <div style="background:var(--surface-2);padding:10px 12px;border-radius:10px;border:1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:12px;font-weight:600;color:var(--text);"><i class="fa-solid fa-book-open" style="color:var(--primary);margin-right:4px;"></i> <span class="g5-card-subject">${esc(p.subject)}</span></span>
+                    <span style="font-size:12px;font-weight:700;color:var(--primary);" class="g5-card-count">${p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`}</span>
+                </div>
+                 <div class="g5-progress-track">
+                    ${buildProgressBarInnerHtml(p, percent)}
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);">
+                    <span>Tiến độ: <b style="color:var(--text);" class="g5-card-percent">${percent}%</b></span>
+                    <span class="g5-card-score">Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)</span>
+                </div>
+            </div>
+
+            <div class="g5-card-history-slot">${buildGrade5HistoryStripHtml(p)}</div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px;">
+                <span><i class="fa-solid fa-network-wired"></i> IP: <code>${esc(p.ip || '—')}</code></span>
+                <span class="g5-card-duration"><i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}</span>
+            </div>
+        `;
+    }
+
+    function renderGrade5CardsSmoothly(container, sortedList, nowMs) {
+        const existingCards = new Map();
+        container.querySelectorAll('[data-student-id]').forEach(el => {
+            existingCards.set(el.dataset.studentId, el);
+        });
+
+        const activeIds = new Set(sortedList.map(s => s.id));
+        existingCards.forEach((cardEl, id) => {
+            if (!activeIds.has(id)) {
+                cardEl.remove();
+                existingCards.delete(id);
+            }
+        });
+
+        sortedList.forEach((p, index) => {
+            const timeAgo = formatTimeAgo(p.lastActive, nowMs);
+            const cardType = p.isWaiting ? 'waiting' : (p.isCompleted ? 'completed' : (p.isReadyToSubmit ? 'ready' : (p.isPaused ? 'paused' : 'doing')));
+            const percent = p.total > 0 ? Math.min(100, Math.round((p.answered / p.total) * 100)) : (p.isCompleted ? 100 : 0);
+
+            let card = existingCards.get(p.id);
+
+            if (!card) {
+                card = document.createElement('article');
+                card.className = 'panel grade5-live-card';
+                card.style.margin = '0';
+                card.style.padding = '16px';
+                 card.style.borderRadius = '12px';
+                 card.style.background = 'var(--surface)';
+                card.style.border = '1px solid var(--border)';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '12px';
+                card.style.transition = 'all 0.3s ease';
+                card.dataset.studentId = p.id;
+                card.dataset.cardType = cardType;
+                card.dataset.progressStudent = p.id;
+                card.innerHTML = buildGrade5CardInnerHtml(p, cardType, percent, timeAgo);
+                const targetChild = Array.from(container.children).filter((el) => !el.hasAttribute('data-progress-empty'))[index];
+                container.insertBefore(card, targetChild || null);
+            } else {
+                if (card.dataset.cardType !== cardType) {
+                    card.dataset.cardType = cardType;
+                    card.innerHTML = buildGrade5CardInnerHtml(p, cardType, percent, timeAgo);
+                } else {
+                    const elTime = card.querySelector('.g5-card-time');
+                    if (elTime && elTime.textContent !== timeAgo) elTime.textContent = timeAgo;
+
+                    const durationEl = card.querySelector('.g5-card-duration');
+                    if (durationEl) durationEl.innerHTML = `<i class="fa-regular fa-clock"></i> Đã làm: ${esc(p.durationLabel)}`;
+
+                    const elSubject = card.querySelector('.g5-card-subject');
+                    if (elSubject && p.subject && elSubject.textContent !== p.subject) {
+                        elSubject.textContent = p.subject;
+                    }
+
+                    const historySlot = card.querySelector('.g5-card-history-slot');
+                    if (historySlot) {
+                        const nextHistoryHtml = buildGrade5HistoryStripHtml(p);
+                        if (historySlot.innerHTML !== nextHistoryHtml) {
+                            historySlot.innerHTML = nextHistoryHtml;
+                        }
+                    }
+
+                    const deviceCode = p._deviceCode || '';
+                    const pinName = p._pinnedName || getPinnedDeviceName(deviceCode);
+                    const nextName = String(pinName || p.name || '');
+
+                    const nameEl = card.querySelector('.progress-card-name');
+                    if (nameEl && nameEl.textContent !== nextName) {
+                        nameEl.textContent = nextName;
+                        nameEl.title = nextName;
+                    }
+                    const tagsEl = card.querySelector('.progress-card-tags');
+                    if (tagsEl) {
+                        const nextTagsHtml = buildProgressTagsHtml(p, deviceCode, pinName);
+                        if (tagsEl.innerHTML !== nextTagsHtml) tagsEl.innerHTML = nextTagsHtml;
+                    }
+                     const dropdownEl = card.querySelector('.progress-card-dropdown');
+                     if (dropdownEl) {
+                         const nextMenuHtml = buildProgressCardMenuItemsHtml(p, nextName, deviceCode, pinName);
+                         if (dropdownEl.innerHTML !== nextMenuHtml) dropdownEl.innerHTML = nextMenuHtml;
+                     }
+                     const statusEl = card.querySelector('.progress-status-badge');
+                     const nextStatus = getProgressCardStatus(p);
+                     const nextStatusHtml = `<i class="fa-solid ${nextStatus.icon}"></i> ${nextStatus.label}`;
+                     if (statusEl && statusEl.innerHTML !== nextStatusHtml) {
+                         statusEl.className = `status-badge progress-status-badge is-${nextStatus.type}`;
+                         statusEl.innerHTML = nextStatusHtml;
+                     }
+                    const identity = card.querySelector('.progress-card-identity');
+                    if (identity) {
+                        const aliases = p.aliases?.length ? `<div class="progress-card-aliases" title="${esc(p.aliases.join(', '))}"><span class="progress-card-alias-label">Tên khác cùng IP:</span> ${esc(p.aliases.join(', '))}</div>` : '';
+                        const oldAliases = identity.querySelector('.progress-card-aliases');
+                        if (oldAliases) oldAliases.remove();
+                        if (aliases) {
+                            if (tagsEl) tagsEl.insertAdjacentHTML('afterend', aliases);
+                            else identity.insertAdjacentHTML('beforeend', aliases);
+                        }
+                    }
+                    card.dataset.studentId = p.id;
+
+                    const noticeBtn = card.querySelector('[data-private-notice]');
+                    if (noticeBtn) {
+                        noticeBtn.dataset.privateNotice = p.ip || '';
+                        noticeBtn.dataset.privateName = nextName || 'Học sinh';
+                    }
+
+                    if (cardType === 'doing' || cardType === 'ready') {
+                        const elCount = card.querySelector('.g5-card-count');
+                        const countText = p.total > 0 ? `${p.answered}/${p.total} câu` : `${p.answered} câu đã làm`;
+                        if (elCount && elCount.textContent !== countText) elCount.textContent = countText;
+
+                        const track = card.querySelector('.g5-progress-track');
+                        if (track) {
+                            const nextBarHtml = buildProgressBarInnerHtml(p, percent);
+                            if (track.innerHTML !== nextBarHtml) {
+                                track.innerHTML = nextBarHtml;
+                            }
+                        }
+
+                        const elPercent = card.querySelector('.g5-card-percent');
+                        if (elPercent && elPercent.textContent !== `${percent}%`) elPercent.textContent = `${percent}%`;
+
+                        const elScore = card.querySelector('.g5-card-score');
+                        if (elScore) {
+                            elScore.innerHTML = `Đúng: <b style="color:var(--emerald);">${p.correct}</b> • <span style="color:var(--red,#ef4444);">Sai: ${p.wrong}</span> (<b>${p.score10.toFixed(1)}/10 đ</b>)`;
+                        }
+                    }
+                }
+                const targetChild = Array.from(container.children).filter((el) => !el.hasAttribute('data-progress-empty'))[index];
+                if (targetChild !== card) {
+                    container.insertBefore(card, targetChild || null);
+                }
+            }
+        });
+    }
+
+    function buildParentProgressComment(p) {
+        const detail = p.detail;
+        const statusText = p.isCompleted ? `Đã nộp bài (${p.score10.toFixed(1)}/10)` : `Đang làm (${p.answered}/${p.total || 0} ý - ${p.percent}%)`;
+        const lines = [
+            `📋 BÁO CÁO HỌC TẬP: ${p.name}`,
+            `• Môn: ${p.subject} (Lớp ${p.grade})`,
+            `• Trạng thái: ${statusText}`,
+            `• Kết quả đúng/sai: ${p.correct} đúng / ${p.wrong} sai`,
+            `• Thời gian làm bài: ${p.durationLabel || 'Chưa có'}`
+        ];
+        if (detail && detail.cats && Object.keys(detail.cats).length > 0) {
+            const entries = Object.entries(detail.cats).map(([name, arr]) => {
+                const c = Number(arr?.[0] || 0);
+                const a = Number(arr?.[1] || 0);
+                const t = Number(arr?.[2] || 0);
+                const pct = a > 0 ? Math.round((c / a) * 100) : (t > 0 ? 0 : 0);
+                return { name, c, a, t, pct };
+            });
+            const good = entries.filter(e => e.a > 0 && e.pct >= 80).map(e => `${e.name} (${e.c}/${e.a})`);
+            const weak = entries.filter(e => e.a > 0 && e.pct < 60).map(e => `${e.name} (${e.c}/${e.a})`);
+            if (good.length) lines.push(`• Phần làm tốt: ${good.join(', ')}`);
+            if (weak.length) lines.push(`• Phần cần ôn thêm: ${weak.join(', ')}`);
+        }
+        return lines.join('\n');
+    }
+
+    function renderStudentProgressDetail(studentRecord, selectedAttemptId = null) {
+        const modal = $('student-progress-modal');
+        const body = $('student-progress-modal-body');
+        if (!modal || !body || !studentRecord) return;
+        const history = Array.isArray(studentRecord.history) && studentRecord.history.length > 0 ? studentRecord.history : [studentRecord];
+        const p = (selectedAttemptId ? history.find((item) => String(item.id) === String(selectedAttemptId)) : null)
+            || history.find((item) => String(item.id) === String(studentRecord.id))
+            || history[0]
+            || studentRecord;
+        const displayName = resolvePinnedStudentName(studentRecord._deviceCode || p.device, studentRecord.name || p.name);
+        const status = getProgressCardStatus(p);
+        const detail = p.detail && typeof p.detail === 'object' ? p.detail : null;
+        const subjectQuestions = state.questions.filter((question) => subjectMatchKey(subjectName(question.subject_key)) === subjectMatchKey(p.subject));
+        const qById = new Map(subjectQuestions.map(q => [String(q.id), q]));
+
+        // 1. Phân tích tốc độ & hành vi
+        const avgSec = (p.answered > 0 && p.durationSeconds > 0) ? Math.round(p.durationSeconds / p.answered) : 0;
+        const isRushed = avgSec > 0 && avgSec < 3 && p.wrong > p.correct;
+        const paceLabel = avgSec > 0
+            ? (isRushed ? `Làm rất nhanh (${avgSec}s/ý — có thể khoanh vội)` : `Trung bình ${avgSec}s / ý`)
+            : 'Chưa đủ dữ liệu tốc độ';
+        const modeLabel = detail?.mode === 'exam' ? 'Thi thử (tính giờ)' : (detail?.mode === 'practice' ? 'Luyện tập' : 'Tự do');
+
+        // 2. Phân tích theo chuyên đề
+        let catsHtml = '';
+        if (detail?.cats && Object.keys(detail.cats).length > 0) {
+            const catEntries = Object.entries(detail.cats).map(([catName, arr]) => {
+                const c = Number(arr?.[0] || 0);
+                const a = Number(arr?.[1] || 0);
+                const t = Number(arr?.[2] || 0);
+                const pct = a > 0 ? Math.round((c / a) * 100) : 0;
+                const level = a === 0 ? 'neutral' : (pct >= 80 ? 'good' : (pct >= 50 ? 'mid' : 'weak'));
+                return { catName, c, a, t, pct, level };
+            }).sort((x, y) => x.pct - y.pct);
+
+            catsHtml = `
+                <section class="student-detail-section">
+                    <h4><i class="fa-solid fa-layer-group"></i> Phân tích theo chuyên đề</h4>
+                    <div class="student-detail-cats">
+                        ${catEntries.map((item) => `
+                            <div class="student-detail-cat-row is-${item.level}">
+                                <div class="student-detail-cat-head">
+                                    <strong>${esc(item.catName)}</strong>
+                                    <span>${item.c}/${item.a || item.t} đúng (${item.a > 0 ? `${item.pct}%` : 'Chưa làm'})${item.level === 'weak' ? ' · <em>Cần ôn lại</em>' : ''}</span>
+                                </div>
+                                <div class="student-detail-cat-bar"><span style="width:${item.a > 0 ? item.pct : 0}%"></span></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            `;
+        }
+
+        // 3. Chi tiết từng câu hỏi (từ detail.items hoặc fallback) — ấn vào từng câu để xem đầy đủ lựa chọn
+        const optChars = ['A', 'B', 'C', 'D'];
+        const renderExpandedBody = (qObj, it, idx) => {
+            const fullQuestion = qObj ? htmlText(qObj.question) : esc(`Câu ${idx + 1} (${it?.cat || 'Chung'})`);
+            let bodyContent = '';
+            if (it?.t === 'tf' || qObj?.q_type === 'tf_group' || qObj?.qType === 'tf_group') {
+                const stmts = Array.isArray(qObj?.statements) ? qObj.statements : [];
+                const uaArr = Array.isArray(it?.ua) ? it.ua : [];
+                const caArr = Array.isArray(it?.ca) ? it.ca : stmts.map(s => parseBool(s.answer));
+                const count = Math.max(stmts.length, caArr.length);
+                bodyContent = `<div class="student-q-tf-list">${Array.from({ length: count }).map((_, sIdx) => {
+                    const st = stmts[sIdx];
+                    const exp = caArr[sIdx];
+                    const ch = uaArr[sIdx];
+                    const hasPick = ch !== null && ch !== undefined;
+                    const isRight = hasPick && Boolean(ch) === Boolean(exp);
+                    const cls = !hasPick ? 'is-none' : (isRight ? 'is-ok' : 'is-bad');
+                    return `<div class="student-q-tf-item ${cls}">
+                        <span class="student-q-tf-text"><b>${String.fromCharCode(97 + sIdx)})</b> ${st ? htmlText(st.text) : `Ý ${String.fromCharCode(97 + sIdx)}`}</span>
+                        <span class="student-q-tf-badges">
+                            <em>Chọn: <b>${hasPick ? (ch ? 'Đúng' : 'Sai') : 'Chưa chọn'}</b></em>
+                            <em>Đáp án: <b>${exp ? 'Đúng' : 'Sai'}</b></em>
+                        </span>
+                    </div>`;
+                }).join('')}</div>`;
+            } else if (it?.t === 'sa' || qObj?.q_type === 'short_answer' || qObj?.qType === 'short_answer') {
+                const uaStr = it?.ua !== null && it?.ua !== undefined ? String(it.ua) : '';
+                const caStr = String(it?.ca ?? qObj?.correct_value ?? qObj?.correctValue ?? '').trim();
+                const hasPick = uaStr.trim() !== '';
+                bodyContent = `<div class="student-q-sa-box">
+                    <div><span>Học sinh nhập:</span> <strong class="${!hasPick ? '' : (it?.ok ? 'text-ok' : 'text-bad')}">${hasPick ? esc(uaStr) : 'Chưa trả lời'}</strong></div>
+                    <div><span>Đáp án đúng:</span> <strong class="text-ok">${caStr ? htmlText(caStr) : 'Chưa thiết lập'}</strong></div>
+                </div>`;
+            } else {
+                const options = Array.isArray(qObj?.options) ? qObj.options : [];
+                const caIdx = it?.ca !== null && it?.ca !== undefined ? Number(it.ca) : Number(qObj?.correct ?? qObj?.answer ?? 0);
+                const hasPick = it?.ua !== null && it?.ua !== undefined;
+                const uaIdx = hasPick ? Number(it.ua) : -1;
+                if (options.length > 0) {
+                    bodyContent = `<div class="student-q-opt-list">${options.map((opt, oIdx) => {
+                        const isPicked = hasPick && oIdx === uaIdx;
+                        const isCorrectOpt = oIdx === caIdx;
+                        let optCls = '';
+                        let tag = '';
+                        if (isPicked && isCorrectOpt) { optCls = 'is-ok'; tag = '✓ Học sinh chọn (Đúng)'; }
+                        else if (isPicked && !isCorrectOpt) { optCls = 'is-bad'; tag = '✗ Học sinh chọn (Sai)'; }
+                        else if (isCorrectOpt) { optCls = 'is-correct-hint'; tag = '✓ Đáp án đúng'; }
+                        return `<div class="student-q-opt ${optCls}">
+                            <span class="student-q-opt-letter">${optChars[oIdx] || oIdx + 1}</span>
+                            <span class="student-q-opt-text">${htmlText(opt)}</span>
+                            ${tag ? `<em class="student-q-opt-tag">${tag}</em>` : ''}
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    bodyContent = `<div class="student-q-sa-box">
+                        <div><span>Học sinh chọn:</span> <strong>${hasPick ? esc(optChars[uaIdx] ?? uaIdx) : 'Chưa chọn'}</strong></div>
+                        <div><span>Đáp án đúng:</span> <strong class="text-ok">${esc(optChars[caIdx] ?? caIdx)}</strong></div>
+                    </div>`;
+                }
+            }
+            const expHtml = qObj?.explanation ? `<div class="student-q-exp"><b><i class="fa-solid fa-lightbulb"></i> Giải thích:</b> ${htmlText(qObj.explanation)}</div>` : '';
+            const oldNote = !it ? `<div class="student-q-old-note"><i class="fa-solid fa-circle-info"></i> Phiên này được lưu trước khi bật ghi nhận lựa chọn từng câu, nên chỉ hiển thị đề và đáp án đúng.</div>` : '';
+            return `<div class="student-q-expanded-body">
+                <div class="student-q-full-text">${fullQuestion}</div>
+                ${bodyContent}
+                ${expHtml}
+                ${oldNote}
+            </div>`;
+        };
+
+        let questionsHtml = '';
+        if (Array.isArray(detail?.items) && detail.items.length > 0) {
+            const chipsHtml = detail.items.map((it, idx) => {
+                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                return `<button type="button" class="student-q-chip ${cls}" data-jump-q="${idx}" title="Xem câu ${idx + 1}">${idx + 1}</button>`;
+            }).join('');
+
+            const rowsHtml = detail.items.map((it, idx) => {
+                const qObj = qById.get(String(it.id));
+                const qTitle = qObj ? esc(notationText(qObj.question).slice(0, 140)) : `Câu ${idx + 1} (${esc(it.cat || 'Chung')})`;
+                const stateCls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
+                const filterTag = it.ok === true ? 'ok' : (it.ok === false ? 'wrong' : 'unanswered');
+                let answerDetail = '';
+                if (it.t === 'mcq') {
+                    const uaStr = it.ua !== null && it.ua !== undefined ? (optChars[it.ua] ?? it.ua) : 'Chưa chọn';
+                    const caStr = it.ca !== null && it.ca !== undefined ? (optChars[it.ca] ?? it.ca) : '—';
+                    answerDetail = `Bạn chọn: <b>${esc(uaStr)}</b> · Đáp án đúng: <b>${esc(caStr)}</b>`;
+                } else if (it.t === 'tf') {
+                    const uaArr = Array.isArray(it.ua) ? it.ua : [];
+                    const caArr = Array.isArray(it.ca) ? it.ca : [];
+                    answerDetail = caArr.map((exp, sIdx) => {
+                        const ch = uaArr[sIdx];
+                        const mark = ch === null || ch === undefined ? '—' : (ch === exp ? '✓' : '✗');
+                        return `${String.fromCharCode(97 + sIdx)}) ${ch === true ? 'Đ' : (ch === false ? 'S' : '—')}/${exp ? 'Đ' : 'S'} ${mark}`;
+                    }).join(' · ');
+                } else {
+                    const uaStr = it.ua !== null && it.ua !== undefined ? it.ua : 'Chưa trả lời';
+                    answerDetail = `Bạn nhập: <b>${esc(uaStr)}</b> · Đáp án: <b>${esc(it.ca || '—')}</b>`;
+                }
+                return `
+                    <li class="student-detail-answer-row ${stateCls}" data-q-filter-state="${filterTag}" data-q-index="${idx}">
+                        <button type="button" class="student-q-toggle" aria-expanded="false">
+                            <span class="student-q-num">Câu ${idx + 1}</span>
+                            <div class="student-q-summary">
+                                <strong>${qTitle}</strong>
+                                <em>${answerDetail}</em>
+                            </div>
+                            <i class="fa-solid fa-chevron-down student-q-chevron"></i>
+                        </button>
+                        <div class="student-q-collapse" aria-hidden="true"><div class="student-q-collapse-inner">${renderExpandedBody(qObj, it, idx)}</div></div>
+                    </li>
+                `;
+            }).join('');
+
+            questionsHtml = `
+                <section class="student-detail-section">
+                    <div class="student-detail-q-header">
+                        <h4><i class="fa-solid fa-list-check"></i> Chi tiết từng câu (${detail.items.length} câu — bấm vào từng câu để xem)</h4>
+                        <div class="student-detail-filters" role="group" aria-label="Lọc câu hỏi">
+                            <button type="button" class="is-active" data-detail-filter="all">Tất cả</button>
+                            <button type="button" data-detail-filter="wrong">Câu sai (${detail.items.filter(i => i.ok === false).length})</button>
+                            <button type="button" data-detail-filter="unanswered">Chưa làm (${detail.items.filter(i => i.ok === null).length})</button>
+                        </div>
+                    </div>
+                    <div class="student-detail-chips">${chipsHtml}</div>
+                    <ul class="student-detail-questions" id="student-detail-questions-list">${rowsHtml}</ul>
+                </section>
+            `;
+        } else {
+            const rawQuestionCount = Number(p.total || 0);
+            const fallbackRows = subjectQuestions.slice(0, rawQuestionCount || subjectQuestions.length).map((question, index) => `
+                <li class="student-detail-answer-row is-none" data-q-index="${index}">
+                    <button type="button" class="student-q-toggle" aria-expanded="false">
+                        <span class="student-q-num">Câu ${index + 1}</span>
+                        <div class="student-q-summary">
+                            <strong>${esc(notationText(question.question).slice(0, 150))}</strong>
+                            <em>Bấm để xem đề &amp; đáp án đúng (phiên cũ chưa ghi nhận lựa chọn)</em>
+                        </div>
+                        <i class="fa-solid fa-chevron-down student-q-chevron"></i>
+                    </button>
+                    <div class="student-q-collapse" aria-hidden="true"><div class="student-q-collapse-inner">${renderExpandedBody(question, null, index)}</div></div>
+                </li>
+            `).join('');
+            questionsHtml = `<section class="student-detail-section"><h4><i class="fa-solid fa-list-check"></i> Danh sách từng câu hỏi (bấm vào câu để xem chi tiết)</h4>${fallbackRows ? `<ul class="student-detail-questions" id="student-detail-questions-list">${fallbackRows}</ul>` : '<div class="student-detail-empty"><i class="fa-solid fa-database"></i><p>Phiên hiện tại chỉ lưu tổng hợp tiến độ trên Cloud. Chưa có dữ liệu từng câu trả lời để đối chiếu đáp án.</p></div>'}</section>`;
+        }
+
+        const historySwitcherHtml = history.length > 1
+            ? `
+                <div class="student-detail-section" style="margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <h4 style="margin:0;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary);"></i> Lịch sử bài đã làm (${history.length} đề)</h4>
+                        <span style="font-size:11px;color:var(--muted);">Chọn đề để xem lại chi tiết từng câu</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        ${history.map((att) => {
+                            const isCurrent = String(att.id) === String(p.id);
+                            const attScore = att.isCompleted ? `${att.score10.toFixed(1)}/10 đ` : `${att.answered}/${att.total || '?'} câu`;
+                            const borderCol = isCurrent ? 'var(--primary)' : 'var(--border)';
+                            const bgCol = isCurrent ? 'rgba(99,102,241,0.18)' : 'var(--surface-3)';
+                            return `<button type="button" data-admin-attempt-id="${esc(att.id)}" style="padding:7px 11px;border-radius:10px;border:1px solid ${borderCol};background:${bgCol};color:var(--text);font-size:12px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;${isCurrent ? 'box-shadow:0 0 0 1px rgba(99,102,241,0.35);font-weight:700;' : 'font-weight:500;'}">
+                                <span style="color:${att.isCompleted ? 'var(--emerald)' : '#f59e0b'};font-weight:700;">${att.isCompleted ? '✓' : '•'}</span>
+                                <span>${esc(att.subject)}</span>
+                                <span style="font-size:11px;font-weight:700;color:${att.isCompleted ? 'var(--amber,#f59e0b)' : 'var(--primary)'};">${esc(attScore)}</span>
+                                <span style="font-size:10px;color:var(--muted);">${esc(formatTimeAgo(att.lastActive))}</span>
+                            </button>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `
+            : '';
+
+        body.innerHTML = `
+            <div class="student-detail-summary">
+                <div>
+                    <span class="student-detail-avatar"><i class="fa-solid fa-user-graduate"></i></span>
+                    <div>
+                        <h3>${esc(displayName)}</h3>
+                        <p>${esc(p.subject)} · Lớp ${esc(p.grade)} · ${esc(status.label)}</p>
+                    </div>
+                </div>
+                <div class="student-detail-summary-right">
+                    <span class="student-detail-score">${p.score10.toFixed(1)}<small>/10</small></span>
+                    <button type="button" id="btn-copy-parent-comment" class="button button-secondary compact student-copy-report-btn"><i class="fa-regular fa-copy"></i> Copy nhận xét Zalo</button>
+                </div>
+            </div>
+            ${historySwitcherHtml}
+            <div class="student-detail-metrics">
+                <span><b>Tiến độ</b>${p.answered}/${p.total || '—'} ý (${p.percent}%)</span>
+                <span><b>Thời gian thực tế</b>${esc(p.durationLabel)}</span>
+                <span><b>Đúng / Sai</b>${p.correct} / ${p.wrong}</span>
+                <span><b>Hoạt động cuối</b>${esc(formatTimeAgo(p.lastActive))}</span>
+            </div>
+            <div class="student-detail-insights">
+                <span class="${isRushed ? 'is-warn' : ''}"><i class="fa-solid fa-gauge-high"></i> ${esc(paceLabel)}</span>
+                <span><i class="fa-solid fa-compass"></i> Chế độ: ${esc(modeLabel)}</span>
+                ${detail?.away > 0 ? `<span class="is-warn"><i class="fa-solid fa-arrow-up-right-from-square"></i> Chuyển tab: ${detail.away} lần</span>` : ''}
+            </div>
+            ${catsHtml}
+            ${questionsHtml}
+            <details class="student-detail-raw"><summary>Dữ liệu trạng thái gốc</summary><pre>${esc(`${p.rawStatus}\n${p.rawScore}`)}</pre></details>
+        `;
+
+        body.querySelectorAll('[data-admin-attempt-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                renderStudentProgressDetail(studentRecord, btn.dataset.adminAttemptId);
+            });
+        });
+
+        $('btn-copy-parent-comment')?.addEventListener('click', async (event) => {
+            const btn = event.currentTarget || $('btn-copy-parent-comment');
+            const text = buildParentProgressComment({ ...p, name: displayName });
+            const copied = await copyToClipboard(text);
+            if (copied) {
+                triggerAdminCopyFeedback(btn, 1500);
+                notify('📋 Đã sao chép nhận xét học tập để gửi Zalo/Phụ huynh!');
+            }
+        });
+
+        body.querySelectorAll('[data-detail-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.detailFilter;
+                body.querySelectorAll('[data-detail-filter]').forEach(b => b.classList.toggle('is-active', b === btn));
+                body.querySelectorAll('#student-detail-questions-list > li').forEach((li) => {
+                    const st = li.dataset.qFilterState;
+                    li.classList.toggle('hidden', mode !== 'all' && st !== mode);
+                });
+            });
+        });
+
+        body.querySelectorAll('.student-q-toggle').forEach((toggleBtn) => {
+            toggleBtn.addEventListener('click', () => {
+                const li = toggleBtn.closest('li');
+                const panel = li?.querySelector('.student-q-collapse');
+                if (!li || !panel) return;
+                const willOpen = !li.classList.contains('is-open');
+                li.classList.toggle('is-open', willOpen);
+                panel.classList.toggle('is-open', willOpen);
+                panel.setAttribute('aria-hidden', String(!willOpen));
+                toggleBtn.setAttribute('aria-expanded', String(willOpen));
+                if (willOpen) renderMath(panel);
+            });
+        });
+
+        body.querySelectorAll('[data-jump-q]').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                const idx = chip.dataset.jumpQ;
+                const targetLi = body.querySelector(`#student-detail-questions-list > li[data-q-index="${idx}"]`);
+                if (!targetLi) return;
+                targetLi.classList.remove('hidden');
+                const panel = targetLi.querySelector('.student-q-collapse');
+                const toggleBtn = targetLi.querySelector('.student-q-toggle');
+                if (panel && !targetLi.classList.contains('is-open')) {
+                    targetLi.classList.add('is-open');
+                    panel.classList.add('is-open');
+                    panel.setAttribute('aria-hidden', 'false');
+                    toggleBtn?.setAttribute('aria-expanded', 'true');
+                    renderMath(panel);
+                }
+                targetLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+        });
+
+        $('student-progress-modal-title').textContent = `Tiến trình của ${p.name}`;
+        $('student-progress-modal-subtitle').textContent = `${p.subject} · Cập nhật ${formatTimeAgo(p.lastActive)}`;
+        modal.classList.remove('hidden');
+        document.body.classList.add('progress-modal-open');
+    }
+
+    function closeStudentProgressDetail() {
+        $('student-progress-modal')?.classList.add('hidden');
+        document.body.classList.remove('progress-modal-open');
+    }
+
+    async function broadcastNotice() {
+        const message = $('notice-input')?.value.trim();
+        if (!message) return notify('Nhập nội dung thông báo.', true);
+        const result = await window.dbService.sendBroadcastNotice(message, 'ALL', '');
+        if (!result?.success) return notify(`Không thể phát thông báo: ${result?.error || 'Lỗi không xác định'}`, true);
+        if ($('notice-input')) $('notice-input').value = '';
+        addActivityLog('Phát thông báo toàn phòng', message, 'broadcast');
+        notify('Đã phát thông báo tới toàn bộ học sinh.');
+    }
+    async function sendPrivateNotice(ip, name = 'Học sinh') {
+        const targetIp = String(ip || '').trim();
+        const cleanName = String(name || 'Học sinh').trim();
+        if ((!targetIp || targetIp === 'Chưa xác định' || targetIp === '—') && !cleanName) {
+            return notify('Không xác định được học sinh nhận thông báo.', true);
+        }
+        const message = await promptDialog({
+            title: `Thông báo riêng cho ${cleanName}`,
+            eyebrow: 'PRIVATE NOTICE',
+            message: `Tin nhắn sẽ bật nổi bật trên màn hình của ${cleanName}${targetIp ? ` (IP: ${targetIp})` : ''}.`,
+            placeholder: 'Nhập nội dung nhắc nhở...',
+            confirmText: 'Gửi thông báo',
+            variant: 'primary',
+            icon: 'fa-paper-plane'
+        });
+        if (message === null || !message.trim()) return;
+        const cleanMsg = message.trim();
+        const result = await window.dbService.sendBroadcastNotice(cleanMsg, targetIp || 'ALL', cleanName);
+        if (!result?.success) return notify(`Không thể gửi thông báo riêng: ${result?.error || 'Lỗi không xác định'}`, true);
+        addActivityLog(`Gửi thông báo riêng (${cleanName})`, cleanMsg, 'broadcast');
+        notify(`Đã gửi thông báo riêng tới ${cleanName}.`);
+    }
+    async function clearStudentLogins() {
+        if (!(await confirmDialog({ title: 'Xóa lịch sử học sinh?', message: 'Xóa toàn bộ lịch sử phiên đăng nhập và địa chỉ IP của học sinh? Cấu hình hệ thống sẽ được giữ lại.', confirmText: 'Xóa lịch sử', variant: 'danger' }))) return;
+        state.isClearingStudents = true;
+        try {
+            const systemIds = Object.values(SYSTEM);
+            const data = await fetchAllLoginRows();
+            const ids = (data || []).filter((row) => {
+                const playerName = String(row.player_name || '').trim();
+                const isBanned = String(row.status || '').startsWith('BANNED') || playerName === '__BANNED_IP__';
+                return !systemIds.includes(row.id) && !isBanned && !playerName.startsWith('__');
+            }).map((row) => row.id).filter((id) => id && !String(id).startsWith('local_'));
+            const chunkSize = 50;
+            for (let offset = 0; offset < ids.length; offset += chunkSize) {
+                const chunk = ids.slice(offset, offset + chunkSize);
+                const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
+                if (error) throw new Error(`Không thể xóa lịch sử học sinh: ${error.message}`);
+                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', chunk);
+                if (verifyError) throw new Error(`Không thể xác minh dữ liệu sau khi xóa: ${verifyError.message}`);
+                if ((remaining || []).length) throw new Error(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`);
+            }
+            try { localStorage.removeItem('quiz_local_logins_history'); } catch (e) {}
+            state.studentPulseMap?.clear();
+            state.lastStudentsBodyHtml = '';
+            state.lastMonitorStatsHtml = '';
+            state.progressRecords = [];
+            state.progressRawLogins = [];
+            state.logins = [];
+            notify('Đã xóa sạch toàn bộ lịch sử phiên truy cập học sinh.');
+        } finally {
+            state.isClearingStudents = false;
+            await loadStudents();
+            await renderGrade5ProgressMonitor();
+        }
+    }
+    async function deleteStudentSession(name, ip, device = '', loginId = '', alreadyConfirmed = false, deviceCodesCsv = '') {
+        const cleanName = String(name || '').trim();
+        const cleanIp = String(ip || '').trim();
+        const cleanDev = String(device || '').trim();
+        const cleanLoginId = String(loginId || '').trim();
+        const normCleanName = cleanName.toLowerCase();
+        const normCleanDev = cleanDev.toLowerCase();
+        const systemIds = new Set(Object.values(SYSTEM));
+        const isSystemRow = (row) => !row || systemIds.has(row.id) || String(row.player_name || '').trim().startsWith('__');
+        const hasSpecificName = Boolean(cleanName && normCleanName !== 'khách truy cập' && normCleanName !== 'học sinh');
+        const hasValidIp = Boolean(cleanIp && cleanIp !== 'Chưa xác định' && cleanIp !== '—');
+        const targetDeviceCodes = new Set();
+        const addDeviceCode = (value) => { const code = extractDeviceCode(`[${String(value || '').trim()}]`); if (code) targetDeviceCodes.add(code); };
+        addDeviceCode(cleanDev);
+        String(deviceCodesCsv || '').split(',').forEach(addDeviceCode);
+        (state.progressRecords || []).forEach((item) => {
+            const matchesId = cleanLoginId && String(item.id) === cleanLoginId;
+            const matchesName = hasSpecificName && normalizeIdentityKey(item.name) === normalizeIdentityKey(cleanName);
+            if (matchesId || matchesName) (item._deviceCodes || (item._deviceCode ? [item._deviceCode] : [])).forEach(addDeviceCode);
+        });
+
+        const idSet = new Set();
+        const addId = (id) => {
+            const idStr = String(id || '').trim();
+            if (idStr && !systemIds.has(idStr)) idSet.add(idStr);
+        };
+
+        if (cleanLoginId) addId(cleanLoginId);
+        (state.progressRecords || []).forEach((item) => {
+            const matchesId = cleanLoginId && (
+                String(item.id) === cleanLoginId
+                || (Array.isArray(item.history) && item.history.some((h) => String(h.id) === cleanLoginId))
+            );
+            const matchesName = hasSpecificName && String(item.name || '').trim().toLowerCase() === normCleanName;
+            if (matchesId || matchesName) {
+                addId(item.id);
+                (item.history || []).forEach((h) => addId(h.id));
+            }
+        });
+
+        const fetchMatchingRows = async (buildQuery) => {
+            const collected = [];
+            const pageSize = 1000;
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                if (!Array.isArray(data) || data.length === 0) break;
+                collected.push(...data);
+                if (data.length < pageSize) break;
+            }
+            return collected;
+        };
+
+        try {
+            if (state.client) {
+                if (hasSpecificName) {
+                    const rowsByName = await fetchMatchingRows(() =>
+                        state.client.from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info')
+                            .ilike('player_name', cleanName.replace(/[\\%_]/g, '\\$&'))
+                    );
+                    rowsByName.forEach((row) => {
+                        if (!isSystemRow(row) && String(row.player_name || '').trim().toLowerCase() === normCleanName) {
+                            addId(row.id);
+                        }
+                    });
+                } else if (hasValidIp) {
+                    const rowsByIp = await fetchMatchingRows(() =>
+                        state.client.from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info')
+                            .eq('ip_address', cleanIp)
+                    );
+                    rowsByIp.forEach((row) => {
+                        if (isSystemRow(row)) return;
+                        const rowName = String(row.player_name || '').trim().toLowerCase();
+                        const rowDev = String(row.device_info || '').trim().toLowerCase();
+                        if ((!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName)) {
+                            addId(row.id);
+                        }
+                    });
+                }
+
+                if (targetDeviceCodes.size) {
+                    for (const targetDeviceCode of targetDeviceCodes) {
+                        const rowsByDev = await fetchMatchingRows(() =>
+                        state.client.from('quiz_logins')
+                            .select('id, player_name, ip_address, device_info')
+                            .ilike('device_info', `%[${targetDeviceCode}]%`)
+                    );
+                        rowsByDev.forEach((row) => {
+                            if (!isSystemRow(row)) addId(row.id);
+                        });
+                    }
+                }
+
+                if (cleanLoginId && !cleanLoginId.startsWith('local_') && !systemIds.has(cleanLoginId)) {
+                    const { data: exactRows, error: exactError } = await state.client
+                        .from('quiz_logins')
+                        .select('id, player_name, ip_address, device_info')
+                        .eq('id', cleanLoginId)
+                        .limit(1);
+                    if (exactError) throw exactError;
+                    (exactRows || []).forEach((row) => {
+                        if (!isSystemRow(row)) addId(row.id);
+                    });
+                }
+            }
+        } catch (selectError) {
+            return notify(`Không thể xóa phiên: ${selectError.message}`, true);
+        }
+
+        const targetDeviceCodeLocal = extractDeviceCode(cleanDev);
+        [...(state.logins || []), ...(state.progressRawLogins || [])].forEach((row) => {
+            if (isSystemRow(row)) return;
+            const rowName = String(row.player_name || '').trim().toLowerCase();
+            const rowIp = String(row.ip_address || '').trim();
+            const rowDev = String(row.device_info || '').trim().toLowerCase();
+            if (targetDeviceCodes.size && targetDeviceCodes.has(extractDeviceCode(row.device_info))) {
+                addId(row.id);
+            } else if (hasSpecificName) {
+                if (rowName === normCleanName) addId(row.id);
+            } else if (hasValidIp && rowIp === cleanIp) {
+                if ((!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName)) {
+                    addId(row.id);
+                }
+            }
+        });
+
+        const allIds = Array.from(idSet);
+        if (!allIds.length) return notify('Không tìm thấy phiên phù hợp để xóa.', true);
+        if (!alreadyConfirmed && !(await confirmDialog({ title: 'Xóa toàn bộ thông tin học sinh?', message: `Xóa toàn bộ ${allIds.length} bản ghi của ${cleanName || cleanIp} khỏi bảng theo dõi?\n\nTất cả phiên mang tên này sẽ bị xóa. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`, confirmText: 'Xóa toàn bộ', variant: 'danger' }))) return;
+
+        const cloudIds = allIds.filter((id) => !String(id).startsWith('local_'));
+        if (cloudIds.length) {
+            // Xóa theo lô nhỏ để URL query của Supabase không vượt giới hạn khi
+            // một học sinh có nhiều phiên cũ trùng tên.
+            const chunkSize = 50;
+            for (let offset = 0; offset < cloudIds.length; offset += chunkSize) {
+                const chunk = cloudIds.slice(offset, offset + chunkSize);
+                const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
+                if (error) {
+                    for (const id of chunk) {
+                        const rpc = await state.client.rpc('admin_delete_login_record', { p_id: id });
+                        if (rpc.error) return notify(`Không thể xóa phiên: ${error.message}`, true);
+                    }
+                }
+                const { data: remaining, error: verifyError } = await state.client.from('quiz_logins').select('id').in('id', chunk);
+                if (verifyError) return notify(`Không thể xác minh sau khi xóa: ${verifyError.message}`, true);
+                if ((remaining || []).length) return notify(`Còn ${(remaining || []).length}/${chunk.length} bản ghi chưa xóa.`, true);
+            }
+        }
+        // Xóa bản ghi cục bộ cùng tên hoặc ID để dữ liệu không quay lại khi tải fallback.
+        try {
+            const localKey = 'quiz_local_logins_history';
+            const localRows = JSON.parse(localStorage.getItem(localKey) || '[]');
+            const filteredLocal = localRows.filter((row) => {
+                if (row?.id && idSet.has(String(row.id))) return false;
+                if (hasSpecificName) return String(row.player_name || '').trim().toLowerCase() !== normCleanName;
+                if (hasValidIp) return String(row.ip_address || '').trim() !== cleanIp;
+                return true;
+            });
+            localStorage.setItem(localKey, JSON.stringify(filteredLocal));
+        } catch (e) { /* Local cache is optional. */ }
+
+        const matchesRemovedRow = (row) => {
+            if (!row) return false;
+            if (row.id != null && idSet.has(String(row.id))) return true;
+            const rowName = String(row.player_name || '').trim().toLowerCase();
+            const rowIp = String(row.ip_address || '').trim();
+            const rowDev = String(row.device_info || '').trim().toLowerCase();
+            if (hasSpecificName) return rowName === normCleanName;
+            if (hasValidIp && rowIp === cleanIp) return (!normCleanDev || rowDev === normCleanDev) && (!cleanName || rowName === normCleanName);
+            return false;
+        };
+        state.logins = (state.logins || []).filter((row) => !matchesRemovedRow(row));
+        state.progressRawLogins = (state.progressRawLogins || []).filter((row) => !matchesRemovedRow(row));
+        state.progressRecords = (state.progressRecords || []).filter((item) => {
+            if (idSet.has(String(item.id))) return false;
+            if (Array.isArray(item.history) && item.history.some((h) => idSet.has(String(h.id)))) return false;
+            if (hasSpecificName && String(item.name || '').trim().toLowerCase() === normCleanName) return false;
+            return true;
+        });
+        const progressContainer = $('grade5-progress-cards');
+        if (progressContainer) {
+            progressContainer.querySelectorAll('.grade5-live-card').forEach((card) => {
+                const cardId = String(card.dataset.studentId || '').trim();
+                const cardDelId = String(card.querySelector('[data-delete-progress-id]')?.dataset.deleteProgressId || '').trim();
+                const cardName = String(card.querySelector('h3')?.textContent || '').trim().toLowerCase();
+                if ((cardId && idSet.has(cardId)) || (cardDelId && idSet.has(cardDelId)) || (hasSpecificName && cardName === normCleanName)) {
+                    card.remove();
+                }
+            });
+        }
+
+        state.lastMonitorStatsHtml = '';
+        state.lastStudentsBodyHtml = '';
+        notify(`Đã xóa phiên của ${cleanName || cleanIp}.`);
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+    }
+    async function banIp(ip, reason = '') { const cleanIp = String(ip || '').trim(); const blocked = new Set(['', 'chưa xác định', '—', 'system', 'all']); const adminIps = new Set([state.clientIp, state.adminConfig?.masterIp, ...(state.adminConfig?.allowedIps || []).map((x) => typeof x === 'string' ? x : x?.ip)].map((x) => String(x || '').trim().toLowerCase())); if (blocked.has(cleanIp.toLowerCase()) || adminIps.has(cleanIp.toLowerCase())) return notify('IP không hợp lệ hoặc là IP quản trị.', true); const cleanReason = reason || 'Vi phạm quy chế ôn tập'; const now = new Date().toISOString(); const { error } = await state.client.from('quiz_logins').upsert({ id: crypto.randomUUID(), player_name: '__BANNED_IP__', ip_address: cleanIp, device_info: 'Manual Ban', status: `BANNED: ${cleanReason}`, score_summary: cleanReason, last_active: now }); if (error) return notify(error.message, true); if ($('ban-ip-input')) $('ban-ip-input').value = ''; if ($('ban-reason-input')) $('ban-reason-input').value = ''; state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã chặn IP ${cleanIp}.`); await loadStudents(); }
+    async function unbanIp(ip) { const cleanIp = String(ip || '').trim(); if (!cleanIp || ['system', 'all', 'chưa xác định', '—'].includes(cleanIp.toLowerCase())) return; const { error } = await state.client.from('quiz_logins').delete().eq('player_name', '__BANNED_IP__').eq('ip_address', cleanIp); if (error) return notify(error.message, true); state.lastStudentsBodyHtml = ''; state.lastBannedListHtml = ''; state.lastMonitorStatsHtml = ''; notify(`Đã mở khóa IP ${cleanIp}.`); await loadStudents(); }
+
+    function exportJson(name, payload) { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); URL.revokeObjectURL(link.href); }
+    function exportBackup() { exportJson(`quiz-studio-backup-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), questions: state.questions, subjects: state.subjects, subjectFolders: state.subjectFolders, tokens: state.tokens, trashQuestions: state.trashQuestions, adminConfig: state.adminConfig, aiIps: state.aiIps, geo: state.geo, maintenance: state.maintenance }); notify('Đã tải file backup JSON.'); }
+    function exportExcel() { if (!window.XLSX) return exportJson('quiz-questions.json', state.questions); const rows = state.questions.map((q) => { const opts = Array.isArray(q.options) ? q.options.map(storageText) : []; return { ID: q.id, Mon: subjectName(q.subject_key), Loai: TYPE_LABELS[q.qType] || q.qType, CauHoi: storageText(q.question), PhuongAnA: q.qType === 'mcq' ? (opts[0] || '') : '', PhuongAnB: q.qType === 'mcq' ? (opts[1] || '') : '', PhuongAnC: q.qType === 'mcq' ? (opts[2] || '') : '', PhuongAnD: q.qType === 'mcq' ? (opts[3] || '') : '', DapAn: q.qType === 'mcq' ? ('ABCD'[q.correct] || '') : q.qType === 'short_answer' ? (q.correctValue || '') : (q.statements || []).map((s) => `${s.key}:${s.answer ? 'Đúng' : 'Sai'}`).join(', '), GiaiThich: storageText(q.explanation) }; }); const book = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(book, window.XLSX.utils.json_to_sheet(rows), 'Questions'); window.XLSX.writeFile(book, `quiz-questions-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất bảng câu hỏi Excel.'); }
+
+    const reportNumber = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '—';
+    const reportDate = (value) => {
+        const date = value ? new Date(value) : null;
+        return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('vi-VN') : '—';
+    };
+    const reportRowsFromData = (data) => {
+        const systemIds = new Set(Object.values(SYSTEM));
+        return (data || []).filter((row) => {
+            const name = String(row.player_name || '').trim();
+            return !systemIds.has(row.id) && !name.startsWith('__') && !/^banned/i.test(String(row.status || ''));
+        }).map((row) => {
+            const status = String(row.status || '');
+            const fullSummary = String(row.score_summary || '');
+            const detailIdx = fullSummary.indexOf('\n__DETAIL__:');
+            const summary = detailIdx >= 0 ? fullSummary.slice(0, detailIdx) : fullSummary;
+            let detail = null;
+            if (detailIdx >= 0) { try { detail = JSON.parse(fullSummary.slice(detailIdx + '\n__DETAIL__:'.length)); } catch (e) {} }
+            const combined = `${status} ${summary}`;
+            const ratio = summary.match(/(?:đúng|hoàn thành|kết quả)\s*(\d+)\s*\/\s*(\d+)/i) || (/(?:đã nộp bài|hoàn thành)/i.test(status) ? combined.match(/(\d+)\s*\/\s*(\d+)\s*(?:câu|ý)?/i) : null);
+            const scoreMatch = summary.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
+            const scoreRaw = scoreMatch ? Number(scoreMatch[1].replace(',', '.')) : null;
+            const correct = ratio ? Number(ratio[1]) : null;
+            const total = ratio ? Number(ratio[2]) : null;
+            // App lưu `điểm` theo phần trăm 0–100. Chuẩn hóa một lần về /10;
+            // không suy đoán số <= 10 là đã ở thang /10 vì 10% phải là 1/10.
+            const score10 = Number.isFinite(scoreRaw) ? (scoreRaw / 10) : (correct !== null && total > 0 ? (correct / total) * 10 : null);
+            const completed = /đã nộp bài|hoàn thành/i.test(status) || Number.isFinite(scoreRaw);
+            const subjectMatch = status.match(/^\[((?:\[[^\]]*\]|[^\]])*)\]/) || summary.match(/^\[((?:\[[^\]]*\]|[^\]])*)\]/);
+            const subject = subjectMatch ? subjectMatch[1].trim() : 'Chưa xác định';
+            const displayName = resolvePinnedStudentName(row.device_info, row.player_name || 'Học sinh');
+            return { ...row, detail, name: displayName, subject, score10: Number.isFinite(score10) ? Math.max(0, Math.min(10, score10)) : null, correct, total, completed, submittedAt: row.last_active || row.created_at || '' };
+        }).filter((row) => row.completed && Number.isFinite(row.score10) && !/phục thù/i.test(row.subject));
+    };
+    const setActionBusy = (id, busy, label) => {
+        const button = $(id);
+        if (!button) return;
+        if (busy) {
+            if (!button.dataset.reportLabel) button.dataset.reportLabel = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> ${esc(label || 'Đang xử lý...')}`;
+        } else {
+            button.disabled = false;
+            if (button.dataset.reportLabel) button.innerHTML = button.dataset.reportLabel;
+        }
+    };
+    const reportAction = (id, action, label) => $(id)?.addEventListener('click', () => runAction(async () => { setActionBusy(id, true, label); try { await action(); } finally { setActionBusy(id, false); } }));
+    const setReportState = (mode, message = '') => {
+        ['loading', 'error', 'empty'].forEach((key) => $(`report-state-${key}`)?.classList.toggle('hidden', key !== mode));
+        if (message && $('report-state-error-text')) $('report-state-error-text').textContent = message;
+        $('report-summary')?.classList.toggle('hidden', mode !== 'ready');
+    };
+    function renderReportSummary(rows) {
+        const scores = rows.map((row) => row.score10).sort((a, b) => a - b);
+        const sum = scores.reduce((total, score) => total + score, 0);
+        const mean = scores.length ? sum / scores.length : NaN;
+        const median = scores.length ? (scores.length % 2 ? scores[(scores.length - 1) / 2] : (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2) : NaN;
+        const sd = scores.length ? Math.sqrt(scores.reduce((total, score) => total + ((score - mean) ** 2), 0) / scores.length) : NaN;
+        const students = new Set(rows.map((row) => {
+            const name = row.name.toLowerCase();
+            return name && name !== 'khách truy cập' ? `name:${name}` : `ip:${row.ip_address || ''}`;
+        }));
+        const denominatorRows = rows.filter((row) => row.total > 0 && row.correct !== null);
+        const completed = denominatorRows.filter((row) => row.detail?.items?.length ? row.detail.items.every((item) => item.ok === true || item.ok === false) : row.correct >= row.total).length;
+        const omissions = denominatorRows.map((row) => row.detail?.items?.length ? row.detail.items.filter((item) => item.ok !== true && item.ok !== false).length : row.total - row.correct).filter((value) => value >= 0);
+        const explicitOmissions = (Array.isArray(state.reportAllRows) ? state.reportAllRows : []).map((row) => {
+            const match = `${row.status || ''} ${row.score_summary || ''}`.match(/(?:bỏ sót|chưa\s+(?:trả lời|làm)|còn)\s*(\d+)/i);
+            return match ? Number(match[1]) : null;
+        }).filter((value) => Number.isFinite(value));
+        if (!omissions.length && explicitOmissions.length) omissions.push(...explicitOmissions);
+        const dates = rows.map((row) => new Date(row.submittedAt).getTime()).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+        $('report-attempts').textContent = String(rows.length);
+        $('report-students').textContent = String(students.size);
+        $('report-mean').textContent = reportNumber(mean);
+        $('report-median').textContent = reportNumber(median);
+        $('report-sd').textContent = reportNumber(sd);
+        $('report-range').textContent = scores.length ? `${reportNumber(scores[0])} - ${reportNumber(scores[scores.length - 1])}` : '—';
+        $('report-completion').textContent = denominatorRows.length ? `${Math.round((completed / denominatorRows.length) * 100)}% (${completed}/${denominatorRows.length})` : 'Không có dữ liệu';
+        $('report-omission').textContent = omissions.length ? `${reportNumber(omissions.reduce((a, b) => a + b, 0) / omissions.length)} câu/lượt` : 'Không có dữ liệu';
+        $('report-date-range').textContent = dates.length ? `${reportDate(dates[0])} - ${reportDate(dates[dates.length - 1])}` : 'Không có dữ liệu';
+        $('report-selection-rule').textContent = 'Lượt có điểm hoặc tỷ lệ đúng; không gộp lượt';
+        $('report-method-note').textContent = 'Điểm được chuẩn hóa về thang /10 từ score_summary; chỉ tính bản ghi học sinh hợp lệ, loại bản ghi hệ thống và bị chặn.';
+        setReportState('ready');
+    }
+    function populateLeaderboardSubjects() {
+        const select = $('leaderboard-subject');
+        if (!select) return;
+        const current = select.value;
+        const subjects = [...new Set((state.reportRows || []).map((row) => row.subject).filter((subject) => subject && subject !== 'Chưa xác định'))];
+        select.innerHTML = '<option value="">Tất cả môn</option>' + subjects.map((subject) => `<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+        if (subjects.includes(current)) select.value = current;
+    }
+    function renderLeaderboard() {
+        const content = $('leaderboard-content');
+        if (!content) return;
+        const subject = $('leaderboard-subject')?.value || '';
+        const filtered = (state.reportRows || []).filter((row) => !subject || row.subject === subject).sort((a, b) => b.score10 - a.score10 || new Date(a.submittedAt) - new Date(b.submittedAt));
+        const pageSize = 10;
+        const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+        state.reportLeaderboardPage = Math.min(pageCount, Math.max(1, state.reportLeaderboardPage || 1));
+        const start = (state.reportLeaderboardPage - 1) * pageSize;
+        const rows = filtered.slice(start, start + pageSize);
+        $('leaderboard-summary').textContent = rows.length ? `Top ${rows.length} lượt thi, trang ${state.reportLeaderboardPage}/${pageCount}${subject ? ` môn ${subject}` : ''}; sắp xếp theo điểm /10.` : 'Chưa có kết quả phù hợp.';
+        $('leaderboard-empty')?.classList.toggle('hidden', rows.length > 0);
+        content.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table leaderboard-table"><thead><tr><th>Hạng</th><th>Học sinh</th><th>Môn</th><th>Điểm</th><th>Đúng / tổng</th><th>Ngày nộp</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td><span class="rank-badge rank-${(start + index) + 1}">#${(start + index) + 1}</span></td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.subject)}</td><td><strong class="leader-score">${reportNumber(row.score10)} /10</strong></td><td>${row.correct !== null && row.total ? `${row.correct}/${row.total} (${Math.round((row.correct / row.total) * 100)}%)` : 'Không có dữ liệu'}</td><td>${esc(reportDate(row.submittedAt))}</td></tr>`).join('')}</tbody></table></div><div class="leaderboard-pagination"><button class="button button-secondary" ${state.reportLeaderboardPage <= 1 ? 'disabled' : ''} data-report-page="prev">Trang trước</button><span>Trang ${state.reportLeaderboardPage}/${pageCount}</span><button class="button button-secondary" ${state.reportLeaderboardPage >= pageCount ? 'disabled' : ''} data-report-page="next">Trang sau</button></div>` : '';
+    }
+    async function fetchReportRows() {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const pageSize = 500;
+        const data = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const { data: page, error } = await state.client.from('quiz_logins')
+                .select('id, player_name, ip_address, device_info, status, score_summary, last_active, created_at')
+                .order('last_active', { ascending: false })
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            data.push(...(page || []));
+            if (!page || page.length < pageSize) break;
+        }
+        const systemIds = new Set(Object.values(SYSTEM));
+        if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(data).catch(() => 0); }
+        state.reportAllRows = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')));
+        return reportRowsFromData(data);
+    }
+    async function fetchAllLoginRows() {
+        if (!state.client) throw new Error('Chưa kết nối Supabase.');
+        const pageSize = 500;
+        const rows = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await state.client.from('quiz_logins').select('*').order('created_at', { ascending: true }).range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            rows.push(...(data || []));
+            if (!data || data.length < pageSize) break;
+        }
+        return rows;
+    }
+    async function cleanupDuplicateIpLogins(skipConfirm = false) {
+        const rows = await fetchAllLoginRows();
+        const systemIds = new Set(Object.values(SYSTEM));
+        const groups = new Map();
+        rows.filter((r) => !systemIds.has(r.id) && !String(r.player_name || '').startsWith('__') && !String(r.status || '').startsWith('BANNED')).forEach((r) => {
+             const groupKey = getGroupKey(r);
+             if (!groupKey || groupKey === 'row:') return;
+             if (!groups.has(groupKey)) groups.set(groupKey, []);
+             groups.get(groupKey).push(r);
+        });
+        const remove = [];
+        groups.forEach((items) => {
+            items.sort((a, b) => new Date(b.last_active || b.created_at || 0) - new Date(a.last_active || a.created_at || 0));
+            const real = items.filter((r) => {
+                const parsed = parseStudentProgress(r);
+                return parsed.isCompleted || parsed.answered > 0 || (Array.isArray(parsed.detail?.items) && parsed.detail.items.length > 0);
+            });
+            const keep = real.length
+                ? [...real, ...items.filter((r) => !real.includes(r) && String(r.player_name || '').trim().toLowerCase() === String(real[0]?.player_name || '').trim().toLowerCase()).slice(0, 1)]
+                : [items.find((r) => !/^(khách truy cập|visitor)$/i.test(String(r.player_name || '').trim())) || items[0]].filter(Boolean);
+            items.forEach((r) => { if (!keep.includes(r) && r.id) remove.push(r.id); });
+        });
+        if (!remove.length) return notify('Không có bản ghi trùng/rác cần dọn.');
+        if (!skipConfirm && !(await confirmDialog({ title: 'Dọn đăng nhập trùng IP?', message: `Sẽ xóa ${remove.length} bản ghi chờ/trùng trên ${groups.size} IP. Bài thi đã làm sẽ được giữ nguyên 100%.`, confirmText: 'Dọn dữ liệu', variant: 'danger' }))) return;
+        for (let i = 0; i < remove.length; i += 50) {
+            const chunk = remove.slice(i, i + 50);
+            const { error } = await state.client.from('quiz_logins').delete().in('id', chunk);
+            if (error) {
+                const adminToken = window.dbService?.getAdminSessionToken?.() || '';
+                if (!adminToken) throw error;
+                for (const id of chunk) {
+                    const { error: rpcErr } = await state.client.rpc('admin_delete_login_record', { p_admin_token: adminToken, p_login_id: id });
+                    if (rpcErr) throw rpcErr;
+                }
+            }
+        }
+        try { localStorage.removeItem('quiz_local_logins_history'); } catch (e) {}
+        await loadStudents(); await renderGrade5ProgressMonitor();
+         notify(`Đã dọn ${remove.length} bản ghi trùng trên ${groups.size} nhóm máy/IP.`);
+    }
+    async function archiveExamData() {
+        if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return;
+        const data = await fetchAllLoginRows();
+        const systemIds = new Set(Object.values(SYSTEM));
+        const records = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__'));
+        exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { schemaVersion: 1, archivedAt: new Date().toISOString(), recordCount: records.length, records });
+        const ids = records.map((row) => row.id).filter(Boolean);
+        let deleted = 0;
+        for (let offset = 0; offset < ids.length; offset += 100) {
+            const batch = ids.slice(offset, offset + 100);
+            const { data: removed, error } = await state.client.from('quiz_logins').delete().in('id', batch).select('id');
+            if (error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${error.message}`);
+            deleted += (removed || []).length;
+        }
+        if (deleted !== ids.length) throw new Error(`Chỉ xóa được ${deleted}/${ids.length} bản ghi; đã giữ lại backup để kiểm tra.`);
+        state.studentPulseMap?.clear(); state.lastStudentsBodyHtml = ''; notify(`Đã backup và dọn ${deleted} bản ghi lịch sử kỳ thi.`); await loadStudents();
+    }
+    async function loadScoreReport() {
+        if (state.reportLoading) return;
+        state.reportLoading = true;
+        setActionBusy('refresh-score-report', true, 'Đang tải');
+        setReportState('loading');
+        if ($('leaderboard-content') && !$('leaderboard-content').querySelector('.leaderboard-table')) {
+            $('leaderboard-content').innerHTML = buildAdminSkeletonHtml('leaderboard', 4);
+        }
+        try {
+            state.reportRows = await fetchReportRows();
+            populateLeaderboardSubjects();
+            if (!state.reportRows.length) {
+                setReportState('empty');
+                $('leaderboard-content').innerHTML = '';
+                $('leaderboard-summary').textContent = 'Chưa có dữ liệu hợp lệ.';
+            } else {
+                renderReportSummary(state.reportRows);
+                renderLeaderboard();
+            }
+            if ($('report-last-updated')) $('report-last-updated').textContent = `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`;
+        } catch (error) {
+            state.reportRows = null;
+            setReportState('error', error?.message || 'Không thể tải dữ liệu báo cáo.');
+            $('leaderboard-content').innerHTML = '';
+            $('leaderboard-summary').textContent = 'Không thể tải bảng xếp hạng.';
+        } finally {
+            state.reportLoading = false;
+            setActionBusy('refresh-score-report', false);
+        }
+    }
+    async function loadLeaderboard() {
+        if (!state.reportRows) {
+            if ($('leaderboard-content')) $('leaderboard-content').innerHTML = buildAdminSkeletonHtml('leaderboard', 4);
+            await loadScoreReport();
+        }
+        if (!state.reportRows) return;
+        setActionBusy('load-leaderboard', true, 'Đang tải');
+        $('leaderboard-loading')?.classList.remove('hidden');
+        $('leaderboard-error')?.classList.add('hidden');
+        $('leaderboard-empty')?.classList.add('hidden');
+        try { renderLeaderboard(); } catch (error) { $('leaderboard-error')?.classList.remove('hidden'); $('leaderboard-error-text').textContent = error.message || 'Không thể tải bảng xếp hạng.'; }
+        finally { $('leaderboard-loading')?.classList.add('hidden'); setActionBusy('load-leaderboard', false); }
+    }
+    async function loadWrongQuestionStats() {
+        const contentEl = $('wrong-stats-content');
+        const summaryEl = $('wrong-stats-summary');
+        if (!contentEl || !state.client) return;
+        const subjectKey = $('wrong-stats-subject')?.value || '';
+        setActionBusy('load-wrong-stats', true, 'Đang tải');
+        try {
+            const { data, error } = await state.client.rpc('arena_get_wrong_question_stats', {
+                p_subject_key: subjectKey || null,
+                p_limit: 15
+            });
+            if (error) {
+                const msg = String(error.message || '');
+                contentEl.innerHTML = /arena_get_wrong_question_stats|PGRST202|does not exist/i.test(msg)
+                    ? '<p class="muted-copy">Chưa cài đặt RPC thống kê câu sai. Vui lòng chạy lại <code>supabase_arena_setup.sql</code> trong Supabase SQL Editor.</p>'
+                    : `<p class="muted-copy">${esc(msg)}</p>`;
+                return;
+            }
+            const rows = Array.isArray(data) ? data : [];
+            if (summaryEl) summaryEl.textContent = rows.length ? `Tìm thấy ${rows.length} câu hỏi có lượt trả lời sai.` : 'Chưa có dữ liệu câu sai từ Đấu trường.';
+            if (!rows.length) {
+                contentEl.innerHTML = '<p class="muted-copy">Chưa có câu hỏi nào bị trả lời sai trong Đấu trường.</p>';
+                return;
+            }
+            contentEl.innerHTML = `
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>#</th><th>Môn / Chuyên đề</th><th>Nội dung câu hỏi</th><th>Sai / Tổng</th><th>Tỷ lệ sai</th></tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map((r, idx) => `
+                                <tr>
+                                    <td><b>#${idx + 1}</b></td>
+                                    <td><b>${esc(r.subject_key)}</b><br><small class="muted-copy">${esc(r.category || '')}</small></td>
+                                    <td style="max-width:420px;">${esc(String(r.question || '').slice(0, 140))}${String(r.question || '').length > 140 ? '...' : ''}</td>
+                                    <td><b style="color:var(--red,#ef4444);">${Number(r.wrong_attempts || 0)}</b> / ${Number(r.total_attempts || 0)}</td>
+                                    <td><span class="status-badge danger">${Number(r.wrong_rate || 0)}%</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } finally {
+            setActionBusy('load-wrong-stats', false);
+        }
+    }
+    function exportScoreReport() {
+        if (!state.reportRows || !state.reportRows.length) return notify('Hãy tải báo cáo điểm có dữ liệu trước khi xuất file.', true);
+        const scores = state.reportRows.map((row) => row.score10);
+        const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        const ordered = [...scores].sort((a, b) => a - b);
+        const median = ordered.length % 2 ? ordered[(ordered.length - 1) / 2] : (ordered[ordered.length / 2 - 1] + ordered[ordered.length / 2]) / 2;
+        exportJson(`quiz-studio-score-report-${new Date().toISOString().slice(0, 10)}.json`, { exportedAt: new Date().toISOString(), scale: '/10', selectionRule: 'Lượt có điểm hoặc tỷ lệ đúng; không gộp lượt', summary: { validAttempts: scores.length, uniqueStudents: new Set(state.reportRows.map((row) => row.name.toLowerCase())).size, mean: Number(mean.toFixed(3)), median: Number(median.toFixed(3)) }, attempts: state.reportRows.map((row) => ({ student: row.name, subject: row.subject, score10: Number(row.score10.toFixed(3)), correct: row.correct, total: row.total, percentage: row.correct !== null && row.total ? Number(((row.correct / row.total) * 100).toFixed(2)) : null, submittedAt: row.submittedAt })) });
+        notify('Đã tải báo cáo điểm JSON.');
+    }
+
+    const AI_ACTION_TYPES = new Set([
+        'pin_device', 'merge_devices', 'unpin_device',
+        'require_rename', 'cancel_rename',
+        'send_private_notice', 'broadcast_notice',
+        'set_maintenance', 'ban_ip', 'unban_ip',
+        'set_subject_privacy', 'delete_student',
+        'cleanup_duplicate_ips', 'switch_view', 'force_submit'
+    ]);
+    const aiId = (prefix = 'ai') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const aiText = (value, fallback = '') => String(value ?? fallback).replace(/\s+/g, ' ').trim();
+    const aiValidCode = (value) => /^QM-[A-Z0-9]{4,}$/i.test(aiText(value).replace(/^\[|\]$/g, ''));
+    const aiCode = (value) => aiText(value).replace(/^\[|\]$/g, '').toUpperCase();
+    const isProtectedOwnerIdentity = (nameOrValue = '', codesOrCode = '') => {
+        const normName = normalizeIdentityKey(nameOrValue);
+        if (normName.includes('dua con cua thoi dai')) return true;
+        const codeList = Array.isArray(codesOrCode) ? codesOrCode : [codesOrCode];
+        return codeList.some((c) => aiCode(c) === 'QM-A5PZBC');
+    };
+
+    function persistAdminAiHistory() {
+        if (!Array.isArray(state.aiChatMessages)) {
+            state.aiChatMessages = [];
+        } else if (state.aiChatMessages.length > 20) {
+            state.aiChatMessages.splice(0, state.aiChatMessages.length - 20);
+        }
+        const serialized = state.aiChatMessages.map((message) => ({
+            ...message,
+            actions: Array.isArray(message.actions)
+                ? message.actions.map((action) => ({
+                    ...action,
+                    status: action.status === 'running' ? 'pending' : action.status
+                }))
+                : []
+        }));
+        try {
+            sessionStorage.setItem('quiz_admin_ai_history', JSON.stringify(serialized));
+        } catch (e) {}
+    }
+
+    function renderAdminAiContextStrip() {
+        const records = Array.isArray(state.progressRecords) ? state.progressRecords : [];
+        const sameIp = records.filter((record) => Array.isArray(record._sameIpPeers) && record._sameIpPeers.length).length;
+        const pendingRename = Object.keys(state.renameRequests || {}).length
+            || records.filter((record) => hasPendingRename(record._deviceCodes || record._deviceCode)).length;
+        const doing = records.filter((record) => !record.isCompleted && !record.isWaiting && !record.isPaused).length;
+        const setText = (id, value) => { if ($(id)) $(id).textContent = String(value); };
+        setText('ai-ctx-students', records.length);
+        setText('ai-ctx-doing', doing);
+        setText('ai-ctx-same-ip', sameIp);
+        setText('ai-ctx-rename', pendingRename);
+        setText('ai-ctx-maintenance', state.maintenance?.isActive ? 'Đang bảo trì' : 'Đang mở');
+        $('ai-ctx-same-ip-pill')?.classList.toggle('is-warn', sameIp > 0);
+        $('ai-ctx-same-ip-pill')?.classList.toggle('is-danger', sameIp > 2);
+        $('ai-ctx-rename-pill')?.classList.toggle('is-warn', pendingRename > 0);
+        $('ai-ctx-maintenance-pill')?.classList.toggle('is-danger', Boolean(state.maintenance?.isActive));
+        const syncLabel = $('ai-context-sync-label');
+        if (syncLabel) {
+            syncLabel.textContent = state.aiLastContextSyncAt
+                ? `Đồng bộ ${formatTimeAgo(state.aiLastContextSyncAt)}`
+                : 'Chưa đồng bộ dữ liệu AI';
+        }
+        const alertCount = sameIp + pendingRename;
+        const topbarBadge = $('ai-topbar-alert-badge');
+        if (topbarBadge) {
+            topbarBadge.textContent = String(alertCount);
+            topbarBadge.classList.toggle('hidden', alertCount <= 0);
+        }
+        const navBadge = document.querySelector('.nav-item-ai .nav-ai-badge');
+        if (navBadge) {
+            navBadge.textContent = alertCount > 0 ? `AI · ${alertCount}` : 'AI';
+            navBadge.classList.toggle('has-alert', alertCount > 0);
+        }
+    }
+
+    function openAdminAiDrawer() {
+        const panel = document.querySelector('[data-view-panel="ai-assistant"]');
+        if (!panel) return;
+        // Nếu đang ở chính tab Trợ lý AI toàn màn hình thì chỉ focus ô nhập
+        if (panel.classList.contains('is-visible') && !panel.classList.contains('is-drawer-open')) {
+            $('ai-chat-input')?.focus();
+            return;
+        }
+        panel.classList.add('is-drawer-open');
+        $('ai-drawer-backdrop')?.classList.remove('hidden');
+        renderAdminAiContextStrip();
+        renderAdminAiMessages();
+        refreshAdminAiContext(false).catch(() => {});
+        requestAnimationFrame(() => $('ai-chat-input')?.focus());
+    }
+
+    function closeAdminAiDrawer() {
+        const panel = document.querySelector('[data-view-panel="ai-assistant"]');
+        if (panel) panel.classList.remove('is-drawer-open');
+        $('ai-drawer-backdrop')?.classList.add('hidden');
+    }
+
+    function toggleAdminAiDrawer() {
+        const panel = document.querySelector('[data-view-panel="ai-assistant"]');
+        if (!panel) return;
+        if (panel.classList.contains('is-drawer-open')) {
+            closeAdminAiDrawer();
+        } else {
+            openAdminAiDrawer();
+        }
+    }
+
+    function formatAdminAiZaloText(rawText) {
+        const source = String(rawText || '').replace(/```admin_actions[\s\S]*?```/gi, '').trim();
+        if (!source) return '';
+        const zaloBlock = source.match(/```zalo\s*\n([\s\S]*?)```/i);
+        let text = zaloBlock ? zaloBlock[1].trim() : source;
+        if (!zaloBlock) {
+            const lines = text.split('\n');
+            if (lines.length > 2 && /^(dưới đây|gợi ý|mẫu tin|tin nhắn mẫu|em soạn|tôi đã soạn)/i.test(lines[0].trim())) {
+                lines.shift();
+                text = lines.join('\n').trim();
+            }
+        }
+        return text
+            .replace(/^#{1,6}\s*/gm, '')
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1')
+            .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1$2')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/^\s*[-*]\s+/gm, '• ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    async function refreshAdminAiContext(showToast = false) {
+        if (!state.aiRefreshPromise) {
+            state.aiRefreshPromise = Promise.all([
+                loadStudents(),
+                renderGrade5ProgressMonitor(),
+                loadMaintenance(),
+                loadRosterConfig()
+            ]).finally(() => {
+                state.aiRefreshPromise = null;
+            });
+        }
+        await state.aiRefreshPromise;
+        state.aiLastContextSyncAt = Date.now();
+        renderAdminAiContextStrip();
+        if (showToast) notify('Đã làm mới dữ liệu trực tiếp cho Trợ lý AI.');
+    }
+
+    function onOpenAdminAiView() {
+        renderAdminAiMessages();
+        renderAdminAiContextStrip();
+        if (!state.progressRecords?.length || (Date.now() - (state.aiLastContextSyncAt || 0)) > 45000) {
+            refreshAdminAiContext(false).catch(() => {});
+        }
+    }
+
+    function buildAdminAiContextSnapshot() {
+        const records = Array.isArray(state.progressRecords) ? state.progressRecords : [];
+        const roster = state.rosterConfig || {};
+        const bannedMap = new Map();
+        (state.logins || []).forEach((row) => {
+            const ip = aiText(row?.ip_address || row?.client_ip);
+            if (!ip) return;
+            if (row?.player_name === '__BANNED_IP__' || String(row?.status || '').startsWith('BANNED')) {
+                if (!bannedMap.has(ip)) {
+                    const reason = aiText(String(row.score_summary || row.status || '').split('\n__DETAIL__:')[0].replace(/^BANNED:\s*/i, ''));
+                    bannedMap.set(ip, { ip, reason });
+                }
+            }
+        });
+        const bannedIps = [...bannedMap.values()];
+
+        const statusOf = (record) => (
+            record.isCompleted ? 'submitted'
+                : record.isWaiting ? 'waiting'
+                    : record.isPaused ? 'paused'
+                        : 'doing'
+        );
+
+        const students = [...records].sort((a, b) => {
+            const weight = (p) => (p.isWaiting ? 1 : 0)
+                + (p.activeDoing || (!p.isCompleted && !p.isWaiting && !p.isPaused) ? 3 : 0)
+                + (p._sameIpPeers?.length ? 8 : 0)
+                + (p._outsideRoster ? 6 : 0)
+                + (hasPendingRename(p._deviceCodes || p._deviceCode) ? 5 : 0)
+                + (Number(p.score10) < 5 && p.answered > 0 ? 4 : 0)
+                + (p.lastActive ? 2 : 0);
+            return weight(b) - weight(a);
+        }).slice(0, 80).map((p) => {
+            const isOwnerAdmin = isProtectedOwnerIdentity(p.name || p._rawName, p._deviceCodes || p._deviceCode);
+            return {
+                id: p.id || p.studentKey || '',
+                name: p.name || p.player_name || '',
+                rawName: p._rawName || p.rawName || p.name || '',
+                aliases: p.aliases || p._aliases || [],
+                isOwnerAdmin,
+                pinned: Boolean(p._pinnedName) || isOwnerAdmin,
+                outsideRoster: isOwnerAdmin ? false : Boolean(p._outsideRoster),
+                pendingRename: isOwnerAdmin ? false : hasPendingRename(p._deviceCodes || p._deviceCode),
+                deviceCode: p._deviceCode || '',
+                deviceCodes: p._deviceCodes || [],
+                ip: p.ip || p.ip_address || '',
+                ips: p._ips || [],
+                sameIpPeers: (p._sameIpPeers || []).map((x) => ({ name: x.name, deviceCode: x.deviceCode })),
+                grade: p.grade || '',
+                subject: p.subject || '',
+                status: statusOf(p),
+                answered: Number(p.answered || 0),
+                total: Number(p.total || 0),
+                correct: Number(p.correct || 0),
+                wrong: Number(p.wrong || 0),
+                score10: Number(p.score10 || 0),
+                duration: p.durationLabel || '',
+                autoSubmitted: Boolean(p.detail?.autoSubmitted || /tự nộp/i.test(p.rawStatus || '')),
+                attemptsCount: Array.isArray(p.history) ? p.history.length : 1,
+                lastActiveAgo: formatTimeAgo(p.lastActive),
+                recentAttempts: (p.history || []).slice(0, 4).map((h) => ({
+                    subject: h.subject || '',
+                    score10: Number(h.score10 || 0),
+                    answered: Number(h.answered || 0),
+                    total: Number(h.total || 0),
+                    completed: Boolean(h.isCompleted)
+                }))
+            };
+        });
+
+        const qById = new Map((state.questions || []).map((q) => [String(q.id), q]));
+        const hotspotMap = new Map();
+        const addItems = (attempt, items) => {
+            if (!Array.isArray(items)) return;
+            const subj = attempt.subject || attempt.subjectKey || '';
+            items.forEach((item, index) => {
+                if (!item || (item.ok !== true && item.ok !== false && item.correct !== true && item.correct !== false)) return;
+                const qId = item.id != null ? String(item.id) : '';
+                const qNum = Number(item.questionNumber || item.number) || (index + 1);
+                const key = `${subjectMatchKey(subj)}|${qId || qNum}`;
+                const current = hotspotMap.get(key) || { subject: subj, questionId: qId, questionNumber: qNum, wrongCount: 0, totalCount: 0, preview: '' };
+                current.totalCount += 1;
+                if (item.ok === false || item.correct === false || item.isCorrect === false) current.wrongCount += 1;
+                if (!current.preview && qId && qById.has(qId)) {
+                    current.preview = notationText(qById.get(qId)?.question || '');
+                }
+                hotspotMap.set(key, current);
+            });
+        };
+        records.forEach((p) => {
+            if (Array.isArray(p.history) && p.history.length) {
+                p.history.forEach((h) => addItems(h, h.detail?.items));
+            } else {
+                addItems(p, p.detail?.items);
+            }
+        });
+        const wrongQuestionHotspots = [...hotspotMap.values()]
+            .filter((x) => x.wrongCount >= 1)
+            .map((x) => ({
+                subject: x.subject,
+                questionNumber: x.questionNumber,
+                wrongCount: x.wrongCount,
+                totalCount: x.totalCount,
+                wrongRatePct: x.totalCount ? Number(((x.wrongCount / x.totalCount) * 100).toFixed(1)) : 0,
+                preview: String(x.preview || '').replace(/\s+/g, ' ').trim().slice(0, 90)
+            }))
+            .sort((a, b) => b.wrongCount - a.wrongCount || b.wrongRatePct - a.wrongRatePct)
+            .slice(0, 15);
+
+        const missingRoster = (grade) => (roster[grade]?.students || [])
+            .map((item) => (typeof item === 'string' ? item : item?.name))
+            .filter(Boolean)
+            .filter((name) => !records.some((p) => normalizeIdentityKey(p.name) === normalizeIdentityKey(name)))
+            .slice(0, 40);
+
+        const snapshot = {
+            nowVN: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+            maintenance: {
+                isActive: Boolean(state.maintenance?.isActive),
+                message: aiText(state.maintenance?.message)
+            },
+            summary: {
+                totalQuestions: state.questions.length,
+                grade5Questions: state.questions.filter((q) => gradeOf(q) === '5').length,
+                grade11Questions: state.questions.filter((q) => gradeOf(q) === '11').length,
+                totalSubjects: allSubjects().length,
+                totalStudents: records.length,
+                doingCount: records.filter((p) => statusOf(p) === 'doing').length,
+                submittedCount: records.filter((p) => statusOf(p) === 'submitted').length,
+                waitingCount: records.filter((p) => statusOf(p) === 'waiting' || statusOf(p) === 'paused').length,
+                sameIpCount: records.filter((p) => p._sameIpPeers?.length).length,
+                outsideRosterCount: records.filter((p) => p._outsideRoster).length,
+                pendingRenameCount: Object.keys(state.renameRequests || {}).length,
+                pinnedDeviceCount: Object.keys(state.devicePins || {}).length,
+                bannedIpCount: bannedIps.length
+            },
+            subjects: allSubjects().slice(0, 45).map((s) => ({
+                key: s.key,
+                name: s.name,
+                grade: subjectGrade(s),
+                mode: s.mode || 'practice',
+                visibility: s.visibility || 'PUBLIC',
+                count: Number(s.count || 0),
+                openAt: s.openAt || '',
+                closeAt: s.closeAt || '',
+                maxAttempts: Number(s.maxAttempts || 0)
+            })),
+            students,
+            wrongQuestionHotspots,
+            bannedIps,
+            devicePins: Object.entries(state.devicePins || {}).slice(0, 60).map(([code, name]) => ({ code, name })),
+            renameRequests: Object.entries(state.renameRequests || {}).map(([code, request]) => ({
+                code,
+                oldName: request?.oldName || '',
+                reason: request?.reason || ''
+            })),
+            roster: {
+                grade5: { enabled: Boolean(roster.grade5?.enabled), count: roster.grade5?.students?.length || 0, missing: missingRoster('grade5') },
+                grade11: { enabled: Boolean(roster.grade11?.enabled), count: roster.grade11?.students?.length || 0, missing: missingRoster('grade11') }
+            }
+        };
+
+        let json = JSON.stringify(snapshot);
+        while (json.length > 18000 && snapshot.students.length > 10) {
+            snapshot.students = snapshot.students.slice(0, Math.max(10, snapshot.students.length - 10));
+            json = JSON.stringify(snapshot);
+        }
+        while (json.length > 18000 && snapshot.subjects.length > 10) {
+            snapshot.subjects = snapshot.subjects.slice(0, Math.max(10, snapshot.subjects.length - 10));
+            json = JSON.stringify(snapshot);
+        }
+        if (json.length > 18000) {
+            snapshot.roster.grade5.missing = snapshot.roster.grade5.missing.slice(0, 10);
+            snapshot.roster.grade11.missing = snapshot.roster.grade11.missing.slice(0, 10);
+            snapshot.wrongQuestionHotspots = snapshot.wrongQuestionHotspots.slice(0, 8);
+            snapshot.renameRequests = snapshot.renameRequests.slice(0, 20);
+            snapshot.devicePins = snapshot.devicePins.slice(0, 20);
+            json = JSON.stringify(snapshot);
+        }
+        if (json.length > 18000) {
+            snapshot.students = snapshot.students.slice(0, 10);
+            snapshot.subjects = snapshot.subjects.slice(0, 10);
+            snapshot.wrongQuestionHotspots = snapshot.wrongQuestionHotspots.slice(0, 4);
+            snapshot.roster.grade5.missing = [];
+            snapshot.roster.grade11.missing = [];
+            json = JSON.stringify(snapshot);
+        }
+        if (json.length > 18000) {
+            snapshot.students = [];
+            snapshot.subjects = [];
+            snapshot.wrongQuestionHotspots = [];
+            snapshot.devicePins = [];
+            snapshot.renameRequests = [];
+            snapshot.maintenance.message = String(snapshot.maintenance.message || '').slice(0, 300);
+        }
+        return snapshot;
+    }
+
+    function validateAdminAiAction(rawAction, idx = 0) {
+        if (!rawAction || typeof rawAction !== 'object' || !AI_ACTION_TYPES.has(rawAction.type)) return null;
+        const srcParams = (rawAction.params && typeof rawAction.params === 'object') ? rawAction.params : rawAction;
+        const params = { ...srcParams };
+        const action = {
+            id: aiId(`act${idx + 1}`),
+            type: rawAction.type,
+            title: aiText(rawAction.title),
+            detail: aiText(rawAction.detail),
+            params,
+            danger: Boolean(rawAction.danger)
+        };
+        if (action.type === 'pin_device') {
+            params.code = aiCode(params.code);
+            params.name = aiText(params.name);
+            if (!aiValidCode(params.code) || !params.name || params.name.startsWith('__') || isProtectedOwnerIdentity(params.name, params.code)) return null;
+        } else if (action.type === 'merge_devices') {
+            const rawCodes = Array.isArray(params.codes) ? params.codes : String(params.codes || '').split(/[,\s]+/);
+            params.codes = [...new Set(rawCodes.map(aiCode).filter(aiValidCode))];
+            params.name = aiText(params.name);
+            if (!params.codes.length || !params.name || params.name.startsWith('__') || isProtectedOwnerIdentity(params.name, params.codes)) return null;
+        } else if (['unpin_device', 'cancel_rename'].includes(action.type)) {
+            params.code = aiCode(params.code);
+            if (!aiValidCode(params.code)) return null;
+        } else if (action.type === 'require_rename') {
+            params.code = aiCode(params.code);
+            params.oldName = aiText(params.oldName);
+            params.reason = aiText(params.reason, 'Tên hiện tại chưa đúng Họ và Tên thật. Vui lòng nhập hoặc chọn đúng Họ và Tên thật của bạn!');
+            if (!aiValidCode(params.code) || isProtectedOwnerIdentity(params.oldName, params.code)) return null;
+        } else if (action.type === 'send_private_notice') {
+            params.message = aiText(params.message);
+            params.ip = aiText(params.ip);
+            params.name = aiText(params.name);
+            if (!params.message || (!params.ip && !params.name)) return null;
+        } else if (action.type === 'broadcast_notice') {
+            params.message = aiText(params.message);
+            if (!params.message) return null;
+        } else if (action.type === 'set_maintenance') {
+            if (typeof params.enabled !== 'boolean') return null;
+            params.message = aiText(params.message, 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!');
+            action.danger = params.enabled || action.danger;
+        } else if (action.type === 'ban_ip') {
+            params.ip = aiText(params.ip);
+            params.reason = aiText(params.reason, 'Vi phạm quy chế ôn tập');
+            const blocked = new Set(['system', 'all', '—', 'chưa xác định']);
+            const adminIps = new Set([
+                state.clientIp,
+                state.adminConfig?.masterIp,
+                ...(state.adminConfig?.allowedIps || []).map((x) => (typeof x === 'string' ? x : x?.ip))
+            ].map((x) => aiText(x).toLowerCase()).filter(Boolean));
+            if (!params.ip || blocked.has(params.ip.toLowerCase()) || adminIps.has(params.ip.toLowerCase())) return null;
+            action.danger = true;
+        } else if (action.type === 'unban_ip') {
+            params.ip = aiText(params.ip);
+            if (!params.ip || ['system', 'all', '—', 'chưa xác định'].includes(params.ip.toLowerCase())) return null;
+        } else if (action.type === 'set_subject_privacy') {
+            const targetNorm = subjectMatchKey(params.subjectKey);
+            const subject = allSubjects().find((s) => (
+                subjectMatchKey(s.key || s.subject_key) === targetNorm || subjectMatchKey(s.name) === targetNorm
+            ));
+            if (!subject || typeof params.isPrivate !== 'boolean') return null;
+            params.subjectKey = subject.key || subject.subject_key;
+        } else if (action.type === 'delete_student') {
+            params.name = aiText(params.name);
+            params.ip = aiText(params.ip);
+            params.device = aiText(params.device);
+            params.loginId = aiText(params.loginId);
+            params.deviceCodes = Array.isArray(params.deviceCodes) ? params.deviceCodes.map(aiCode).filter(aiValidCode) : [];
+            if ((!params.name && !params.ip && !params.loginId && !params.deviceCodes.length)
+                || isProtectedOwnerIdentity(params.name, [params.device, ...(params.deviceCodes || [])])) return null;
+            action.danger = true;
+        } else if (action.type === 'cleanup_duplicate_ips') {
+            // No params required
+        } else if (action.type === 'switch_view') {
+            if (!['overview', 'questions', 'progress', 'access', 'reports'].includes(params.view)) return null;
+        } else if (action.type === 'force_submit') {
+            params.allUnfinished = Boolean(params.allUnfinished);
+            params.name = aiText(params.name || params.playerName);
+            const rawCode = params.deviceCode || params.code || '';
+            params.deviceCode = aiValidCode(rawCode) ? aiCode(rawCode) : '';
+            params.loginId = aiText(params.loginId || params.id);
+            params.ip = aiText(params.ip);
+            params.subject = aiText(params.subject);
+            if (!params.allUnfinished && (params.name || params.deviceCode) && isProtectedOwnerIdentity(params.name, params.deviceCode)) {
+                return null;
+            }
+            if (!params.allUnfinished && !params.name && !params.deviceCode && !params.loginId && !params.ip) {
+                params.allUnfinished = true;
+            }
+        }
+        if (['ban_ip', 'delete_student'].includes(action.type)) action.danger = true;
+        return action;
+    }
+
+    function parseAdminAiResponse(rawText) {
+        let cleanText = String(rawText || '');
+        const actions = [];
+        const primaryMatches = [...cleanText.matchAll(/```admin_actions\s*([\s\S]*?)```/gi)];
+        const fallbackMatches = primaryMatches.length ? [] : [...cleanText.matchAll(/```json\s*([\s\S]*?)```/gi)];
+        const matchedBlocks = [];
+
+        [...primaryMatches, ...fallbackMatches].forEach((match) => {
+            try {
+                const parsed = JSON.parse(match[1]);
+                const items = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
+                if (!items.length) return;
+                const validated = items
+                    .map((item, idx) => validateAdminAiAction(item, actions.length + idx))
+                    .filter(Boolean)
+                    .map((action) => ({ ...action, status: 'pending' }));
+                if (primaryMatches.includes(match) || validated.length) {
+                    actions.push(...validated);
+                    matchedBlocks.push(match[0]);
+                }
+            } catch (e) {}
+        });
+
+        matchedBlocks.forEach((rawBlock) => {
+            cleanText = cleanText.replace(rawBlock, '');
+        });
+        return { cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(), actions };
+    }
+
+    function renderAdminAiMarkdown(text) {
+        const cleaned = String(text || '').replace(/```zalo\s*\r?\n([\s\S]*?)```/gi, (_, body) => body.trim());
+        const escaped = esc(cleaned);
+        const formatInline = (str) => str
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        const lines = escaped.split(/\r?\n/);
+        let html = '';
+        let listType = '';
+        const closeList = () => {
+            if (listType) {
+                html += `</${listType}>`;
+                listType = '';
+            }
+        };
+        lines.forEach((line) => {
+            const bullet = line.match(/^\s*[-*•]\s+(.+)/);
+            const ordered = line.match(/^\s*\d+\.\s+(.+)/);
+            const heading = line.match(/^\s*#{1,4}\s+(.+)/);
+            if (bullet || ordered) {
+                const nextType = ordered ? 'ol' : 'ul';
+                if (listType !== nextType) {
+                    closeList();
+                    listType = nextType;
+                    html += `<${nextType}>`;
+                }
+                html += `<li>${formatInline(bullet ? bullet[1] : ordered[1])}</li>`;
+            } else {
+                closeList();
+                if (heading) {
+                    html += `<p><strong>${formatInline(heading[1])}</strong></p>`;
+                } else if (line.trim()) {
+                    html += `<p>${formatInline(line)}</p>`;
+                }
+            }
+        });
+        closeList();
+        return html || `<p>${formatInline(escaped)}</p>`;
+    }
+
+    async function aiSetRequireRename(code, oldName, reason) {
+        const upperCode = aiCode(code);
+        const nextReqs = {
+            ...(state.renameRequests || {}),
+            [upperCode]: {
+                requestedAt: new Date().toISOString(),
+                oldName: aiText(oldName),
+                reason: aiText(reason, 'Vui lòng nhập lại họ tên thật theo danh sách lớp.')
+            }
+        };
+        await persistRosterPayload({
+            grade5: state.rosterConfig?.grade5,
+            grade11: state.rosterConfig?.grade11,
+            devicePins: state.devicePins || {},
+            renameRequests: nextReqs
+        });
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        addActivityLog('AI yêu cầu đổi tên', `${upperCode}: ${nextReqs[upperCode].reason}`, 'access');
+        notify(`Đã bật khóa yêu cầu đổi tên cho [${upperCode}].`);
+    }
+
+    async function aiCancelRequireRename(code) {
+        const upperCode = aiCode(code);
+        const nextReqs = { ...(state.renameRequests || {}) };
+        delete nextReqs[upperCode];
+        await persistRosterPayload({
+            grade5: state.rosterConfig?.grade5,
+            grade11: state.rosterConfig?.grade11,
+            devicePins: state.devicePins || {},
+            renameRequests: nextReqs
+        });
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        notify(`Đã hủy yêu cầu đổi tên cho [${upperCode}].`);
+    }
+
+    async function aiSetMaintenance(enabled, message) {
+        const cleanMessage = aiText(message) || 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+        const { error } = await state.client.from('quiz_logins').upsert({
+            id: SYSTEM.maintenance,
+            player_name: '__SYSTEM_MAINTENANCE__',
+            ip_address: 'SYSTEM',
+            device_info: enabled ? 'ON' : 'OFF',
+            status: enabled ? 'ACTIVE' : 'INACTIVE',
+            score_summary: cleanMessage,
+            last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if (error) throw error;
+        state.maintenance = { isActive: enabled, message: cleanMessage };
+        await loadMaintenance();
+        addActivityLog(enabled ? 'AI bật chế độ bảo trì' : 'AI mở lại website', cleanMessage, 'maintenance');
+        notify(enabled ? 'Đã bật chế độ bảo trì.' : 'Đã mở lại website.');
+    }
+
+    async function aiSendPrivateNotice(ip, name, message) {
+        const result = await window.dbService.sendBroadcastNotice(message, ip || 'ALL', name || '');
+        if (!result?.success) throw new Error(result?.error || 'Không thể gửi thông báo riêng.');
+        addActivityLog('AI gửi thông báo riêng', `${name || ip}: ${message}`, 'broadcast');
+        notify(`Đã gửi thông báo riêng tới ${name || ip}.`);
+    }
+
+    async function aiBroadcastNotice(message) {
+        const result = await window.dbService.sendBroadcastNotice(message, 'ALL', '');
+        if (!result?.success) throw new Error(result?.error || 'Không thể phát thông báo toàn phòng.');
+        addActivityLog('AI phát thông báo toàn phòng', message, 'broadcast');
+        notify('Đã phát thông báo toàn phòng.');
+    }
+
+    async function forceSubmitStudentAttempts(params = {}) {
+        const allUnfinished = Boolean(params.allUnfinished);
+        const targetLoginId = aiText(params.loginId || params.id);
+        const targetCode = aiValidCode(params.deviceCode || params.code) ? aiCode(params.deviceCode || params.code) : '';
+        const targetNameKey = normalizeIdentityKey(params.name || '');
+        const targetIp = aiText(params.ip);
+        const targetSubjKey = subjectMatchKey(params.subject || '');
+
+        let rawPool = Array.isArray(state.progressRawLogins) && state.progressRawLogins.length
+            ? state.progressRawLogins
+            : (state.logins || []);
+        if (state.client) {
+            try {
+                const { data } = await state.client
+                    .from('quiz_logins')
+                    .select('*')
+                    .order('last_active', { ascending: false })
+                    .limit(300);
+                if (Array.isArray(data) && data.length) rawPool = data;
+            } catch (e) {}
+        }
+
+        const systemIds = new Set(Object.values(SYSTEM || {}));
+        const matchedNames = new Set();
+        const matchedIps = new Set();
+
+        const candidateRows = rawPool.filter((row) => {
+            if (!row || !row.id || systemIds.has(row.id)) return false;
+            const rawName = String(row.player_name || '').trim();
+            const rawStatus = String(row.status || '');
+            const fullScore = String(row.score_summary || '');
+            const detailIdx = fullScore.indexOf('\n__DETAIL__:');
+            const rawScore = detailIdx >= 0 ? fullScore.slice(0, detailIdx) : fullScore;
+            if (!rawName || rawName.startsWith('__') || /^(khách truy cập|visitor)$/i.test(rawName)) return false;
+            if (String(row.ip_address || '').trim() === 'SYSTEM' || /admin/i.test(rawStatus) || /^BANNED/i.test(rawStatus)) return false;
+            if (/đã nộp bài|hoàn thành/i.test(rawStatus) || /\d+(?:[.,]\d+)?\s*điểm/i.test(rawScore)) return false;
+
+            const parsed = parseStudentProgress(row);
+            if (parsed.isCompleted || (parsed.isWaiting && parsed.answered <= 0 && parsed.total <= 0)) return false;
+
+            const code = extractDeviceCode(row.device_info);
+            const displayName = getPinnedDeviceName(code) || findRosterMatchedName(rawName) || rawName;
+            if (isProtectedOwnerIdentity(displayName, code) || isProtectedOwnerIdentity(rawName, code)) return false;
+
+            if (targetSubjKey && subjectMatchKey(parsed.subject) !== targetSubjKey) return false;
+
+            if (allUnfinished) return true;
+            if (targetLoginId && String(row.id) === targetLoginId) return true;
+            if (targetCode && code === targetCode) return true;
+            if (targetNameKey && (normalizeIdentityKey(displayName) === targetNameKey || normalizeIdentityKey(rawName) === targetNameKey)) return true;
+            if (targetIp && aiText(row.ip_address) === targetIp) return true;
+            return false;
+        });
+
+        if (!candidateRows.length) {
+            throw new Error('Không tìm thấy bài thi nào đang làm dở để ép nộp.');
+        }
+
+        candidateRows.forEach((row) => {
+            const code = extractDeviceCode(row.device_info);
+            const displayName = getPinnedDeviceName(code) || row.player_name || 'Học sinh';
+            matchedNames.add(displayName);
+            if (row.ip_address) matchedIps.add(String(row.ip_address).trim());
+        });
+
+        let count = 0;
+        if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') {
+            count = await window.dbService.autoSubmitStaleAttempts(candidateRows, { force: true });
+        }
+        if (count <= 0) {
+            throw new Error('Không thể chốt điểm cho bài thi chưa hoàn thành.');
+        }
+
+        try {
+            const noticeTargetIp = matchedIps.size === 1 ? [...matchedIps][0] : 'ALL';
+            const noticeTargetName = matchedNames.size === 1 ? [...matchedNames][0] : '';
+            await window.dbService?.sendBroadcastNotice?.(
+                '[__FORCE_SUBMIT__] ⏰ Giáo viên đã thu bài và chốt điểm bài làm của bạn!',
+                noticeTargetIp,
+                noticeTargetName
+            );
+        } catch (e) {}
+
+        await loadStudents();
+        await renderGrade5ProgressMonitor();
+        const namesLabel = [...matchedNames].slice(0, 5).join(', ');
+        addActivityLog('Ép nộp bài thi', `Đã ép nộp ${count} lượt bài làm (${namesLabel})`, 'progress');
+        notify(`Đã ép nộp ${count} bài chưa hoàn thành (${namesLabel}).`);
+        return count;
+    }
+
+    function captureAdminAiUndoPayload(action) {
+        const p = action?.params || {};
+        switch (action?.type) {
+            case 'set_maintenance':
+                return { type: 'set_maintenance', enabled: Boolean(state.maintenance?.isActive), message: String(state.maintenance?.message || '') };
+            case 'set_subject_privacy': {
+                const subj = allSubjects().find((s) => subjectMatchKey(s.key || s.subject_key) === subjectMatchKey(p.subjectKey));
+                return { type: 'set_subject_privacy', subjectKey: p.subjectKey, isPrivate: subj ? subj.visibility === 'PRIVATE' : !p.isPrivate };
+            }
+            case 'pin_device': {
+                const prev = (state.devicePins || {})[p.code];
+                const prevName = typeof prev === 'string' ? prev : (prev?.name || '');
+                return prevName
+                    ? { type: 'pin_device', code: p.code, name: prevName }
+                    : { type: 'unpin_device', code: p.code };
+            }
+            case 'unpin_device': {
+                const prev = (state.devicePins || {})[p.code];
+                const prevName = typeof prev === 'string' ? prev : (prev?.name || '');
+                return prevName ? { type: 'pin_device', code: p.code, name: prevName } : null;
+            }
+            case 'require_rename':
+                return { type: 'cancel_rename', code: p.code };
+            case 'cancel_rename': {
+                const prevReq = (state.renameRequests || {})[p.code];
+                return prevReq ? { type: 'require_rename', code: p.code, oldName: prevReq.oldName || '', reason: prevReq.reason || '' } : null;
+            }
+            case 'ban_ip':
+                return { type: 'unban_ip', ip: p.ip };
+            case 'unban_ip':
+                return { type: 'ban_ip', ip: p.ip, reason: 'Hoàn tác mở khóa IP từ Trợ lý AI' };
+            default:
+                return null;
+        }
+    }
+
+    async function undoAdminAiAction(msgId, actionId) {
+        const message = (Array.isArray(state.aiChatMessages) ? state.aiChatMessages : []).find((item) => item.id === msgId);
+        const action = message?.actions?.find((item) => item.id === actionId);
+        if (!action || action.status !== 'done' || !action.undoPayload) return;
+        const u = action.undoPayload;
+        action.status = 'running';
+        action.error = '';
+        renderAdminAiMessages();
+        try {
+            switch (u.type) {
+                case 'set_maintenance':
+                    await aiSetMaintenance(u.enabled, u.message);
+                    break;
+                case 'set_subject_privacy':
+                    await toggleSubjectPrivacy(u.subjectKey, !u.isPrivate);
+                    break;
+                case 'pin_device':
+                    await saveDevicePin(u.code, u.name);
+                    break;
+                case 'unpin_device':
+                    await unpinDevicePin(u.code);
+                    break;
+                case 'require_rename':
+                    await aiSetRequireRename(u.code, u.oldName, u.reason);
+                    break;
+                case 'cancel_rename':
+                    await aiCancelRequireRename(u.code);
+                    break;
+                case 'ban_ip':
+                    await banIp(u.ip, u.reason);
+                    break;
+                case 'unban_ip':
+                    await unbanIp(u.ip);
+                    break;
+                default:
+                    throw new Error('Thao tác này không hỗ trợ hoàn tác.');
+            }
+            action.status = 'undone';
+            action.undoPayload = null;
+            state.aiLastContextSyncAt = Date.now();
+            addActivityLog('Hoàn tác lệnh AI', action.title || action.type, 'info');
+            notify('Đã hoàn tác thao tác trước đó.');
+        } catch (error) {
+            action.status = 'done';
+            action.error = error.message || 'Không thể hoàn tác thao tác này.';
+        }
+        persistAdminAiHistory();
+        renderAdminAiMessages();
+        renderAdminAiContextStrip();
+    }
+
+    async function executeAdminAiAction(msgId, actionId) {
+        const message = (Array.isArray(state.aiChatMessages) ? state.aiChatMessages : []).find((item) => item.id === msgId);
+        const action = message?.actions?.find((item) => item.id === actionId);
+        if (!action || !['pending', 'error'].includes(action.status)) return;
+        const undoSnapshot = captureAdminAiUndoPayload(action);
+        action.status = 'running';
+        action.error = '';
+        renderAdminAiMessages();
+        try {
+            const p = action.params;
+            switch (action.type) {
+                case 'pin_device':
+                    await saveDevicePin(p.code, p.name);
+                    break;
+                case 'merge_devices':
+                    await mergeDevicesToName(p.codes, p.name);
+                    break;
+                case 'unpin_device':
+                    await unpinDevicePin(p.code);
+                    break;
+                case 'require_rename':
+                    await aiSetRequireRename(p.code, p.oldName, p.reason);
+                    break;
+                case 'cancel_rename':
+                    await aiCancelRequireRename(p.code);
+                    break;
+                case 'send_private_notice':
+                    await aiSendPrivateNotice(p.ip, p.name, p.message);
+                    break;
+                case 'broadcast_notice':
+                    await aiBroadcastNotice(p.message);
+                    break;
+                case 'set_maintenance':
+                    await aiSetMaintenance(p.enabled, p.message);
+                    break;
+                case 'ban_ip': {
+                    await banIp(p.ip, p.reason);
+                    const bannedNow = (state.logins || []).some((r) => (
+                        r?.player_name === '__BANNED_IP__' && aiText(r.ip_address) === p.ip
+                    ));
+                    if (!bannedNow) throw new Error(`Không thể xác minh trạng thái chặn IP ${p.ip}.`);
+                    break;
+                }
+                case 'unban_ip': {
+                    await unbanIp(p.ip);
+                    const stillBanned = (state.logins || []).some((r) => (
+                        r?.player_name === '__BANNED_IP__' && aiText(r.ip_address) === p.ip
+                    ));
+                    if (stillBanned) throw new Error(`IP ${p.ip} vẫn đang nằm trong danh sách chặn.`);
+                    break;
+                }
+                case 'set_subject_privacy': {
+                    await toggleSubjectPrivacy(p.subjectKey, !p.isPrivate);
+                    const updatedSubj = allSubjects().find((s) => subjectMatchKey(s.key) === subjectMatchKey(p.subjectKey));
+                    if (updatedSubj && (updatedSubj.visibility === 'PRIVATE') !== p.isPrivate) {
+                        throw new Error('Không thể cập nhật quyền riêng tư môn học.');
+                    }
+                    break;
+                }
+                case 'delete_student':
+                    await deleteStudentSession(p.name, p.ip, p.device || '', p.loginId || '', true, (p.deviceCodes || []).join(','));
+                    break;
+                case 'cleanup_duplicate_ips':
+                    await cleanupDuplicateIpLogins(true);
+                    break;
+                case 'switch_view':
+                    switchView(p.view);
+                    break;
+                case 'force_submit':
+                    await forceSubmitStudentAttempts(p);
+                    break;
+                default:
+                    throw new Error('Lệnh AI không được hỗ trợ.');
+            }
+            action.status = 'done';
+            action.undoPayload = undoSnapshot;
+            state.aiLastContextSyncAt = Date.now();
+        } catch (error) {
+            action.status = 'error';
+            action.error = error.message || 'Thao tác thất bại.';
+        }
+        persistAdminAiHistory();
+        renderAdminAiMessages();
+        renderAdminAiContextStrip();
+    }
+
+    function cancelAdminAiAction(msgId, actionId) {
+        const action = state.aiChatMessages.find((item) => item.id === msgId)?.actions?.find((item) => item.id === actionId);
+        if (!action || !['pending', 'error'].includes(action.status)) return;
+        action.status = 'cancelled';
+        persistAdminAiHistory();
+        renderAdminAiMessages();
+    }
+
+    async function executeAllSafeAdminAiActions(msgId) {
+        const message = state.aiChatMessages.find((item) => item.id === msgId);
+        for (const action of (message?.actions || []).filter((item) => item.status === 'pending' && !item.danger)) {
+            await executeAdminAiAction(msgId, action.id);
+        }
+    }
+
+    function renderAdminAiMessages() {
+        const container = $('ai-chat-messages');
+        if (!container) return;
+        if ($('ai-send-btn')) $('ai-send-btn').disabled = Boolean(state.aiChatLoading);
+        document.querySelectorAll('#ai-quick-prompts .ai-quick-chip').forEach((btn) => {
+            btn.disabled = Boolean(state.aiChatLoading);
+        });
+
+        if (!state.aiChatMessages.length && !state.aiChatLoading) {
+            container.innerHTML = `
+                <div class="ai-welcome-card">
+                     <h3><i class="fa-solid fa-comments" style="color:var(--primary);margin-right:6px;"></i> Trợ lý AI Quản trị đã sẵn sàng</h3>
+                    <p>Chọn nhanh gợi ý phía trên hoặc nhập yêu cầu bằng tiếng Việt. Trợ lý đọc trực tiếp tiến trình học sinh, trùng IP, mã máy, danh sách lớp và câu sai nhiều:</p>
+                    <ul>
+                        <li><b>Phân tích tức thì:</b> "Tổng kết lớp hôm nay", "Soi ai trùng IP hoặc đặt tên lạ?", "Câu nào sai nhiều nhất?"</li>
+                        <li><b>Soạn tin nhanh:</b> "Soạn tin nhắn tổng kết gửi nhóm Zalo phụ huynh/lớp".</li>
+                        <li><b>Ra lệnh 1 chạm (luôn hỏi duyệt):</b> "Ghim máy QM-XXXX tên Nguyễn Minh Quân", "Gửi thông báo nhắc cả lớp nộp bài", "Bật bảo trì web...".</li>
+                    </ul>
+                </div>
+            `;
+            return;
+        }
+
+        const defaultActionTitle = (action) => ({
+            pin_device: 'Ghim tên thật cho mã máy',
+            merge_devices: 'Gộp nhiều mã máy về 1 học sinh',
+            unpin_device: 'Bỏ ghim mã máy',
+            require_rename: 'Bắt học sinh nhập lại tên thật',
+            cancel_rename: 'Hủy yêu cầu đổi tên',
+            send_private_notice: 'Gửi thông báo riêng nổi bật',
+            broadcast_notice: 'Phát thông báo toàn phòng',
+            set_maintenance: action.params?.enabled ? 'Bật chế độ Bảo trì web' : 'Tắt bảo trì & mở lại web',
+            ban_ip: 'Chặn địa chỉ IP',
+            unban_ip: 'Mở khóa địa chỉ IP',
+            set_subject_privacy: action.params?.isPrivate ? 'Chuyển môn học sang Riêng tư' : 'Mở công khai môn học',
+            delete_student: 'Xóa phiên học sinh khỏi bảng theo dõi',
+            cleanup_duplicate_ips: 'Dọn bản ghi chờ/trùng IP',
+            switch_view: 'Mở khu vực quản trị',
+            force_submit: action.params?.allUnfinished ? 'Ép nộp tất cả bài chưa hoàn thành' : 'Ép nộp bài học sinh'
+        }[action.type] || action.type);
+
+        const paramChips = (params, actionType) => {
+            const labels = { code: 'Mã máy', codes: 'Mã máy', deviceCode: 'Mã máy', deviceCodes: 'Mã máy', oldName: 'Tên hiện tại', reason: 'Lý do', message: 'Nội dung', ip: 'IP', subjectKey: 'Môn học', subject: 'Môn học', device: 'Thiết bị', loginId: 'Mã phiên', id: 'Mã phiên' };
+            const subjectName = (value) => allSubjects().find((subject) => subjectMatchKey(subject.key || subject.subject_key) === subjectMatchKey(value))?.name || value;
+            const chips = [];
+            Object.entries(params || {}).forEach(([key, value]) => {
+                if (value === '' || value === null || value === undefined || (Array.isArray(value) && !value.length)) return;
+                if (key === 'allUnfinished') { if (value === true) chips.push('<span class="ai-action-chip">Phạm vi: Tất cả bài chưa nộp</span>'); return; }
+                if (key === 'enabled') { chips.push(`<span class="ai-action-chip">Bảo trì: ${value ? 'Bật khóa web' : 'Mở lại web'}</span>`); return; }
+                if (key === 'isPrivate') { chips.push(`<span class="ai-action-chip">Hiển thị: ${value ? 'Riêng tư' : 'Công khai'}</span>`); return; }
+                if (key === 'view') { const views = { overview: 'Tổng quan', questions: 'Đề thi & môn học', progress: 'Lớp học trực tiếp', access: 'Quyền truy cập', reports: 'Báo cáo & dữ liệu' }; chips.push(`<span class="ai-action-chip">Khu vực: ${esc(views[value] || value)}</span>`); return; }
+                let label = labels[key];
+                if (key === 'name' || key === 'playerName') label = actionType === 'pin_device' || actionType === 'merge_devices' ? 'Họ tên mới' : 'Học sinh';
+                if (!label) return;
+                const shown = (key === 'subjectKey' || key === 'subject') ? subjectName(Array.isArray(value) ? value.join(', ') : value) : (Array.isArray(value) ? value.join(', ') : String(value));
+                chips.push(`<span class="ai-action-chip">${label}: ${esc(shown)}</span>`);
+            });
+            return chips.join('');
+        };
+
+        const statusMeta = (action) => ({
+            pending: { cls: '', icon: 'fa-clock', text: action.danger ? 'Cần duyệt cẩn trọng' : 'Chờ xác nhận' },
+            running: { cls: 'is-running', icon: 'fa-spinner fa-spin', text: 'Đang thực thi' },
+            done: { cls: 'is-done', icon: 'fa-circle-check', text: 'Đã thực thi' },
+            undone: { cls: 'is-undone', icon: 'fa-rotate-left', text: 'Đã hoàn tác' },
+            cancelled: { cls: 'is-cancelled', icon: 'fa-ban', text: 'Đã hủy' },
+            error: { cls: 'is-error', icon: 'fa-triangle-exclamation', text: 'Lỗi' }
+        }[action.status] || { cls: '', icon: 'fa-clock', text: 'Chờ xác nhận' });
+
+        container.innerHTML = state.aiChatMessages.map((message) => {
+            if (message.role === 'user') {
+                return `
+                    <article class="ai-msg ai-msg-user">
+                        <div class="ai-msg-bubble">${esc(message.text)}</div>
+                    </article>
+                `;
+            }
+
+            const actions = Array.isArray(message.actions) ? message.actions : [];
+            const safePendingCount = actions.filter((a) => a.status === 'pending' && !a.danger).length;
+            const actionsHtml = actions.length ? `
+                <div class="ai-actions-wrap">
+                    <div class="ai-actions-toolbar">
+                        <strong><i class="fa-solid fa-bolt" style="color:var(--primary);margin-right:5px;"></i> Thao tác đề xuất (${actions.length})</strong>
+                        ${safePendingCount >= 2 ? `<button type="button" class="button button-secondary compact ai-confirm-all-btn" data-ai-confirm-all="${esc(message.id)}"><i class="fa-solid fa-check-double"></i> Xác nhận ${safePendingCount} lệnh an toàn</button>` : ''}
+                    </div>
+                    ${actions.map((action) => {
+                        const cardStateCls = action.status === 'done' ? ' is-done' : action.status === 'undone' ? ' is-undone' : action.status === 'cancelled' ? ' is-cancelled' : action.status === 'error' ? ' is-error' : '';
+                        const dangerCls = action.danger ? ' is-danger' : '';
+                        const st = statusMeta(action);
+                        const canAct = ['pending', 'error'].includes(action.status);
+                        const canUndo = action.status === 'done' && Boolean(action.undoPayload);
+                        return `
+                            <div class="ai-action-card${dangerCls}${cardStateCls}">
+                                <div class="ai-action-head">
+                                    <div class="ai-action-title">
+                                         <i class="fa-solid ${action.danger ? 'fa-triangle-exclamation' : 'fa-terminal'}"></i>
+                                        <span>${esc(action.title || defaultActionTitle(action))}</span>
+                                    </div>
+                                    <span class="ai-action-status ${st.cls}"><i class="fa-solid ${st.icon}"></i> ${esc(st.text)}</span>
+                                </div>
+                                ${action.detail ? `<p class="ai-action-detail">${esc(action.detail)}</p>` : ''}
+                                 <div class="ai-action-params">${paramChips(action.params, action.type)}</div>
+                                ${action.error ? `<small class="muted-copy" style="color:var(--red);">${esc(action.error)}</small>` : ''}
+                                ${canAct ? `
+                                    <div class="ai-action-foot">
+                                        <div class="ai-action-buttons">
+                                            <button type="button" class="button ${action.danger ? 'button-danger-solid' : 'button-primary'} compact" data-ai-confirm-action="${esc(action.id)}" data-ai-msg-id="${esc(message.id)}"><i class="fa-solid fa-check"></i> ${action.status === 'error' ? 'Thử lại' : 'Xác nhận'}</button>
+                                            <button type="button" class="button button-secondary compact" data-ai-cancel-action="${esc(action.id)}" data-ai-msg-id="${esc(message.id)}">Hủy</button>
+                                        </div>
+                                    </div>
+                                ` : (canUndo ? `
+                                    <div class="ai-action-foot">
+                                        <div class="ai-action-buttons">
+                                            <button type="button" class="button compact ai-undo-btn" data-ai-undo-action="${esc(action.id)}" data-ai-msg-id="${esc(message.id)}"><i class="fa-solid fa-rotate-left"></i> Hoàn tác</button>
+                                        </div>
+                                    </div>
+                                ` : '')}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : '';
+
+            return `
+                <article class="ai-msg ai-msg-assistant${message.isError ? ' ai-msg-error' : ''}">
+                    <div class="ai-msg-bubble">
+                        <div class="ai-msg-head">
+                             <span class="ai-msg-avatar"><i class="fa-solid fa-comments"></i></span>
+                            <strong>Trợ lý AI</strong>
+                            ${message.model ? `<span class="ai-msg-model">${esc(message.model)}</span>` : ''}
+                            <span class="ai-msg-actions-inline">
+                                <button type="button" class="ai-msg-copy-zalo" data-ai-copy-zalo="${esc(message.id)}" title="Sao chép bản văn bản sạch để dán thẳng vào Zalo"><i class="fa-regular fa-paper-plane"></i> Copy tin Zalo</button>
+                                <button type="button" class="ai-msg-copy" data-ai-copy-msg="${esc(message.id)}" title="Sao chép toàn bộ phản hồi"><i class="fa-regular fa-copy"></i> Sao chép</button>
+                            </span>
+                        </div>
+                        <div class="ai-msg-body">${renderAdminAiMarkdown(message.text)}</div>
+                        ${actionsHtml}
+                    </div>
+                </article>
+            `;
+        }).join('') + (state.aiChatLoading ? `
+            <article class="ai-msg ai-msg-assistant">
+                <div class="ai-msg-bubble">
+                    <div class="ai-typing-indicator">
+                        <span class="ai-typing-dots"><span></span><span></span><span></span></span>
+                        <span>AI đang phân tích dữ liệu lớp học...</span>
+                    </div>
+                </div>
+            </article>
+        ` : '');
+
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function buildAdminAiSystemPrompt() {
+        return [
+            'Bạn là Trợ lý AI Quản trị của Quiz Studio Control Center. Trả lời bằng tiếng Việt tự nhiên, súc tích, có số liệu cụ thể.',
+            'QUY TẮC QUAN TRỌNG:',
+            '1. Chỉ sử dụng dữ liệu thật trong LIVE_ADMIN_CONTEXT_JSON. Tuyệt đối KHÔNG bịa tên học sinh, điểm, IP hay mã máy.',
+            '2. ĐẶC BIỆT: Biệt danh "Đứa con của thời đại" (mã máy QM-A5PZBC, hoặc bản ghi có isOwnerAdmin=true) là tài khoản độc quyền duy nhất của chủ web (Admin). TUYỆT ĐỐI KHÔNG coi đây là tên giả/ngoài danh sách lớp và KHÔNG BAO GIỜ đề xuất đổi tên (require_rename), ghim/gộp máy hay xóa phiên đối với "Đứa con của thời đại" / QM-A5PZBC.',
+            '3. Không bao giờ khẳng định đã thực thi thao tác thay đổi hệ thống. Hãy nói rõ: tôi đã tạo thẻ xem trước bên dưới để bạn kiểm tra và bấm Xác nhận.',
+            '4. Khi người dùng nhờ soạn tin nhắn gửi nhóm Zalo/phụ huynh, đặt phần nội dung tin nhắn sẵn sàng dán vào Zalo trong khối ```zalo ... ``` (văn bản thuần, không markdown ** hay #, súc tích, lịch sự) để nút Copy tin Zalo trích xuất chính xác.',
+            '5. CHỈ khi người dùng ra lệnh hoặc khi cần đề xuất thao tác xử lý rõ ràng (như ghim tên, gộp máy, bắt đổi tên, gửi thông báo, bật/tắt bảo trì, chặn/mở IP, ẩn/hiện môn, xóa phiên, dọn trùng IP, chuyển tab), gắn ĐÚNG 1 block ở cuối câu trả lời:',
+            '```admin_actions',
+            '[{"type":"...","title":"Tiêu đề ngắn","detail":"Giải thích tác động","danger":false,"params":{...}}]',
+            '```',
+            '4. Schema params hợp lệ duy nhất (ngoài danh sách này sẽ bị loại bỏ):',
+            '- pin_device: {"code":"QM-XXXXXX","name":"Họ Tên Thật"}',
+            '- merge_devices: {"codes":["QM-AAA111","QM-BBB222"],"name":"Họ Tên Thật"}',
+            '- unpin_device: {"code":"QM-XXXXXX"}',
+            '- require_rename: {"code":"QM-XXXXXX","oldName":"Tên cũ","reason":"Lý do hiển thị cho học sinh"}',
+            '- cancel_rename: {"code":"QM-XXXXXX"}',
+            '- send_private_notice: {"ip":"1.2.3.4","name":"Tên học sinh","message":"Nội dung nhắc"}',
+            '- broadcast_notice: {"message":"Nội dung thông báo toàn phòng"}',
+            '- set_maintenance: {"enabled":true,"message":"Lời nhắn bảo trì"} (danger:true khi enabled=true)',
+            '- ban_ip: {"ip":"1.2.3.4","reason":"Lý do"} (danger:true)',
+            '- unban_ip: {"ip":"1.2.3.4"}',
+            '- set_subject_privacy: {"subjectKey":"math_1","isPrivate":true}',
+            '- delete_student: {"name":"...","ip":"...","loginId":"...","deviceCodes":["QM-..."]} (danger:true)',
+            '- cleanup_duplicate_ips: {}',
+            '- switch_view: {"view":"overview|questions|progress|access|reports"}',
+            '- force_submit: {"allUnfinished":true} (ép nộp tất cả học sinh chưa nộp bài, tự động trừ chủ web "Đứa con của thời đại") HOẶC {"name":"Tên học sinh","deviceCode":"QM-XXXXXX","loginId":"..."} (ép nộp 1 học sinh cụ thể). Khi Admin nói "ép nộp", "thu bài", "chốt điểm những đứa chưa nộp", BẮT BUỘC dùng lệnh force_submit này!',
+            '',
+            'LIVE_ADMIN_CONTEXT_JSON:',
+            JSON.stringify(buildAdminAiContextSnapshot())
+        ].join('\n');
+    }
+
+    async function sendAdminAiPrompt(promptText) {
+        const prompt = aiText(promptText);
+        if (!prompt || state.aiChatLoading) return false;
+        state.aiChatMessages.push({ id: aiId('msg'), role: 'user', text: prompt, actions: [] });
+        persistAdminAiHistory();
+        state.aiChatLoading = true;
+        renderAdminAiMessages();
+        try {
+            if (!state.progressRecords?.length) await refreshAdminAiContext(false);
+            let key = cleanGeminiKey($('gemini-key-input')?.value || '');
+            if (!key) {
+                try { key = cleanGeminiKey(localStorage.getItem('gemini_api_key') || ''); } catch (e) {}
+            }
+            if (!key && window.dbService?.fetchGeminiApiKey) {
+                try { key = cleanGeminiKey(await window.dbService.fetchGeminiApiKey()); } catch (e) {}
+            }
+
+            const systemInstruction = buildAdminAiSystemPrompt();
+            const historyItems = state.aiChatMessages
+                .filter((item) => !item.isError && item.text)
+                .slice(-10);
+            const contents = historyItems.map((item) => ({
+                role: item.role === 'user' ? 'user' : 'model',
+                parts: [{ text: item.text }]
+            }));
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (key) headers['x-gemini-api-key'] = key;
+
+            const response = await fetchWithTimeout(getGeminiProxyUrl(), {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: 'gemini-3-flash-preview',
+                    systemInstruction,
+                    contents,
+                    generationConfig: { temperature: 0.35, maxOutputTokens: 2048 }
+                })
+            }, 45000);
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = data?.error?.message || data?.error || `HTTP ${response.status}`;
+                if (isGeminiQuotaError(response.status, msg)) throw new Error(geminiQuotaMessage);
+                if (response.status === 500 && /chưa được cấu hình|api key|GEMINI_API_KEY/i.test(String(msg))) {
+                    $('ai-key-warning')?.classList.remove('hidden');
+                }
+                throw new Error(msg);
+            }
+
+            $('ai-key-warning')?.classList.add('hidden');
+            const rawReply = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || data?.text || '';
+            const parsed = parseAdminAiResponse(rawReply);
+            state.aiChatMessages.push({
+                id: aiId('msg'),
+                role: 'model',
+                model: data?.model || '',
+                text: parsed.cleanText || 'Đã phân tích xong dữ liệu.',
+                actions: parsed.actions
+            });
+        } catch (error) {
+            state.aiChatMessages.push({
+                id: aiId('msg'),
+                role: 'model',
+                isError: true,
+                text: isGeminiQuotaError(0, error.message) ? geminiQuotaMessage : `Không thể xử lý yêu cầu: ${error.message}`,
+                actions: []
+            });
+        } finally {
+            state.aiChatLoading = false;
+            persistAdminAiHistory();
+            renderAdminAiMessages();
+        }
+        return true;
+    }
+
+    function syncThemeIcon() {
+        const isDark = document.body.classList.contains('dark') || document.documentElement.classList.contains('dark');
+        const toggle = $('theme-toggle');
+        if (toggle) {
+            toggle.innerHTML = `<i class="fa-solid ${isDark ? 'fa-sun text-amber-400' : 'fa-moon'}"></i>`;
+            toggle.title = isDark ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối';
+        }
+    }
+
+    function bindEvents() {
+        if (state.bound) return; state.bound = true;
+        const submitAiComposer = () => {
+            const input = $('ai-chat-input');
+            const value = input?.value || '';
+            if (!aiText(value) || state.aiChatLoading) return;
+            if (input) {
+                input.value = '';
+                input.style.height = '';
+            }
+            sendAdminAiPrompt(value);
+        };
+        $('ai-send-btn')?.addEventListener('click', submitAiComposer);
+        $('ai-chat-input')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                submitAiComposer();
+            }
+        });
+        $('ai-chat-input')?.addEventListener('input', (event) => {
+            event.target.style.height = 'auto';
+            event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`;
+        });
+        $('ai-refresh-context-btn')?.addEventListener('click', () => runAction(() => refreshAdminAiContext(true)));
+        $('ai-clear-chat-btn')?.addEventListener('click', () => {
+            state.aiChatMessages = [];
+            persistAdminAiHistory();
+            renderAdminAiMessages();
+            notify('Đã xóa hội thoại Trợ lý AI.');
+        });
+        $('ai-goto-key-config')?.addEventListener('click', () => {
+            switchView('reports');
+            requestAnimationFrame(() => $('gemini-key-input')?.focus());
+        });
+        $('ai-quick-prompts')?.addEventListener('click', (event) => {
+            const chip = event.target.closest('[data-ai-prompt]');
+            if (chip && !state.aiChatLoading) sendAdminAiPrompt(chip.dataset.aiPrompt);
+        });
+        $('ai-chat-messages')?.addEventListener('click', async (event) => {
+            const copyZalo = event.target.closest('[data-ai-copy-zalo]');
+            if (copyZalo) {
+                const message = state.aiChatMessages.find((item) => item.id === copyZalo.dataset.aiCopyZalo);
+                if (message) {
+                    const zaloText = formatAdminAiZaloText(message.text || '');
+                    const copied = await copyToClipboard(zaloText);
+                    notify(copied ? 'Đã sao chép tin nhắn sạch sẵn sàng dán vào Zalo.' : 'Không thể sao chép tin nhắn Zalo.', !copied);
+                }
+                return;
+            }
+            const copy = event.target.closest('[data-ai-copy-msg]');
+            if (copy) {
+                const message = state.aiChatMessages.find((item) => item.id === copy.dataset.aiCopyMsg);
+                if (message) {
+                    const copied = await copyToClipboard(message.text || '');
+                    notify(copied ? 'Đã sao chép phản hồi AI.' : 'Không thể sao chép phản hồi AI.', !copied);
+                }
+                return;
+            }
+            const undo = event.target.closest('[data-ai-undo-action]');
+            if (undo) return runAction(() => undoAdminAiAction(undo.dataset.aiMsgId, undo.dataset.aiUndoAction));
+            const confirm = event.target.closest('[data-ai-confirm-action]');
+            if (confirm) return runAction(() => executeAdminAiAction(confirm.dataset.aiMsgId, confirm.dataset.aiConfirmAction));
+            const cancel = event.target.closest('[data-ai-cancel-action]');
+            if (cancel) return cancelAdminAiAction(cancel.dataset.aiMsgId, cancel.dataset.aiCancelAction);
+            const all = event.target.closest('[data-ai-confirm-all]');
+            if (all) return runAction(() => executeAllSafeAdminAiActions(all.dataset.aiConfirmAll));
+        });
+        $('ai-drawer-toggle-btn')?.addEventListener('click', toggleAdminAiDrawer);
+        $('ai-drawer-close-btn')?.addEventListener('click', closeAdminAiDrawer);
+        $('ai-drawer-backdrop')?.addEventListener('click', closeAdminAiDrawer);
+        $('ai-drawer-expand-btn')?.addEventListener('click', () => switchView('ai-assistant'));
+        document.addEventListener('keydown', (event) => {
+            if ((event.ctrlKey || event.metaKey) && String(event.key || '').toLowerCase() === 'k') {
+                event.preventDefault();
+                toggleAdminAiDrawer();
+            } else if (event.key === 'Escape') {
+                const panel = document.querySelector('[data-view-panel="ai-assistant"]');
+                if (panel?.classList.contains('is-drawer-open')) {
+                    closeAdminAiDrawer();
+                }
+            }
+        });
+        mergeContentLibraryView();
+        injectEditorControls();
+        moveSubjectFormToDialog();
+        document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
+        document.querySelectorAll('[data-go-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.goView)));
+        document.querySelectorAll('[data-live-tab]').forEach((button) => button.addEventListener('click', () => switchLiveSubtab(button.dataset.liveTab)));
+        $('mobile-menu')?.addEventListener('click', () => $('sidebar')?.classList.toggle('is-open'));
+        $('theme-toggle')?.addEventListener('click', () => {
+            const nextDark = !(document.body.classList.contains('dark') || document.documentElement.classList.contains('dark'));
+            document.documentElement.classList.toggle('dark', nextDark);
+            document.body.classList.toggle('dark', nextDark);
+            localStorage.setItem('quiz_admin_dark', nextDark ? 'true' : 'false');
+            syncThemeIcon();
+        });
+        $('copy-admin-ip')?.addEventListener('click', () => runAction(copyAdminIp));
+        $('health-database-badge')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('health-content-badge')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('clear-activity-log')?.addEventListener('click', () => {
+            state.activityLogs = [];
+            try { localStorage.removeItem('quiz_admin_activity_logs'); } catch (e) {}
+            renderRecentActivity();
+            notify('Đã xóa lịch sử hoạt động gần đây.');
+        });
+        document.querySelectorAll('[data-metric-grade]').forEach((card) => {
+            card.addEventListener('click', () => navigateToLibraryByGrade(card.dataset.metricGrade));
+            card.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    navigateToLibraryByGrade(card.dataset.metricGrade);
+                }
+            });
+        });
+        document.querySelectorAll('[data-metric-view]').forEach((card) => {
+            const goMonitor = () => {
+                switchView(card.dataset.metricView);
+                requestAnimationFrame(() => {
+                    $('students-body')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            };
+            card.addEventListener('click', goMonitor);
+            card.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    goMonitor();
+                }
+            });
+        });
+        window.addEventListener('offline', () => {
+            setConnection(false, 'Mất kết nối');
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Thiết bị vừa mất kết nối mạng. Bấm để thử lại.');
+        });
+        window.addEventListener('online', () => {
+            recheckSystemHealth();
+        });
+        $('refresh-button')?.addEventListener('click', () => runAction(recheckSystemHealth));
+        $('delete-scope-button')?.addEventListener('click', openDeleteScopeModal);
+        $('btn-delete-current-filter')?.addEventListener('click', () => runAction(deleteFilteredQuestions));
+        $('btn-activate-selection-mode')?.addEventListener('click', () => {
+            closeModal('delete-scope-modal');
+            state.selectMode = true;
+            updateBulkBar();
+            notify('Đã bật chế độ chọn câu. Hãy tick chọn các ô trên câu hỏi muốn xóa.');
+        });
+        $('delete-all-confirm-input')?.addEventListener('input', (event) => {
+            const isMatch = event.target.value.trim().toUpperCase() === 'XOA HET';
+            const btn = $('btn-delete-all-guarded');
+            if (btn) {
+                btn.disabled = !isMatch;
+                btn.classList.toggle('is-disabled', !isMatch);
+            }
+        });
+        $('btn-delete-all-guarded')?.addEventListener('click', () => runAction(deleteAllQuestionsGuarded));
+        $('bulk-select-all-checkbox')?.addEventListener('change', (event) => {
+            const checked = event.target.checked;
+            getFilteredQuestions().forEach((q) => {
+                if (checked) state.selectedQuestionIds.add(String(q.id));
+                else state.selectedQuestionIds.delete(String(q.id));
+            });
+            renderLibrary();
+        });
+        $('bulk-deselect-btn')?.addEventListener('click', () => {
+            state.selectedQuestionIds.clear();
+            state.selectMode = false;
+            renderLibrary();
+        });
+        $('bulk-delete-btn')?.addEventListener('click', () => runAction(deleteSelectedQuestions));
+        $('grade-select')?.addEventListener('change', (event) => { fillSubjects(event.target.value); renderPreview(); });
+        $('question-type-select')?.addEventListener('change', (event) => ensureTypeEditor(event.target.value));
+        $('question-form')?.addEventListener('input', (event) => {
+            if (event.target.id === 'question-input' || event.target.id === 'category-input' || event.target.id === 'explanation-input' || event.target.id.startsWith('option-') || event.target.id.startsWith('tf-') || event.target.id === 'correct-value-input' || event.target.id === 'accepted-values-input') renderPreview();
+        });
+        $('question-form')?.addEventListener('submit', saveQuestion);
+        $('reset-form')?.addEventListener('click', resetForm); $('cancel-edit')?.addEventListener('click', resetForm); $('new-question-button')?.addEventListener('click', () => { resetForm(); switchView('questions'); });
+        document.querySelectorAll('.answer-radio').forEach((button) => button.addEventListener('click', () => setAnswer(button.dataset.answer)));
+        $('question-form')?.addEventListener('click', (event) => { const choice = event.target.closest('.tf-choice'); if (choice) setTfAnswer(choice.dataset.index, choice.dataset.value); });
+        $('search-input')?.addEventListener('input', () => {
+            state.page = 1;
+            renderLibrary();
+        });
+        $('question-type-filter')?.addEventListener('change', (event) => {
+            state.typeFilter = event.target.value;
+            state.page = 1;
+            renderLibrary();
+        });
+        $('library-subject-filter')?.addEventListener('change', (event) => {
+            state.subject = event.target.value;
+            state.page = 1;
+            renderLibrary();
+        });
+        document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((button) => button.addEventListener('click', () => {
+            document.querySelectorAll('#content-library-section .grade-filter[data-grade]').forEach((item) => item.classList.remove('is-active'));
+            button.classList.add('is-active');
+            state.grade = button.dataset.grade;
+            state.subject = 'all';
+            state.page = 1;
+            fillLibrarySubjects();
+            renderLibrary();
+        }));
+        $('library-subject-tabs')?.addEventListener('click', (event) => {
+            const tab = event.target.closest('[data-subject-tab]');
+            if (!tab) return;
+            const key = tab.dataset.subjectTab;
+            if (state.subject === key) return;
+            state.subject = key;
+            state.page = 1;
+            if ($('library-subject-filter')) {
+                $('library-subject-filter').value = key;
+            }
+            renderLibrary();
+        });
+        if (!state.libraryIndicatorResizeBound) {
+            state.libraryIndicatorResizeBound = true;
+            window.addEventListener('resize', () => {
+                updateLibrarySlidingIndicator(false);
+            }, { passive: true });
+        }
+        $('library-pagination')?.addEventListener('click', (event) => {
+            const pageBtn = event.target.closest('.page-btn:not(:disabled)');
+            if (!pageBtn) return;
+            const targetPage = Number(pageBtn.dataset.page);
+            if (!targetPage || isNaN(targetPage) || targetPage === state.page) return;
+            state.page = targetPage;
+            renderLibrary();
+            $('content-library-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        $('library-pagination')?.addEventListener('change', (event) => {
+            if (event.target.id === 'page-size-select') {
+                const val = event.target.value;
+                state.pageSize = val === 'all' ? 'all' : Number(val);
+                state.page = 1;
+                renderLibrary();
+                $('content-library-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        window.addEventListener('scroll', () => {
+            const btn = $('back-to-top-btn');
+            if (!btn) return;
+            if (window.scrollY > 380) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        }, { passive: true });
+        $('back-to-top-btn')?.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        $('questions-list')?.addEventListener('click', (event) => { const edit = event.target.closest('[data-edit]'); const remove = event.target.closest('[data-delete]'); if (edit) { const q = state.questions.find((item) => String(item.id) === String(edit.dataset.edit)); if (q) { fillForm(q); window.scrollTo({ top: 0, behavior: 'smooth' }); } } if (remove) deleteQuestion(remove.dataset.delete); });
+        $('questions-list')?.addEventListener('change', (event) => {
+            const checkbox = event.target.closest('.question-select-checkbox');
+            if (checkbox) {
+                const id = String(checkbox.dataset.selectId);
+                if (checkbox.checked) state.selectedQuestionIds.add(id);
+                else state.selectedQuestionIds.delete(id);
+                const item = checkbox.closest('.question-item');
+                if (item) item.classList.toggle('is-selected', checkbox.checked);
+                updateBulkBar();
+            }
+        });
+        $('export-pdf-heading')?.addEventListener('click', openPrintModal);
+        $('export-pdf-library')?.addEventListener('click', openPrintModal);
+         reportAction('export-pdf-report', () => { fillLibrarySubjects(); openPrintModal(); }, 'Đang mở');
+        $('open-trash-button')?.addEventListener('click', () => { renderTrashModal(); openModal('trash-modal'); });
+        $('trash-search-input')?.addEventListener('input', renderTrashModal);
+        $('trash-subject-filter')?.addEventListener('change', renderTrashModal);
+        $('trash-restore-all-btn')?.addEventListener('click', () => runAction(restoreAllTrash));
+        $('trash-empty-btn')?.addEventListener('click', () => runAction(emptyTrash));
+        $('trash-list')?.addEventListener('click', (event) => {
+            const restore = event.target.closest('[data-restore-id]');
+            const hardDelete = event.target.closest('[data-hard-delete-id]');
+            if (restore) {
+                const idx = Number(restore.dataset.trashIndex);
+                runAction(() => restoreQuestion(restore.dataset.restoreId, Number.isFinite(idx) ? idx : -1));
+            }
+            if (hardDelete) runAction(() => hardDeleteQuestion(hardDelete.dataset.hardDeleteId));
+        });
+        $('print-subject-select')?.addEventListener('change', updatePrintQuestionsPreview);
+        $('print-grade-select')?.addEventListener('change', updatePrintQuestionsPreview);
+        $('print-random-code')?.addEventListener('click', () => {
+            const codes = [101, 102, 103, 104, 201, 202, 301, 302, 401, 402];
+            const code = codes[Math.floor(Math.random() * codes.length)];
+            if ($('print-code-input')) $('print-code-input').value = String(code);
+        });
+        const AI_EXTRACTION_PROMPT = `Bạn là hệ thống trích xuất dữ liệu đề thi và giải đáp án tự động chuẩn xác tuyệt đối.
+Mỗi khi người dùng gửi bất kỳ tài liệu, hình ảnh hoặc văn bản đề thi nào, bạn PHẢI tự động phân tích toàn bộ câu hỏi và trả về DUY NHẤT một mảng JSON hợp lệ theo đúng cấu trúc quy định bên dưới.
+
+==================================================
+I. QUY TẮC CỐT LÕI (STRICT RULES - BẮT BUỘC TUÂN THỦ 100%)
+==================================================
+1. TUYỆT ĐỐI GIỮ NGUYÊN VĂN BẢN GỐC:
+   - Không sửa chữa câu chữ, không tóm tắt, không viết lại bất kỳ từ nào trong đề bài, đoạn ngữ liệu và các phương án.
+   - Giữ nguyên tuyệt đối mọi con số, đơn vị, ngày tháng, năm, thế kỷ, ký hiệu toán học/hóa học như trong file gốc.
+   - Với các phương án trắc nghiệm và mệnh đề Đúng/Sai: chỉ bỏ ký hiệu tiền tố đầu dòng như "A. ", "B. ", "C. ", "D. ", "a. ", "a) ", "b. ", "b) "... để lấy trọn vẹn phần nội dung nguyên văn phía sau.
+
+2. TUYỆT ĐỐI GIỮ NGUYÊN THỨ TỰ:
+   - Không được đảo hoặc xáo trộn vị trí các đáp án A, B, C, D.
+   - Không được đảo thứ tự các ý a, b, c, d trong câu hỏi Đúng/Sai.
+
+3. XỬ LÝ ĐÁP ÁN & LỜI GIẢI:
+   - Nếu cuối file tài liệu có sẵn bảng đáp án hoặc hướng dẫn giải: đối chiếu chính xác đáp án đó và trích xuất/diễn giải rõ ràng vào trường "explanation".
+   - Nếu tài liệu chưa có đáp án: tự động tính toán, tra cứu kiến thức chuẩn xác để tìm đáp án đúng và viết lời giải chi tiết, ngắn gọn, dễ hiểu vào trường "explanation".
+
+4. TỰ ĐỘNG NHẬN DIỆN CHUYÊN ĐỀ ("category"):
+   - Dựa vào tiêu đề phần/bài học trong file hoặc nội dung câu hỏi để điền tên chủ đề/chuyên đề ngắn gọn (Ví dụ: "Số thập phân", "Cách mạng tư sản", "Hàm số",...).
+
+5. ĐỊNH DẠNG ĐẦU RA TUYỆT ĐỐI:
+   - CHỈ xuất ra mã JSON hợp lệ (bắt đầu bằng \`[\` và kết thúc bằng \`]\`).
+   - KHÔNG viết lời chào, KHÔNG giải thích bên ngoài JSON, KHÔNG dùng dấu \`\`\`json hay \`\`\` bao quanh.
+   - Escape đúng các ký tự đặc biệt (như dấu ngoặc kép \\" bên trong chuỗi văn bản) để không bao giờ bị lỗi cú pháp \`JSON.parse()\`.
+
+==================================================
+II. SCHEMA JSON CHUẨN CHO 3 LOẠI CÂU HỎI
+==================================================
+
+1. DẠNG 1: TRẮC NGHIỆM 4 LỰA CHỌN ("type": "mcq")
+Áp dụng cho câu hỏi chọn 1 đáp án đúng trong 4 phương án A, B, C, D:
+{
+  "type": "mcq",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% câu chữ đề bài",
+  "options": [
+    "Nội dung nguyên văn phương án A",
+    "Nội dung nguyên văn phương án B",
+    "Nội dung nguyên văn phương án C",
+    "Nội dung nguyên văn phương án D"
+  ],
+  "correct": 0,
+  "correctAnswer": 0,
+  "explanation": "Giải thích chi tiết vì sao chọn đáp án này"
+}
+*(Lưu ý: "correct" và "correctAnswer" phải có giá trị số nguyên giống hệt nhau: 0 = A, 1 = B, 2 = C, 3 = D).*
+
+2. DẠNG 2: TRẮC NGHIỆM ĐÚNG / SAI ("type": "tf_group")
+Áp dụng cho câu hỏi có đoạn thông tin/bảng số liệu/hình ảnh dẫn kèm 4 ý nhỏ a, b, c, d xét Đúng hoặc Sai:
+{
+  "type": "tf_group",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% câu dẫn và toàn bộ đoạn tư liệu/đề bài gốc",
+  "statements": [
+    { "key": "a", "text": "Nội dung nguyên văn ý a", "answer": true },
+    { "key": "b", "text": "Nội dung nguyên văn ý b", "answer": false },
+    { "key": "c", "text": "Nội dung nguyên văn ý c", "answer": true },
+    { "key": "d", "text": "Nội dung nguyên văn ý d", "answer": false }
+  ],
+  "subQuestions": [
+    { "id": "a", "content": "Nội dung nguyên văn ý a", "correctAnswer": true },
+    { "id": "b", "content": "Nội dung nguyên văn ý b", "correctAnswer": false },
+    { "id": "c", "content": "Nội dung nguyên văn ý c", "correctAnswer": true },
+    { "id": "d", "content": "Nội dung nguyên văn ý d", "correctAnswer": false }
+  ],
+  "explanation": "Giải thích cụ thể lý do Đúng/Sai cho từng ý a, b, c, d"
+}
+*(Lưu ý: Luôn xuất đồng thời cả hai mảng "statements" và "subQuestions" với nội dung và giá trị boolean true/false đồng bộ 100% nhau).*
+
+3. DẠNG 3: TRẢ LỜI NGẮN ("type": "short_answer")
+Áp dụng cho câu hỏi điền khuyết, tính toán ra kết quả số hoặc từ khóa ngắn:
+{
+  "type": "short_answer",
+  "category": "Tên chuyên đề hoặc bài học",
+  "question": "Giữ nguyên 100% nội dung câu hỏi gốc",
+  "correctAnswer": "Giá trị số hoặc từ khóa chính xác",
+  "correctValue": "Giá trị số hoặc từ khóa chính xác",
+  "explanation": "Các bước tính toán hoặc căn cứ ra đáp án"
+}
+*(Lưu ý: "correctAnswer" và "correctValue" luôn là kiểu chuỗi string và giống hệt nhau).*
+
+Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ngay mảng JSON hoàn chỉnh.`;
+
+        const handleCopyAiPrompt = async (btn) => {
+            const success = await copyToClipboard(AI_EXTRACTION_PROMPT);
+            if (success) {
+                notify('Đã sao chép Prompt AI trích xuất đề thi vào bộ nhớ tạm!');
+                if (btn) {
+                    triggerAdminCopyFeedback(btn, 1500);
+                }
+            } else {
+                notify('Không thể tự động sao chép prompt, vui lòng thử lại.', true);
+            }
+        };
+
+        $('copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
+        $('modal-copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
+        $('do-print-btn')?.addEventListener('click', () => runAction(executePrintExam));
+         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', () => runAction(saveImportQuestions));
+         $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
+        $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
+        document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
+        const closableModals = ['import-modal', 'print-modal', 'trash-modal', 'delete-scope-modal'];
+        closableModals.forEach((modalId) => {
+            $(modalId)?.addEventListener('click', (event) => {
+                if (event.target === $(modalId)) closeModal(modalId);
+            });
+        });
+        window.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            closableModals.forEach((modalId) => {
+                const el = $(modalId);
+                if (el && !el.classList.contains('hidden')) closeModal(modalId);
+            });
+        });
+        $('maintenance-toggle')?.addEventListener('change', () => runAction(() => toggleMaintenance()));
+        const openEditMaintenancePrompt = async () => {
+            const currentMsg = (state.maintenance.message && state.maintenance.message !== 'Website đang mở công khai cho học sinh.' && state.maintenance.message !== 'Website đang mở.')
+                ? state.maintenance.message
+                : 'Trang web đang tạm dừng để cập nhật. Vui lòng quay lại sau!';
+            const message = await promptDialog({
+                title: 'Đổi lời nhắn bảo trì',
+                eyebrow: 'MAINTENANCE MESSAGE',
+                message: 'Nhập nội dung hiển thị cho học sinh khi hệ thống tạm khóa:',
+                defaultValue: currentMsg,
+                confirmText: 'Lưu lời nhắn',
+                variant: 'primary',
+                icon: 'fa-screwdriver-wrench'
+            });
+            if (message !== null && message.trim()) {
+                state.maintenance.message = message.trim();
+                runAction(() => toggleMaintenance('Cập nhật lời nhắn bảo trì'));
+            }
+        };
+        $('edit-maintenance')?.addEventListener('click', openEditMaintenancePrompt);
+        $('maintenance-preview-box')?.addEventListener('click', openEditMaintenancePrompt);
+        $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true)));
+        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
+         document.addEventListener('click', (event) => {
+             if (!event.target.closest('.progress-card-menu-wrap')) closeAllProgressMenus();
+             const notice = event.target.closest('[data-notice]');
+            if (notice && $('notice-input')) { $('notice-input').value = notice.dataset.notice; runAction(broadcastNotice); }
+        });
+        $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
+        $('notice-input')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); runAction(broadcastNotice); } });
+        $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
+          $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
+           $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
+          $('cleanup-duplicate-logins')?.addEventListener('click', () => runAction(cleanupDuplicateIpLogins));
+          $('save-roster-config')?.addEventListener('click', () => runAction(saveRosterFromAccessView));
+          ['5', '11'].forEach((grade) => $('roster-grade' + grade + '-textarea')?.addEventListener('input', renderRosterConfig));
+          $('btn-save-device-pin')?.addEventListener('click', () => runAction(() => saveDevicePin($('device-pin-code-input')?.value, $('device-pin-name-input')?.value)));
+           $('grade5-progress-cards')?.addEventListener('click', async (event) => {
+               const menuToggle = event.target.closest('[data-progress-menu-toggle]');
+               if (menuToggle) {
+                   event.preventDefault();
+                   event.stopPropagation();
+                   const wrap = menuToggle.closest('.progress-card-menu-wrap');
+                   const dropdown = wrap?.querySelector('.progress-card-dropdown');
+                   const isOpen = dropdown && !dropdown.classList.contains('hidden');
+                   closeAllProgressMenus(wrap);
+                   if (dropdown) dropdown.classList.toggle('hidden', isOpen);
+                   menuToggle.setAttribute('aria-expanded', String(!isOpen));
+                   wrap?.closest('.grade5-live-card')?.classList.toggle('has-open-menu', !isOpen);
+                   return;
+               }
+               const copyIdentityBtn = event.target.closest('[data-copy-student-identity]');
+               if (copyIdentityBtn) {
+                   closeAllProgressMenus();
+                   event.preventDefault();
+                   event.stopPropagation();
+                   const identityVal = copyIdentityBtn.dataset.copyStudentIdentity || '';
+                   const studentName = copyIdentityBtn.dataset.copyStudentName || 'học sinh';
+                   const copied = await copyToClipboard(identityVal);
+                   notify(copied ? `Đã sao chép IP & Mã máy của ${studentName}: ${identityVal}` : `Không thể sao chép: ${identityVal}`, !copied);
+                   return;
+               }
+               const noticeBtn = event.target.closest('[data-private-notice]');
+               if (noticeBtn) {
+                   closeAllProgressMenus();
+                  event.preventDefault();
+                  event.stopPropagation();
+                  runAction(() => sendPrivateNotice(noticeBtn.dataset.privateNotice, noticeBtn.dataset.privateName));
+                  return;
+              }
+               const button = event.target.closest('[data-delete-progress-id]');
+               if (button) {
+                   closeAllProgressMenus();
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const studentName = button.dataset.deleteProgressName || button.dataset.deleteProgressIp || 'học sinh này';
+                  const confirmed = await confirmDialog({
+                      eyebrow: 'XÓA PHIÊN THEO DÕI',
+                      title: `Xóa thông tin của ${studentName}?`,
+                      message: `Xóa thông tin của ${studentName} khỏi bảng theo dõi?\n\nChỉ xóa phiên hiển thị trong bảng. Quyền truy cập, token và dữ liệu câu hỏi không bị ảnh hưởng.`,
+                      confirmText: 'Xóa khỏi bảng',
+                      cancelText: 'Hủy bỏ',
+                      variant: 'danger'
+                  });
+                   if (confirmed) runAction(() => deleteStudentSession(button.dataset.deleteProgressName, button.dataset.deleteProgressIp, button.dataset.deleteProgressDevice, button.dataset.deleteProgressId || '', true, button.dataset.deleteProgressDevices || ''));
+                  return;
+              }
+               if (event.target.closest('.progress-card-menu-wrap, .progress-card-actions, [data-progress-menu-toggle], [data-pin-device-code], [data-merge-device-code], [data-require-rename-code], [data-force-submit-id]')) {
+                   if (event.target.closest('.progress-menu-item')) closeAllProgressMenus();
+                   return;
+               }
+              const card = event.target.closest('[data-student-id]');
+              if (card) {
+                  const attemptBtn = event.target.closest('[data-g5-attempt-id]');
+                  const studentId = card.dataset.studentId;
+                  const record = state.progressRecords.find((item) =>
+                      String(item.id) === String(studentId)
+                      || (Array.isArray(item.history) && item.history.some((h) => String(h.id) === String(studentId)))
+                  );
+                  if (record) {
+                      const targetAttemptId = attemptBtn ? attemptBtn.dataset.g5AttemptId : studentId;
+                      renderStudentProgressDetail(record, targetAttemptId);
+                  }
+              }
+          });
+          $('btn-add-quick-observer')?.addEventListener('click', () => runAction(addQuickObserver));
+         $('quick-observer-ip')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
+         $('quick-observer-name')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAction(addQuickObserver); } });
+          document.querySelectorAll('[data-progress-grade]').forEach(btn => {
+             btn.addEventListener('click', () => {
+                  state.progressFilter = btn.dataset.progressGrade;
+                  state.progressSubject = 'all';
+                  document.querySelectorAll('[data-progress-grade]').forEach(b => b.classList.toggle('is-active', b === btn));
+                  $('view-title') && ($('view-title').textContent = getProgressFilterTitle());
+                  runAction(renderGrade5ProgressMonitor);
+             });
+          });
+          $('progress-subject-filter')?.addEventListener('change', (event) => {
+              state.progressSubject = event.target.value || 'all';
+              $('view-title') && ($('view-title').textContent = getProgressFilterTitle());
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('progress-search')?.addEventListener('input', (event) => {
+              state.progressSearch = event.target.value || '';
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('progress-sort')?.addEventListener('change', (event) => {
+              state.progressSort = event.target.value || 'recent';
+              runAction(renderGrade5ProgressMonitor);
+          });
+          $('student-progress-modal-close')?.addEventListener('click', closeStudentProgressDetail);
+          $('student-progress-modal')?.addEventListener('click', (event) => { if (event.target.id === 'student-progress-modal') closeStudentProgressDetail(); });
+         window.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeAllProgressMenus(); closeStudentProgressDetail(); } });
+         $('copy-parent-link-head')?.addEventListener('click', async (event) => {
+             const btn = event.currentTarget || $('copy-parent-link-head');
+             const parentItem = (state.tokens || []).find(t => t.role === 'parent' || t.role === 'observer_grade5' || t.role === 'observer');
+             const token = parentItem ? parentItem.token : '';
+             const link = buildAppUrl(token ? `?token=${encodeURIComponent(token)}&view=progress` : '?view=progress');
+             const copied = await copyToClipboard(link);
+             if (copied) {
+                 triggerAdminCopyFeedback(btn, 1500);
+                 notify('📋 Đã sao chép Link Theo Dõi! Người giám sát chỉ cần bấm link để xem tiến trình học.');
+             }
+         });
+         $('clear-logins')?.addEventListener('click', () => runAction(clearStudentLogins));
+         $('btn-grant-student-access')?.addEventListener('click', () => runAction(grantStudentAccess));
+         $('btn-clear-access-subjects')?.addEventListener('click', () => {
+             document.querySelectorAll('#student-access-subjects-list input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+         });
+         $('btn-fill-current-ip')?.addEventListener('click', () => {
+             if ($('student-access-ip')) {
+                 $('student-access-ip').value = state.clientIp || '';
+                 notify('Đã lấy IP thiết bị này: ' + (state.clientIp || ''));
+             }
+         });
+            document.addEventListener('click', (event) => {
+              const forceSubmitBtn = event.target.closest('[data-force-submit-id]');
+              if (forceSubmitBtn) {
+                  event.preventDefault(); event.stopPropagation();
+                  const sName = forceSubmitBtn.dataset.forceSubmitName || 'Học sinh';
+                  const sCode = forceSubmitBtn.dataset.forceSubmitCode || '';
+                  const sId = forceSubmitBtn.dataset.forceSubmitId || '';
+                  runAction(async () => {
+                      const ok = await confirmDialog({
+                          title: `Ép nộp bài của ${sName}?`,
+                          message: `Hệ thống sẽ thu bài và chấm điểm ngay lập tức theo số câu ${sName}${sCode ? ` [${sCode}]` : ''} đã làm hiện tại.`,
+                          confirmText: 'Ép nộp ngay',
+                          variant: 'warning',
+                          icon: 'fa-bolt'
+                      });
+                      if (ok) await forceSubmitStudentAttempts({ loginId: sId, deviceCode: sCode, name: sName });
+                  });
+                  return;
+              }
+              const renameBtn = event.target.closest('[data-require-rename-code]');
+              if (renameBtn) {
+                  event.preventDefault(); event.stopPropagation();
+                  runAction(() => toggleRequireRename(renameBtn.dataset.requireRenameCode, renameBtn.dataset.requireRenameName || ''));
+                  return;
+              }
+               const pinBtn = event.target.closest('[data-pin-device-code][data-pin-device-name]');
+              if (pinBtn) {
+                  event.preventDefault(); event.stopPropagation();
+                  runAction(async () => {
+                      const code = pinBtn.dataset.pinDeviceCode;
+                      const suggested = state.devicePins?.[code] || pinBtn.dataset.pinDeviceName || '';
+                       const peers = state.progressRecords.flatMap((record) => record._deviceCode === code ? (record._sameIpPeers || []) : []).filter((peer, index, list) => peer.name && list.findIndex((item) => normalizeIdentityKey(item.name) === normalizeIdentityKey(peer.name)) === index);
+                       const pinnedNames = Object.values(state.devicePins || {}).filter((item) => item && item !== suggested).map((item) => ({ label: item, value: item, badge: 'Đã ghim' }));
+                       const suggestions = [...peers.map((peer) => ({ label: peer.name, value: peer.name, badge: 'Cùng IP' })), ...pinnedNames].filter((item, index, list) => list.findIndex((x) => normalizeIdentityKey(x.value) === normalizeIdentityKey(item.value)) === index).slice(0, 8);
+                       const name = await promptDialog({ title: `Ghim tên ${code}`, message: 'Nhập họ và tên chuẩn của học sinh:', defaultValue: suggested, suggestions, placeholder: 'Họ và tên thật của học sinh', confirmText: 'Lưu tên ghim', icon: 'fa-thumbtack' });
+                       if (name !== null) await saveDevicePin(code, name);
+                   });
+                   return;
+               }
+               const mergeBtn = event.target.closest('[data-merge-device-code]');
+               if (mergeBtn) {
+                   event.preventDefault(); event.stopPropagation();
+                   runAction(async () => {
+                       const source = state.progressRecords.find((record) => (mergeBtn.dataset.mergeStudentKey && record.studentKey === mergeBtn.dataset.mergeStudentKey) || record._deviceCode === mergeBtn.dataset.mergeDeviceCode);
+                       if (!source) return notify('Không tìm thấy học sinh nguồn để gộp.', true);
+                       const peers = source._sameIpPeers || [];
+                       const suggestions = peers.map((peer) => ({ label: peer.name, value: peer.name, badge: peer.pinned ? 'Cùng IP · Đã ghim' : 'Cùng IP' }));
+                       const defaultValue = peers.find((peer) => peer.pinned)?.name || source.name || '';
+                       const targetName = await promptDialog({ title: 'Gộp học sinh cùng IP', message: 'Chọn tên chuẩn để gộp các mã máy cùng IP:', defaultValue, suggestions, placeholder: 'Tên học sinh', confirmText: 'Gộp và ghim tên', icon: 'fa-code-merge' });
+                       if (targetName === null) return;
+                       const targetKey = normalizeIdentityKey(targetName);
+                       const selected = peers.filter((peer) => normalizeIdentityKey(peer.name) === targetKey);
+                       const selectedPeers = selected.length ? selected : peers;
+                       const codesToMerge = [source._deviceCode, ...selectedPeers.flatMap((peer) => peer.deviceCodes || (peer.deviceCode ? [peer.deviceCode] : []))];
+                       await mergeDevicesToName(codesToMerge, targetName);
+                   });
+                   return;
+               }
+              const unpinBtn = event.target.closest('[data-unpin-device-code]');
+              if (unpinBtn) { runAction(() => unpinDevicePin(unpinBtn.dataset.unpinDeviceCode)); return; }
+             const copyAdminLinkBtn = event.target.closest('[data-copy-admin-link]');
+             if (copyAdminLinkBtn) {
+                 const token = copyAdminLinkBtn.dataset.copyAdminLink;
+                 const link = buildAppUrl(`admin.html?token=${encodeURIComponent(token)}`);
+                 copyToClipboard(link).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyAdminLinkBtn, 1500);
+                         notify('👑 Đã sao chép Link Admin trực tiếp! Thiết bị mở link này sẽ vào thẳng Admin mà không cần IP cố định.');
+                     }
+                 });
+                 return;
+             }
+             const copyLinkBtn = event.target.closest('[data-copy-token-link]');
+             if (copyLinkBtn) {
+                 copyActivationLink(copyLinkBtn.dataset.copyTokenLink, copyLinkBtn.dataset.tokenName, copyLinkBtn);
+                 return;
+             }
+             const copyCodeBtn = event.target.closest('[data-copy-token-code]');
+             if (copyCodeBtn) {
+                 copyToClipboard(copyCodeBtn.dataset.copyTokenCode).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyCodeBtn, 1500);
+                         notify('Đã copy mã token ' + copyCodeBtn.dataset.copyTokenCode);
+                     }
+                 });
+                 return;
+             }
+             const toggleAiBtn = event.target.closest('[data-toggle-ai]');
+             if (toggleAiBtn) {
+                 runAction(() => toggleStudentAi(toggleAiBtn.dataset.toggleAi));
+                 return;
+             }
+             const toggleG5Btn = event.target.closest('[data-toggle-grade5]');
+             if (toggleG5Btn) {
+                 runAction(() => toggleStudentGrade5(toggleG5Btn.dataset.toggleGrade5));
+                 return;
+             }
+             const assignBtn = event.target.closest('[data-assign-subjects]');
+             if (assignBtn) {
+                 runAction(() => editTokenSubjects(assignBtn.dataset.assignSubjects));
+                 return;
+             }
+             const revokeG5Btn = event.target.closest('[data-revoke-grade5]');
+             if (revokeG5Btn) {
+                 runAction(() => revokeStudentGrade5(revokeG5Btn.dataset.revokeGrade5));
+                 return;
+             }
+             const revokeAiBtn = event.target.closest('[data-revoke-ai]');
+             if (revokeAiBtn) {
+                 runAction(() => revokeStudentAi(revokeAiBtn.dataset.revokeAi));
+                 return;
+             }
+             const copyParentLinkBtn = event.target.closest('[data-copy-parent-link]');
+             if (copyParentLinkBtn) {
+                 const token = copyParentLinkBtn.dataset.copyParentLink;
+                 const origin = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+                     ? (window.location.origin.startsWith('http') ? window.location.origin : 'https://quiz-web-app-rosy.vercel.app')
+                     : window.location.origin;
+                 const link = `${origin}/?token=${encodeURIComponent(token)}&view=progress`;
+                 copyToClipboard(link).then((copied) => {
+                     if (copied) {
+                         triggerAdminCopyFeedback(copyParentLinkBtn, 1500);
+                         notify('📋 Đã sao chép Link Quan Sát! Người giám sát chỉ cần bấm link trên điện thoại hoặc máy tính.');
+                     }
+                 });
+                 return;
+             }
+             const revokeParentBtn = event.target.closest('[data-revoke-parent]');
+             if (revokeParentBtn) {
+                 runAction(() => removeStudentAccess(revokeParentBtn.dataset.revokeParent));
+                 return;
+             }
+             const removeUnifiedBtn = event.target.closest('[data-remove-unified-access]');
+             if (removeUnifiedBtn) {
+                 runAction(() => removeStudentAccess(removeUnifiedBtn.dataset.removeUnifiedAccess));
+                 return;
+             }
+             const removeTokenBtn = event.target.closest('[data-remove-token]');
+             if (removeTokenBtn) {
+                 runAction(() => removeAccessToken(removeTokenBtn.dataset.removeToken));
+                 return;
+             }
+             const grantTokenBtn = event.target.closest('#students-body [data-grant-token-name]');
+             if (grantTokenBtn) {
+                 runAction(() => handleGrantTokenToStudent(grantTokenBtn.dataset.grantTokenName, grantTokenBtn.dataset.grantTokenIp, grantTokenBtn.dataset.grantTokenDevice));
+                 return;
+             }
+             const target = event.target.closest('#students-body [data-ban-row], #students-body [data-unban-row], #students-body [data-private-notice], #students-body [data-delete-student-name]');
+             if (!target) return;
+             if (target.dataset.banRow) runAction(() => banIp(target.dataset.banRow));
+             else if (target.dataset.unbanRow) runAction(() => unbanIp(target.dataset.unbanRow));
+              else if (target.dataset.deleteStudentName !== undefined) runAction(() => deleteStudentSession(target.dataset.deleteStudentName, target.dataset.deleteStudentIp, target.dataset.deleteStudentDevice, '', false, target.dataset.deleteStudentDevices || ''));
+             else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName));
+         });
+         $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
+         reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
+         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
+         $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey));
+         $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
+         loadGeminiKeyIntoInput().catch(() => {});
+          reportAction('archive-data', archiveExamData, 'Đang dọn dữ liệu');
+         $('new-folder-button')?.addEventListener('click', openFolderDialog);
+         $('hub-add-question-button')?.addEventListener('click', () => jumpToAddQuestion());
+         $('folder-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-folder-grade]'); if (button) setFolderGrade(button.dataset.folderGrade); });
+         $('folder-form')?.addEventListener('submit', (event) => runAction(() => saveFolder(event)));
+         $('folder-dialog-close')?.addEventListener('click', closeFolderDialog);
+         $('cancel-folder-dialog')?.addEventListener('click', closeFolderDialog);
+         $('new-subject-button')?.addEventListener('click', (event) => openSubjectDialog(null, event.currentTarget));
+        $('subject-grade-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-grade]'); if (button) setSubjectGrade(button.dataset.subjectGrade); });
+        $('subject-mode-picker')?.addEventListener('click', (event) => { const button = event.target.closest('[data-subject-mode]'); if (button) setSubjectMode(button.dataset.subjectMode); });
+         $('subject-form')?.addEventListener('submit', (event) => runAction(() => saveSubject(event))); $('clear-subject-form')?.addEventListener('click', closeSubjectDialog); $('clear-subject-form') && ($('clear-subject-form').textContent = 'Hủy'); $('subject-dialog-close')?.addEventListener('click', closeSubjectDialog); $('refresh-subjects')?.addEventListener('click', () => runAction(loadSubjects)); $('subjects-list')?.addEventListener('click', (event) => { const assignOrphan = event.target.closest('[data-assign-orphan]'); if (assignOrphan) { const gk = assignOrphan.dataset.assignOrphan; const sel = $('subjects-list')?.querySelector(`[data-orphan-target="${CSS.escape(gk)}"]`); runAction(() => assignOrphanQuestions(gk, sel?.value || '')); return; } const createOrphan = event.target.closest('[data-create-orphan-subject]'); if (createOrphan) { runAction(() => createSubjectFromOrphan(createOrphan.dataset.createOrphanSubject)); return; } const closeFolder = event.target.closest('[data-close-subject-folder]'); if (closeFolder) { state.adminOpenSubjectFolder = null; renderSubjectCatalog(); return; } const addToFolder = event.target.closest('[data-add-subject-to-folder]'); if (addToFolder) { openSubjectDialog(null, addToFolder, { folder: addToFolder.dataset.addSubjectToFolder, grade: addToFolder.dataset.folderGrade }); return; } const addQToFolder = event.target.closest('[data-add-question-to-folder]'); if (addQToFolder) { const fk = addQToFolder.dataset.addQuestionToFolder; const firstSub = mergeSubjectCatalog(state.subjects).find((s) => getAdminSubjectFolderInfo(s)?.folderKey === fk); jumpToAddQuestion(firstSub ? (firstSub.key || firstSub.subject_key) : ''); return; } const delFolder = event.target.closest('[data-delete-folder]'); if (delFolder) { runAction(() => deleteFolderOnly(delFolder.dataset.deleteFolder)); return; } const renameFolderBtn = event.target.closest('[data-rename-folder]'); if (renameFolderBtn) { event.stopPropagation(); runAction(() => renameFolder(renameFolderBtn.dataset.renameFolder)); return; } const openFolder = event.target.closest('[data-open-subject-folder]'); if (openFolder) { state.adminOpenSubjectFolder = openFolder.dataset.openSubjectFolder; renderSubjectCatalog(); return; } const quickAdd = event.target.closest('[data-quick-add-question]'); if (quickAdd) { jumpToAddQuestion(quickAdd.dataset.quickAddQuestion); return; } const edit = event.target.closest('[data-edit-subject]'); const adopt = event.target.closest('[data-adopt-subject-questions]'); const clearQuestions = event.target.closest('[data-delete-subject-questions]'); const remove = event.target.closest('[data-delete-subject]'); if (edit) { const subject = state.subjects.find((item) => item.key === edit.dataset.editSubject); if (subject) openSubjectDialog(subject, edit); } if (adopt) runAction(() => adoptLegacyQuestions(adopt.dataset.adoptSubjectQuestions)); if (clearQuestions) runAction(() => deleteSubjectQuestions(clearQuestions.dataset.deleteSubjectQuestions)); if (remove) runAction(() => deleteSubject(remove.dataset.deleteSubject)); });
+        $('subject-dialog')?.addEventListener('close', () => { const opener = state.subjectDialogOpener; state.subjectDialogOpener = null; resetSubjectForm(); if (opener && document.contains(opener)) opener.focus(); });
+    }
+
+    async function init() {
+        initAdminWorkspaceTransitions();
+        const savedAdminDark = localStorage.getItem('quiz_admin_dark');
+        const isAdminDark = savedAdminDark === 'true' || (savedAdminDark === null && localStorage.getItem('quiz_theme') === 'dark');
+        document.documentElement.classList.toggle('dark', isAdminDark);
+        document.body.classList.toggle('dark', isAdminDark);
+        syncThemeIcon();
+        $('bootstrap-admin')?.addEventListener('click', () => runAction(bootstrapAdmin));
+        $('btn-unlock-admin-token')?.addEventListener('click', () => runAction(unlockAdminWithToken));
+        $('admin-token-unlock-input')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                runAction(unlockAdminWithToken);
+            }
+        });
+        try {
+            ensureSupabaseClient();
+            if (!(await isCurrentIpAllowed())) {
+                denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
+                return;
+            }
+            showApp(); configureAdminLabels(); bindEvents(); switchView('overview'); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
+            await loadSubjects();
+            await loadRosterConfig();
+            await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
+            await syncSubjectQuestionCounts();
+            syncPinnedNamesToLogins().then((updatedCount) => {
+                if (updatedCount > 0) {
+                    loadStudents().catch(() => {});
+                    if (document.querySelector('[data-view-panel="progress"]')?.classList.contains('is-visible')) {
+                        renderGrade5ProgressMonitor().catch(() => {});
+                    }
+                }
+            }).catch((err) => console.warn('[Quiz Studio Admin] Đồng bộ tên đã ghim thất bại:', err));
+            clearInterval(state.studentsRefreshTimer);
+            state.studentsRefreshTimer = setInterval(() => {
+                if (document.hidden) return;
+                loadStudents().catch((error) => console.warn('[Quiz Studio Admin] Refresh monitor thất bại:', error));
+            }, 5000);
+            const cleanupAdminResources = () => {
+                clearInterval(state.studentsRefreshTimer);
+                state.studentsRefreshTimer = null;
+                clearInterval(state.progressMonitorTimer);
+                state.progressMonitorTimer = null;
+                clearTimeout(state.progressDebounceTimer);
+                state.progressDebounceTimer = null;
+                if (state.progressRealtimeChannel && state.client && typeof state.client.removeChannel === 'function') {
+                    state.client.removeChannel(state.progressRealtimeChannel);
+                    state.progressRealtimeChannel = null;
+                }
+            };
+            window.addEventListener('pagehide', cleanupAdminResources);
+            window.addEventListener('beforeunload', cleanupAdminResources);
+            window.addEventListener('pageshow', () => {
+                if (!state.studentsRefreshTimer) state.studentsRefreshTimer = setInterval(() => { if (!document.hidden) loadStudents().catch(() => {}); }, 5000);
+                if (document.querySelector('[data-view-panel="progress"]')?.classList.contains('is-visible')) switchView('progress');
+            });
+        } catch (error) {
+            console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
+            updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
+            denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');
+        }
+    }
+    init();
+})();

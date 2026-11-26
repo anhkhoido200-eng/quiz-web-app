@@ -1,0 +1,66 @@
+- generic [active] [ref=e1] [box=0,0,923,1127]:
+  - link " 👑 Mở Bảng Admin" [ref=e53] [cursor=pointer] [box=734,824,166,40]:
+    - /url: admin.html
+    - generic [ref=e54] [box=750,834,16,20]: 
+    - generic [ref=e55] [box=774,836,110,16]: 👑 Mở Bảng Admin
+  - text:             
+  - banner [ref=e5] [box=0,0,923,65]:
+    - generic [ref=e6] [box=0,0,923,64]:
+      - generic [ref=e7] [box=16,10,272,45]:
+        - generic "Quiz Studio" [ref=e8] [box=16,12,40,40]: 
+        - generic [ref=e10] [cursor=pointer] [box=68,10,220,45]:
+          - heading "Ôn tập" [level=1] [ref=e11] [box=68,10,220,28]
+          - paragraph [ref=e12] [box=68,38,220,17]: Hệ Thống Ôn Luyện Thông Minh • Toán đề 1
+      - generic [ref=e13] [box=519,14,388,36]:
+        - button "" [ref=e14] [cursor=pointer] [box=519,14,36,36]
+        - button "" [ref=e16] [cursor=pointer] [box=563,14,36,36]
+        - button " Lịch Sử" [ref=e18] [cursor=pointer] [box=607,17,86,30]:
+          - generic [ref=e19] [box=620,26,12,12]: 
+          - generic [ref=e20] [box=638,24,42,16]: Lịch Sử
+        - button " Top 10" [ref=e21] [cursor=pointer] [box=701,17,83,30]:
+          - generic [ref=e22] [box=714,26,14,12]: 
+          - generic [ref=e23] [box=734,24,37,16]: Top 10
+        - link " Bảng Admin" [ref=e56] [cursor=pointer] [box=792,17,115,30]:
+          - /url: admin.html
+          - generic [ref=e57] [box=805,26,14,12]: 
+          - generic [ref=e58] [box=824,24,70,16]: Bảng Admin
+  - main [ref=e24] [box=0,65,923,1013]:
+    - generic [ref=e26] [box=174,89,576,965]:
+      - generic [ref=e27] [box=211,126,502,110]:
+        - generic [ref=e28] [box=409,126,104,30]: ⚡ Ôn tập
+        - heading "Ôn tập" [level=2] [ref=e30] [box=211,168,502,40]
+        - paragraph [ref=e31] [box=211,216,502,20]: Hệ thống ôn luyện trắc nghiệm trực tuyến
+      - generic [ref=e60] [box=228,277,468,40]:
+        - generic [ref=e61] [box=228,277,288,40]:
+          - generic [ref=e62] [box=228,277,40,40]: 
+          - generic [ref=e64] [box=280,279,236,37]
+        - button " Đổi tên" [ref=e67] [cursor=pointer] [box=612,282,84,31]:
+          - generic [ref=e68] [box=625,292,14,11]: 
+          - text: Đổi tên
+      - generic [ref=e32] [box=211,354,502,423]:
+        - generic [ref=e33] [box=228,371,468,23]:
+          - generic [ref=e34] [box=228,374,143,16]
+          - generic [ref=e37] [box=581,371,115,23]: Toán đề 1 (29 câu)
+        - generic "Chọn lớp" [ref=e38] [box=228,406,468,54]:
+          - button "Tất cả" [ref=e69] [cursor=pointer] [box=233,411,57,40]
+          - button "Lớp 5" [ref=e70] [cursor=pointer] [box=296,411,54,40]
+          - button "Lớp 11" [ref=e71] [cursor=pointer] [box=356,411,57,40]
+        - generic [ref=e72] [box=228,472,468,288]:
+          - button "  Đã chọn Toán đề 1 Kì 1  29 câu" [ref=e73] [cursor=pointer] [box=228,472,148,138]
+          - button " toán đề 2 Kì 1  0 câu" [ref=e85] [cursor=pointer] [box=388,472,148,138]
+          - button " toán đề 3 Kì 1  0 câu" [ref=e95] [cursor=pointer] [box=548,472,148,138]
+          - button " toán đề 4 Kì 1  0 câu" [ref=e105] [cursor=pointer] [box=228,622,148,138]
+        - text:   +   
+      - generic [ref=e39] [box=211,797,502,220]:
+        - generic [ref=e40] [box=211,797,502,114]:
+          - generic [ref=e41] [box=211,797,502,16]: Họ và Tên học sinh *
+          - generic [ref=e42] [box=211,819,502,50]
+          - button " Hiện IP của tôi" [ref=e44] [cursor=pointer] [box=211,877,127,34]
+          - text: 
+        - generic [ref=e46] [box=211,927,502,90]:
+          - button "Bắt Đầu Làm Bài Ngay " [ref=e47] [cursor=pointer] [box=211,935,502,56]
+          - paragraph [ref=e50] [box=211,1001,502,16]
+    - text:                 
+  - contentinfo [ref=e51] [box=0,1078,923,49]:
+    - paragraph [ref=e52] [box=0,1095,923,16]: Ôn tập • Hệ Thống Trắc Nghiệm Thông Minh
+  - text:                  +             +           +                                           
