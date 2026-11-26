@@ -8978,7 +8978,45 @@
         }
     }
 
+    let adminPrint = null;
+    let adminImport = null;
+
+    function loadAdminModule(src, globalName) {
+        if (window[globalName]) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = `${src}?v=20261126a`;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error(`Không thể tải module ${globalName}.`));
+            document.head.appendChild(script);
+        });
+    }
+
+    async function loadAdminModules() {
+        const base = new URL('.', document.currentScript?.src || window.location.href).href;
+        await Promise.all([
+            loadAdminModule(new URL('assets/js/admin-print.js', base).href, 'AdminPrint'),
+            loadAdminModule(new URL('assets/js/admin-import.js', base).href, 'AdminImport')
+        ]);
+    }
+
+    function configureAdminModules() {
+        adminPrint = window.AdminPrint.configure({
+            state, $, esc, htmlText, notationText, gradeOf, subjectName, subjectGrade,
+            subjectMatchKey, mergeSubjectCatalog, openModal, closeModal, renderMath,
+            notify, addActivityLog
+        });
+        adminImport = window.AdminImport.configure({
+            state, $, esc, htmlText, notationText, TYPE_LABELS, normalizeAiQuestion,
+            validateAiQuestionSet, subjectMatchKey, subjectName, fillLibrarySubjects,
+            switchView, openModal, closeModal, fillForm, renderMath, notify, confirmDialog,
+            setActionBusy, nextQuestionId, toRecord, upsertRestoredRows, moveQuestionsToTrash,
+            addActivityLog, loadQuestions
+        });
+    }
+
     function bindEvents() {
+        configureAdminModules();
         if (state.bound) return; state.bound = true;
         const submitAiComposer = () => {
             const input = $('ai-chat-input');
@@ -9238,9 +9276,9 @@
                 updateBulkBar();
             }
         });
-        $('export-pdf-heading')?.addEventListener('click', openPrintModal);
-        $('export-pdf-library')?.addEventListener('click', openPrintModal);
-         reportAction('export-pdf-report', () => { fillLibrarySubjects(); openPrintModal(); }, 'Đang mở');
+        $('export-pdf-heading')?.addEventListener('click', adminPrint.openPrintModal);
+        $('export-pdf-library')?.addEventListener('click', adminPrint.openPrintModal);
+         reportAction('export-pdf-report', () => { fillLibrarySubjects(); adminPrint.openPrintModal(); }, 'Đang mở');
         $('open-trash-button')?.addEventListener('click', () => { renderTrashModal(); openModal('trash-modal'); });
         $('trash-search-input')?.addEventListener('input', renderTrashModal);
         $('trash-subject-filter')?.addEventListener('change', renderTrashModal);
@@ -9255,8 +9293,8 @@
             }
             if (hardDelete) runAction(() => hardDeleteQuestion(hardDelete.dataset.hardDeleteId));
         });
-        $('print-subject-select')?.addEventListener('change', updatePrintQuestionsPreview);
-        $('print-grade-select')?.addEventListener('change', updatePrintQuestionsPreview);
+        $('print-subject-select')?.addEventListener('change', adminPrint.updatePrintQuestionsPreview);
+        $('print-grade-select')?.addEventListener('change', adminPrint.updatePrintQuestionsPreview);
         $('print-random-code')?.addEventListener('click', () => {
             const codes = [101, 102, 103, 104, 201, 202, 301, 302, 401, 402];
             const code = codes[Math.floor(Math.random() * codes.length)];
@@ -9361,9 +9399,9 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
 
         $('copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
         $('modal-copy-ai-prompt-btn')?.addEventListener('click', (e) => handleCopyAiPrompt(e.currentTarget));
-        $('do-print-btn')?.addEventListener('click', () => runAction(executePrintExam));
-         $('import-button')?.addEventListener('click', openImport); $('quick-import')?.addEventListener('click', openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = validateVerbatimQuestions(list, source); persistImportDraft(); fillForm(list[0]); renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', () => runAction(saveImportQuestions));
-         $('import-file')?.addEventListener('change', (event) => handleImportFile(event.target.files?.[0]));
+        $('do-print-btn')?.addEventListener('click', () => runAction(adminPrint.executePrintExam));
+         $('import-button')?.addEventListener('click', adminImport.openImport); $('quick-import')?.addEventListener('click', adminImport.openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); adminImport.persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = adminImport.parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = adminImport.validateVerbatimQuestions(list, source); adminImport.persistImportDraft(); fillForm(list[0]); adminImport.renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', () => runAction(adminImport.saveImportQuestions));
+          $('import-file')?.addEventListener('change', (event) => adminImport.handleImportFile(event.target.files?.[0]));
         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
         const closableModals = ['import-modal', 'print-modal', 'trash-modal', 'delete-scope-modal'];
@@ -9729,6 +9767,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
                 denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
                 return;
             }
+            await loadAdminModules();
             showApp(); configureAdminLabels(); bindEvents(); switchView('overview'); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
             await loadSubjects();
             await loadRosterConfig();
