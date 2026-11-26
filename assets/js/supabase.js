@@ -51,6 +51,15 @@ const SYSTEM_RECORDS = {
 const SYSTEM_UUIDS = SYSTEM_RECORDS;
 
 const SYSTEM_RECORD_IDS = new Set(Object.values(SYSTEM_RECORDS));
+
+function safeStorageGet(key, storage = 'local') {
+    try {
+        const store = storage === 'session' ? window.sessionStorage : window.localStorage;
+        return store.getItem(String(key));
+    } catch (e) {
+        return null;
+    }
+}
 const SYSTEM_RECORD_NAMES = new Set([
     '__ADMIN_IPS_CONFIG__',
     '__ALLOWED_GEO_IPS__',
@@ -196,8 +205,8 @@ class DatabaseService {
     }
 
     init() {
-        let storedUrl = localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url;
-        const storedKey = localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey;
+        let storedUrl = safeStorageGet(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url;
+        const storedKey = safeStorageGet(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey;
 
         storedUrl = formatSupabaseUrl(storedUrl);
         this.url = storedUrl;
@@ -600,8 +609,12 @@ class DatabaseService {
             throw new Error("Vui lòng nhập đầy đủ Project URL và Anon Public Key.");
         }
         this._clearMissingColumnsCache();
-        localStorage.setItem(STORAGE_KEYS.SUPABASE_URL, formatSupabaseUrl(url));
-        localStorage.setItem(STORAGE_KEYS.SUPABASE_KEY, anonKey.trim());
+        try {
+            localStorage.setItem(STORAGE_KEYS.SUPABASE_URL, formatSupabaseUrl(url));
+            localStorage.setItem(STORAGE_KEYS.SUPABASE_KEY, anonKey.trim());
+        } catch (e) {
+            throw new Error('Không thể lưu cấu hình Supabase trên thiết bị này.');
+        }
         this.init();
     }
 
@@ -614,8 +627,8 @@ class DatabaseService {
 
     getConfig() {
         return {
-            url: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url,
-            anonKey: localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey,
+            url: safeStorageGet(STORAGE_KEYS.SUPABASE_URL) || DEFAULT_SUPABASE_CONFIG.url,
+            anonKey: safeStorageGet(STORAGE_KEYS.SUPABASE_KEY) || DEFAULT_SUPABASE_CONFIG.anonKey,
             isActive: this.isSupabaseActive
         };
     }
@@ -1631,7 +1644,8 @@ class DatabaseService {
     _getLocalLogins() {
         try {
             const raw = localStorage.getItem(STORAGE_KEYS.LOCAL_LOGINS);
-            return raw ? JSON.parse(raw) : [];
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed.filter((row) => row && typeof row === 'object' && !Array.isArray(row)) : [];
         } catch (e) {
             return [];
         }

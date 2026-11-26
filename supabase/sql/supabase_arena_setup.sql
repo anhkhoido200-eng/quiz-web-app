@@ -321,7 +321,7 @@ BEGIN
     IF p_attempt_id IS NOT NULL THEN
         SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id AND room_id = p_room_id;
         IF v_attempt.id IS NOT NULL THEN
-            IF p_session_token IS NOT NULL AND v_attempt.active_session_token <> p_session_token THEN
+            IF p_session_token IS NOT NULL AND v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
                 v_session_replaced := true;
             ELSE
                 v_safe_attempt := jsonb_build_object(
@@ -624,12 +624,15 @@ DECLARE
     v_expected_val BOOLEAN;
     v_timed_out BOOLEAN := false;
 BEGIN
+    IF NULLIF(TRIM(COALESCE(p_session_token, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
     PERFORM public.enforce_rate_limit('arena_submit_answer', COALESCE(NULLIF(TRIM(p_session_token), ''), 'anonymous'), 120, 60);
     SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
     IF v_attempt.id IS NULL THEN
         RAISE EXCEPTION 'Không tìm thấy phiên thi';
     END IF;
-    IF v_attempt.active_session_token <> p_session_token THEN
+    IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
         RAISE EXCEPTION 'SESSION_REPLACED';
     END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
@@ -805,10 +808,13 @@ DECLARE
     v_room public.match_rooms;
     v_forced BOOLEAN := false;
 BEGIN
+    IF NULLIF(TRIM(COALESCE(p_session_token, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
     PERFORM public.enforce_rate_limit('arena_report_violation', COALESCE(NULLIF(TRIM(p_session_token), ''), 'anonymous'), 30, 60);
     SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
     IF v_attempt.id IS NULL THEN RAISE EXCEPTION 'Không tìm thấy phiên thi'; END IF;
-    IF v_attempt.active_session_token <> p_session_token THEN RAISE EXCEPTION 'SESSION_REPLACED'; END IF;
+    IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN RAISE EXCEPTION 'SESSION_REPLACED'; END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
         RETURN jsonb_build_object('forced', v_attempt.status = 'FORCED', 'attempt', public.arena_safe_attempt(v_attempt));
     END IF;
@@ -857,11 +863,14 @@ AS $$
 DECLARE
     v_attempt public.match_attempts;
 BEGIN
+    IF NULLIF(TRIM(COALESCE(p_session_token, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
     SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id FOR UPDATE;
     IF v_attempt.id IS NULL THEN
         RAISE EXCEPTION 'Không tìm thấy phiên thi';
     END IF;
-    IF v_attempt.active_session_token <> p_session_token THEN
+    IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
         RAISE EXCEPTION 'SESSION_REPLACED';
     END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
@@ -961,6 +970,12 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_submit_answer(UUID, TEXT, INTEGER, INTEGER, TEXT, INTEGER, JSONB, BOOLEAN) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_submit_answer(UUID, TEXT, INTEGER, INTEGER, TEXT, INTEGER, JSONB, BOOLEAN, INTEGER) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_log_violation(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_log_violation(UUID, TEXT, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_finish_attempt(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_finish_attempt(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.arena_create_room(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.arena_get_audit_logs(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.arena_create_room(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, BOOLEAN, TEXT) TO anon, authenticated;

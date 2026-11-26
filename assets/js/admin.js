@@ -152,6 +152,18 @@
     };
     const esc = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     const escBody = (value) => String(value ?? '').replace(/&(?!(?:amp|lt|gt|quot|#39|#x27);)|[<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const safeErrorMessage = (error, fallback = 'Thao tác không thành công.') => {
+        const message = String(error?.message || error || '').trim();
+        return message && message.length <= 240 ? message : fallback;
+    };
+    const parseJsonOr = (value, fallback) => {
+        try {
+            const parsed = JSON.parse(String(value ?? ''));
+            return parsed === null || parsed === undefined ? fallback : parsed;
+        } catch (error) {
+            return fallback;
+        }
+    };
     const notationText = (value) => {
         if (typeof MathNotation !== 'undefined' && typeof MathNotation.readValue === 'function') {
             return MathNotation.readValue(value).text;
@@ -199,7 +211,6 @@
                 throwOnError: false
             });
         } catch (error) {
-            console.warn('[Quiz Studio Admin] Math rendering failed:', error);
         }
     };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -335,7 +346,6 @@
                 return true;
             }
         } catch (e) {
-            console.warn('[Quiz Studio Admin] Clipboard API failed, trying fallback...', e);
         }
         try {
             const textarea = document.createElement('textarea');
@@ -665,8 +675,7 @@
         notify.timer = setTimeout(() => { toast.className = 'toast'; }, 3400);
     };
     const runAction = (action) => Promise.resolve().then(action).catch((error) => {
-        console.error('[Quiz Studio Admin]', error);
-        notify(error?.message || 'Thao tác không thành công.', true);
+        notify(safeErrorMessage(error), true);
     });
 
     function setConnection(ready, message) {
@@ -823,7 +832,6 @@
     async function systemRow(id) {
         const { data, error } = await state.client.from('quiz_logins').select('*').eq('id', id).limit(1);
         if (error) {
-            console.error(`[Quiz Studio Admin] Không đọc được bản ghi hệ thống ${id}:`, error);
             throw error;
         }
         if (!data?.[0]) return null;
@@ -894,6 +902,29 @@
                 masterDeviceCode: String(config.masterDeviceCode || '').trim().toUpperCase(),
                 allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
             };
+            const hasConfiguredAdmin = Boolean(state.adminConfig.masterIp || state.adminConfig.masterDeviceCode || state.adminConfig.allowedIps.length);
+            const sessionToken = String(window.dbService?.getAdminSessionToken?.() || sessionStorage.getItem('quiz_admin_session_token') || '').trim();
+            let sessionVerified = false;
+            if (sessionToken || currentToken) {
+                try {
+                    const { data: sessionData, error: sessionError } = await state.client.rpc('admin_verify_login', {
+                        p_password: null,
+                        p_admin_token: sessionToken || currentToken,
+                        p_ip: state.clientIp || null
+                    });
+                    if (!sessionError && sessionData?.valid) {
+                        sessionVerified = true;
+                        const refreshedToken = sessionData.token || sessionData.session_token;
+                        if (refreshedToken && typeof window.dbService?.setAdminSessionToken === 'function') {
+                            window.dbService.setAdminSessionToken(refreshedToken, sessionData.expires_at || sessionData.expiresAt || null);
+                        }
+                    }
+                } catch (error) {
+                    sessionVerified = false;
+                }
+            }
+            if (hasConfiguredAdmin && !sessionVerified) return false;
+            if (!hasConfiguredAdmin) return true;
             const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
             const myDeviceCode = String(state.deviceCode || '').trim().toUpperCase();
             const masterDeviceCode = state.adminConfig.masterDeviceCode;
@@ -1029,13 +1060,17 @@
                     } catch (e) {}
                 }
             }
-            verified = Boolean(authRes?.valid || authRes?.ok || authRes?.verified || authRes === true);
+            verified = Boolean((authRes?.valid || authRes?.ok || authRes?.verified || authRes === true) && nextSessionTok);
         } else {
             const { data: rpcData, error: rpcErr } = await state.client.rpc('admin_verify_login', { p_password: String(password ?? ''), p_ip: state.clientIp || null }).catch((e) => ({ data: null, error: e }));
             if (rpcErr) {
                 return notify('Chưa kích hoạt RPC xác thực Admin trên máy chủ (supabase_security_migration.sql).', true);
             }
-            verified = Boolean(rpcData === true || rpcData?.valid || rpcData?.ok || rpcData?.verified);
+            const rpcToken = rpcData?.token || rpcData?.session_token || rpcData?.sessionToken;
+            if (rpcToken && typeof window.dbService?.setAdminSessionToken === 'function') {
+                window.dbService.setAdminSessionToken(rpcToken, rpcData?.expires_at || rpcData?.expiresAt || null);
+            }
+            verified = Boolean((rpcData?.valid || rpcData?.ok || rpcData?.verified) && rpcToken);
         }
         if (!verified) return notify('Mật khẩu Admin không đúng.', true);
         const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
@@ -1429,9 +1464,8 @@
             ...subject,
             count: questionCounts[subjectMatchKey(subject.key || subject.subject_key)] || 0
         }));
-        console.debug('[Quiz Studio Admin] Syncing subject question counts:', state.subjects.map((subject) => ({ key: subject.key, count: subject.count })));
         const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.subjects, player_name: '__DYNAMIC_SUBJECTS__', ip_address: 'SYSTEM', device_info: 'DYNAMIC_HUB', status: 'ACTIVE', score_summary: JSON.stringify(state.subjects), last_active: new Date().toISOString() }, { onConflict: 'id' });
-        if (error) console.warn('[Quiz Studio Admin] Không thể lưu số câu theo môn:', error.message);
+        if (error) notify('Không thể lưu số câu theo môn.', true);
         renderSubjectCatalog();
     }
 
@@ -1888,7 +1922,6 @@
                 }
             }
         } catch (e) {
-            console.warn('[nextQuestionId] Lỗi lấy max ID từ CSDL:', e);
         }
 
         const safeMax = (Number.isFinite(maxId) && maxId > 0) ? maxId : 1000;
@@ -1936,11 +1969,9 @@
                         localStorage.setItem('quiz_trash_questions', JSON.stringify(parsed));
                     }
                 } catch (e) {
-                    console.warn('[Quiz Studio Admin] Lỗi đọc thùng rác từ Cloud:', e);
                 }
             }
         } catch (err) {
-            console.warn('[Quiz Studio Admin] Chưa thể tải thùng rác từ Cloud:', err);
         } finally {
             updateTrashBadge();
             if (!$('trash-modal')?.classList.contains('hidden')) {
@@ -1970,7 +2001,6 @@
                 }, { onConflict: 'id' });
                 if (error) throw error;
             } catch (error) {
-                console.warn('[Quiz Studio Admin] Lỗi đồng bộ thùng rác lên Cloud:', error);
                 if (throwOnError) throw new Error(`Không thể lưu vào Thùng rác trên Cloud: ${error.message || error}`);
             }
         }
@@ -3069,20 +3099,12 @@
             const structureErrors = validateAiQuestionSet(normalized);
             if (structureErrors.length) {
                 state.importError = structureErrors.slice(0, 3).join('; ');
-                console.warn('[Quiz Studio Admin] JSON import rejected:', {
-                    errors: structureErrors,
-                    rawTypes: list.map((item) => item?.type ?? item?.q_type ?? item?.qType ?? null),
-                    normalizedTypes: normalized.map((item) => item.qType),
-                    keys: list.map((item) => Object.keys(item || {})),
-                    shortAnswerValues: normalized.map((item) => item.qType === 'short_answer' ? item.correctValue : undefined)
-                });
                 return [];
             }
             state.importIntegrity = validateVerbatimQuestions(normalized, text);
             return normalized;
         } catch (error) {
             state.importError = `JSON lỗi cú pháp: ${error.message}`;
-            console.warn('[Quiz Studio Admin] JSON import parse error:', error.message);
             return [];
         }
     }
@@ -3109,7 +3131,7 @@
     function persistImportDraft() {
         try {
             sessionStorage.setItem('quiz_import_draft', JSON.stringify({ questions: state.importQuestions, sourceText: state.sourceText, subject: state.importSubject, integrity: state.importIntegrity }));
-        } catch (error) { console.warn('Không thể lưu bản nháp nhập câu hỏi:', error); }
+        } catch (error) { /* Ignore storage quota errors */ }
     }
 
     function restoreImportDraft() {
@@ -3227,7 +3249,6 @@
                     if (delErr) throw delErr;
                 }
             }
-            console.debug('[Quiz Studio Admin] Import verified on Cloud:', { subjectKey: selectedSubject, imported: records.length, verifiedCount });
             addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import');
             notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`);
              sessionStorage.removeItem('quiz_import_draft');
@@ -3423,7 +3444,6 @@
                         })
                         .subscribe();
                 } catch (e) {
-                    console.warn('[Admin Progress] Lỗi realtime channel:', e);
                 }
             }
 
@@ -4522,7 +4542,6 @@
     }
     async function loadRosterConfig() {
         let payload = null;
-        try { payload = await window.dbService?.fetchRosterConfig?.(); } catch (error) { console.warn('[Quiz Studio Admin] Không tải được roster qua dbService:', error); }
         if (!payload) {
             try { payload = JSON.parse(localStorage.getItem('quiz_roster_config') || 'null'); } catch (error) { payload = null; }
         }
@@ -4633,7 +4652,6 @@
         try {
             updatedCount = await syncPinnedNamesToLogins({ [upperCode]: cleanName });
         } catch (err) {
-            console.warn('[Quiz Studio Admin] Không thể đồng bộ đổi tên các bản ghi cũ:', err);
         }
         if (Array.isArray(state.reportRows)) {
             state.reportRows = state.reportRows.map((item) => extractDeviceCode(item?.device_info) === upperCode ? { ...item, name: cleanName } : item);
@@ -4652,7 +4670,6 @@
         const payload = normalizeRoster({ grade5: state.rosterConfig?.grade5 || { enabled: false, allowGuestsInPractice: true, students: [] }, grade11: state.rosterConfig?.grade11 || { enabled: false, allowGuestsInPractice: true, students: [] }, devicePins: nextPins, renameRequests: state.renameRequests || {} });
         await persistRosterPayload(payload, '');
         let updatedCount = 0;
-        try { updatedCount = await syncPinnedNamesToLogins(Object.fromEntries(cleanCodes.map((code) => [code, cleanName]))); } catch (err) { console.warn('[Quiz Studio Admin] Không thể đồng bộ đổi tên các bản ghi cũ:', err); }
         if (Array.isArray(state.reportRows)) {
             const codeSet = new Set(cleanCodes);
             state.reportRows = state.reportRows.map((item) => codeSet.has(extractDeviceCode(item?.device_info)) ? { ...item, name: cleanName } : item);
@@ -5038,9 +5055,9 @@
         return;
     }
 
-    async function loadGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: (data.ips || []).map(normalizeIp).filter(Boolean), grade5Ips: (data.grade5Ips || data.grade5_ips || []).map(normalizeIp).filter(Boolean) }; console.debug('[Quiz Studio Admin] Loaded Grade 5 access config:', { stateGeo: state.geo, raw: data }); } catch (error) { console.warn('[Quiz Studio Admin] Invalid Grade 5 access config:', error.message); } } ensureClass5AccessPanel(); renderGeo(); }
+    async function loadGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const row = await systemRow(SYSTEM.geo); if (row) { try { const data = JSON.parse(row.score_summary || '{}'); state.geo = { mode: data.mode || row.device_info || 'PUBLIC', ips: (data.ips || []).map(normalizeIp).filter(Boolean), grade5Ips: (data.grade5Ips || data.grade5_ips || []).map(normalizeIp).filter(Boolean) }; } catch (error) { state.geo = { mode: 'PUBLIC', ips: [], grade5Ips: [] }; } } ensureClass5AccessPanel(); renderGeo(); }
     function renderGeo() { ensureClass5AccessPanel(); $('geo-mode-badge') && ($('geo-mode-badge').textContent = state.geo.mode); document.querySelectorAll('[data-geo-mode]').forEach((button) => button.classList.toggle('is-active', button.dataset.geoMode === state.geo.mode)); $('geo-ip-list') && ($('geo-ip-list').innerHTML = state.geo.ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-location-dot"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép truy cập Địa lý</small></span><button data-remove-geo="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Danh sách IP trống.</p>'); const class5Ips = Array.isArray(state.geo.grade5Ips) ? state.geo.grade5Ips : []; $('class5-ip-count') && ($('class5-ip-count').textContent = `${class5Ips.length} IP`); $('class5-ip-list') && ($('class5-ip-list').innerHTML = class5Ips.map((ip) => `<div class="stack-item"><span class="stack-item-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="stack-item-main"><b>${esc(ip)}</b><small>Được phép xem Lớp 5</small></span><button data-remove-class5="${esc(ip)}"><i class="fa-solid fa-xmark"></i></button></div>`).join('') || '<p class="muted-copy">Chưa cấp quyền cho IP nào.</p>'); }
-    async function saveGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const payload = { mode: state.geo.mode, ips: [...new Set((state.geo.ips || []).map(normalizeIp).filter(Boolean))], grade5Ips: [...new Set((state.geo.grade5Ips || []).map(normalizeIp).filter(Boolean))] }; state.geo = { ...state.geo, ...payload }; console.debug('[Quiz Studio Admin] Saving Grade 5 access config:', payload); const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.geo, player_name: '__ALLOWED_GEO_IPS__', ip_address: 'SYSTEM', device_info: state.geo.mode, status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; renderGeo(); }
+    async function saveGeo() { const normalizeIp = (ip) => String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase(); const payload = { mode: state.geo.mode, ips: [...new Set((state.geo.ips || []).map(normalizeIp).filter(Boolean))], grade5Ips: [...new Set((state.geo.grade5Ips || []).map(normalizeIp).filter(Boolean))] }; state.geo = { ...state.geo, ...payload }; const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.geo, player_name: '__ALLOWED_GEO_IPS__', ip_address: 'SYSTEM', device_info: state.geo.mode, status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' }); if (error) throw error; renderGeo(); }
     async function addClass5Ip(ip) {
         const cleanIp = String(typeof ip === 'object' ? ip?.ip : ip || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
         if (!cleanIp) return notify('Nhập IP máy cần cấp quyền Lớp 5.', true);
@@ -5120,11 +5137,6 @@
             return counts;
         }, {});
         const legacyCount = questionCounts.history || 0;
-        console.debug('[Quiz Studio Admin] Subject count diagnostics:', subjects.map((subject) => ({
-            key: subject.key,
-            storedCount: Number(subject.count || 0),
-            loadedQuestionCount: questionCounts[subjectMatchKey(subject.key)] || 0
-        })));
         $('subject-count') && ($('subject-count').textContent = subjects.length);
 
         const { folderMap, activeFolders } = getAdminSubjectFolders(subjects);
@@ -5974,7 +5986,6 @@
             state.logins = data.slice();
         }
         if (error) {
-            console.error('[Quiz Studio Admin] Không tải được phiên học sinh:', error);
             return notify(`Không thể tải giám sát học sinh: ${error.message}`, true);
         }
         if (state.isClearingStudents) return;
@@ -6426,11 +6437,10 @@
                 }
             } catch (e) {
                 loadError = e?.message || 'Không thể tải dữ liệu tiến trình.';
-                console.warn('Lỗi tải tiến trình:', e);
             }
 
             if (!logins || logins.length === 0) logins = state.logins || [];
-            if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(logins).catch((err) => console.warn('[Quiz Studio Admin] Auto-submit stale attempts failed:', err)); }
+            if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(logins).catch(() => {}); }
 
             const systemIds = Object.values(SYSTEM || {});
             const studentRows = (logins || []).filter(r => {
@@ -6509,7 +6519,7 @@
                 const nextReqs = { ...(state.renameRequests || {}) };
                 completedRenameCodes.forEach((code) => delete nextReqs[code]);
                 state.renameRequests = nextReqs;
-                persistRosterPayload({ grade5: state.rosterConfig?.grade5, grade11: state.rosterConfig?.grade11, devicePins: state.devicePins || {}, renameRequests: nextReqs }).catch((error) => console.warn('[Quiz Studio Admin] Không thể dọn yêu cầu đổi tên đã hoàn thành:', error));
+                persistRosterPayload({ grade5: state.rosterConfig?.grade5, grade11: state.rosterConfig?.grade11, devicePins: state.devicePins || {}, renameRequests: nextReqs }).catch(() => {});
             }
              allParsed.forEach((p) => {
                  const ownIps = new Set((p._ips || []).map((ip) => String(ip).trim().toLowerCase()).filter((ip) => ip && !['', '—', 'chưa xác định', 'system'].includes(ip)));

@@ -7,7 +7,7 @@
 class QuizApp {
     constructor() {
         // Môn học & Đa môn học động (Ghi nhớ môn đã chọn gần nhất)
-        this.currentSubject = localStorage.getItem('quiz_last_selected_subject') || '';
+        this.currentSubject = this.safeStorageGet('quiz_last_selected_subject') || '';
         this.homeGradeFilter = 'all';
         this.dynamicSubjects = [];
         this.rosterConfig = null;
@@ -45,7 +45,7 @@ class QuizApp {
         this.examSecondsRemaining = 45 * 60;
 
         // Âm thanh Ting / Bíp (Web Audio API)
-        this.soundEnabled = localStorage.getItem('quiz_sound_enabled') !== 'false';
+        this.soundEnabled = this.safeStorageGet('quiz_sound_enabled') !== 'false';
 
         // Dữ liệu câu hỏi & Đáp án người dùng
         this.allQuestions = [];
@@ -85,11 +85,14 @@ class QuizApp {
         this.hasLocalTestIpParam = _localTestState.hasTestIp;
         this.localTestIpOverride = _localTestState.override;
         const _isolateLocalProfile = this.localTestIpOverride || this.hasLocalTestIpParam;
-        this.userToken = _isolateLocalProfile ? '' : (localStorage.getItem('quiz_access_token') || '').trim();
+        this.userToken = _isolateLocalProfile ? '' : (this.safeStorageGet('quiz_access_token') || '').trim();
         this.tokenInfo = null;
         try {
-            const cachedToken = _isolateLocalProfile ? '' : localStorage.getItem('quiz_token_info');
-            if (cachedToken) this.tokenInfo = JSON.parse(cachedToken);
+            const cachedToken = _isolateLocalProfile ? '' : this.safeStorageGet('quiz_token_info');
+            if (cachedToken) {
+                const parsedToken = JSON.parse(cachedToken);
+                this.tokenInfo = parsedToken && typeof parsedToken === 'object' && !Array.isArray(parsedToken) ? parsedToken : null;
+            }
             if (_isolateLocalProfile) {
                 ['quiz_admin_token', 'quiz_access_token', 'quiz_token_info', 'quiz_is_admin', 'quiz_admin_authenticated', 'quiz_admin_saved_ip']
                     .forEach((key) => localStorage.removeItem(key));
@@ -104,8 +107,11 @@ class QuizApp {
         this.geoMode = 'PRIVATE';
         this.class5AllowedIps = [];
         try {
-            const cachedG5 = localStorage.getItem('quiz_cache_grade5_ips');
-            if (cachedG5) this.class5AllowedIps = JSON.parse(cachedG5);
+            const cachedG5 = this.safeStorageGet('quiz_cache_grade5_ips');
+            if (cachedG5) {
+                const parsedG5 = JSON.parse(cachedG5);
+                this.class5AllowedIps = Array.isArray(parsedG5) ? parsedG5 : [];
+            }
         } catch (e) {}
 
         // Chế độ bảo trì hệ thống (Maintenance Mode)
@@ -148,10 +154,10 @@ class QuizApp {
         }, 300);
 
         // Chuẩn hóa Model Gemini về danh sách model đang được hỗ trợ.
-        const savedModel = localStorage.getItem('gemini_model');
+        const savedModel = this.safeStorageGet('gemini_model');
         const supportedGeminiModels = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
         if (!supportedGeminiModels.includes(savedModel)) {
-            localStorage.setItem('gemini_model', supportedGeminiModels[0]);
+            this.safeStorageSet('gemini_model', supportedGeminiModels[0]);
         }
         this.selectedGeminiModel = supportedGeminiModels.includes(savedModel) ? savedModel : supportedGeminiModels[0];
 
@@ -832,7 +838,7 @@ class QuizApp {
         }
 
         if ((!Array.isArray(loaded) || loaded.length === 0) && (!navigator.onLine || !cloudAvailable)) {
-            const cached = localStorage.getItem('quiz_dynamic_subjects');
+            const cached = this.safeStorageGet('quiz_dynamic_subjects');
             if (cached) {
                 try { loaded = JSON.parse(cached); } catch (e) { }
             }
@@ -842,7 +848,7 @@ class QuizApp {
         if (!Array.isArray(loaded)) loaded = [];
 
         this.dynamicSubjects = loaded;
-        localStorage.setItem('quiz_dynamic_subjects', JSON.stringify(loaded));
+        this.safeStorageSet('quiz_dynamic_subjects', JSON.stringify(loaded));
         console.debug('[QuizApp] Dynamic subjects loaded:', {
             online: navigator.onLine,
             cloudAvailable,
@@ -864,6 +870,32 @@ class QuizApp {
         const gradeMatch = source.match(/(?:^|[^0-9])(5|11)(?:$|[^0-9])/);
         // Môn không có metadata cũ được coi là Lớp 11 để hệ thống chỉ còn hai lớp cố định.
         return gradeMatch ? gradeMatch[1] : '11';
+    }
+
+    safeStorageGet(key, storage = 'local') {
+        try {
+            const store = storage === 'session' ? window.sessionStorage : window.localStorage;
+            return store.getItem(String(key));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    safeStorageSet(key, value, storage = 'local') {
+        try {
+            const store = storage === 'session' ? window.sessionStorage : window.localStorage;
+            store.setItem(String(key), String(value));
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    safeStorageRemove(key, storage = 'local') {
+        try {
+            const store = storage === 'session' ? window.sessionStorage : window.localStorage;
+            store.removeItem(String(key));
+        } catch (e) {}
     }
 
     getCurrentSubjectObj() {
@@ -5199,7 +5231,7 @@ Giải thích: Biên độ A = 5 cm.`;
         if (typeof MathNotation !== 'undefined' && typeof MathNotation.format === 'function') {
             return MathNotation.format(text);
         }
-        return typeof text === 'string' ? text : String(text ?? '');
+        return this.escapeHtml(typeof text === 'string' ? text : String(text ?? ''));
     }
 
     escapeHtml(value) {
@@ -6871,11 +6903,12 @@ Giải thích: Biên độ A = 5 cm.`;
 
     loadAutoSaveProgress() {
         const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
-        const saved = localStorage.getItem(key);
+        const saved = this.safeStorageGet(key);
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'answers')) {
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+                    && parsed.answers && typeof parsed.answers === 'object' && !Array.isArray(parsed.answers)) {
                     if (parsed.savedAt && (Date.now() - Number(parsed.savedAt) >= 5 * 60 * 1000)) {
                         try { localStorage.removeItem(key); } catch (e) {}
                         this.userAnswers = {};
@@ -6898,9 +6931,9 @@ Giải thích: Biên độ A = 5 cm.`;
 
     saveAutoSaveProgress() {
         const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
-        localStorage.setItem(key, JSON.stringify({
+        this.safeStorageSet(key, JSON.stringify({
             attemptId: this.quizAttemptId || null,
-            answers: this.userAnswers,
+            answers: this.userAnswers && typeof this.userAnswers === 'object' ? this.userAnswers : {},
             savedAt: Date.now()
         }));
     }
@@ -6917,7 +6950,7 @@ Giải thích: Biên độ A = 5 cm.`;
             }
             return;
         }
-        localStorage.removeItem(`${prefix}${this.playerName}`);
+        this.safeStorageRemove(`${prefix}${this.playerName}`);
     }
 
     renderAllQuestions(skipExitAnimation = false, skipEnterAnimation = false) {

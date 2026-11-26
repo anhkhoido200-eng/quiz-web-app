@@ -11,6 +11,11 @@
             .replace(/'/g, '&#39;');
     }
 
+    function validSessionToken(value) {
+        const token = String(value ?? '').trim();
+        return token.length >= 16 && token.length <= 256 && /^[A-Za-z0-9._~:-]+$/.test(token) ? token : '';
+    }
+
     function isSafeImageUrl(url) {
         const raw = String(url || '').trim();
         if (!raw) return false;
@@ -388,7 +393,9 @@
                 const tokenKey = `arena_session_${code.toUpperCase()}_${playerKey}`;
                 let savedToken = '';
                 try { savedToken = sessionStorage.getItem(tokenKey) || ''; } catch (e) {}
-                this.sessionToken = savedToken || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                this.sessionToken = validSessionToken(savedToken) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                this.sessionToken = validSessionToken(this.sessionToken);
+                if (!this.sessionToken) return showErr('Không thể tạo phiên thi hợp lệ.');
                 try { sessionStorage.setItem(tokenKey, this.sessionToken); } catch (e) {}
 
                 await this.syncClock();
@@ -841,6 +848,8 @@
 
         async submitAnswer(questionId, selectedDisplay, textAnswer, tfAnswers = null) {
             if (this.isSubmitting) return;
+            this.sessionToken = validSessionToken(this.sessionToken);
+            if (!this.sessionToken || !this.attempt?.id || !questionId) return;
             this.isSubmitting = true;
             this.setAnswerControlsDisabled(true);
 
@@ -939,8 +948,12 @@
 
         enqueuePendingAnswer(payload) {
             if (!this.pendingQueueKey) return;
+            const token = validSessionToken(payload?.p_session_token || this.sessionToken);
+            if (!token) return;
             try {
-                const list = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]');
+                const parsed = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]');
+                const list = Array.isArray(parsed) ? parsed.filter((item) => validSessionToken(item?.p_session_token)) : [];
+                payload = { ...payload, p_session_token: token };
                 if (!list.some((x) => x.p_question_id === payload.p_question_id)) {
                     list.push(payload);
                 }
@@ -951,8 +964,13 @@
         async flushPendingAnswers() {
             const client = getClient();
             if (!client || !navigator.onLine || !this.pendingQueueKey || this.isFlushingQueue) return;
+            this.sessionToken = validSessionToken(this.sessionToken);
+            if (!this.sessionToken || !this.attempt?.id) return;
             let list = [];
-            try { list = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]'); } catch (e) { list = []; }
+            try {
+                const parsed = JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]');
+                list = Array.isArray(parsed) ? parsed : [];
+            } catch (e) { list = []; }
             let pendingFinishReason = '';
             try { pendingFinishReason = this.pendingFinishKey ? (localStorage.getItem(this.pendingFinishKey) || '') : ''; } catch (e) {}
 
@@ -964,6 +982,7 @@
                 let sessionReplaced = false;
                 let matchTimeUp = false;
                 for (const item of list) {
+                    if (!item || validSessionToken(item.p_session_token) !== this.sessionToken) continue;
                     const { _retryCount = 0, ...rpcPayload } = item || {};
                     let data = null;
                     let error = null;
@@ -1041,11 +1060,17 @@
         async flushPendingViolations() {
             const client = getClient();
             if (!client || !navigator.onLine || !this.attempt?.id) return;
+            this.sessionToken = validSessionToken(this.sessionToken);
+            if (!this.sessionToken) return;
             const key = `arena_pending_violations_${this.attempt.id}`;
             let list = [];
-            try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return; }
+            try {
+                const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+                list = Array.isArray(parsed) ? parsed : [];
+            } catch (e) { return; }
             const remaining = [];
             for (const payload of list) {
+                if (!payload || validSessionToken(payload.p_session_token) !== this.sessionToken) continue;
                 try {
                     const { data, error } = await client.rpc('arena_log_violation', payload);
                     if (error) remaining.push(payload);
@@ -1139,6 +1164,8 @@
 
         async handleViolation(eventType) {
             if (!this.attempt?.id || this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED') return;
+            this.sessionToken = validSessionToken(this.sessionToken);
+            if (!this.sessionToken) return;
             const now = Date.now();
             if (now - this.lastViolationAt < 1000) return;
             this.lastViolationAt = now;
@@ -1191,6 +1218,8 @@
         },
 
         async finishAttempt(reason = 'USER_SUBMIT') {
+            this.sessionToken = validSessionToken(this.sessionToken);
+            if (!this.sessionToken || !this.attempt?.id) return;
             this.unbindAntiCheat();
             clearInterval(this.tickTimer);
             this.tickTimer = null;
