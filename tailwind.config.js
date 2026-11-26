@@ -3,9 +3,8 @@ module.exports = {
   content: [
     './index.html',
     './admin.html',
-    './app.js',
-    './admin.js',
-    './arena.js'
+    './assets/js/**/*.js',
+    './src/**/*.{html,js,css}'
   ],
   darkMode: 'class',
   theme: {

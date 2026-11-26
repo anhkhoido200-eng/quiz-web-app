@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { runInNewContext } = require('node:vm');
 const root = path.resolve(__dirname, '..');
-const renderSource = fs.readFileSync(path.join(root, 'app-render.js'), 'utf8');
-const accessSource = fs.readFileSync(path.join(root, 'admin-access.js'), 'utf8');
+const renderSource = fs.readFileSync(path.join(root, 'assets', 'js', 'app-render.js'), 'utf8');
+const accessSource = fs.readFileSync(path.join(root, 'assets', 'js', 'admin-access.js'), 'utf8');
 function rpcBlock(name) {
-  const sql = fs.readFileSync(path.join(root, 'supabase_arena_setup.sql'), 'utf8');
+  const sql = fs.readFileSync(path.join(root, 'supabase', 'sql', 'supabase_arena_setup.sql'), 'utf8');
   const at = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
   assert.ok(at >= 0, `thiếu RPC ${name}`);
   const next = sql.indexOf('CREATE OR REPLACE FUNCTION public.', at + 10);

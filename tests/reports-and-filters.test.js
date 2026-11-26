@@ -5,7 +5,7 @@ const { join } = require('node:path');
 const { runInNewContext } = require('node:vm');
 
 const window = {};
-runInNewContext(readFileSync(join(__dirname, '../admin-reports.js'), 'utf8'), { window });
+runInNewContext(readFileSync(join(__dirname, '../assets/js/admin-reports.js'), 'utf8'), { window });
 const { filterReportRows, calculateWrongQuestionStats, reportSubmittedAt } = window.AdminReports;
 
 test('lọc đồng thời theo lớp, môn và ngày nộp theo giờ Việt Nam', () => {

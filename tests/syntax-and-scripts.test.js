@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 
 test('các file JavaScript chính có cú pháp hợp lệ', () => {
   for (const file of ['app.js', 'admin.js', 'admin-access.js', 'admin-reports.js', 'app-render.js', 'app-sync.js', 'arena.js', 'supabase.js', 'math-format.js']) {
-    assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', path.join(root, file)], { stdio: 'pipe' }), file);
+    assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', path.join(root, 'assets', 'js', file)], { stdio: 'pipe' }), file);
   }
 });
 

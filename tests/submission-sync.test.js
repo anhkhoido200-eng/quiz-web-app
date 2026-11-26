@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { runInNewContext } = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'app-sync.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'app-sync.js'), 'utf8');
 
 test('nộp bài giữ autosave khi cloud trả false hoặc throw và xóa khi xác nhận', async () => {
   const cases = [false, new Error('network'), true];
