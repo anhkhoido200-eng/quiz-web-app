@@ -168,9 +168,10 @@
     AppSync.flushStudentProgress = async function (app, attemptId = app.quizAttemptId) {
         if (app.hasAdminBypass()) return;
         const progress = app.pendingStudentProgress;
-        if (!progress || !attemptId || progress.attemptId !== attemptId || !app.currentLoginId ||
+        if (!progress || !attemptId || app.quizAttemptId !== attemptId || progress.attemptId !== attemptId || !app.currentLoginId ||
             !window.dbService || typeof window.dbService.updateStudentProgress !== 'function' || app.progressSyncRunning) return;
         app.progressSyncRunning = true;
+        if (app.pendingStudentProgress === progress) app.pendingStudentProgress = null;
         try {
             await window.dbService.updateStudentProgress(
                 app.currentLoginId,
@@ -181,10 +182,13 @@
                 progress.durationSeconds,
                 progress.detail
             );
+        } catch (error) {
+            console.warn('[QuizApp] Không thể đồng bộ tiến độ học sinh:', error);
         } finally {
             app.progressSyncRunning = false;
             // Nếu học sinh chọn thêm trong lúc request trước đang chạy, gửi snapshot mới nhất.
-            if (app.pendingStudentProgress && app.pendingStudentProgress !== progress && app.currentScreen === 'quiz') {
+            if (app.pendingStudentProgress && app.pendingStudentProgress !== progress && app.quizAttemptId === attemptId &&
+                app.pendingStudentProgress.attemptId === attemptId && app.currentScreen === 'quiz') {
                 app.flushStudentProgress(attemptId);
             }
         }
@@ -254,7 +258,8 @@
                     scoreSummary: `[${subjTitle}] Chờ nộp bài`,
                     sessionId: app.getOrCreateClientSessionId(), attemptId: app.quizAttemptId, newAttempt: true
                 });
-                app.currentLoginId = fallback?.id || (typeof fallback === 'string' ? fallback : null);
+                const fallbackId = fallback?.id || (typeof fallback === 'string' ? fallback : null);
+                app.currentLoginId = fallbackId && !String(fallbackId).startsWith('local_') ? fallbackId : null;
             } catch (error) {
                 console.warn('[QuizApp] Không thể tạo bản ghi phiên để nộp bài:', error);
             }
@@ -283,7 +288,7 @@
 
         // Cập nhật lên Supabase Cloud (bỏ qua nếu là Admin)
         let cloudConfirmed = false;
-        if (!isAdminBypass && window.dbService && app.currentLoginId && typeof window.dbService.updateLoginStatus === 'function') {
+        if (!isAdminBypass && window.dbService && app.currentLoginId && !String(app.currentLoginId).startsWith('local_') && typeof window.dbService.updateLoginStatus === 'function') {
             let summaryWithDetail = `[${subjTitle}] Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm) - ${timeStr}`;
             try {
                 summaryWithDetail += `\n__DETAIL__:${JSON.stringify(app.buildStudentProgressDetail())}`;

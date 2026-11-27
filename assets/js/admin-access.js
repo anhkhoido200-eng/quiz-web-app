@@ -9,6 +9,80 @@ window.AdminAccess.configure = function (context) {
         renderGrade5ProgressMonitor
     } = context;
 
+    const adminTokenTtlMs = 30 * 60 * 1000;
+    const adminTokenKey = 'quiz_admin_token';
+    const adminTokenExpiryKey = 'quiz_admin_token_expires_at';
+    let bootstrapOnly = false;
+    let adminExpiryTimer;
+
+    function clearAdminToken() {
+        try { localStorage.removeItem(adminTokenKey); } catch (error) {}
+        try {
+            sessionStorage.removeItem(adminTokenKey);
+            sessionStorage.removeItem(adminTokenExpiryKey);
+        } catch (error) {}
+    }
+
+    function storeAdminToken(token, expiresAt) {
+        sessionStorage.setItem(adminTokenExpiryKey, String(expiresAt));
+        sessionStorage.setItem(adminTokenKey, token);
+    }
+
+    function readAdminToken() {
+        try { localStorage.removeItem(adminTokenKey); } catch (error) {}
+        try {
+            const expiresAt = Number(sessionStorage.getItem(adminTokenExpiryKey));
+            const token = (sessionStorage.getItem(adminTokenKey) || '').trim();
+            if (token && Number.isFinite(expiresAt) && expiresAt > Date.now()) return { token, expiresAt };
+        } catch (error) {}
+        clearAdminToken();
+        return { token: '', expiresAt: 0 };
+    }
+
+    function hasAdminConfig(config) {
+        return Boolean(String(config.masterIp || '').trim() || String(config.masterDeviceCode || '').trim() ||
+            (Array.isArray(config.allowedIps) ? config.allowedIps.length : Array.isArray(config.ips) && config.ips.length));
+    }
+
+    async function verifyAdminCredentials({ password = null, token = null }, retry = Boolean(token)) {
+        let result;
+        try {
+            const request = state.client.rpc('admin_verify_login', {
+                p_password: password, p_admin_token: token, p_ip: state.clientIp || null
+            });
+            result = await (typeof request.abortSignal === 'function' ? request.abortSignal(AbortSignal.timeout(10000)) : request);
+        } catch (error) {
+            result = { error };
+        }
+        if (result.error) {
+            const code = String(result.error.code || '');
+            if (code === 'PGRST202' || code === '42883') {
+                throw new Error('Máy chủ chưa có RPC xác thực Admin. Cần chạy supabase_security_migration.sql.');
+            }
+            const message = String(result.error.message || '');
+            const transient = /network|fetch failed|failed to fetch|timeout|abort|connection/i.test(message) ||
+                ['AbortError', 'TimeoutError'].includes(result.error.name);
+            if (transient && retry) return verifyAdminCredentials({ token }, false);
+            throw new Error('Tạm thời không thể xác thực với máy chủ. Vui lòng thử lại.');
+        }
+        return result.data;
+    }
+
+    function storeAdminSession(auth, expiresAt) {
+        const token = auth.token || auth.session_token;
+        if (!token) throw new Error('Máy chủ không trả về phiên Admin.');
+        const serverExpiry = Date.parse(auth.expires_at || auth.expiresAt);
+        const expiry = Math.min(expiresAt || Infinity, Number.isFinite(serverExpiry) ? serverExpiry : Date.now() + adminTokenTtlMs);
+        if (expiry <= Date.now()) throw new Error('Phiên Admin đã hết hạn.');
+        if (typeof window.dbService?.setAdminSessionToken === 'function') {
+            window.dbService.setAdminSessionToken(token, new Date(expiry).toISOString());
+        } else {
+            sessionStorage.setItem('quiz_admin_session_expires_at', String(expiry));
+            sessionStorage.setItem('quiz_admin_session_token', token);
+        }
+        return expiry;
+    }
+
     function maskIpAddress(ip) {
         const clean = String(ip || '').trim();
         if (!clean || clean === 'Chưa xác định' || clean === 'Không xác định IP') return 'Không xác định IP';
@@ -124,183 +198,194 @@ window.AdminAccess.configure = function (context) {
             }
         } catch (e) {}
 
-        // CHỈ đọc quiz_admin_token, TUYỆT ĐỐI KHÔNG đọc quiz_access_token (token học sinh)
-        // Admin credentials must not survive browser/profile export or remain
-        // available to unrelated tabs after the authenticated session ends.
-        // Keep the token only for the current tab session; URL tokens are
-        // scrubbed above before being persisted here.
-        let storedToken = '';
-        try { storedToken = (sessionStorage.getItem('quiz_admin_token') || '').trim(); } catch (e) {}
-        try { localStorage.removeItem('quiz_admin_token'); } catch (e) {}
-        const currentToken = urlAdminToken || storedToken;
-        const persistValidAdminToken = () => {
-            if (!urlAdminToken) return;
-            try { sessionStorage.setItem('quiz_admin_token', urlAdminToken); } catch (e) {}
+        const stored = readAdminToken();
+        const currentToken = urlAdminToken || stored.token;
+        const tokenExpiry = urlAdminToken ? Date.now() + adminTokenTtlMs : stored.expiresAt;
+        const row = await systemRow(SYSTEM.admin);
+        const config = JSON.parse(row?.score_summary || '{}');
+        bootstrapOnly = !hasAdminConfig(config);
+        if (bootstrapOnly) return false;
+        state.adminConfig = {
+            masterIp: String(config.masterIp || '').trim(),
+            masterDeviceCode: String(config.masterDeviceCode || '').trim().toUpperCase(),
+            allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
+        };
+        const sessionExpiry = Number(sessionStorage.getItem('quiz_admin_session_expires_at'));
+        const sessionToken = window.dbService?.getAdminSessionToken?.() || (sessionExpiry > Date.now() ? sessionStorage.getItem('quiz_admin_session_token') : '');
+        if (!sessionToken && !currentToken) return false;
+        let auth = sessionToken ? await verifyAdminCredentials({ token: sessionToken }) : null;
+        let usedAccessToken = false;
+        if (!auth?.valid && currentToken) {
+            auth = await verifyAdminCredentials({ token: currentToken });
+            usedAccessToken = true;
+        }
+        if (!auth?.valid) return false;
+        const accept = (matchedToken = false) => {
+            const sessionDeadline = storeAdminSession(auth, usedAccessToken ? tokenExpiry : sessionExpiry);
+            if (urlAdminToken && (usedAccessToken || matchedToken)) storeAdminToken(urlAdminToken, tokenExpiry);
+            const deadline = matchedToken ? Math.min(sessionDeadline, tokenExpiry) : sessionDeadline;
+            window.clearTimeout(adminExpiryTimer);
+            adminExpiryTimer = window.setTimeout(() => window.location.reload(), Math.max(0, deadline - Date.now()));
+            return true;
+        };
+        const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
+        const myDeviceCode = String(state.deviceCode || '').trim().toUpperCase();
+        const masterDeviceCode = state.adminConfig.masterDeviceCode;
+        const normalizeAdminCode = (value) => {
+            const clean = String(value || '').trim().toLowerCase();
+            if (!clean) return '';
+            const parts = clean.split('-');
+            // IP-Token / IP-Mã: chỉ dùng phần mã sau IP khi xác thực Admin.
+            return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
+                ? parts.slice(1).join('-')
+                : clean;
+        };
+        const matchesAllowedDevice = (item) => {
+            if (!myDeviceCode || !item) return false;
+            if (typeof item === 'string') {
+                const up = item.trim().toUpperCase();
+                return up === myDeviceCode || up.endsWith('-' + myDeviceCode);
+            }
+            const itemDev = String(item.deviceCode || '').trim().toUpperCase();
+            const itemRaw = String(item.rawCode || '').trim().toUpperCase();
+            const itemTok = String(item.token || '').trim().toUpperCase();
+            return itemDev === myDeviceCode || itemRaw === myDeviceCode || itemTok === myDeviceCode || itemTok.endsWith('-' + myDeviceCode);
         };
 
-        const row = await systemRow(SYSTEM.admin);
-        if (!row) return false;
-        try {
-            const config = JSON.parse(row.score_summary || '{}');
-            state.adminConfig = {
-                masterIp: String(config.masterIp || '').trim(),
-                masterDeviceCode: String(config.masterDeviceCode || '').trim().toUpperCase(),
-                allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
-            };
-            const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
-            const myDeviceCode = String(state.deviceCode || '').trim().toUpperCase();
-            const masterDeviceCode = state.adminConfig.masterDeviceCode;
-            const normalizeAdminCode = (value) => {
-                const clean = String(value || '').trim().toLowerCase();
-                if (!clean) return '';
-                const parts = clean.split('-');
-                // IP-Token / IP-Mã: chỉ dùng phần mã sau IP khi xác thực Admin.
-                return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
-                    ? parts.slice(1).join('-')
-                    : clean;
-            };
-            const matchesAllowedDevice = (item) => {
-                if (!myDeviceCode || !item) return false;
+        // 1. Khớp Mã máy Master hoặc Mã máy trong danh sách Admin
+        if (masterDeviceCode && myDeviceCode === masterDeviceCode) return accept();
+        if (myDeviceCode && state.adminConfig.allowedIps.some(matchesAllowedDevice)) return accept();
+
+        // 2. Nếu CHƯA khóa theo mã máy Master thì mới cho phép khớp theo Master IP / IP whitelist
+        if (!masterDeviceCode) {
+            if (state.clientIp && state.clientIp === state.adminConfig.masterIp) return accept();
+            if (state.clientIp && ips.includes(state.clientIp)) return accept();
+        }
+
+        // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
+        const isPlainIpAddress = (value) => {
+            const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+            return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
+        };
+        if (currentToken) {
+            const tok = currentToken.toLowerCase();
+            const tokCode = normalizeAdminCode(tok);
+            const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
+                if (!tok || tok.length < 6 || isPlainIpAddress(tok)) return false;
                 if (typeof item === 'string') {
-                    const up = item.trim().toUpperCase();
-                    return up === myDeviceCode || up.endsWith('-' + myDeviceCode);
+                    const str = item.trim().toLowerCase();
+                    if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
+                    const strCode = normalizeAdminCode(str);
+                    return str === tok || (Boolean(tokCode) && tokCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === tokCode);
                 }
-                const itemDev = String(item.deviceCode || '').trim().toUpperCase();
-                const itemRaw = String(item.rawCode || '').trim().toUpperCase();
-                const itemTok = String(item.token || '').trim().toUpperCase();
-                return itemDev === myDeviceCode || itemRaw === myDeviceCode || itemTok === myDeviceCode || itemTok.endsWith('-' + myDeviceCode);
-            };
+                const itemToken = String(item.token || '').toLowerCase();
+                const itemRaw = String(item.rawCode || '').toLowerCase();
+                if (tok && tok.length >= 6) {
+                    if (itemToken && !isPlainIpAddress(itemToken) && itemToken === tok) return true;
+                    if (itemRaw && !isPlainIpAddress(itemRaw) && itemRaw === tok) return true;
+                    if (tokCode && !isPlainIpAddress(tokCode) && normalizeAdminCode(itemToken) === tokCode) return true;
+                    if (tokCode && !isPlainIpAddress(tokCode) && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
+                }
+                return false;
+            });
+            if (isTokenMatch) return accept(true);
+        }
 
-            // 1. Khớp Mã máy Master hoặc Mã máy trong danh sách Admin
-            if (masterDeviceCode && myDeviceCode === masterDeviceCode) return true;
-            if (myDeviceCode && state.adminConfig.allowedIps.some(matchesAllowedDevice)) return true;
-
-            // 2. Nếu CHƯA khóa theo mã máy Master thì mới cho phép khớp theo Master IP / IP whitelist
-            if (!masterDeviceCode) {
-                if (state.clientIp && state.clientIp === state.adminConfig.masterIp) return true;
-                if (state.clientIp && ips.includes(state.clientIp)) return true;
-            }
-
-            // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
-            const isPlainIpAddress = (value) => {
-                const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
-                return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
-            };
-            if (currentToken) {
-                const tok = currentToken.toLowerCase();
-                const tokCode = normalizeAdminCode(tok);
-                const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
-                    if (!tok || tok.length < 6 || isPlainIpAddress(tok)) return false;
-                    if (typeof item === 'string') {
-                        const str = item.trim().toLowerCase();
-                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
-                        const strCode = normalizeAdminCode(str);
-                        return str === tok || (Boolean(tokCode) && tokCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === tokCode);
-                    }
-                    const itemToken = String(item.token || '').toLowerCase();
-                    const itemRaw = String(item.rawCode || '').toLowerCase();
-                    if (tok && tok.length >= 6) {
-                        if (itemToken && !isPlainIpAddress(itemToken) && itemToken === tok) return true;
-                        if (itemRaw && !isPlainIpAddress(itemRaw) && itemRaw === tok) return true;
-                        if (tokCode && !isPlainIpAddress(tokCode) && normalizeAdminCode(itemToken) === tokCode) return true;
-                        if (tokCode && !isPlainIpAddress(tokCode) && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
-                    }
-                    return false;
-                });
-                if (isTokenMatch) { persistValidAdminToken(); return true; }
-            }
-
-            // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
-            try {
+        // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
+        if (currentToken) {
             const row8 = await systemRow(SYSTEM.tokens);
-                if (row8 && row8.score_summary) {
-                    const tokens = JSON.parse(row8.score_summary || '[]');
-                    if (Array.isArray(tokens)) {
-                        // CHỈ CHẤP NHẬN ROLE ADMIN, TUYỆT ĐỐI KHÔNG CHẤP NHẬN ROLE ALL HOẶC PARENT
-                        const adminTokens = tokens.filter(t => t.role === 'admin');
-                        if (currentToken) {
-                            const tok = currentToken.toLowerCase();
-                            const tokCode = normalizeAdminCode(tok);
-                            const foundAdmin = adminTokens.find(t => {
-                                const tToken = String(t.token || '').toLowerCase();
-                                const tRaw = String(t.rawCode || '').toLowerCase();
-                                if (tok && tok.length >= 6) {
-                                    if (tToken && tToken === tok) return true;
-                                    if (tRaw && tRaw === tok) return true;
-                                    if (tokCode && normalizeAdminCode(tToken) === tokCode) return true;
-                                    if (tokCode && tRaw && normalizeAdminCode(tRaw) === tokCode) return true;
-                                }
-                                return false;
-                            });
-                            if (foundAdmin) { persistValidAdminToken(); return true; }
-                        }
+            if (row8 && row8.score_summary) {
+                const tokens = JSON.parse(row8.score_summary || '[]');
+                if (Array.isArray(tokens)) {
+                    // CHỈ CHẤP NHẬN ROLE ADMIN, TUYỆT ĐỐI KHÔNG CHẤP NHẬN ROLE ALL HOẶC PARENT
+                    const adminTokens = tokens.filter(t => t.role === 'admin');
+                    if (currentToken) {
+                        const tok = currentToken.toLowerCase();
+                        const tokCode = normalizeAdminCode(tok);
+                        const foundAdmin = adminTokens.find(t => {
+                            const tToken = String(t.token || '').toLowerCase();
+                            const tRaw = String(t.rawCode || '').toLowerCase();
+                            if (tok && tok.length >= 6) {
+                                if (tToken && tToken === tok) return true;
+                                if (tRaw && tRaw === tok) return true;
+                                if (tokCode && normalizeAdminCode(tToken) === tokCode) return true;
+                                if (tokCode && tRaw && normalizeAdminCode(tRaw) === tokCode) return true;
+                            }
+                            return false;
+                        });
+                        if (foundAdmin) return accept(true);
                     }
                 }
-            } catch (e) {}
+            }
+        }
 
-            return false;
-        } catch (error) { return false; }
+        return false;
     }
 
-    function denyAccess(reason = '') {
+    function clearAdminCredentials() {
+        window.clearTimeout(adminExpiryTimer);
+        clearAdminToken();
+        window.dbService?.setAdminSessionToken?.('');
+        try { localStorage.removeItem('quiz_admin_session_token'); } catch (error) {}
         try {
-            // Xóa mã admin không hợp lệ khỏi máy để tránh lặp lại
-            localStorage.removeItem('quiz_admin_token');
-            sessionStorage.removeItem('quiz_admin_token');
-            localStorage.removeItem('quiz_admin_session_token');
             sessionStorage.removeItem('quiz_admin_session_token');
             sessionStorage.removeItem('quiz_admin_session_expires_at');
-        } catch (e) {}
+        } catch (error) {}
+    }
+
+    function logout() {
+        $('app-shell')?.classList.add('hidden');
+        window.dbService?.logoutAdmin?.().catch(() => {});
+        clearAdminCredentials();
+    }
+
+    function showAccessScreen(reason = '') {
         $('app-shell')?.classList.add('hidden');
         $('access-denied')?.classList.remove('hidden');
+        $('admin-token-unlock-input')?.parentElement?.parentElement?.classList.toggle('hidden', bootstrapOnly);
         const message = document.querySelector('#access-denied .access-card p:not(.eyebrow)');
-        if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
+        if (message) message.textContent = reason || (bootstrapOnly
+            ? 'Đăng nhập bằng mật khẩu Master để thiết lập Admin lần đầu.'
+            : 'Thiết bị hoặc mã Admin hiện tại chưa được cấp quyền.');
+    }
+
+    function denyAccess() {
+        clearAdminCredentials();
+        showAccessScreen();
     }
 
     async function bootstrapAdmin() {
         ensureSupabaseClient();
-        if (!state.clientIp) state.clientIp = await getClientIp();
-        if (!state.clientIp || state.clientIp === 'Chưa xác định') return notify('Không xác định được IP máy hiện tại.', true);
-        const row = await systemRow(SYSTEM.admin);
-        if (!row) return notify('Chưa tìm thấy bản ghi cấu hình Admin trên Supabase.', true);
-        let config;
-        try { config = JSON.parse(row.score_summary || '{}'); } catch (error) { config = {}; }
-        const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
-        const masterIp = String(config.masterIp || '').trim();
-        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để xác thực qua máy chủ và thiết lập quyền Master lần đầu:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
+        const password = await promptDialog({ title: 'Đăng nhập Master Admin', message: 'Nhập mật khẩu Master', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
         if (password === null) return;
-        let verified = false;
-        if (typeof window.dbService?.verifyAdminLogin === 'function') {
-            const authRes = await window.dbService.verifyAdminLogin({ password, ip: state.clientIp });
-            const nextSessionTok = authRes?.token || authRes?.sessionToken;
-            if (nextSessionTok) {
-                if (typeof window.dbService?.setAdminSessionToken === 'function') {
-                    window.dbService.setAdminSessionToken(nextSessionTok, authRes?.expiresAt || null);
-                } else {
-                    try {
-                        sessionStorage.setItem('quiz_admin_session_token', String(nextSessionTok));
-                        localStorage.removeItem('quiz_admin_session_token');
-                    } catch (e) {}
-                }
+        if (!password) return notify('Vui lòng nhập mật khẩu Master.', true);
+        const auth = await verifyAdminCredentials({ password });
+        if (!auth?.valid || !(auth.token || auth.session_token)) return notify('Mật khẩu Admin không đúng.', true);
+        const row = await systemRow(SYSTEM.admin);
+        const config = JSON.parse(row?.score_summary || '{}');
+        if (!hasAdminConfig(config)) {
+            if (!state.clientIp) state.clientIp = await getClientIp();
+            if (!state.clientIp || !state.deviceCode) return notify('Không xác định được IP hoặc mã thiết bị.', true);
+            const now = new Date().toISOString();
+            const payload = { masterIp: state.clientIp, masterDeviceCode: state.deviceCode, allowedIps: [{ ip: state.clientIp, deviceCode: state.deviceCode, name: 'Thiết bị Master', addedAt: now, isMaster: true }] };
+            const record = { id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: now };
+            const table = state.client.from('quiz_logins');
+            const write = row
+                ? table.update(record).eq('id', SYSTEM.admin)
+                : table.insert(record);
+            if (row) {
+                if (row.score_summary == null) write.is('score_summary', null);
+                else write.eq('score_summary', row.score_summary);
             }
-            verified = Boolean(authRes?.valid || authRes?.ok || authRes?.verified || authRes === true);
-        } else {
-            const { data: rpcData, error: rpcErr } = await state.client.rpc('admin_verify_login', { p_password: String(password ?? ''), p_ip: state.clientIp || null }).catch((e) => ({ data: null, error: e }));
-            if (rpcErr) {
-                return notify('Chưa kích hoạt RPC xác thực Admin trên máy chủ (supabase_security_migration.sql).', true);
-            }
-            verified = Boolean(rpcData === true || rpcData?.valid || rpcData?.ok || rpcData?.verified);
+            const { data, error } = await write.select('id');
+            if (error) throw error;
+            if (!data?.length) throw new Error('Cấu hình Admin vừa thay đổi. Hãy tải lại trang.');
         }
-        if (!verified) return notify('Mật khẩu Admin không đúng.', true);
-        const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
-        const payload = { masterIp: state.clientIp, masterDeviceCode: myDeviceCode, allowedIps: [{ ip: state.clientIp, deviceCode: myDeviceCode, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
-        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
-        if (error) throw error;
-        notify('Đã thiết lập Master Admin. Đang tải lại bảng điều khiển.');
-        window.setTimeout(() => window.location.reload(), 700);
+        storeAdminSession(auth);
+        window.location.reload();
     }
-
     async function unlockAdminWithToken() {
+        if (bootstrapOnly) return;
         const val = $('admin-token-unlock-input')?.value.trim();
         if (!val) return notify('Vui lòng nhập hoặc dán mã IP-Token Admin.', true);
 
@@ -373,7 +458,14 @@ window.AdminAccess.configure = function (context) {
         }
 
         if (isMatch) {
-            sessionStorage.setItem('quiz_admin_token', val);
+            const auth = await verifyAdminCredentials({ token: val });
+            if (!auth?.valid) {
+                clearAdminToken();
+                return notify('Mã Admin không hợp lệ hoặc đã hết hạn.', true);
+            }
+            const expiresAt = Date.now() + adminTokenTtlMs;
+            storeAdminToken(val, expiresAt);
+            storeAdminSession(auth, expiresAt);
             notify('✅ Mở khóa Admin thành công! Đang vào hệ thống...');
             setTimeout(() => {
                 window.location.reload();
@@ -1995,6 +2087,7 @@ window.AdminAccess.configure = function (context) {
                 notify(error.message, true);
             });
         });
+        $('save-master-ip')?.addEventListener('click', () => toggleMasterIpLock().catch((error) => notify(error.message, true)));
         $('admin-ip-list')?.addEventListener('click', (event) => {
             const button = event.target.closest('[data-remove-admin]');
             if (!button) return;
@@ -2177,6 +2270,7 @@ window.AdminAccess.configure = function (context) {
         addAiIp, removeAiIp, bindAccessEvents, handleAccessClick, bindLoginEvents, loadAdminConfig,
         persistRosterPayload, renderQuickObservers, loadRosterConfig,
         saveDevicePin, unpinDevicePin, banIp, unbanIp, mergeDevicesToName, copyAdminIp,
-        isCurrentIpAllowed, denyAccess, showApp, loadGeo, loadAccess, syncPinnedNamesToLogins
+        isCurrentIpAllowed, denyAccess, showAccessScreen, logout, showApp, loadGeo, loadAccess, syncPinnedNamesToLogins,
+        bootstrapAdmin, unlockAdminWithToken, observerIsOnline, maskIpAddress, getClientIp
     });
 };

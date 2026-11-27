@@ -113,7 +113,7 @@
             const completed = denominatorRows.filter((row) => row.detail?.items?.length ? row.detail.items.every((item) => item.ok === true || item.ok === false) : row.correct >= row.total).length;
             const omissions = denominatorRows.map((row) => row.detail?.items?.length ? row.detail.items.filter((item) => item.ok !== true && item.ok !== false).length : row.total - row.correct).filter((value) => value >= 0);
             if (!omissions.length && Object.values(filters).every((value) => !value)) {
-                omissions.push(...state.reportOmissionCounts);
+                omissions.push(...(Array.isArray(state.reportOmissionCounts) ? state.reportOmissionCounts : []));
             }
             const dates = rows.map((row) => new Date(row.submittedAt).getTime()).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
             $('report-attempts').textContent = String(rows.length);
@@ -164,7 +164,6 @@
                 data.push(...(page || []));
                 if (!page || page.length < pageSize) break;
             }
-            if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(data).catch(() => 0); }
             const systemIds = new Set(Object.values(SYSTEM));
             state.reportOmissionCounts = data
                 .filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')))
@@ -206,6 +205,7 @@
 
         function renderQuizWrongStats() {
             const content = $('quiz-wrong-stats-content');
+            if (!content) return;
             const rows = calculateWrongQuestionStats(state.reportRows);
             if (!rows.length) {
                 content.textContent = 'Chưa có dữ liệu câu sai.';
@@ -230,20 +230,22 @@
             }
             try {
                 state.reportSourceRows = await fetchReportRows();
-                const select = $('report-subject');
+            const select = $('report-subject');
+            if (select) {
                 const current = select.value;
                 const subjects = [...new Set(state.reportSourceRows.map((row) => row.subject))].sort((a, b) => a.localeCompare(b, 'vi'));
                 select.replaceChildren(new Option('Tất cả môn', ''), ...subjects.map((subject) => new Option(subject, subject)));
                 select.value = subjects.includes(current) ? current : '';
+            }
                 applyReportFilters();
                 if ($('report-last-updated')) $('report-last-updated').textContent = `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`;
             } catch (error) {
                 state.reportSourceRows = null;
                 state.reportRows = null;
-                $('quiz-wrong-stats-content').textContent = 'Không thể tải dữ liệu.';
+                if ($('quiz-wrong-stats-content')) $('quiz-wrong-stats-content').textContent = 'Không thể tải dữ liệu.';
                 setReportState('error', error?.message || 'Không thể tải dữ liệu báo cáo.');
-                $('leaderboard-content').innerHTML = '';
-                $('leaderboard-summary').textContent = 'Không thể tải bảng xếp hạng.';
+                if ($('leaderboard-content')) $('leaderboard-content').innerHTML = '';
+                if ($('leaderboard-summary')) $('leaderboard-summary').textContent = 'Không thể tải bảng xếp hạng.';
             } finally {
                 state.reportLoading = false;
                 setActionBusy('refresh-score-report', false);

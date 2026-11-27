@@ -83,6 +83,7 @@ Giải thích: Biên độ A = 5 cm.`;
     }
 
     convertExcelRowsToQuestions(rows) {
+        this.importErrors = [];
         if (!Array.isArray(rows)) return [];
         const read = (row, ...keys) => {
             const key = keys.find((candidate) => Object.prototype.hasOwnProperty.call(row, candidate));
@@ -91,12 +92,17 @@ Giải thích: Biên độ A = 5 cm.`;
         const answerIndex = (value) => {
             const normalized = String(value ?? '').trim().toUpperCase();
             if (/^[0-3]$/.test(normalized)) return Number(normalized);
-            return ['A', 'B', 'C', 'D'].indexOf(normalized) >= 0 ? ['A', 'B', 'C', 'D'].indexOf(normalized) : 0;
+            const index = ['A', 'B', 'C', 'D'].indexOf(normalized);
+            return index >= 0 ? index : null;
         };
 
         return rows.map((row, index) => {
             const correctAnswer = String(read(row, 'Đáp án', 'Dap an', 'Đáp án đúng', 'Correct Answer')).trim().toUpperCase();
             const correctIndex = answerIndex(correctAnswer);
+            if (correctIndex === null) {
+                this.importErrors.push(`Dòng ${index + 2}: đáp án "${correctAnswer || '(trống)'}" không hợp lệ; chỉ chấp nhận A-D hoặc 0-3. Câu này không được lưu.`);
+                return null;
+            }
             return {
                 id: read(row, 'ID', 'Id', 'id') || undefined,
                 qType: 'mcq',
@@ -108,7 +114,7 @@ Giải thích: Biên độ A = 5 cm.`;
                 correctAnswer: ['A', 'B', 'C', 'D'][correctIndex],
                 explanation: String(read(row, 'Giải thích', 'Giai thich', 'Explanation') || '').trim()
             };
-        }).filter((item) => item.question);
+        }).filter((item) => item && item.question);
     }
 
     toggleAiProviderFields() {
@@ -249,11 +255,14 @@ Giải thích: Biên độ A = 5 cm.`;
             reader.onload = (e) => {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(firstSheet);
-                    this.parsedImportQuestions = this.convertExcelRowsToQuestions(json);
-                    this.renderImporterPreview();
+                     const workbook = XLSX.read(data, { type: 'array' });
+                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                     const json = XLSX.utils.sheet_to_json(firstSheet);
+                     this.parsedImportQuestions = this.convertExcelRowsToQuestions(json);
+                     this.renderImporterPreview();
+                     if (this.importErrors && this.importErrors.length) {
+                         this.showAlertModal(`Đã bỏ qua ${this.importErrors.length} dòng Excel lỗi:\n${this.importErrors.join('\n')}`);
+                     }
                 } catch (err) {
                     this.showAlertModal("Lỗi đọc file Excel: " + err.message);
                 }
@@ -925,14 +934,19 @@ Giải thích: Biên độ A = 5 cm.`;
         }
 
         try {
-            let cloudOk = true;
-            let errMsg = '';
+            let cloudOk = false;
+            let errMsg = 'Không có dịch vụ Cloud khả dụng.';
             if (window.dbService && typeof window.dbService.saveQuestionsBulk === 'function') {
-                const res = await window.dbService.saveQuestionsBulk(targetSubject, cleanQuestions, replaceAll);
-                if (res && res.success === false) {
-                    cloudOk = false;
-                    errMsg = res.error || 'Lỗi lưu trữ Cloud';
-                    console.error("Lỗi Supabase khi lưu đề:", res.error);
+                try {
+                    const res = await window.dbService.saveQuestionsBulk(targetSubject, cleanQuestions, replaceAll);
+                    cloudOk = Boolean(res && res.success === true);
+                    if (!cloudOk) {
+                        errMsg = (res && res.error) || 'Cloud không xác nhận lưu thành công.';
+                        console.error("Lỗi Supabase khi lưu đề:", errMsg);
+                    }
+                } catch (cloudError) {
+                    errMsg = cloudError && cloudError.message ? cloudError.message : String(cloudError);
+                    console.error("Lỗi Supabase khi lưu đề:", cloudError);
                 }
             }
 

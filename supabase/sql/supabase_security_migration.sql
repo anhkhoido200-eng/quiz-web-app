@@ -23,17 +23,22 @@ ALTER TABLE public.rpc_rate_limits ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.rpc_rate_limits FROM anon, authenticated;
 CREATE OR REPLACE FUNCTION public.enforce_rate_limit(p_bucket TEXT, p_key TEXT, p_max_hits INTEGER, p_window_seconds INTEGER)
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_row public.rpc_rate_limits; v_now TIMESTAMPTZ := NOW();
+DECLARE v_count INTEGER; v_now TIMESTAMPTZ := NOW();
 BEGIN
     IF p_max_hits IS NULL OR p_max_hits < 1 OR p_window_seconds IS NULL OR p_window_seconds < 1 THEN RAISE EXCEPTION 'Invalid rate limit'; END IF;
-    DELETE FROM public.rpc_rate_limits WHERE window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now;
-    SELECT * INTO v_row FROM public.rpc_rate_limits WHERE bucket = COALESCE(p_bucket, '') AND rate_key = COALESCE(p_key, '') FOR UPDATE;
-    IF v_row.bucket IS NULL OR v_row.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN
-        INSERT INTO public.rpc_rate_limits(bucket, rate_key, window_started_at, hit_count) VALUES (COALESCE(p_bucket, ''), COALESCE(p_key, ''), v_now, 1)
-        ON CONFLICT (bucket, rate_key) DO UPDATE SET window_started_at = EXCLUDED.window_started_at, hit_count = 1;
-    ELSIF v_row.hit_count >= p_max_hits THEN RAISE EXCEPTION 'Rate limit exceeded';
-    ELSE UPDATE public.rpc_rate_limits SET hit_count = hit_count + 1 WHERE bucket = v_row.bucket AND rate_key = v_row.rate_key;
-    END IF;
+    INSERT INTO public.rpc_rate_limits(bucket, rate_key, window_started_at, hit_count)
+    VALUES (COALESCE(p_bucket, ''), COALESCE(p_key, ''), v_now, 1)
+    ON CONFLICT (bucket, rate_key) DO UPDATE
+    SET window_started_at = CASE
+            WHEN public.rpc_rate_limits.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN EXCLUDED.window_started_at
+            ELSE public.rpc_rate_limits.window_started_at
+        END,
+        hit_count = CASE
+            WHEN public.rpc_rate_limits.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN 1
+            ELSE public.rpc_rate_limits.hit_count + 1
+        END
+    RETURNING hit_count INTO v_count;
+    IF v_count > p_max_hits THEN RAISE EXCEPTION 'Rate limit exceeded'; END IF;
     RETURN true;
 END; $$;
 
@@ -248,12 +253,15 @@ REVOKE ALL ON TABLE public.quiz_questions FROM anon, authenticated;
 CREATE OR REPLACE FUNCTION public.admin_get_next_question_id()
 RETURNS INTEGER
 LANGUAGE SQL
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-    SELECT COALESCE(MAX(id), 0) + 1 FROM public.quiz_questions;
+    SELECT nextval('public.quiz_questions_id_seq')::INTEGER;
 $$;
+
+CREATE SEQUENCE IF NOT EXISTS public.quiz_questions_id_seq;
+SELECT setval('public.quiz_questions_id_seq', COALESCE((SELECT MAX(id) FROM public.quiz_questions), 0) + 1, false);
 
 ALTER TABLE public.quiz_questions ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'practice';
 
@@ -300,7 +308,7 @@ BEGIN
 
     v_id := NULLIF(TRIM(COALESCE(p_record->>'id', '')), '')::INTEGER;
     IF v_id IS NULL OR v_id <= 0 THEN
-        SELECT COALESCE(MAX(id), 0) + 1 INTO v_id FROM public.quiz_questions;
+        v_id := public.admin_get_next_question_id();
     END IF;
 
     INSERT INTO public.quiz_questions (
@@ -515,15 +523,22 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.public_get_roster_config()
 RETURNS TEXT
-LANGUAGE SQL
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-    SELECT COALESCE(NULLIF(score_summary, ''), '{"grade5":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"grade11":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"devicePins":{}}')
+DECLARE v_config JSONB;
+BEGIN
+    SELECT NULLIF(score_summary, '')::jsonb INTO v_config
     FROM public.quiz_logins
     WHERE id = '00000000-0000-0000-0000-000000000010'
     LIMIT 1;
+    RETURN COALESCE(v_config - 'devicePins' - 'renameRequests',
+        '{"grade5":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"grade11":{"enabled":false,"allowGuestsInPractice":true,"students":[]}}'::jsonb)::TEXT;
+EXCEPTION WHEN OTHERS THEN
+    RETURN '{"grade5":{"enabled":false,"allowGuestsInPractice":true,"students":[]},"grade11":{"enabled":false,"allowGuestsInPractice":true,"students":[]}}';
+END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.public_get_roster_config() TO anon, authenticated;
@@ -626,8 +641,6 @@ DECLARE
     v_ip TEXT := LOWER(TRIM(REGEXP_REPLACE(COALESCE(p_ip, ''), '^\[|\]$', '', 'g')));
     v_elem JSONB;
     v_t_val TEXT;
-    v_raw_val TEXT;
-    v_ip_val TEXT;
 BEGIN
     PERFORM public.enforce_rate_limit('public_verify_access_token', COALESCE(NULLIF(v_ip, ''), 'unknown-ip'), 20, 60);
     SELECT score_summary INTO v_raw FROM public.quiz_logins WHERE id = '00000000-0000-0000-0000-000000000008';
@@ -643,23 +656,8 @@ BEGIN
         FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tokens)
         LOOP
             v_t_val := LOWER(TRIM(COALESCE(v_elem->>'token', '')));
-            v_raw_val := LOWER(TRIM(COALESCE(v_elem->>'rawCode', '')));
-            v_ip_val := LOWER(TRIM(REGEXP_REPLACE(COALESCE(v_elem->>'ip', ''), '^\[|\]$', '', 'g')));
-            IF v_t_val = v_clean OR (v_raw_val <> '' AND v_raw_val = v_clean) OR (v_ip_val <> '' AND v_clean = v_ip_val) THEN
-                RETURN v_elem;
-            END IF;
-        END LOOP;
-    END IF;
-
-    IF v_ip <> '' THEN
-        FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tokens)
-        LOOP
-            v_t_val := LOWER(TRIM(COALESCE(v_elem->>'token', '')));
-            v_raw_val := LOWER(TRIM(COALESCE(v_elem->>'rawCode', '')));
-            v_ip_val := LOWER(TRIM(REGEXP_REPLACE(COALESCE(v_elem->>'ip', ''), '^\[|\]$', '', 'g')));
-            IF v_ip_val <> '' AND (v_ip = v_ip_val OR right(v_ip, length(v_ip_val)) = v_ip_val OR right(v_ip_val, length(v_ip)) = v_ip)
-               AND (v_raw_val = '' OR v_raw_val = v_ip_val) AND (v_t_val = '' OR v_t_val = v_ip_val) THEN
-                RETURN v_elem;
+            IF v_t_val = v_clean THEN
+                RETURN (v_elem - 'token' - 'rawCode' - 'ip' - 'deviceCode');
             END IF;
         END LOOP;
     END IF;
@@ -689,6 +687,10 @@ DECLARE
     v_ip TEXT := COALESCE(NULLIF(TRIM(COALESCE(p_ip_address, '')), ''), 'Chưa xác định');
     v_id UUID := COALESCE(p_id, gen_random_uuid());
 BEGIN
+    PERFORM public.enforce_rate_limit('student_record_login', COALESCE(NULLIF(TRIM(p_session_id), ''), 'anonymous'), 20, 60);
+    IF NULLIF(TRIM(COALESCE(p_session_id, '')), '') IS NULL OR LENGTH(TRIM(p_session_id)) < 16 THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
     IF p_id IN ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000010') THEN
         RAISE EXCEPTION 'Không được ghi bản ghi hệ thống';
     END IF;
@@ -722,13 +724,18 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.student_heartbeat(p_login_id UUID, p_last_active TIMESTAMPTZ DEFAULT NOW())
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_session_id TEXT;
 BEGIN
+    v_session_id := NULLIF(TRIM(COALESCE(current_setting('request.jwt.claim.session_id', true), '')), '');
+    IF v_session_id IS NULL THEN RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED'; END IF;
+    PERFORM public.enforce_rate_limit('student_heartbeat', v_session_id, 60, 60);
     UPDATE public.quiz_logins
     SET last_active = COALESCE(p_last_active, NOW())
     WHERE id = p_login_id
       AND player_name NOT LIKE '\_\_%'
       AND COALESCE(ip_address, '') <> 'SYSTEM'
-      AND status NOT LIKE 'BANNED%';
+      AND status NOT LIKE 'BANNED%'
+      AND session_id = v_session_id;
     RETURN FOUND;
 END; $$;
 
@@ -739,7 +746,11 @@ CREATE OR REPLACE FUNCTION public.student_update_progress(
     p_last_active TIMESTAMPTZ DEFAULT NOW()
 )
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_session_id TEXT;
 BEGIN
+    v_session_id := NULLIF(TRIM(COALESCE(current_setting('request.jwt.claim.session_id', true), '')), '');
+    IF v_session_id IS NULL THEN RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED'; END IF;
+    PERFORM public.enforce_rate_limit('student_update_progress', v_session_id, 60, 60);
     UPDATE public.quiz_logins
     SET status = CASE WHEN status LIKE 'BANNED%' THEN status ELSE COALESCE(NULLIF(TRIM(p_status), ''), status) END,
         score_summary = CASE WHEN COALESCE(p_score_summary, '') <> '' THEN p_score_summary ELSE score_summary END,
@@ -749,13 +760,14 @@ BEGIN
       AND COALESCE(ip_address, '') <> 'SYSTEM'
       AND status NOT LIKE 'BANNED%'
       AND status NOT ILIKE '%đã nộp bài%'
-      AND status NOT ILIKE '%hoàn thành%';
+      AND status NOT ILIKE '%hoàn thành%'
+      AND session_id = v_session_id;
     RETURN FOUND;
 END; $$;
 
 CREATE OR REPLACE FUNCTION public.public_get_login_by_ip(p_ip TEXT)
 RETURNS JSONB LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-    SELECT jsonb_build_object('playerName', l.player_name, 'deviceInfo', l.device_info, 'lastActive', l.last_active)
+    SELECT jsonb_build_object('playerName', l.player_name)
     FROM public.quiz_logins l
     WHERE l.ip_address = TRIM(COALESCE(p_ip, ''))
       AND l.player_name NOT LIKE '\_\_%'

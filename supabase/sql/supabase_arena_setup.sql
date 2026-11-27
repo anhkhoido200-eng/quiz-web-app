@@ -35,17 +35,22 @@ ALTER TABLE public.rpc_rate_limits ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.rpc_rate_limits FROM anon, authenticated;
 CREATE OR REPLACE FUNCTION public.enforce_rate_limit(p_bucket TEXT, p_key TEXT, p_max_hits INTEGER, p_window_seconds INTEGER)
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_row public.rpc_rate_limits; v_now TIMESTAMPTZ := NOW();
+DECLARE v_count INTEGER; v_now TIMESTAMPTZ := NOW();
 BEGIN
-    IF p_max_hits < 1 OR p_window_seconds < 1 THEN RAISE EXCEPTION 'Invalid rate limit'; END IF;
-    DELETE FROM public.rpc_rate_limits WHERE window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now;
-    SELECT * INTO v_row FROM public.rpc_rate_limits WHERE bucket = COALESCE(p_bucket, '') AND rate_key = COALESCE(p_key, '') FOR UPDATE;
-    IF v_row.bucket IS NULL OR v_row.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN
-        INSERT INTO public.rpc_rate_limits(bucket, rate_key, window_started_at, hit_count) VALUES (COALESCE(p_bucket, ''), COALESCE(p_key, ''), v_now, 1)
-        ON CONFLICT (bucket, rate_key) DO UPDATE SET window_started_at = EXCLUDED.window_started_at, hit_count = 1;
-    ELSIF v_row.hit_count >= p_max_hits THEN RAISE EXCEPTION 'Rate limit exceeded';
-    ELSE UPDATE public.rpc_rate_limits SET hit_count = hit_count + 1 WHERE bucket = v_row.bucket AND rate_key = v_row.rate_key;
-    END IF;
+    IF p_max_hits IS NULL OR p_max_hits < 1 OR p_window_seconds IS NULL OR p_window_seconds < 1 THEN RAISE EXCEPTION 'Invalid rate limit'; END IF;
+    INSERT INTO public.rpc_rate_limits(bucket, rate_key, window_started_at, hit_count)
+    VALUES (COALESCE(p_bucket, ''), COALESCE(p_key, ''), v_now, 1)
+    ON CONFLICT (bucket, rate_key) DO UPDATE
+    SET window_started_at = CASE
+            WHEN public.rpc_rate_limits.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN EXCLUDED.window_started_at
+            ELSE public.rpc_rate_limits.window_started_at
+        END,
+        hit_count = CASE
+            WHEN public.rpc_rate_limits.window_started_at + (p_window_seconds * INTERVAL '1 second') <= v_now THEN 1
+            ELSE public.rpc_rate_limits.hit_count + 1
+        END
+    RETURNING hit_count INTO v_count;
+    IF v_count > p_max_hits THEN RAISE EXCEPTION 'Rate limit exceeded'; END IF;
     RETURN true;
 END; $$;
 
@@ -180,7 +185,7 @@ $$;
 -- =========================================================================
 CREATE OR REPLACE FUNCTION public.arena_get_server_time()
 RETURNS TIMESTAMPTZ
-LANGUAGE SQL
+LANGUAGE plpgsql
 STABLE
 SET search_path = public, pg_temp
 AS $$
@@ -264,7 +269,8 @@ $$;
 -- =========================================================================
 -- RPC 3: TRA CỨU BẢNG XẾP HẠNG, TRẠNG THÁI PHIÊN & NHẬT KÝ AN TOÀN
 -- =========================================================================
-CREATE OR REPLACE FUNCTION public.arena_get_leaderboard(p_room_id UUID)
+DROP FUNCTION IF EXISTS public.arena_get_leaderboard(UUID);
+CREATE OR REPLACE FUNCTION public.arena_get_leaderboard(p_room_id UUID, p_session_token TEXT)
 RETURNS TABLE (
     id UUID,
     player_name TEXT,
@@ -276,12 +282,23 @@ RETURNS TABLE (
     violation_count INTEGER,
     finish_reason TEXT
 )
-LANGUAGE SQL
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-    SELECT
+BEGIN
+    IF NULLIF(TRIM(COALESCE(p_session_token, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
+    PERFORM public.enforce_rate_limit('arena_get_leaderboard', TRIM(p_session_token), 60, 60);
+    IF NOT EXISTS (
+        SELECT 1 FROM public.match_attempts own
+        WHERE own.room_id = p_room_id AND own.active_session_token = TRIM(p_session_token)
+    ) AND NOT public.is_valid_admin_session(p_session_token) THEN
+        RAISE EXCEPTION 'Không có quyền xem bảng xếp hạng phòng này';
+    END IF;
+    RETURN QUERY SELECT
         a.id,
         a.player_name,
         a.status,
@@ -294,6 +311,7 @@ AS $$
     FROM public.match_attempts a
     WHERE a.room_id = p_room_id
     ORDER BY a.correct_count DESC, a.score DESC, a.total_time_ms ASC, a.violation_count ASC;
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.arena_get_room_state(
@@ -313,6 +331,10 @@ DECLARE
     v_session_replaced BOOLEAN := false;
     v_safe_attempt JSONB := NULL;
 BEGIN
+    IF NULLIF(TRIM(COALESCE(p_session_token, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'SESSION_TOKEN_REQUIRED';
+    END IF;
+    PERFORM public.enforce_rate_limit('arena_get_room_state', TRIM(p_session_token), 60, 60);
     SELECT * INTO v_room FROM public.match_rooms WHERE id = p_room_id;
     IF v_room.id IS NULL THEN
         RETURN jsonb_build_object('room', NULL, 'attempt', NULL, 'session_replaced', false);
@@ -320,8 +342,10 @@ BEGIN
 
     IF p_attempt_id IS NOT NULL THEN
         SELECT * INTO v_attempt FROM public.match_attempts WHERE id = p_attempt_id AND room_id = p_room_id;
-        IF v_attempt.id IS NOT NULL THEN
-            IF p_session_token IS NOT NULL AND v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
+        IF v_attempt.id IS NULL AND NOT public.is_valid_admin_session(p_session_token) THEN
+            RAISE EXCEPTION 'Không có quyền truy cập phiên thi này';
+        ELSIF v_attempt.id IS NOT NULL THEN
+            IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
                 v_session_replaced := true;
             ELSE
                 v_safe_attempt := jsonb_build_object(
@@ -342,6 +366,8 @@ BEGIN
                 );
             END IF;
         END IF;
+    ELSIF NOT public.is_valid_admin_session(p_session_token) THEN
+        RAISE EXCEPTION 'Thiếu phiên thi hợp lệ';
     END IF;
 
     RETURN jsonb_build_object(
@@ -636,6 +662,16 @@ BEGIN
         RAISE EXCEPTION 'SESSION_REPLACED';
     END IF;
     IF v_attempt.status IN ('SUBMITTED', 'FORCED') THEN
+        RETURN jsonb_build_object('already_submitted', true, 'attempt', public.arena_safe_attempt(v_attempt));
+    END IF;
+
+    IF v_attempt.current_index >= jsonb_array_length(COALESCE(v_attempt.question_order, '[]'::jsonb)) THEN
+        UPDATE public.match_attempts
+        SET status = 'SUBMITTED',
+            submitted_at = COALESCE(submitted_at, v_now),
+            finish_reason = COALESCE(finish_reason, 'ALL_QUESTIONS_ANSWERED')
+        WHERE id = v_attempt.id
+        RETURNING * INTO v_attempt;
         RETURN jsonb_build_object('already_submitted', true, 'attempt', public.arena_safe_attempt(v_attempt));
     END IF;
 
@@ -937,7 +973,8 @@ $$;
 DROP FUNCTION IF EXISTS public.arena_get_wrong_question_stats(TEXT, INTEGER);
 CREATE OR REPLACE FUNCTION public.arena_get_wrong_question_stats(
     p_subject_key TEXT DEFAULT NULL,
-    p_limit INTEGER DEFAULT 15
+    p_limit INTEGER DEFAULT 15,
+    p_admin_token TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     subject_key TEXT,
@@ -947,12 +984,16 @@ RETURNS TABLE (
     total_attempts BIGINT,
     wrong_rate NUMERIC
 )
-LANGUAGE SQL
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-    SELECT
+BEGIN
+    IF NOT public.is_valid_admin_session(p_admin_token) THEN
+        RAISE EXCEPTION 'Chỉ quản trị viên mới có quyền xem thống kê câu sai';
+    END IF;
+    RETURN QUERY SELECT
         q.subject_key,
         COALESCE(q.category, 'Bài học') AS category,
         q.question,
@@ -967,9 +1008,17 @@ AS $$
     HAVING COUNT(*) FILTER (WHERE NOT a.is_correct) > 0
     ORDER BY wrong_attempts DESC, wrong_rate DESC, total_attempts DESC
     LIMIT GREATEST(1, LEAST(50, COALESCE(p_limit, 15)));
+END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.arena_get_wrong_question_stats(TEXT, INTEGER, TEXT) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_leaderboard(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_leaderboard(UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.arena_get_leaderboard(UUID, TEXT) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.arena_get_room_state(UUID, UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.arena_get_room_state(UUID, UUID, TEXT) TO anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.arena_submit_answer(UUID, TEXT, INTEGER, INTEGER, TEXT, INTEGER, JSONB, BOOLEAN) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.arena_submit_answer(UUID, TEXT, INTEGER, INTEGER, TEXT, INTEGER, JSONB, BOOLEAN, INTEGER) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.arena_log_violation(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;

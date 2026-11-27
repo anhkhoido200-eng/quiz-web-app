@@ -4251,6 +4251,9 @@ class QuizApp {
      * thành chuẩn LaTeX / KaTeX sắc nét, loại bỏ triệt để các ký hiệu // thô kệch.
      */
     formatScientificNotation(text) {
+        if (window.AppRender && typeof window.AppRender.formatScientificNotation === 'function') {
+            return window.AppRender.formatScientificNotation(text);
+        }
         if (typeof MathNotation !== 'undefined' && typeof MathNotation.format === 'function') {
             return MathNotation.format(text);
         }
@@ -4258,6 +4261,7 @@ class QuizApp {
     }
 
     escapeHtml(value) {
+        if (window.AppRender && typeof window.AppRender.escapeHtml === 'function') return window.AppRender.escapeHtml(value);
         return String(value ?? '').replace(/[&<>"']/g, (character) => ({
             '&': '&amp;',
             '<': '&lt;',
@@ -4268,6 +4272,7 @@ class QuizApp {
     }
 
     escapeJsString(value) {
+        if (window.AppRender && typeof window.AppRender.escapeJsString === 'function') return window.AppRender.escapeJsString(value);
         return String(value ?? '')
             .replace(/\\/g, '\\\\')
             .replace(/'/g, "\\'")
@@ -4278,17 +4283,28 @@ class QuizApp {
     }
 
     attrArg(value) {
+        if (window.AppRender && typeof window.AppRender.attrArg === 'function') return window.AppRender.attrArg(value);
         if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-        return `'${this.escapeJsString(value).replace(/"/g, '&quot;')}'`;
+        return this.escapeHtml(`'${this.escapeJsString(value)}'`);
     }
 
     sanitizeMediaUrl(url) {
+        if (window.AppRender && typeof window.AppRender.sanitizeMediaUrl === 'function') return window.AppRender.sanitizeMediaUrl(url);
         const raw = String(url ?? '').trim();
         if (!raw) return '';
         if (/^https?:\/\//i.test(raw) || /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[a-z0-9+/=]+$/i.test(raw)) {
             return raw;
         }
         return '';
+    }
+
+    domKey(qId) {
+        if (window.AppRender && typeof window.AppRender.domKey === 'function') return window.AppRender.domKey(qId);
+        return String(qId ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    isAiFeatureEnabled() {
+        return true;
     }
 
     formatRelativeTime(isoString) {
@@ -5748,13 +5764,14 @@ class QuizApp {
             return;
         }
 
+        const qKey = this.domKey(qId);
         const isResultVisible = this.screens.result && !this.screens.result.classList.contains('hidden');
-        const reviewDiv = document.getElementById(`ai-explanation-review-${qId}`);
-        const quizDiv = document.getElementById(`ai-explanation-${qId}`);
+        const reviewDiv = document.getElementById(`ai-explanation-review-${qKey}`);
+        const quizDiv = document.getElementById(`ai-explanation-${qKey}`);
         const targetDiv = isResultVisible ? (reviewDiv || quizDiv) : (quizDiv || reviewDiv);
 
-        const reviewBtn = document.getElementById(`ai-btn-review-${qId}`);
-        const quizBtn = document.getElementById(`ai-btn-${qId}`);
+        const reviewBtn = document.getElementById(`ai-btn-review-${qKey}`);
+        const quizBtn = document.getElementById(`ai-btn-${qKey}`);
         const btn = isResultVisible ? (reviewBtn || quizBtn) : (quizBtn || reviewBtn);
 
         if (!targetDiv) return;

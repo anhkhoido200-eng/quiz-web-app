@@ -97,13 +97,19 @@ window.AdminImport.configure = function (context) {
         try {
             const selectedSubject = String($('import-subject-select')?.value || state.importSubject || '').trim();
             if (!selectedSubject) throw new Error('Chưa chọn môn đích cho bộ câu hỏi.');
-            state.importSubject = selectedSubject; let replaceIdsToDelete = [];
-            if ($('import-replace')?.checked) {
+            state.importSubject = selectedSubject;
+            const replacing = Boolean($('import-replace')?.checked);
+            let replaceIdsToDelete = [];
+            let replaceRows = [];
+            let insertedIds = [];
+            if (replacing) {
                 const rawKeys = Array.from(new Set([selectedSubject, ...(state.questions || []).filter((q) => subjectMatchKey(q.subject_key || q.subjectKey) === subjectMatchKey(selectedSubject)).map((q) => String(q.subject_key || q.subjectKey || '').trim()).filter(Boolean)]));
-                const oldRowsQuery = rawKeys.length > 1 ? state.client.from('quiz_questions').select('id').in('subject_key', rawKeys) : state.client.from('quiz_questions').select('id').eq('subject_key', selectedSubject);
+                const oldRowsQuery = rawKeys.length > 1 ? state.client.from('quiz_questions').select('*').in('subject_key', rawKeys) : state.client.from('quiz_questions').select('*').eq('subject_key', selectedSubject);
                 const { data: oldRows, error: oldErr } = await oldRowsQuery; if (oldErr) throw oldErr; replaceIdsToDelete = (oldRows || []).map((r) => r.id).filter(Boolean);
+                replaceRows = oldRows || [];
             }
             const firstId = await nextQuestionId(); const records = state.importQuestions.map((item, index) => toRecord(item, selectedSubject, firstId + index));
+            insertedIds = records.map((record) => record.id).filter(Boolean);
             const verifiedCount = await upsertRestoredRows(records, { returnIds: true });
             if (verifiedCount < records.length) throw new Error(`Cloud chỉ xác minh ${verifiedCount}/${records.length} câu vừa nhập ở môn ${selectedSubject}.`);
             if (replaceIdsToDelete.length > 0) {
@@ -112,7 +118,33 @@ window.AdminImport.configure = function (context) {
                 for (let i = 0; i < safeDeleteIds.length; i += 50) { const { error: delErr } = await state.client.from('quiz_questions').delete().in('id', safeDeleteIds.slice(i, i + 50)); if (delErr) throw delErr; }
             }
             addActivityLog('Nạp JSON câu hỏi hàng loạt', `Đã lưu ${records.length} câu vào môn ${subjectName(selectedSubject)}`, 'import'); notify(`Đã lưu và xác minh ${records.length} câu vào môn ${selectedSubject}.`); sessionStorage.removeItem('quiz_import_draft'); closeModal('import-modal'); await loadQuestions();
-        } catch (error) { notify(`Không thể lưu danh sách: ${error.message}`, true); } finally { state.importSaving = false; setActionBusy('save-import', false); }
+        } catch (error) {
+            let rollbackError = null;
+            if (replacing && insertedIds.length > 0 && state.client) {
+                try {
+                    for (let i = 0; i < insertedIds.length; i += 50) {
+                        const { error: rollbackDeleteError } = await state.client.from('quiz_questions').delete().in('id', insertedIds.slice(i, i + 50));
+                        if (rollbackDeleteError) throw rollbackDeleteError;
+                    }
+                    if (replaceRows.length > 0) {
+                        const rowsToRestore = replaceRows.map((row) => ({
+                            ...row,
+                            is_deleted: false,
+                            deleted_at: null,
+                            deleted_by: null
+                        }));
+                        const restoredCount = await upsertRestoredRows(rowsToRestore, { returnIds: true });
+                        if (restoredCount < replaceRows.length) throw new Error(`chỉ khôi phục ${restoredCount}/${replaceRows.length} câu cũ`);
+                    }
+                } catch (restoreError) {
+                    rollbackError = restoreError;
+                }
+            }
+            const detail = rollbackError
+                ? ` Dữ liệu có thể chưa được khôi phục đầy đủ: ${rollbackError.message || rollbackError}.`
+                : (replacing && insertedIds.length > 0 ? ' Đã hủy các câu mới và cố gắng khôi phục dữ liệu cũ.' : '');
+            notify(`Không thể hoàn tất thay thế bộ câu hỏi: ${error.message || error}.${detail}`, true);
+        } finally { state.importSaving = false; setActionBusy('save-import', false); }
     }
 
     async function handleImportFile(file) {

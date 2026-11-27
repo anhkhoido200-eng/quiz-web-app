@@ -309,281 +309,40 @@
     }
 
     loadAutoSaveProgress() {
-        const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
-        const saved = this.safeStorageGet(key);
-        if (saved) {
+        const result = window.AppSync.loadAutoSaveProgress(this);
+        if (this.isExamMode) {
+            const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
             try {
-                const parsed = JSON.parse(saved);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-                    && parsed.answers && typeof parsed.answers === 'object' && !Array.isArray(parsed.answers)) {
-                    if (parsed.savedAt && (Date.now() - Number(parsed.savedAt) >= 5 * 60 * 1000)) {
-                        try { localStorage.removeItem(key); } catch (e) {}
-                        this.userAnswers = {};
-                        return;
-                    }
-                    if (parsed.attemptId) {
-                        this.quizAttemptId = parsed.attemptId;
-                    }
-                    this.userAnswers = parsed.answers || {};
-                } else {
-                    this.userAnswers = parsed || {};
+                const saved = JSON.parse(localStorage.getItem(key) || 'null');
+                if (saved && saved.attemptId === this.quizAttemptId && Number.isFinite(Number(saved.examSecondsRemaining))) {
+                    const elapsed = Math.max(0, Math.floor((Date.now() - Number(saved.savedAt || Date.now())) / 1000));
+                    this.examSecondsRemaining = Math.max(0, Number(saved.examSecondsRemaining) - elapsed);
                 }
-            } catch (e) {
-                this.userAnswers = {};
-            }
-        } else {
-            this.userAnswers = {};
+            } catch (e) {}
         }
+        return result;
     }
 
     saveAutoSaveProgress() {
+        const result = window.AppSync.saveAutoSaveProgress(this);
         const key = `quiz_autosave_${this.currentSubject}_${this.playerName}`;
-        this.safeStorageSet(key, JSON.stringify({
-            attemptId: this.quizAttemptId || null,
-            answers: this.userAnswers && typeof this.userAnswers === 'object' ? this.userAnswers : {},
-            savedAt: Date.now()
-        }));
+        try {
+            const saved = JSON.parse(localStorage.getItem(key) || '{}');
+            saved.attemptId = this.quizAttemptId || saved.attemptId || null;
+            saved.answers = this.userAnswers || {};
+            saved.savedAt = Date.now();
+            if (this.isExamMode) saved.examSecondsRemaining = Math.max(0, Number(this.examSecondsRemaining) || 0);
+            localStorage.setItem(key, JSON.stringify(saved));
+        } catch (e) {}
+        return result;
     }
 
     clearAutoSaveProgress(clearSubjectProgress = false) {
-        const prefix = `quiz_autosave_${this.currentSubject}_`;
-        if (clearSubjectProgress) {
-            try {
-                Object.keys(localStorage).forEach((key) => {
-                    if (key.startsWith(prefix)) localStorage.removeItem(key);
-                });
-            } catch (error) {
-                console.warn('Không thể xóa toàn bộ tiến độ tạm:', error);
-            }
-            return;
-        }
-        this.safeStorageRemove(`${prefix}${this.playerName}`);
+        return window.AppSync.clearAutoSaveProgress(this, clearSubjectProgress);
     }
 
     renderAllQuestions(skipExitAnimation = false, skipEnterAnimation = false) {
-        const container = document.getElementById('questions-container');
-        if (!container) return;
-
-        // Let the current cards leave before inserting the freshly-rendered state.
-        // This keeps answer feedback readable without changing quiz logic.
-        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        if (!skipExitAnimation && !reduceMotion && container.querySelector('.quiz-question-card')) {
-            clearTimeout(this.questionRenderTimer);
-            container.classList.add('question-list-exit');
-            this.questionRenderTimer = setTimeout(() => {
-                container.classList.remove('question-list-exit');
-                this.renderAllQuestions(true, skipEnterAnimation);
-            }, 180);
-            return;
-        }
-        clearTimeout(this.questionRenderTimer);
-        container.classList.remove('question-list-exit');
-
-        container.innerHTML = '';
-
-        if (this.isExamMode && !this.isReviewingResult && this.currentFilter === 'wrong') {
-            this.currentFilter = 'all';
-        }
-
-        const questions = this.allQuestions || [];
-        const filtered = questions.filter(q => {
-            if (this.currentFilter === 'all') return true;
-            if (this.currentFilter === 'mcq') return q.qType !== 'tf_group' && q.qType !== 'short_answer';
-            if (this.currentFilter === 'tf') return q.qType === 'tf_group';
-            if (this.currentFilter === 'short') return q.qType === 'short_answer';
-            if (this.currentFilter === 'wrong') {
-                if (this.isExamMode && !this.isReviewingResult) return true;
-                return this.isQuestionWrong(q);
-            }
-            return (q.category || '').toLowerCase().includes(this.currentFilter.toLowerCase());
-        });
-
-        if (filtered.length === 0) {
-            container.innerHTML = `<div class="p-8 text-center text-slate-400">Không có câu hỏi nào thuộc danh mục này.</div>`;
-            return;
-        }
-
-        const fragment = document.createDocumentFragment();
-
-        filtered.forEach((q, idx) => {
-            const card = document.createElement('div');
-            card.id = `q-card-${this.escapeHtml(q.id)}`;
-            const animationClass = !skipEnterAnimation ? ' question-card-enter' : '';
-            card.className = `glass-card-pro quiz-question-card${animationClass} rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4`;
-            card.style.setProperty('--question-index', Math.min(idx, 6));
-
-            // Render hình ảnh đính kèm nếu có
-            const safeImgUrl = this.sanitizeMediaUrl(q.image_url || q.imageUrl);
-            const imgHtml = safeImgUrl ? `
-                <div class="my-3 rounded-xl overflow-hidden border border-slate-700 max-w-md mx-auto">
-                    <img src="${this.escapeHtml(safeImgUrl)}" alt="Hình minh họa" class="w-full object-contain max-h-64">
-                </div>
-            ` : '';
-
-            // Nút Hỏi AI dùng chung cho chế độ Luyện tập
-            const aiButtonHtml = !this.isExamMode ? `
-                <div class="mt-3 pt-2.5 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer">
-                        <i class="fa-solid fa-robot text-amber-300"></i>
-                        <span>Hỏi AI giải thích chi tiết</span>
-                    </button>
-                    <span class="text-[11px] text-blue-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
-                </div>
-                <div id="ai-explanation-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
-            ` : '';
-
-            // 1. Dạng Trắc Nghiệm 4 Đáp Án (MCQ)
-            if (q.qType !== 'tf_group' && q.qType !== 'short_answer') {
-                const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
-                const selected = this.userAnswers[q.id];
-                const isAnswered = selected !== undefined;
-                const showGrading = !this.isExamMode || this.isReviewingResult;
-                const lockMcq = this.isReviewingResult || (!this.isExamMode && isAnswered);
-                const rawCorrectIdx = q.correct !== undefined ? q.correct : q.answer;
-                const correctIdx = (rawCorrectIdx !== undefined && rawCorrectIdx !== null && rawCorrectIdx !== '') ? Number(rawCorrectIdx) : NaN;
-
-                card.innerHTML = `
-                    <div class="quiz-card-meta flex items-center justify-between gap-2">
-                        <span class="quiz-number">${String(idx + 1).padStart(2, '0')} <span>/ ${questions.length}</span></span>
-                        <span class="quiz-category">${this.escapeHtml(q.category || 'Trắc nghiệm')}</span>
-                    </div>
-                    <h3 class="quiz-question-title font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
-                    ${imgHtml}
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        ${(q.options || []).map((opt, oIdx) => {
-                    let optStyle = "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200";
-
-                    if (!showGrading) {
-                        if (selected === oIdx) {
-                            optStyle = "bg-sky-600/30 border-sky-500 text-white font-bold ring-2 ring-sky-500/50";
-                        }
-                    } else if (isAnswered || this.isReviewingResult) {
-                        if (oIdx === correctIdx) {
-                            optStyle = "bg-emerald-600/25 border-emerald-500 text-emerald-200 font-bold option-selected-correct";
-                        } else if (selected === oIdx) {
-                            optStyle = "bg-rose-600/25 border-rose-500 text-rose-200 font-bold option-selected-wrong";
-                        }
-                    }
-
-                    const feedbackIcon = showGrading && (isAnswered || this.isReviewingResult) && oIdx === correctIdx
-                        ? '<span class="answer-feedback-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>'
-                        : '';
-
-                    return `
-                                <button type="button" onclick="app.selectOption(${this.attrArg(q.id)}, ${oIdx})" ${lockMcq ? 'disabled' : ''} class="quiz-option-tile w-full p-3 sm:p-3.5 rounded-xl border text-left flex items-start gap-3 transition-colors cursor-pointer disabled:cursor-default ${optStyle}">
-                                    <span class="quiz-option-letter">${optChars[oIdx]}</span>
-                                    <span class="quiz-option-content text-xs sm:text-sm font-medium flex-1 pt-0.5">${this.formatScientificNotation(opt)}</span>
-                                    ${feedbackIcon}
-                                </button>
-                            `;
-                }).join('')}
-                    </div>
-                    ${(showGrading && (isAnswered || this.isReviewingResult) && q.explanation) ? `
-                        <div class="ui-accordion-wrap is-open practice-explanation-accordion"><div class="ui-accordion-inner"><div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed">
-                            <p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p>
-                            <p>${this.formatScientificNotation(q.explanation)}</p>
-                        </div></div></div>
-                    ` : ''}
-                    ${aiButtonHtml}
-                `;
-            }
-
-            // 2. Dạng Đúng/Sai Nhiều Ý (True / False Group)
-            else if (q.qType === 'tf_group') {
-                const ansObj = this.userAnswers[q.id] || {};
-                const stmts = q.statements || [];
-                const showGrading = !this.isExamMode || this.isReviewingResult;
-
-                card.innerHTML = `
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold text-xs">Câu ${idx + 1} (Đúng / Sai)</span>
-                        <span class="text-[11px] text-slate-400">${this.escapeHtml(q.category || 'Đúng/Sai')}</span>
-                    </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
-                    ${imgHtml}
-                    <div class="space-y-2.5 pt-1">
-                        ${stmts.map((st, sIdx) => {
-                    const val = ansObj[sIdx];
-                    const isAnswered = val !== undefined;
-                    const lockTf = this.isReviewingResult || (!this.isExamMode && isAnswered);
-
-                    let trueBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
-                    let falseBtnClass = "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500";
-
-                    if (!showGrading) {
-                        if (val === true) trueBtnClass = "bg-sky-600 border-sky-500 text-white font-bold";
-                        if (val === false) falseBtnClass = "bg-sky-600 border-sky-500 text-white font-bold";
-                    } else if (isAnswered) {
-                        if (val === true) {
-                            trueBtnClass = (st.answer === true) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                        }
-                        if (val === false) {
-                            falseBtnClass = (st.answer === false) ? "bg-emerald-600 border-emerald-500 text-white font-bold" : "bg-rose-600 border-rose-500 text-white font-bold";
-                        }
-                    }
-
-                    const trueStateClass = val === true
-                        ? `is-selected ${showGrading ? (st.answer === true ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (lockTf ? 'is-locked' : '');
-                    const falseStateClass = val === false
-                        ? `is-selected ${showGrading ? (st.answer === false ? 'is-selected-correct' : 'is-selected-wrong') : 'is-exam-selected'}`
-                        : (lockTf ? 'is-locked' : '');
-
-                    return `
-                                <div class="tf-statement-row p-2.5 sm:p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 text-xs" id="tf-row-${q.id}-${sIdx}">
-                                    <div class="flex items-start gap-2 flex-1 min-w-0">
-                                        <span class="font-bold text-sky-400 shrink-0">${String.fromCharCode(97 + sIdx)})</span>
-                                        <span class="text-slate-200 font-medium leading-relaxed break-words">${this.formatScientificNotation(st.text)}</span>
-                                    </div>
-                                    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-true" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, true)" ${lockTf ? 'disabled' : ''} aria-pressed="${val === true}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${trueStateClass} ${trueBtnClass}">
-                                            ĐÚNG
-                                        </button>
-                                        <button type="button" id="tf-btn-${q.id}-${sIdx}-false" onclick="app.selectTfOption(${this.attrArg(q.id)}, ${sIdx}, false)" ${lockTf ? 'disabled' : ''} aria-pressed="${val === false}" class="tf-choice-button px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-bold ${falseStateClass} ${falseBtnClass}">
-                                            SAI
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                }).join('')}
-                    </div>
-                    ${aiButtonHtml}
-                `;
-            }
-
-            // 3. Dạng Câu Trả Lời Ngắn (Short Answer)
-            else if (q.qType === 'short_answer') {
-                const hasSubmitted = this.hasSubmittedAnswer(q.id);
-                const userVal = hasSubmitted ? String(this.userAnswers[q.id] ?? '') : '';
-                const shortFeedbackHtml = (hasSubmitted || this.isReviewingResult) ? this.buildShortAnswerFeedbackHtml(q, userVal) : '';
-
-                const isInputLocked = this.isReviewingResult || (!this.isExamMode && hasSubmitted);
-
-                card.innerHTML = `
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs">Câu ${idx + 1} (Trả lời ngắn)</span>
-                        <span class="text-[11px] text-slate-400">${this.escapeHtml(q.category || 'Điền số/chữ')}</span>
-                    </div>
-                    <h3 class="font-bold text-white text-sm sm:text-base leading-relaxed">${this.formatScientificNotation(q.question)}</h3>
-                    ${imgHtml}
-                    <div class="pt-2 flex flex-col sm:flex-row gap-2">
-                        <input type="text" id="short-input-${this.escapeHtml(q.id)}" value="${this.escapeHtml(userVal)}" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onchange="app.saveShortAnswer(${this.attrArg(q.id)}, this.value)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); app.saveShortAnswer(${this.attrArg(q.id)}, this.value); }" placeholder="Nhập đáp án của bạn..." class="answer-text-input flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-base sm:text-sm outline-none focus:border-sky-500 font-mono ${hasSubmitted ? 'is-submitted' : ''}">
-                        <button type="button" ${isInputLocked ? 'disabled' : ''} aria-disabled="${isInputLocked}" onclick="app.saveShortAnswer(${this.attrArg(q.id)}, this.parentElement.querySelector('.answer-text-input').value)" class="answer-submit-button px-5 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer ${hasSubmitted ? 'is-submitted' : ''}">
-                            <i class="fa-solid ${hasSubmitted ? 'fa-check' : 'fa-arrow-right'}"></i>
-                            <span>${hasSubmitted ? (this.isExamMode ? 'Cập nhật' : 'Đã ghi nhận') : 'Ghi nhận'}</span>
-                        </button>
-                    </div>
-                    ${shortFeedbackHtml}
-                    ${aiButtonHtml}
-                `;
-            }
-
-            fragment.appendChild(card);
-        });
-
-        container.appendChild(fragment);
-
-        this.renderMath(container);
+        return window.AppRender.renderAllQuestions(this, skipExitAnimation, skipEnterAnimation);
     }
 
     selectOption(qId, oIdx) {
@@ -600,7 +359,8 @@
         this.updateLiveStats();
 
         // Cập nhật DOM cục bộ trong chế độ thi để tránh giật/nhảy trang
-        const card = document.getElementById(`q-card-${qId}`);
+        const qKey = this.domKey(qId);
+        const card = document.getElementById(`q-card-${qKey}`);
         if (card && this.isExamMode) {
             const optButtons = card.querySelectorAll('.quiz-option-tile');
             optButtons.forEach((btn, idx) => {
@@ -628,7 +388,7 @@
                 }
             });
             if (q.explanation && !card.querySelector('.practice-explanation-box')) {
-                const aiAnchor = document.getElementById(`ai-btn-${qId}`)?.closest('div');
+                const aiAnchor = document.getElementById(`ai-btn-${qKey}`)?.closest('div');
                 const expHtml = `<div class="ui-accordion-wrap practice-explanation-accordion" aria-hidden="false"><div class="ui-accordion-inner"><div class="practice-explanation-box p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed"><p class="font-bold text-amber-400 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-lightbulb"></i> Giải thích chi tiết:</p><p>${this.formatScientificNotation(q.explanation)}</p></div></div></div>`;
                 if (aiAnchor) {
                     aiAnchor.insertAdjacentHTML('beforebegin', expHtml);
@@ -670,8 +430,9 @@
         this.updateLiveStats();
 
         // Cập nhật DOM cục bộ NGAY LẬP TỨC (0ms lag, không vẽ lại toàn bộ danh sách gây nhảy cuộn)
-        const btnTrue = document.getElementById(`tf-btn-${qId}-${stmtIdx}-true`);
-        const btnFalse = document.getElementById(`tf-btn-${qId}-${stmtIdx}-false`);
+        const qKey = this.domKey(qId);
+        const btnTrue = document.getElementById(`tf-btn-${qKey}-${stmtIdx}-true`);
+        const btnFalse = document.getElementById(`tf-btn-${qKey}-${stmtIdx}-false`);
         if (btnTrue && btnFalse) {
             const q = this.allQuestions.find(item => String(item.id) === String(qId));
             const st = q?.statements?.[stmtIdx];
@@ -705,27 +466,7 @@
     }
 
     buildShortAnswerFeedbackHtml(question, userVal) {
-        const isCorrect = this.isShortAnswerCorrect(question, userVal);
-        const correctValue = String(question.correctValue ?? '').trim() || String(question.acceptedValues?.[0] ?? '').trim();
-        const showGrading = !this.isExamMode || this.isReviewingResult;
-        return `
-            <div class="short-answer-feedback ${!showGrading ? 'is-pending' : (isCorrect ? 'is-correct' : 'is-wrong')}" role="status" aria-live="polite">
-                <div class="short-answer-feedback-title">
-                    <i class="fa-solid ${!showGrading ? 'fa-lock' : (isCorrect ? 'fa-circle-check' : 'fa-circle-xmark')}"></i>
-                    <span>${!showGrading ? 'Đã ghi nhận câu trả lời' : (isCorrect ? 'Chính xác' : 'Chưa chính xác')}</span>
-                </div>
-                <div class="short-answer-feedback-line">
-                    <span>Bạn nhập:</span>
-                    <strong>${userVal ? this.escapeHtml(userVal) : 'Chưa trả lời'}</strong>
-                </div>
-                ${showGrading ? `
-                    <div class="short-answer-feedback-line">
-                        <span>Đáp án đúng:</span>
-                        <strong>${correctValue ? this.formatScientificNotation(correctValue) : 'Chưa thiết lập'}</strong>
-                    </div>
-                ` : ''}
-            </div>
-        `;
+        return window.AppRender.buildShortAnswerFeedbackHtml(this, question, userVal);
     }
 
     saveShortAnswer(qId, val) {
@@ -743,7 +484,8 @@
             delete this.userAnswers[qId];
             this.saveAutoSaveProgress();
             this.updateLiveStats();
-            const card = document.getElementById(`q-card-${qId}`);
+            const qKey = this.domKey(qId);
+            const card = document.getElementById(`q-card-${qKey}`);
             if (card) {
                 const inputEl = card.querySelector('.answer-text-input');
                 const submitBtn = card.querySelector('.answer-submit-button');
@@ -764,7 +506,8 @@
         this.saveAutoSaveProgress();
         this.updateLiveStats();
 
-        const card = document.getElementById(`q-card-${qId}`);
+        const qKey = this.domKey(qId);
+        const card = document.getElementById(`q-card-${qKey}`);
         if (!card) {
             this.renderAllQuestions(true, true);
             return;
@@ -826,15 +569,7 @@
                 const val = this.userAnswers[q.id];
                 if (val !== undefined) {
                     attemptedCount++;
-                    const userVal = String(val ?? '').trim().toLowerCase();
-                    const expectedVal = String(q.correctValue ?? q.answer ?? '').trim().toLowerCase();
-                    const isMatch = userVal !== '' && (
-                        (Array.isArray(q.acceptedValues) && q.acceptedValues.some(v => {
-                            const av = String(v ?? '').trim().toLowerCase();
-                            return av !== '' && av === userVal;
-                        })) ||
-                        (expectedVal !== '' && expectedVal === userVal)
-                    );
+                    const isMatch = this.isShortAnswerCorrect(q, val);
                     if (isMatch) correctCount++; else wrongCount++;
                 }
             } else if (q.qType === 'tf_group') {
@@ -871,137 +606,19 @@
         if (progressText) progressText.textContent = `Đã làm ${attemptedCount}/${totalItems} ý (${percent}%)`;
         if (progressBar) progressBar.style.width = `${percent}%`;
 
-        // Đồng bộ ngay lên Supabase; nếu attempt còn đang tạo thì giữ bản mới nhất
-        // và flush ngay sau khi loginRecordPromise trả về ID.
-        this.pendingStudentProgress = {
-            attemptedCount, totalItems, correctCount,
-            subjectName: this.getSubjectTitle(),
-            durationSeconds: this.isExamMode ? ((this.examMinutes * 60) - this.examSecondsRemaining) : this.secondsElapsed,
-            attemptId: this.quizAttemptId,
-            detail: this.buildStudentProgressDetail()
-        };
-        this.flushStudentProgress(this.quizAttemptId);
+        this.queueStudentProgress(attemptedCount, totalItems, correctCount);
     }
 
     buildStudentProgressDetail() {
-        const questions = this.allQuestions || [];
-        const cats = {};
-        const items = [];
-        const ensureCat = (name) => {
-            const key = String(name || 'Chung').trim() || 'Chung';
-            if (!cats[key]) cats[key] = [0, 0, 0];
-            return key;
-        };
+        return window.AppSync.buildStudentProgressDetail(this);
+    }
 
-        questions.forEach((q) => {
-            const cat = ensureCat(q.category);
-            if (q.qType === 'short_answer') {
-                cats[cat][2] += 1;
-                const val = this.userAnswers[q.id];
-                const hasVal = val !== undefined && String(val).trim() !== '';
-                let ok = null;
-                if (hasVal) {
-                    cats[cat][1] += 1;
-                    ok = (q.acceptedValues && q.acceptedValues.some(v => String(v).trim().toLowerCase() === String(val).trim().toLowerCase())) ||
-                        String(q.correctValue).trim().toLowerCase() === String(val).trim().toLowerCase();
-                    if (ok) cats[cat][0] += 1;
-                }
-                items.push({
-                    id: q.id,
-                    t: 'sa',
-                    cat,
-                    ok,
-                    ua: hasVal ? String(val).trim().slice(0, 60) : null,
-                    ca: String(q.correctValue ?? q.acceptedValues?.[0] ?? '').trim().slice(0, 60)
-                });
-            } else if (q.qType === 'tf_group') {
-                const ansObj = this.userAnswers[q.id] || {};
-                const stmts = q.statements || [];
-                const ua = [];
-                const ca = [];
-                let anyAnswered = false;
-                let anyWrong = false;
-                let allCorrect = stmts.length > 0;
-                stmts.forEach((st, idx) => {
-                    cats[cat][2] += 1;
-                    const expected = Boolean(st.answer);
-                    ca.push(expected);
-                    if (ansObj[idx] !== undefined) {
-                        anyAnswered = true;
-                        cats[cat][1] += 1;
-                        const chosen = Boolean(ansObj[idx]);
-                        ua.push(chosen);
-                        if (chosen === expected) cats[cat][0] += 1;
-                        else { anyWrong = true; allCorrect = false; }
-                    } else {
-                        ua.push(null);
-                        allCorrect = false;
-                    }
-                });
-                items.push({
-                    id: q.id,
-                    t: 'tf',
-                    cat,
-                    ok: anyAnswered ? (anyWrong ? false : (allCorrect ? true : null)) : null,
-                    ua,
-                    ca
-                });
-            } else {
-                cats[cat][2] += 1;
-                const sel = this.userAnswers[q.id];
-                const correctIdx = q.correct !== undefined ? q.correct : q.answer;
-                let ok = null;
-                if (sel !== undefined) {
-                    cats[cat][1] += 1;
-                    ok = Number(sel) === Number(correctIdx);
-                    if (ok) cats[cat][0] += 1;
-                }
-                items.push({
-                    id: q.id,
-                    t: 'mcq',
-                    cat,
-                    ok,
-                    ua: sel !== undefined ? sel : null,
-                    ca: correctIdx
-                });
-            }
-        });
-
-        return {
-            v: 1,
-            mode: this.isExamMode ? 'exam' : 'practice',
-            sec: Math.max(0, Math.round(this.isExamMode ? ((this.examMinutes * 60) - this.examSecondsRemaining) : (this.secondsElapsed || 0))),
-            revenge: Boolean(this.isRevengeMode || this.isMistakeMode),
-            outsideRoster: Boolean(this.currentAttemptOutsideRoster),
-            away: Number(this.awaySwitchCount || 0),
-            cats,
-            items
-        };
+    queueStudentProgress(attemptedCount, totalItems, correctCount) {
+        return window.AppSync.queueStudentProgress(this, attemptedCount, totalItems, correctCount);
     }
 
     async flushStudentProgress(attemptId = this.quizAttemptId) {
-        if (this.hasAdminBypass()) return;
-        const progress = this.pendingStudentProgress;
-        if (!progress || !attemptId || progress.attemptId !== attemptId || !this.currentLoginId ||
-            !window.dbService || typeof window.dbService.updateStudentProgress !== 'function' || this.progressSyncRunning) return;
-        this.progressSyncRunning = true;
-        try {
-            await window.dbService.updateStudentProgress(
-                this.currentLoginId,
-                progress.attemptedCount,
-                progress.totalItems,
-                progress.correctCount,
-                progress.subjectName,
-                progress.durationSeconds,
-                progress.detail
-            );
-        } finally {
-            this.progressSyncRunning = false;
-            // Nếu học sinh chọn thêm trong lúc request trước đang chạy, gửi snapshot mới nhất.
-            if (this.pendingStudentProgress && this.pendingStudentProgress !== progress && this.currentScreen === 'quiz') {
-                this.flushStudentProgress(attemptId);
-            }
-        }
+        return window.AppSync.flushStudentProgress(this, attemptId);
     }
 
     startStopwatch() {
@@ -1209,157 +826,7 @@
     }
 
     async finishQuiz(autoSubmitReason = '') {
-        if (this.isFinishingQuiz) {
-            console.debug('[QuizApp] Duplicate finishQuiz call ignored.');
-            return;
-        }
-        this.isFinishingQuiz = true;
-        this.pendingStudentProgress = null;
-        this.stopStopwatch();
-
-        const progressDeadline = Date.now() + 1500;
-        while (this.progressSyncRunning && Date.now() < progressDeadline) {
-            await new Promise((resolve) => window.setTimeout(resolve, 50));
-        }
-
-        if (this.loginRecordPromise) {
-            try {
-                await Promise.race([
-                    this.loginRecordPromise,
-                    new Promise((resolve) => window.setTimeout(resolve, 1500))
-                ]);
-            } catch (error) { console.warn('[QuizApp] Không chờ được bản ghi phiên trước khi nộp:', error); }
-        }
-
-        const questions = this.allQuestions || [];
-        let totalItems = 0;
-        let correctCount = 0;
-
-        questions.forEach(q => {
-            if (q.qType === 'short_answer') {
-                totalItems++;
-                const val = this.userAnswers[q.id];
-                if (val !== undefined && this.isShortAnswerCorrect(q, val)) {
-                    correctCount++;
-                }
-            } else if (q.qType === 'tf_group') {
-                const ansObj = this.userAnswers[q.id] || {};
-                (q.statements || []).forEach((st, idx) => {
-                    totalItems++;
-                    if (ansObj[idx] !== undefined && Boolean(ansObj[idx]) === Boolean(st.answer)) {
-                        correctCount++;
-                    }
-                });
-            } else {
-                totalItems++;
-                const sel = this.userAnswers[q.id];
-                const correctIdx = q.correct !== undefined ? q.correct : q.answer;
-                if (sel !== undefined && Number(sel) === Number(correctIdx)) correctCount++;
-            }
-        });
-
-        const finalScore = totalItems > 0 ? Math.round((correctCount / totalItems) * 100) : 0;
-        this._lastResultCorrectCount = correctCount;
-        this._lastResultTotalQuestions = totalItems;
-        const subjTitle = `${this.isRevengeMode || this.isMistakeMode ? '[Phục thù] ' : ''}${this.getSubjectTitle()}`;
-
-        const isAdminBypass = this.hasAdminBypass();
-        if (!isAdminBypass && !this.currentLoginId && window.dbService?.recordLogin) {
-            const fallback = await window.dbService.recordLogin({
-                playerName: this.playerName, clientIp: this.clientIp, deviceInfo: this.deviceInfo,
-                subjectTitle: subjTitle, status: `[${subjTitle}] Đã nộp bài${this.currentAttemptOutsideRoster ? ' [Ngoài lớp]' : ''}`, scoreSummary: `[${subjTitle}] Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm)${this.currentAttemptOutsideRoster ? ' [Ngoài lớp]' : ''}`,
-                sessionId: this.getOrCreateClientSessionId(), attemptId: this.quizAttemptId, newAttempt: true
-            });
-            this.currentLoginId = fallback?.id || (typeof fallback === 'string' ? fallback : null);
-        }
-
-        // Cập nhật màn hình Kết Quả
-        const scoreEl = document.getElementById('result-score');
-        const ratioEl = document.getElementById('result-correct-ratio');
-        const score10El = document.getElementById('result-score-10');
-        const timeSpentEl = document.getElementById('result-time-spent');
-        const greetingEl = document.getElementById('result-player-greeting');
-
-        if (scoreEl) scoreEl.textContent = '0%';
-        if (score10El) score10El.textContent = '0.0';
-        if (ratioEl) ratioEl.textContent = `${correctCount}/${totalItems}`;
-
-        let secondsUsed = this.secondsElapsed;
-        if (this.isExamMode) {
-            secondsUsed = (this.examMinutes * 60) - this.examSecondsRemaining;
-        }
-        const m = Math.floor(secondsUsed / 60);
-        const s = secondsUsed % 60;
-        const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        if (timeSpentEl) timeSpentEl.textContent = timeStr;
-        if (greetingEl) greetingEl.textContent = `Chúc mừng ${this.playerName} đã hoàn thành bài thi ${subjTitle}!`;
-
-        // Cập nhật lên Supabase Cloud (bỏ qua nếu là Admin)
-        if (!isAdminBypass && window.dbService && this.currentLoginId && typeof window.dbService.updateLoginStatus === 'function') {
-            let summaryWithDetail = `[${subjTitle}] Đúng ${correctCount}/${totalItems} ý (${finalScore} điểm) - ${timeStr}`;
-            try {
-                summaryWithDetail += `\n__DETAIL__:${JSON.stringify(this.buildStudentProgressDetail())}`;
-            } catch (e) {}
-            await window.dbService.updateLoginStatus(
-                this.currentLoginId,
-                `[${subjTitle}] Đã nộp bài${this.currentAttemptOutsideRoster ? ' [Ngoài lớp]' : ''}`,
-                summaryWithDetail
-            );
-        }
-        if (!isAdminBypass && !this.isRevengeMode && !this.isMistakeMode) {
-            const sub = this.getCurrentSubjectObj();
-            const key = this.getSubjectAttemptStorageKey(sub?.key || this.currentSubject, this.playerName);
-            try { localStorage.setItem(key, String(Number(localStorage.getItem(key) || 0) + 1)); } catch (e) {}
-        }
-        this.currentLoginId = null;
-        try { sessionStorage.removeItem('quiz_current_login_id'); } catch (e) {}
-
-        // Xóa tiến độ autosave
-        this.clearAutoSaveProgress();
-
-        // Lưu vào Nhật Ký Ôn Tập Cá Nhân (bỏ qua nếu là Admin)
-        if (!isAdminBypass) {
-            this.saveToPersonalHistory({
-                id: 'hist_' + Date.now(),
-                subjectTitle: subjTitle,
-                score: finalScore,
-                correctCount: correctCount,
-                totalCount: totalItems,
-                timeSpent: timeStr,
-                submittedAt: new Date().toISOString(),
-                mode: this.isRevengeMode ? 'Ôn câu sai' : (this.isExamMode ? 'Thi thử' : 'Luyện tập')
-            });
-        }
-
-        // Phát âm thanh nhẹ khi hoàn tất, không dùng hiệu ứng gây rối mắt.
-        if (finalScore >= 90) {
-            this.playFanfareSound();
-        } else if (finalScore >= 50) {
-            this.playTingSound();
-        } else {
-            this.playBeepSound();
-        }
-
-        // Cập nhật Ngân hàng câu sai cá nhân (Mistake Bank)
-        const remainingWrong = this.updateMistakeBankOnFinish(questions);
-        this.updateResultRevengeButton();
-        this.updateHomeRevengeBanner();
-
-        if (this.isRevengeMode) {
-            if (correctCount === totalItems) {
-                this.showToastNotification('🏆 XUẤT SẮC! Bạn đã phục thù thành công 100% các câu sai!', 'success');
-            } else {
-                this.showToastNotification(`Bạn đã sửa đúng ${correctCount}/${totalItems} ý. Còn ${remainingWrong.length} câu sai cần tiếp tục phục thù!`, 'info');
-            }
-        }
-
-        this.isReviewingResult = true;
-        this.isFinishingQuiz = false;
-        this.renderReviewList();
-        this.switchScreen('result');
-        this.animateResultScore(finalScore);
-        if (score10El) score10El.textContent = (finalScore / 10).toFixed(1);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return window.AppSync.finishQuiz(this, autoSubmitReason);
     }
 
     backToResultScreen() {
@@ -1398,6 +865,7 @@
         const optChars = ['A', 'B', 'C', 'D', 'E', 'F'];
 
         questions.forEach((q, idx) => {
+            const qKey = this.domKey(q.id);
             const card = document.createElement('div');
             card.className = "p-4 sm:p-5 rounded-2xl glass-card-pro border border-slate-700/80 text-xs space-y-3";
 
@@ -1456,13 +924,13 @@
                 ${ansReview}
                 ${q.explanation ? `<p class="text-[11px] text-slate-300 italic leading-relaxed"><strong class="text-amber-400">Giải thích:</strong> ${this.formatScientificNotation(q.explanation)}</p>` : ''}
                 <div class="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
-                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-review-${q.id}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
+                    <button type="button" onclick="app.askAiExplanation(${this.attrArg(q.id)})" id="ai-btn-review-${qKey}" class="btn-3d px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer">
                         <i class="fa-solid fa-robot text-amber-300"></i>
                         <span>Hỏi AI giải thích chi tiết</span>
                     </button>
                     <span class="text-[11px] text-blue-300/80 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-400 text-[10px]"></i> AI Sư Phạm</span>
                 </div>
-                <div id="ai-explanation-review-${q.id}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
+                <div id="ai-explanation-review-${qKey}" class="ui-accordion-wrap" aria-hidden="true"><div class="ui-accordion-inner"><div class="p-3.5 rounded-2xl ai-explanation-box text-xs text-slate-200 space-y-2"></div></div></div>
             `;
             reviewContainer.appendChild(card);
         });
@@ -1777,5 +1245,92 @@
     const descriptors = Object.getOwnPropertyDescriptors(QuizAppQuizMixin.prototype);
     delete descriptors.constructor;
     Object.defineProperties(QuizApp.prototype, descriptors);
+
+    // Giữ kết quả chấm short-answer nhất quán với giao diện và thống kê trực tiếp.
+    const buildProgressDetail = QuizApp.prototype.buildStudentProgressDetail;
+    QuizApp.prototype.buildStudentProgressDetail = function () {
+        const detail = buildProgressDetail.call(this);
+        if (!detail || !Array.isArray(detail.items)) return detail;
+        (this.allQuestions || []).forEach((q) => {
+            if (q.qType !== 'short_answer') return;
+            const item = detail.items.find((entry) => String(entry.id) === String(q.id));
+            if (!item) return;
+            const value = this.userAnswers?.[q.id];
+            const hasValue = value !== undefined && String(value).trim() !== '';
+            const nextOk = hasValue ? this.isShortAnswerCorrect(q, value) : null;
+            if (item.ok === nextOk) return;
+            const cat = detail.cats?.[item.cat];
+            if (cat && item.ok === true) cat[0] = Math.max(0, cat[0] - 1);
+            if (cat && nextOk === true) cat[0] += 1;
+            item.ok = nextOk;
+        });
+        return detail;
+    };
+
+    // Lưu snapshot thời gian trong lúc bài thi đang chạy, không chỉ khi đổi đáp án.
+    const originalStartStopwatch = QuizApp.prototype.startStopwatch;
+    const originalStopStopwatch = QuizApp.prototype.stopStopwatch;
+    QuizApp.prototype.startStopwatch = function () {
+        const result = originalStartStopwatch.call(this);
+        clearInterval(this._quizAutosaveTimer);
+        this.saveAutoSaveProgress();
+        this._quizAutosaveTimer = window.setInterval(() => {
+            if (this.currentScreen === 'quiz' && !this.isFinishingQuiz) this.saveAutoSaveProgress();
+        }, 5000);
+        return result;
+    };
+    QuizApp.prototype.stopStopwatch = function () {
+        clearInterval(this._quizAutosaveTimer);
+        this._quizAutosaveTimer = null;
+        this.saveAutoSaveProgress();
+        return originalStopStopwatch.call(this);
+    };
+
+    // Nếu updateLoginStatus lỗi/ret false, cho phép nộp lại và hoàn tác lượt cục bộ.
+    const originalFinishQuiz = QuizApp.prototype.finishQuiz;
+    QuizApp.prototype.finishQuiz = async function (autoSubmitReason = '') {
+        const updateLoginStatus = window.dbService?.updateLoginStatus;
+        const previousLoginId = this.currentLoginId;
+        const subject = this.getCurrentSubjectObj?.();
+        const attemptKey = this.getSubjectAttemptStorageKey?.(subject?.key || this.currentSubject, this.playerName);
+        const attemptsBefore = attemptKey ? localStorage.getItem(attemptKey) : null;
+        let cloudAttempted = false;
+        let cloudConfirmed = false;
+        if (typeof updateLoginStatus === 'function') {
+            window.dbService.updateLoginStatus = async (...args) => {
+                cloudAttempted = true;
+                const result = await updateLoginStatus.apply(window.dbService, args);
+                cloudConfirmed = result === true;
+                return result;
+            };
+        }
+        try {
+            await originalFinishQuiz.call(this, autoSubmitReason);
+        } finally {
+            if (typeof updateLoginStatus === 'function') window.dbService.updateLoginStatus = updateLoginStatus;
+        }
+        if (cloudAttempted && !cloudConfirmed) {
+            if (attemptKey) {
+                try {
+                    if (attemptsBefore === null) localStorage.removeItem(attemptKey);
+                    else localStorage.setItem(attemptKey, attemptsBefore);
+                } catch (e) {}
+            }
+            this.currentLoginId = previousLoginId;
+            this.isFinishingQuiz = false;
+            this.isReviewingResult = false;
+            this.switchScreen('quiz');
+            this.renderAllQuestions(true, true);
+            this.startStopwatch();
+            const submitButton = document.getElementById('btn-submit-quiz');
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-60', 'cursor-not-allowed');
+                submitButton.removeAttribute('aria-busy');
+            }
+            this.showToastNotification?.('Không thể kết nối máy chủ. Bài làm vẫn được giữ lại, hãy thử nộp lại.', 'warning');
+        }
+    };
+
     if (!root.app) root.app = new QuizApp();
 })(window);

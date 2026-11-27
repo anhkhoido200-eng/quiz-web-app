@@ -107,7 +107,7 @@ window.AdminPrint.configure = function (context) {
         notify('Đang kết xuất đề thi và mở hộp thoại in...');
         await renderMathAndWait(printContainer);
         window.print();
-        addActivityLog('Xuất đề thi PDF / Bản in', `Môn ${esc(subjectTitle)} · ${pool.length} câu hỏi · Mã đề ${esc(testCode)}`, 'purple');
+        addActivityLog('Xuất đề thi PDF / Bản in', `Môn ${subjectTitle} · ${pool.length} câu hỏi · Mã đề ${testCode}`, 'purple');
     }
 
     return { openPrintModal, updatePrintQuestionsPreview, renderMathAndWait, executePrintExam };

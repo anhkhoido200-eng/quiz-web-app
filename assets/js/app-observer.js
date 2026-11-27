@@ -7,6 +7,44 @@
     }
 
     class QuizAppObserverMixin {
+    _getProgressDetailStatementStates(it) {
+        if (it.t !== 'tf' && !Array.isArray(it.ca) && !Array.isArray(it.ua)) return null;
+        const ua = Array.isArray(it.ua) ? it.ua : [];
+        const ca = Array.isArray(it.ca) ? it.ca : [];
+        return Array.from({ length: ca.length || ua.length }, (_, i) => {
+            const isAnswered = ua[i] === true || ua[i] === false;
+            return isAnswered ? ua[i] === ca[i] : null;
+        });
+    }
+
+    _isProgressDetailItemAnswered(it) {
+        return (it.answer !== undefined && it.answer !== null && String(it.answer).trim() !== '') ||
+            (it.ua !== undefined && it.ua !== null && String(it.ua).trim() !== '') ||
+            it.ua === false || it.ua === 0;
+    }
+
+    _countProgressDetailItems(items) {
+        let detailAnswered = 0;
+        let detailCorrect = 0;
+        let detailTotal = 0;
+        for (const it of items) {
+            if (!it) continue;
+            const states = this._getProgressDetailStatementStates(it);
+            if (states) {
+                detailTotal += states.length;
+                for (const state of states) {
+                    if (state !== null) detailAnswered++;
+                    if (state === true) detailCorrect++;
+                }
+            } else {
+                detailTotal++;
+                if (this._isProgressDetailItemAnswered(it)) detailAnswered++;
+                if (it.ok === true) detailCorrect++;
+            }
+        }
+        return { detailAnswered, detailCorrect, detailTotal };
+    }
+
     parseStudentProgressRecord(row) {
         const rawStatus = String(row?.status || '');
         const fullRawScore = String(row?.score_summary || '');
@@ -69,14 +107,16 @@
         }
 
         const isCompleted = /đã nộp bài/i.test(rawStatus) || /hoàn thành/i.test(rawScore) || /(?:^|[|•\s])(?:điểm\s*[:=]?\s*\d|\d+(?:[.,]\d+)?\s*điểm)/i.test(rawScore);
-        if (isCompleted && Array.isArray(detail?.items)) {
-            answered = detail.items.filter((item) => item && ((item.answer !== undefined && item.answer !== null && String(item.answer).trim() !== '') || (item.ua !== undefined && item.ua !== null && String(item.ua).trim() !== '') || item.ua === false || item.ua === 0)).length;
-            correct = detail.items.filter((item) => item?.ok === true).length;
+        const hasDetailItems = Array.isArray(detail?.items) && detail.items.length > 0;
+        if (hasDetailItems) {
+            const { detailAnswered, detailCorrect, detailTotal } = this._countProgressDetailItems(detail.items);
+            answered = detailAnswered;
+            correct = detailCorrect;
             wrong = Math.max(0, answered - correct);
-            if (total === 0) total = detail.items.length;
-            percent = total > 0 ? Math.round((answered / total) * 100) : 0;
+            if (detailTotal > 0) total = detailTotal;
+            percent = total > 0 ? Math.min(100, Math.round((answered / total) * 100)) : 0;
         }
-        if (isCompleted && percent === 0 && total > 0) percent = 100;
+        if (isCompleted && !hasDetailItems && percent === 0 && total > 0) percent = 100;
 
         let finalScore = null;
         const scoreMatch = rawScore.match(/(\d+(?:[.,]\d+)?)\s*điểm/i);
@@ -223,11 +263,21 @@
         const items = p.detail?.items;
         if (Array.isArray(items) && items.length > 0) {
             return `<div class="obs-progress-segments">${items.map((it, idx) => {
-                const cls = it.ok === true ? 'is-ok' : (it.ok === false ? 'is-bad' : 'is-none');
-                return `<span class="obs-progress-seg ${cls}" title="Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Chưa làm')}"></span>`;
+                if (!it) return '';
+                const renderSegment = (state, label) => {
+                    const cls = state === true ? 'is-ok' : (state === false ? 'is-bad' : 'is-none');
+                    const status = state === true ? 'Đúng' : (state === false ? 'Sai' : 'Chưa làm');
+                    return `<span class="obs-progress-seg ${cls}" title="${label}: ${status}"></span>`;
+                };
+                const states = this._getProgressDetailStatementStates(it);
+                if (states) {
+                    return states.map((state, i) => renderSegment(state, `Câu ${idx + 1}, ý ${i + 1}`)).join('');
+                }
+                const state = it.ok === true ? true : (this._isProgressDetailItemAnswered(it) ? false : null);
+                return renderSegment(state, `Câu ${idx + 1}`);
             }).join('')}</div>`;
         }
-        const wrongCount = p.isCompleted ? (p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0))) : (p.wrong || 0);
+        const wrongCount = Number.isFinite(p.wrong) ? p.wrong : (p.isCompleted ? Math.max(0, (p.total || p.answered || 0) - (p.correct || 0)) : 0);
         const totalBase = p.total > 0 ? p.total : Math.max(1, (p.correct || 0) + wrongCount);
         const okPct = totalBase > 0 ? Math.min(100, Math.round(((p.correct || 0) / totalBase) * 1000) / 10) : 0;
         const badPct = totalBase > 0 ? Math.min(Math.max(0, 100 - okPct), Math.round((wrongCount / totalBase) * 1000) / 10) : 0;
@@ -340,10 +390,10 @@
                         <span class="font-bold text-sky-400 shrink-0 obs-card-count">Hoàn thành: ${p.answered}/${p.total || p.answered} câu</span>
                     </div>
                     <div class="obs-progress-track h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
-                        ${this.buildObserverProgressBarHtml(p, 100)}
+                        ${this.buildObserverProgressBarHtml(p, percent)}
                     </div>
                     <div class="flex items-center justify-between text-xs pt-0.5">
-                        <span class="text-slate-300 obs-card-score">Đúng: <b class="text-emerald-400">${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong || Math.max(0, (p.total || p.answered || 0) - (p.correct || 0))}</span> (${percent}%)</span>
+                        <span class="text-slate-300 obs-card-score">Đúng: <b class="text-emerald-400">${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${Number.isFinite(p.wrong) ? p.wrong : (p.isCompleted ? Math.max(0, (p.total || p.answered || 0) - (p.correct || 0)) : 0)}</span> (${percent}%)</span>
                         <span class="text-xs font-extrabold text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-sm">
                             <i class="fa-solid fa-trophy mr-1"></i> ${p.score10.toFixed(1)} / 10 điểm
                         </span>
@@ -527,7 +577,7 @@
                         if (scoreEl) scoreEl.innerHTML = `<b class="text-emerald-400 font-semibold">Đúng: ${p.correct}</b> • <span class="text-rose-400 font-semibold">Sai: ${p.wrong}</span> (${percent}%)`;
                         const track = card.querySelector('.obs-progress-track');
                         if (track) {
-                            const nextBarHtml = this.buildObserverProgressBarHtml(p, 100);
+                            const nextBarHtml = this.buildObserverProgressBarHtml(p, percent);
                             if (track.innerHTML !== nextBarHtml) track.innerHTML = nextBarHtml;
                         }
                     }
@@ -1005,7 +1055,7 @@
         }
 
         const totalQ = p.total || p.answered || 0;
-        const wrongCount = p.isCompleted ? (p.wrong || Math.max(0, totalQ - p.correct)) : p.wrong;
+        const wrongCount = Number.isFinite(p.wrong) ? p.wrong : (p.isCompleted ? Math.max(0, totalQ - p.correct) : 0);
         const unansweredCount = Math.max(0, totalQ - p.correct - wrongCount);
         const items = Array.isArray(p.detail?.items) ? p.detail.items : [];
         const rawCats = p.detail?.cats;
@@ -1114,9 +1164,18 @@
                 </div>
                 <div class="flex flex-wrap gap-1.5">
                     ${items.map((it, idx) => {
-                        const cls = it.ok === true
+                        if (!it) return '';
+                        const states = this._getProgressDetailStatementStates(it);
+                        let outcome = it.ok;
+                        let label = it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Trống');
+                        if (states) {
+                            const tfCorrect = states.filter(state => state === true).length;
+                            label = states.some(state => state !== null) ? `${tfCorrect}/${states.length} ý` : 'Trống';
+                            outcome = states.includes(false) ? false : (states.length > 0 && tfCorrect === states.length ? true : null);
+                        }
+                        const cls = outcome === true
                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                            : (it.ok === false
+                            : (outcome === false
                                 ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
                                 : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700/80');
                         let ansTooltip = '';
@@ -1125,7 +1184,7 @@
                         } else if (it.t === 'sa' && it.ua) {
                             ansTooltip = ` — Nhập: ${String(it.ua)}`;
                         }
-                        return `<button type="button" data-obs-q-idx="${idx}" class="px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition ${cls}" title="Câu ${idx + 1}${this.escapeHtml(ansTooltip)} — Bấm để xem chi tiết">Câu ${idx + 1}: ${it.ok === true ? 'Đúng' : (it.ok === false ? 'Sai' : 'Trống')}</button>`;
+                        return `<button type="button" data-obs-q-idx="${idx}" class="px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition ${cls}" title="Câu ${idx + 1}: ${label}${this.escapeHtml(ansTooltip)} — Bấm để xem chi tiết">Câu ${idx + 1}: ${label}</button>`;
                     }).join('')}
                 </div>
                 <div id="obs-question-inspector-wrap" class="ui-accordion-wrap" aria-hidden="true">
@@ -1153,7 +1212,7 @@
                 </div>
             </div>
             <div class="obs-progress-track h-3 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
-                ${this.buildObserverProgressBarHtml(p, 100)}
+                ${this.buildObserverProgressBarHtml(p, p.percent)}
             </div>
             ${catsHtml}
             ${itemsHtml}

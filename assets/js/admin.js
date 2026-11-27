@@ -23,7 +23,7 @@
         page: 1, pageSize: 12,
         importQuestions: [], importIndex: 0, importSubject: 'history', sourceText: '', importError: '',
         adminConfig: { masterIp: '', masterDeviceCode: '', allowedIps: [] }, aiIps: [], geo: { mode: 'PUBLIC', ips: [], grade5Ips: [] },
-        tokens: [], reportRows: null, reportAllRows: [], reportLoading: false, reportLeaderboardPage: 1,
+        tokens: [], reportRows: null, reportAllRows: [], reportOmissionCounts: [], reportLoading: false, reportLeaderboardPage: 1,
         progressFilter: 'all', progressSubject: 'all', progressSearch: '', progressSort: 'recent', progressRecords: [], progressRawLogins: [], progressLoading: false, progressRefreshQueued: false,
         subjects: [], subjectFolders: (() => {
             try {
@@ -250,6 +250,7 @@
     function navigateToStudentWithTransition(targetUrl = 'index.html') {
         if (state.isLeavingWorkspace) return;
         state.isLeavingWorkspace = true;
+        adminAccess?.logout();
         const cleanUrl = targetUrl || 'index.html';
         try {
             sessionStorage.setItem('quiz_workspace_transition', 'to-student');
@@ -316,7 +317,11 @@
 
         if (!state.workspaceTransitionsBound) {
             state.workspaceTransitionsBound = true;
-            window.addEventListener('pageshow', () => {
+            window.addEventListener('pageshow', (event) => {
+                if (event.persisted && state.isLeavingWorkspace) {
+                    window.location.reload();
+                    return;
+                }
                 state.isLeavingWorkspace = false;
                 const overlay = $('workspace-transition-overlay');
                 if (overlay) {
@@ -836,337 +841,6 @@
         }
         if (!data?.[0]) return null;
         return data[0];
-    }
-
-    async function isCurrentIpAllowed() {
-        state.clientIp = await getClientIp();
-        if ($('current-ip')) {
-            $('current-ip').textContent = maskIpAddress(state.clientIp);
-            $('current-ip').dataset.fullIp = state.clientIp || '';
-        }
-        if ($('access-current-ip')) $('access-current-ip').textContent = state.clientIp || 'Không xác định IP';
-
-        const getOrCreateAdminDeviceCode = () => {
-            let code = '';
-            try { code = localStorage.getItem('quiz_device_machine_code') || ''; } catch (e) {}
-            if (!/^QM-[A-Z0-9]{4,}$/i.test(code)) {
-                try {
-                    const cookie = document.cookie.split(';').map((item) => item.trim()).find((item) => item.startsWith('quiz_device_machine_code='));
-                    const cookieCode = cookie ? decodeURIComponent(cookie.slice('quiz_device_machine_code='.length)) : '';
-                    if (/^QM-[A-Z0-9]{4,}$/i.test(cookieCode)) code = cookieCode;
-                } catch (e) {}
-            }
-            if (!/^QM-[A-Z0-9]{4,}$/i.test(code)) {
-                const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-                let randomPart = '';
-                for (let i = 0; i < 6; i++) randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-                code = `QM-${randomPart}`;
-            }
-            code = code.toUpperCase();
-            try { localStorage.setItem('quiz_device_machine_code', code); } catch (e) {}
-            try { document.cookie = `quiz_device_machine_code=${encodeURIComponent(code)}; path=/; max-age=31536000; SameSite=Lax`; } catch (e) {}
-            return code;
-        };
-        state.deviceCode = getOrCreateAdminDeviceCode();
-        if ($('access-current-device')) $('access-current-device').textContent = state.deviceCode;
-
-        // Đọc mã IP-Token từ URL query params (?admin_token=... hoặc ?token=...) hoặc URL hash
-        let urlAdminToken = '';
-        try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
-            const paramToken = urlParams.get('admin_token') || urlParams.get('token') || hashParams.get('admin_token') || hashParams.get('token');
-            if (paramToken && paramToken.trim()) {
-                urlAdminToken = paramToken.trim();
-                try {
-                    const cleanUrl = window.location.pathname + (hashParams.has('admin_token') || hashParams.has('token') ? '' : window.location.hash);
-                    window.history.replaceState({}, document.title, cleanUrl);
-                } catch (e) {}
-            }
-        } catch (e) {}
-
-        // CHỈ đọc quiz_admin_token, TUYỆT ĐỐI KHÔNG đọc quiz_access_token (token học sinh)
-        const storedToken = (localStorage.getItem('quiz_admin_token') || '').trim();
-        const currentToken = urlAdminToken || storedToken;
-        const persistValidAdminToken = () => {
-            if (!urlAdminToken) return;
-            try { localStorage.setItem('quiz_admin_token', urlAdminToken); } catch (e) {}
-        };
-
-        const row = await systemRow(SYSTEM.admin);
-        if (!row) return false;
-        try {
-            const config = JSON.parse(row.score_summary || '{}');
-            state.adminConfig = {
-                masterIp: String(config.masterIp || '').trim(),
-                masterDeviceCode: String(config.masterDeviceCode || '').trim().toUpperCase(),
-                allowedIps: Array.isArray(config.allowedIps) ? config.allowedIps : (Array.isArray(config.ips) ? config.ips.map((ip) => ({ ip, name: 'Admin' })) : [])
-            };
-            const hasConfiguredAdmin = Boolean(state.adminConfig.masterIp || state.adminConfig.masterDeviceCode || state.adminConfig.allowedIps.length);
-            const sessionToken = String(window.dbService?.getAdminSessionToken?.() || sessionStorage.getItem('quiz_admin_session_token') || '').trim();
-            let sessionVerified = false;
-            if (sessionToken || currentToken) {
-                try {
-                    const { data: sessionData, error: sessionError } = await state.client.rpc('admin_verify_login', {
-                        p_password: null,
-                        p_admin_token: sessionToken || currentToken,
-                        p_ip: state.clientIp || null
-                    });
-                    if (!sessionError && sessionData?.valid) {
-                        sessionVerified = true;
-                        const refreshedToken = sessionData.token || sessionData.session_token;
-                        if (refreshedToken && typeof window.dbService?.setAdminSessionToken === 'function') {
-                            window.dbService.setAdminSessionToken(refreshedToken, sessionData.expires_at || sessionData.expiresAt || null);
-                        }
-                    }
-                } catch (error) {
-                    sessionVerified = false;
-                }
-            }
-            if (hasConfiguredAdmin && !sessionVerified) return false;
-            if (!hasConfiguredAdmin) return true;
-            const ips = state.adminConfig.allowedIps.map((item) => typeof item === 'string' ? item : item?.ip).filter(Boolean).map(String);
-            const myDeviceCode = String(state.deviceCode || '').trim().toUpperCase();
-            const masterDeviceCode = state.adminConfig.masterDeviceCode;
-            const normalizeAdminCode = (value) => {
-                const clean = String(value || '').trim().toLowerCase();
-                if (!clean) return '';
-                const parts = clean.split('-');
-                // IP-Token / IP-Mã: chỉ dùng phần mã sau IP khi xác thực Admin.
-                return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
-                    ? parts.slice(1).join('-')
-                    : clean;
-            };
-            const matchesAllowedDevice = (item) => {
-                if (!myDeviceCode || !item) return false;
-                if (typeof item === 'string') {
-                    const up = item.trim().toUpperCase();
-                    return up === myDeviceCode || up.endsWith('-' + myDeviceCode);
-                }
-                const itemDev = String(item.deviceCode || '').trim().toUpperCase();
-                const itemRaw = String(item.rawCode || '').trim().toUpperCase();
-                const itemTok = String(item.token || '').trim().toUpperCase();
-                return itemDev === myDeviceCode || itemRaw === myDeviceCode || itemTok === myDeviceCode || itemTok.endsWith('-' + myDeviceCode);
-            };
-
-            // 1. Khớp Mã máy Master hoặc Mã máy trong danh sách Admin
-            if (masterDeviceCode && myDeviceCode === masterDeviceCode) return true;
-            if (myDeviceCode && state.adminConfig.allowedIps.some(matchesAllowedDevice)) return true;
-
-            // 2. Nếu CHƯA khóa theo mã máy Master thì mới cho phép khớp theo Master IP / IP whitelist
-            if (!masterDeviceCode) {
-                if (state.clientIp && state.clientIp === state.adminConfig.masterIp) return true;
-                if (state.clientIp && ips.includes(state.clientIp)) return true;
-            }
-
-            // 3. Khớp IP-Token Quản Trị Viên trong danh sách Admin (allowedIps)
-            const isPlainIpAddress = (value) => {
-                const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
-                return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
-            };
-            if (currentToken) {
-                const tok = currentToken.toLowerCase();
-                const tokCode = normalizeAdminCode(tok);
-                const isTokenMatch = state.adminConfig.allowedIps.some((item) => {
-                    if (!tok || tok.length < 6 || isPlainIpAddress(tok)) return false;
-                    if (typeof item === 'string') {
-                        const str = item.trim().toLowerCase();
-                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
-                        const strCode = normalizeAdminCode(str);
-                        return str === tok || (Boolean(tokCode) && tokCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === tokCode);
-                    }
-                    const itemToken = String(item.token || '').toLowerCase();
-                    const itemRaw = String(item.rawCode || '').toLowerCase();
-                    if (tok && tok.length >= 6) {
-                        if (itemToken && !isPlainIpAddress(itemToken) && itemToken === tok) return true;
-                        if (itemRaw && !isPlainIpAddress(itemRaw) && itemRaw === tok) return true;
-                        if (tokCode && !isPlainIpAddress(tokCode) && normalizeAdminCode(itemToken) === tokCode) return true;
-                        if (tokCode && !isPlainIpAddress(tokCode) && itemRaw && normalizeAdminCode(itemRaw) === tokCode) return true;
-                    }
-                    return false;
-                });
-                if (isTokenMatch) { persistValidAdminToken(); return true; }
-            }
-
-            // 4. Kiểm tra trong ACCESS_TOKENS (bản ghi số 8) CHỈ DÀNH CHO ROLE ADMIN
-            try {
-            const row8 = await systemRow(SYSTEM.tokens);
-                if (row8 && row8.score_summary) {
-                    const tokens = JSON.parse(row8.score_summary || '[]');
-                    if (Array.isArray(tokens)) {
-                        // CHỈ CHẤP NHẬN ROLE ADMIN, TUYỆT ĐỐI KHÔNG CHẤP NHẬN ROLE ALL HOẶC PARENT
-                        const adminTokens = tokens.filter(t => t.role === 'admin');
-                        if (currentToken) {
-                            const tok = currentToken.toLowerCase();
-                            const tokCode = normalizeAdminCode(tok);
-                            const foundAdmin = adminTokens.find(t => {
-                                const tToken = String(t.token || '').toLowerCase();
-                                const tRaw = String(t.rawCode || '').toLowerCase();
-                                if (tok && tok.length >= 6) {
-                                    if (tToken && tToken === tok) return true;
-                                    if (tRaw && tRaw === tok) return true;
-                                    if (tokCode && normalizeAdminCode(tToken) === tokCode) return true;
-                                    if (tokCode && tRaw && normalizeAdminCode(tRaw) === tokCode) return true;
-                                }
-                                return false;
-                            });
-                            if (foundAdmin) { persistValidAdminToken(); return true; }
-                        }
-                    }
-                }
-            } catch (e) {}
-
-            return false;
-        } catch (error) { return false; }
-    }
-
-    function denyAccess(reason = '') {
-        try {
-            // Xóa mã admin không hợp lệ khỏi máy để tránh lặp lại
-            localStorage.removeItem('quiz_admin_token');
-            localStorage.removeItem('quiz_admin_session_token');
-            sessionStorage.removeItem('quiz_admin_session_token');
-            sessionStorage.removeItem('quiz_admin_session_expires_at');
-        } catch (e) {}
-        $('app-shell')?.classList.add('hidden');
-        $('access-denied')?.classList.remove('hidden');
-        const message = document.querySelector('#access-denied .access-card p:not(.eyebrow)');
-        if (message && reason) message.textContent = `Không thể mở khu vực quản trị: ${reason}`;
-    }
-
-    async function bootstrapAdmin() {
-        ensureSupabaseClient();
-        if (!state.clientIp) state.clientIp = await getClientIp();
-        if (!state.clientIp || state.clientIp === 'Chưa xác định') return notify('Không xác định được IP máy hiện tại.', true);
-        const row = await systemRow(SYSTEM.admin);
-        if (!row) return notify('Chưa tìm thấy bản ghi cấu hình Admin trên Supabase.', true);
-        let config;
-        try { config = JSON.parse(row.score_summary || '{}'); } catch (error) { config = {}; }
-        const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
-        const masterIp = String(config.masterIp || '').trim();
-        const password = await promptDialog({ title: 'Thiết lập Master Admin', eyebrow: 'BOOTSTRAP ADMIN', message: 'Nhập mật khẩu Admin để xác thực qua máy chủ và thiết lập quyền Master lần đầu:', placeholder: 'Nhập mật khẩu Admin...', inputType: 'password', confirmText: 'Xác nhận', icon: 'fa-key' });
-        if (password === null) return;
-        let verified = false;
-        if (typeof window.dbService?.verifyAdminLogin === 'function') {
-            const authRes = await window.dbService.verifyAdminLogin({ password, ip: state.clientIp });
-            const nextSessionTok = authRes?.token || authRes?.sessionToken;
-            if (nextSessionTok) {
-                if (typeof window.dbService?.setAdminSessionToken === 'function') {
-                    window.dbService.setAdminSessionToken(nextSessionTok, authRes?.expiresAt || null);
-                } else {
-                    try {
-                        sessionStorage.setItem('quiz_admin_session_token', String(nextSessionTok));
-                        localStorage.removeItem('quiz_admin_session_token');
-                    } catch (e) {}
-                }
-            }
-            verified = Boolean((authRes?.valid || authRes?.ok || authRes?.verified || authRes === true) && nextSessionTok);
-        } else {
-            const { data: rpcData, error: rpcErr } = await state.client.rpc('admin_verify_login', { p_password: String(password ?? ''), p_ip: state.clientIp || null }).catch((e) => ({ data: null, error: e }));
-            if (rpcErr) {
-                return notify('Chưa kích hoạt RPC xác thực Admin trên máy chủ (supabase_security_migration.sql).', true);
-            }
-            const rpcToken = rpcData?.token || rpcData?.session_token || rpcData?.sessionToken;
-            if (rpcToken && typeof window.dbService?.setAdminSessionToken === 'function') {
-                window.dbService.setAdminSessionToken(rpcToken, rpcData?.expires_at || rpcData?.expiresAt || null);
-            }
-            verified = Boolean((rpcData?.valid || rpcData?.ok || rpcData?.verified) && rpcToken);
-        }
-        if (!verified) return notify('Mật khẩu Admin không đúng.', true);
-        const myDeviceCode = String(state.deviceCode || localStorage.getItem('quiz_device_machine_code') || '').trim().toUpperCase();
-        const payload = { masterIp: state.clientIp, masterDeviceCode: myDeviceCode, allowedIps: [{ ip: state.clientIp, deviceCode: myDeviceCode, name: 'Thiết bị Master', addedAt: new Date().toISOString(), isMaster: true }] };
-        const { error } = await state.client.from('quiz_logins').upsert({ id: SYSTEM.admin, player_name: '__ADMIN_IPS_CONFIG__', ip_address: 'SYSTEM', device_info: 'PASSWORDLESS_AUTH', status: 'ACTIVE', score_summary: JSON.stringify(payload), last_active: new Date().toISOString() }, { onConflict: 'id' });
-        if (error) throw error;
-        notify('Đã thiết lập Master Admin. Đang tải lại bảng điều khiển.');
-        window.setTimeout(() => window.location.reload(), 700);
-    }
-
-    async function unlockAdminWithToken() {
-        const val = $('admin-token-unlock-input')?.value.trim();
-        if (!val) return notify('Vui lòng nhập hoặc dán mã IP-Token Admin.', true);
-
-        const isPlainIpAddress = (value) => {
-            const clean = String(value || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
-            return Boolean(clean) && !clean.includes('-') && (/^[0-9a-f:.]+$/i.test(clean) || clean === 'localhost');
-        };
-        if (isPlainIpAddress(val)) {
-            return notify('Vui lòng nhập mã IP-Token Admin hợp lệ (không dùng địa chỉ IP thuần).', true);
-        }
-
-        ensureSupabaseClient();
-        state.clientIp = await getClientIp();
-
-        let isMatch = false;
-        const normalizeAdminCode = (value) => {
-            const clean = String(value || '').trim().toLowerCase();
-            if (!clean) return '';
-            const parts = clean.split('-');
-            return parts.length > 1 && (/^[0-9a-f:.]+$/i.test(parts[0]) || parts[0] === 'localhost')
-                ? parts.slice(1).join('-')
-                : clean;
-        };
-        try {
-            const row = await systemRow(SYSTEM.admin);
-            if (row && row.score_summary) {
-                const config = JSON.parse(row.score_summary || '{}');
-                const allowed = Array.isArray(config.allowedIps) ? config.allowedIps : [];
-                const clean = val.toLowerCase();
-                const cleanCode = normalizeAdminCode(clean);
-                isMatch = allowed.some(it => {
-                    if (!clean || clean.length < 6 || isPlainIpAddress(clean)) return false;
-                    if (typeof it === 'string') {
-                        const str = it.trim().toLowerCase();
-                        if (!str || str.length < 6 || isPlainIpAddress(str)) return false;
-                        const strCode = normalizeAdminCode(str);
-                        return str === clean || (Boolean(cleanCode) && cleanCode.length >= 6 && !isPlainIpAddress(strCode) && strCode === cleanCode);
-                    }
-                    const itTok = String(it.token || '').toLowerCase();
-                    const itRaw = String(it.rawCode || '').toLowerCase();
-                    if (itTok && !isPlainIpAddress(itTok) && itTok === clean) return true;
-                    if (itRaw && !isPlainIpAddress(itRaw) && itRaw === clean) return true;
-                    if (cleanCode && !isPlainIpAddress(cleanCode) && normalizeAdminCode(itTok) === cleanCode) return true;
-                    if (cleanCode && !isPlainIpAddress(cleanCode) && itRaw && normalizeAdminCode(itRaw) === cleanCode) return true;
-                    return false;
-                });
-            }
-        } catch (e) {}
-
-        if (!isMatch) {
-            try {
-                const row8 = await systemRow(SYSTEM.tokens);
-                if (row8 && row8.score_summary) {
-                    const tokens = JSON.parse(row8.score_summary || '[]');
-                    const clean = val.toLowerCase();
-                    const cleanCode = normalizeAdminCode(clean);
-                    isMatch = tokens.some(t => {
-                        // CHỈ ROLE ADMIN ĐƯỢC MỞ KHÓA ADMIN
-                        if (t.role !== 'admin' || !clean || clean.length < 6) return false;
-                        const tTok = String(t.token || '').toLowerCase();
-                        const tRaw = String(t.rawCode || '').toLowerCase();
-                        if (tTok && tTok === clean) return true;
-                        if (tRaw && tRaw === clean) return true;
-                        if (cleanCode && normalizeAdminCode(tTok) === cleanCode) return true;
-                        if (cleanCode && tRaw && normalizeAdminCode(tRaw) === cleanCode) return true;
-                        return false;
-                    });
-                }
-            } catch (e) {}
-        }
-
-        if (isMatch) {
-            localStorage.setItem('quiz_admin_token', val);
-            notify('✅ Mở khóa Admin thành công! Đang vào hệ thống...');
-            setTimeout(() => {
-                window.location.reload();
-            }, 600);
-        } else {
-            notify('❌ Mã IP-Token Admin không hợp lệ hoặc chưa được cấp quyền!', true);
-        }
-    }
-
-    function showApp() {
-        $('access-denied')?.classList.add('hidden');
-        $('app-shell')?.classList.remove('hidden');
     }
 
     function injectEditorControls() {
@@ -2888,7 +2562,7 @@
         window.print();
         addActivityLog(
             'Xuất đề thi PDF / Bản in',
-            `Môn ${esc(subjectTitle)} · ${pool.length} câu hỏi · Mã đề ${esc(testCode)}`,
+            `Môn ${subjectTitle} · ${pool.length} câu hỏi · Mã đề ${testCode}`,
             'purple'
         );
     }
@@ -3455,7 +3129,7 @@
                 }
             }, 8000);
         } else if (view === 'reports') {
-            runAction(loadScoreReport);
+            runAction(() => adminReports?.loadScoreReport());
         } else if (view === 'ai-assistant') {
             onOpenAdminAiView();
         } else {
@@ -7667,7 +7341,6 @@
             if (!page || page.length < pageSize) break;
         }
         const systemIds = new Set(Object.values(SYSTEM));
-        if (window.dbService && typeof window.dbService.autoSubmitStaleAttempts === 'function') { await window.dbService.autoSubmitStaleAttempts(data).catch(() => 0); }
         state.reportAllRows = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__') && !/^banned/i.test(String(row.status || '')));
         return reportRowsFromData(data);
     }
@@ -7724,20 +7397,35 @@
          notify(`Đã dọn ${remove.length} bản ghi trùng trên ${groups.size} nhóm máy/IP.`);
     }
     async function archiveExamData() {
-        if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi xóa toàn bộ lịch sử làm bài của học sinh.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return;
+        if (!(await confirmDialog({ title: 'Sao lưu & Dọn lịch sử kỳ thi?', message: 'Hệ thống sẽ tự động tải về bản Backup JSON trước khi dọn lịch sử kỳ thi. Phiên đang làm, đang chờ và phiên truy cập sẽ được giữ lại.', confirmText: 'Sao lưu & Dọn dẹp', variant: 'danger', icon: 'fa-broom' }))) return;
         const data = await fetchAllLoginRows();
         const systemIds = new Set(Object.values(SYSTEM));
-        const records = data.filter((row) => !systemIds.has(row.id) && !String(row.player_name || '').startsWith('__'));
+        const records = data.filter((row) => {
+            const name = String(row.player_name || '').trim();
+            const status = String(row.status || '').trim();
+            return row.id && !systemIds.has(row.id) && !name.startsWith('__') &&
+                name && !/^(khách truy cập|visitor|presence)$/i.test(name) &&
+                !/^(visitor|presence)(?:[_:-]|$)/i.test(String(row.session_id || '')) &&
+                !/đang làm bài|đang chờ|chờ nộp bài|tiến độ\s*:|trang chủ|chưa chọn|chờ vào|\bvisitor\b|\bpresence\b|^banned/i.test(status);
+        });
+        if (!records.length) return notify('Không có lịch sử kỳ thi để sao lưu.');
         exportJson(`exam-archive-${new Date().toISOString().slice(0, 10)}.json`, { schemaVersion: 1, archivedAt: new Date().toISOString(), recordCount: records.length, records });
-        const ids = records.map((row) => row.id).filter(Boolean);
-        let deleted = 0;
-        for (let offset = 0; offset < ids.length; offset += 100) {
-            const batch = ids.slice(offset, offset + 100);
-            const { data: removed, error } = await state.client.from('quiz_logins').delete().in('id', batch).select('id');
-            if (error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${error.message}`);
-            deleted += (removed || []).length;
+        const idsByStatus = new Map();
+        for (const row of records) {
+            const status = row.status ?? null;
+            if (!idsByStatus.has(status)) idsByStatus.set(status, []);
+            idsByStatus.get(status).push(row.id);
         }
-        if (deleted !== ids.length) throw new Error(`Chỉ xóa được ${deleted}/${ids.length} bản ghi; đã giữ lại backup để kiểm tra.`);
+        let deleted = 0;
+        for (const [status, ids] of idsByStatus) {
+            for (let offset = 0; offset < ids.length; offset += 100) {
+                const query = state.client.from('quiz_logins').delete().in('id', ids.slice(offset, offset + 100));
+                const { data: removed, error } = await (status === null ? query.is('status', null) : query.eq('status', status)).select('id');
+                if (error) throw new Error(`Không thể dọn lịch sử kỳ thi: ${error.message}`);
+                deleted += (removed || []).length;
+            }
+        }
+        if (deleted !== records.length) throw new Error(`Chỉ xóa được ${deleted}/${records.length} bản ghi; đã giữ lại backup để kiểm tra.`);
         state.studentPulseMap?.clear(); state.lastStudentsBodyHtml = ''; notify(`Đã backup và dọn ${deleted} bản ghi lịch sử kỳ thi.`); await loadStudents();
     }
     async function loadScoreReport() {
@@ -8980,6 +8668,8 @@
 
     let adminPrint = null;
     let adminImport = null;
+    let adminReports = null;
+    let adminAccess = null;
 
     function loadAdminModule(src, globalName) {
         if (window[globalName]) return Promise.resolve();
@@ -8994,10 +8684,11 @@
 
     async function loadAdminModules() {
         const base = new URL('.', document.currentScript?.src || window.location.href).href;
-        await Promise.all([
-            loadAdminModule(new URL('assets/js/admin-print.js', base).href, 'AdminPrint'),
-            loadAdminModule(new URL('assets/js/admin-import.js', base).href, 'AdminImport')
-        ]);
+        const modules = [
+            ['admin-print.js', 'AdminPrint'], ['admin-import.js', 'AdminImport'],
+            ['admin-reports.js', 'AdminReports'], ['admin-access.js', 'AdminAccess']
+        ];
+        await Promise.all(modules.filter(([, globalName]) => !window[globalName]).map(([file, globalName]) => loadAdminModule(new URL(`assets/js/${file}`, base).href, globalName)));
     }
 
     function configureAdminModules() {
@@ -9006,18 +8697,28 @@
             subjectMatchKey, mergeSubjectCatalog, openModal, closeModal, renderMath,
             notify, addActivityLog
         });
+        adminReports = window.AdminReports.create({
+            state, SYSTEM, $, esc, runAction, notify, exportJson, buildAdminSkeletonHtml,
+            resolvePinnedStudentName, allSubjects, subjectGrade, subjectMatchKey
+        });
         adminImport = window.AdminImport.configure({
             state, $, esc, htmlText, notationText, TYPE_LABELS, normalizeAiQuestion,
             validateAiQuestionSet, subjectMatchKey, subjectName, fillLibrarySubjects,
             switchView, openModal, closeModal, fillForm, renderMath, notify, confirmDialog,
-            setActionBusy, nextQuestionId, toRecord, upsertRestoredRows, moveQuestionsToTrash,
+            setActionBusy: (...args) => adminReports.setActionBusy(...args), nextQuestionId, toRecord, upsertRestoredRows, moveQuestionsToTrash,
             addActivityLog, loadQuestions
+        });
+        adminAccess = window.AdminAccess.configure({
+            state, $, SYSTEM, systemRow, ensureSupabaseClient, notify, promptDialog, confirmDialog,
+            runAction, esc, copyToClipboard, triggerAdminCopyFeedback, buildAppUrl, allSubjects,
+            subjectGrade, subjectMatchKey, extractDeviceCode, normalizeIdentityKey, loadStudents,
+            renderGrade5ProgressMonitor
         });
     }
 
     function bindEvents() {
-        configureAdminModules();
         if (state.bound) return; state.bound = true;
+        adminAccess?.bindAccessEvents();
         const submitAiComposer = () => {
             const input = $('ai-chat-input');
             const value = input?.value || '';
@@ -9402,7 +9103,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         $('do-print-btn')?.addEventListener('click', () => runAction(adminPrint.executePrintExam));
          $('import-button')?.addEventListener('click', adminImport.openImport); $('quick-import')?.addEventListener('click', adminImport.openImport); $('import-subject-select')?.addEventListener('change', (event) => { state.importSubject = String(event.target.value || '').trim(); adminImport.persistImportDraft(); console.debug('[Quiz Studio Admin] Import target subject changed:', state.importSubject); }); $('parse-import')?.addEventListener('click', () => { const source = $('import-text')?.value || ''; const list = adminImport.parseJsonInput(source); if (!list.length) return notify(state.importError || 'JSON chưa hợp lệ hoặc thiếu cấu trúc MCQ/Đúng-Sai/Trả lời ngắn.', true); state.importQuestions = list; state.importError = ''; state.importIndex = 0; state.importIntegrity = adminImport.validateVerbatimQuestions(list, source); adminImport.persistImportDraft(); fillForm(list[0]); adminImport.renderImportReview(); notify(`Đã đọc ${list.length} câu từ JSON.`); }); $('save-import')?.addEventListener('click', () => runAction(adminImport.saveImportQuestions));
           $('import-file')?.addEventListener('change', (event) => adminImport.handleImportFile(event.target.files?.[0]));
-        $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } renderImportReview(); });
+         $('import-preview')?.addEventListener('click', (event) => { const index = event.target.closest('[data-import-index]'); const prev = event.target.closest('[data-import-prev]'); const next = event.target.closest('[data-import-next]'); if (index) { state.importIndex = Number(index.dataset.importIndex); fillForm(state.importQuestions[state.importIndex]); } if (prev && state.importIndex > 0) { state.importIndex -= 1; fillForm(state.importQuestions[state.importIndex]); } if (next && state.importIndex < state.importQuestions.length - 1) { state.importIndex += 1; fillForm(state.importQuestions[state.importIndex]); } adminImport.renderImportReview(); });
         document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
         const closableModals = ['import-modal', 'print-modal', 'trash-modal', 'delete-scope-modal'];
         closableModals.forEach((modalId) => {
@@ -9438,22 +9139,19 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         };
         $('edit-maintenance')?.addEventListener('click', openEditMaintenancePrompt);
         $('maintenance-preview-box')?.addEventListener('click', openEditMaintenancePrompt);
-        $('add-admin-ip')?.addEventListener('click', () => addAdminIp().catch((error) => notify(error.message, true))); $('save-master-ip')?.addEventListener('click', () => saveMasterIp().catch((error) => notify(error.message, true)));
-        $('admin-ip-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-admin]'); if (button) removeAdminIp(button.dataset.removeAdmin).catch((error) => notify(error.message, true)); }); document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
+         document.addEventListener('change', (event) => { const toggle = event.target.closest('[data-toggle-subject]'); if (toggle) toggleSubjectPrivacy(toggle.dataset.toggleSubject, toggle.checked).catch((error) => notify(error.message, true)); });
          document.addEventListener('click', (event) => {
+             if (adminAccess?.handleAccessClick(event)) return;
              if (!event.target.closest('.progress-card-menu-wrap')) closeAllProgressMenus();
              const notice = event.target.closest('[data-notice]');
             if (notice && $('notice-input')) { $('notice-input').value = notice.dataset.notice; runAction(broadcastNotice); }
         });
         $('send-notice')?.addEventListener('click', () => runAction(broadcastNotice));
         $('notice-input')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); runAction(broadcastNotice); } });
-        $('ban-ip-button')?.addEventListener('click', () => runAction(() => banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
+         $('ban-ip-button')?.addEventListener('click', () => runAction(() => adminAccess.banIp($('ban-ip-input').value.trim(), $('ban-reason-input').value.trim())));
           $('refresh-students')?.addEventListener('click', () => runAction(() => { state.lastStudentsBodyHtml = ''; return loadStudents(); }));
            $('refresh-progress')?.addEventListener('click', () => runAction(renderGrade5ProgressMonitor));
           $('cleanup-duplicate-logins')?.addEventListener('click', () => runAction(cleanupDuplicateIpLogins));
-          $('save-roster-config')?.addEventListener('click', () => runAction(saveRosterFromAccessView));
-          ['5', '11'].forEach((grade) => $('roster-grade' + grade + '-textarea')?.addEventListener('input', renderRosterConfig));
-          $('btn-save-device-pin')?.addEventListener('click', () => runAction(() => saveDevicePin($('device-pin-code-input')?.value, $('device-pin-name-input')?.value)));
            $('grade5-progress-cards')?.addEventListener('click', async (event) => {
                const menuToggle = event.target.closest('[data-progress-menu-toggle]');
                if (menuToggle) {
@@ -9727,8 +9425,8 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
              else runAction(() => sendPrivateNotice(target.dataset.privateNotice, target.dataset.privateName));
          });
          $('banned-list')?.addEventListener('click', (event) => { const button = event.target.closest('[data-unban-row]'); if (button) runAction(() => unbanIp(button.dataset.unbanRow)); });
-         reportAction('export-backup', exportBackup, 'Đang tạo backup'); reportAction('export-excel', exportExcel, 'Đang xuất'); reportAction('export-score-report', exportScoreReport, 'Đang tạo báo cáo');
-         $('load-leaderboard')?.addEventListener('click', () => runAction(loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(loadScoreReport));
+          adminReports.reportAction('export-backup', exportBackup, 'Đang tạo backup'); adminReports.reportAction('export-excel', exportExcel, 'Đang xuất'); adminReports.reportAction('export-score-report', adminReports.exportScoreReport, 'Đang tạo báo cáo');
+          $('load-leaderboard')?.addEventListener('click', () => runAction(adminReports.loadLeaderboard)); $('leaderboard-subject')?.addEventListener('change', () => { state.reportLeaderboardPage = 1; runAction(adminReports.loadLeaderboard); }); $('load-wrong-stats')?.addEventListener('click', () => runAction(adminReports.loadWrongQuestionStats)); $('wrong-stats-subject')?.addEventListener('change', () => runAction(adminReports.loadWrongQuestionStats)); $('scan-duplicates-button')?.addEventListener('click', () => runAction(scanAndResolveDuplicates)); $('leaderboard-content')?.addEventListener('click', (event) => { const button = event.target.closest('[data-report-page]'); if (!button || button.disabled) return; state.reportLeaderboardPage += button.dataset.reportPage === 'next' ? 1 : -1; adminReports.renderLeaderboard(); }); $('refresh-score-report')?.addEventListener('click', () => runAction(adminReports.loadScoreReport)); $('report-retry')?.addEventListener('click', () => runAction(adminReports.loadScoreReport));
          $('save-gemini-key')?.addEventListener('click', () => runAction(saveGeminiKey));
          $('test-gemini-key')?.addEventListener('click', () => runAction(testGeminiKey));
          loadGeminiKeyIntoInput().catch(() => {});
@@ -9753,27 +9451,21 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         document.documentElement.classList.toggle('dark', isAdminDark);
         document.body.classList.toggle('dark', isAdminDark);
         syncThemeIcon();
-        $('bootstrap-admin')?.addEventListener('click', () => runAction(bootstrapAdmin));
-        $('btn-unlock-admin-token')?.addEventListener('click', () => runAction(unlockAdminWithToken));
-        $('admin-token-unlock-input')?.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                runAction(unlockAdminWithToken);
-            }
-        });
         try {
             ensureSupabaseClient();
-            if (!(await isCurrentIpAllowed())) {
-                denyAccess('IP hiện tại chưa được cấp quyền. Nếu đây là lần đầu cài đặt, hãy dùng nút thiết lập Admin lần đầu.');
+            await loadAdminModules();
+            configureAdminModules();
+            adminAccess.bindLoginEvents();
+            if (!(await adminAccess.isCurrentIpAllowed())) {
+                adminAccess.denyAccess();
                 return;
             }
-            await loadAdminModules();
-            showApp(); configureAdminLabels(); bindEvents(); switchView('overview'); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
+            adminAccess.showApp(); configureAdminLabels(); bindEvents(); switchView('overview'); fillSubjects('11'); fillLibrarySubjects(); ensureTypeEditor('mcq'); renderPreview(); renderRecentActivity();
             await loadSubjects();
-            await loadRosterConfig();
-            await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), loadAccess(), loadGeo()]);
+            await adminAccess.loadRosterConfig();
+            await Promise.all([loadQuestions(), loadTrash(), loadStudents(), loadMaintenance(), adminAccess.loadAccess(), adminAccess.loadGeo()]);
             await syncSubjectQuestionCounts();
-            syncPinnedNamesToLogins().then((updatedCount) => {
+            adminAccess.syncPinnedNamesToLogins().then((updatedCount) => {
                 if (updatedCount > 0) {
                     loadStudents().catch(() => {});
                     if (document.querySelector('[data-view-panel="progress"]')?.classList.contains('is-visible')) {
@@ -9807,7 +9499,7 @@ Bây giờ, hãy đọc tài liệu/nội dung được cung cấp và xuất ng
         } catch (error) {
             console.error('[Quiz Studio Admin] Khởi tạo thất bại:', error);
             updateHealthStatus('db', 'danger', 'Mất kết nối', 'Không thể kết nối tới Supabase. Bấm để thử lại.');
-            denyAccess(error?.message || 'Không thể kết nối dữ liệu quản trị.');
+            adminAccess?.showAccessScreen(error?.message || 'Không thể kết nối dữ liệu quản trị.');
         }
     }
     init();

@@ -430,7 +430,7 @@
                         return showErr(data?.message || 'Hết thời gian làm bài.');
                     }
                     this.questions = [];
-                    this.currentIndex = Number(this.attempt?.current_index || 0);
+                    this.syncCurrentIndexFromAttempt();
                     this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
                     this.pendingFinishKey = `arena_pending_finish_${this.attempt.id}`;
                     this.subscribeRoom();
@@ -438,12 +438,13 @@
                     return;
                 }
                 this.questions = Array.isArray(data.questions) ? data.questions : [];
-                this.currentIndex = Number(this.attempt?.current_index || 0);
+                this.syncCurrentIndexFromAttempt();
                 this.pendingQueueKey = `arena_pending_${this.attempt.id}`;
                 this.pendingFinishKey = `arena_pending_finish_${this.attempt.id}`;
 
                 this.subscribeRoom();
                 await this.flushPendingAnswers();
+                this.syncCurrentIndexFromAttempt();
                 this.routeByState();
             } finally {
                 if (submitBtn) {
@@ -486,6 +487,7 @@
                 const client = getClient();
                 if (!client || !this.room?.id) return;
                 await this.flushPendingAnswers();
+                this.syncCurrentIndexFromAttempt();
                 const { data, error } = await client.rpc('arena_get_room_state', {
                     p_room_id: this.room.id,
                     p_attempt_id: this.attempt?.id || null,
@@ -493,35 +495,45 @@
                 });
                 if (error || !data) return;
 
-            if (data.session_replaced) {
-                this.renderSessionReplaced();
-                return;
-            }
-            if (data.room) {
+                if (data.session_replaced) {
+                    this.renderSessionReplaced();
+                    return;
+                }
                 const prevStatus = this.room.status;
-                this.room = data.room;
-                if (prevStatus !== data.room.status) {
-                    this.routeByState();
-                }
-            }
-            if (data.attempt) {
+                if (data.room) this.room = data.room;
+
                 let hasPending = false;
-                try {
-                    hasPending = Boolean(this.pendingQueueKey && JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]').length > 0);
-                } catch (e) {}
-                const preservedQuestionStartedAt = hasPending ? this.attempt?.question_started_at : null;
-                this.attempt = data.attempt;
-                if (preservedQuestionStartedAt) {
-                    this.attempt.question_started_at = preservedQuestionStartedAt;
+                if (data.attempt) {
+                    try {
+                        hasPending = Boolean(this.pendingQueueKey && JSON.parse(localStorage.getItem(this.pendingQueueKey) || '[]').length > 0);
+                    } catch (e) {}
+                    const preservedQuestionStartedAt = hasPending ? this.attempt?.question_started_at : null;
+                    this.attempt = data.attempt;
+                    if (preservedQuestionStartedAt) {
+                        this.attempt.question_started_at = preservedQuestionStartedAt;
+                    }
+                    if (!hasPending) this.syncCurrentIndexFromAttempt();
                 }
-                if ((data.attempt.status === 'SUBMITTED' || data.attempt.status === 'FORCED') && document.getElementById('arena-exam-view')) {
-                    this.renderLeaderboardView();
+
+                if (data.room && prevStatus !== data.room.status) {
+                    this.routeByState();
+                } else if (data.attempt && document.getElementById('arena-exam-view')) {
+                    if (this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED') {
+                        this.renderLeaderboardView();
+                    } else if (
+                        !hasPending &&
+                        this.room?.status === 'IN_PROGRESS' &&
+                        this.attempt.status === 'IN_PROGRESS' &&
+                        this._lastAnimatedQuestionIndex !== undefined &&
+                        this._lastAnimatedQuestionIndex < this.currentIndex
+                    ) {
+                        this.routeByState();
+                    }
                 }
-            }
                 if (
-                this.room?.status === 'FINISHED' ||
-                (this.room?.status === 'IN_PROGRESS' && this.attempt && (this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED'))
-            ) {
+                    this.room?.status === 'FINISHED' ||
+                    (this.room?.status === 'IN_PROGRESS' && this.attempt && (this.attempt.status === 'SUBMITTED' || this.attempt.status === 'FORCED'))
+                ) {
                     clearInterval(this.pollTimer);
                     this.pollTimer = null;
                     this.refreshLobbyOrLeaderboard();
@@ -529,6 +541,16 @@
             } catch (e) {
                 // Keep polling alive across transient network failures.
             }
+        },
+
+        syncCurrentIndexFromAttempt() {
+            const raw = this.attempt?.current_index;
+            const index = raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw))
+                ? Math.max(0, Number(raw))
+                : Math.max(0, Number(this.currentIndex ?? 0) || 0);
+            this.currentIndex = Array.isArray(this.questions) && this.questions.length > 0
+                ? Math.min(index, this.questions.length)
+                : index;
         },
 
         routeByState() {
@@ -1008,6 +1030,7 @@
                     } else {
                         if (data?.attempt) {
                             this.attempt = data.attempt;
+                            this.syncCurrentIndexFromAttempt();
                         }
                         if (data?.error === 'MATCH_TIME_UP' || data?.match_time_up || this.attempt?.finish_reason === 'TIME_UP') {
                             matchTimeUp = true;
@@ -1044,9 +1067,15 @@
                         }
                         return;
                     }
-                    if (finData) this.attempt = finData;
+                    if (finData) {
+                        this.attempt = finData;
+                        this.syncCurrentIndexFromAttempt();
+                    }
                     try { localStorage.removeItem(this.pendingFinishKey); } catch (e) {}
-                    if (document.getElementById('arena-lb-rows')) {
+                    if (
+                        (this.attempt?.status === 'SUBMITTED' || this.attempt?.status === 'FORCED') &&
+                        (document.getElementById('arena-exam-view') || document.getElementById('arena-lb-rows'))
+                    ) {
                         this.renderLeaderboardView();
                     }
                 }
